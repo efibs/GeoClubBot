@@ -1,0 +1,7 @@
+﻿services:
+  geoclubbot:
+    image: geoclubbot
+    build:
+      context: .
+      dockerfile: GeoClubBot/Dockerfile
+
