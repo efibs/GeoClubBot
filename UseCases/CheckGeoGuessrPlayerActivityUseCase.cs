@@ -21,7 +21,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         // Log debug message
         logger.LogDebug("Checking player activity...");
         
-        // Get the members of the club
+        // Get the current members of the club
         var members = await geoGuessrAccess
             .ReadClubMembersAsync(_clubId)
             .ConfigureAwait(false);
@@ -61,7 +61,14 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             var previousStatus = previousStatuses.GetValueOrDefault(m.User.UserId);
 
             // Calculate the new number of strikes
-            var newNumberStrikes = (previousStatus?.NumStrikes ?? 0) + 1;
+            var newNumberStrikes = previousStatus?.NumStrikes ?? 0;
+            
+            // If the player did not meet the requirement
+            if (!targetAchieved)
+            {
+                // Add a strike
+                newNumberStrikes++;
+            }
 
             return new GeoGuessrClubMemberActivityStatus(m.User.Nick, targetAchieved, xpSinceLastUpdate,
                 newNumberStrikes, newNumberStrikes > _maxNumStrikes);
