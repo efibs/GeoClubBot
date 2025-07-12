@@ -8,21 +8,21 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Discord.Net" Version="3.17.4" />
+        <PackageReference Include="Discord.Net" Version="3.17.4"/>
         <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.7"/>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="9.7.0" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="9.7.0"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Content Include="..\.dockerignore">
-        <Link>.dockerignore</Link>
-      </Content>
+        <Content Include="..\.dockerignore">
+            <Link>.dockerignore</Link>
+        </Content>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Constants\Constants.csproj" />
-      <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
-      <ProjectReference Include="..\UseCases\UseCases.csproj" />
+        <ProjectReference Include="..\Constants\Constants.csproj"/>
+        <ProjectReference Include="..\Infrastructure\Infrastructure.csproj"/>
+        <ProjectReference Include="..\UseCases\UseCases.csproj"/>
     </ItemGroup>
 
 </Project>

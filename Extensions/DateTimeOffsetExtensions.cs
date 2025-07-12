@@ -9,10 +9,10 @@ public static class DateTimeOffsetExtensions
         {
             throw new ArgumentOutOfRangeException(nameof(interval), $"{nameof(interval)} cannot be zero.");
         }
-        
+
         // Convert to ticks and truncate as ticks
-        var newTicks =  dateTimeOffset.Ticks - (dateTimeOffset.Ticks % interval.Ticks);
-        
+        var newTicks = dateTimeOffset.Ticks - (dateTimeOffset.Ticks % interval.Ticks);
+
         return new DateTimeOffset(newTicks, TimeSpan.Zero);
     }
 

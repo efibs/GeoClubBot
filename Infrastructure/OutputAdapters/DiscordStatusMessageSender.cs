@@ -1,7 +1,7 @@
 using System.Text;
+using Constants;
 using Discord.WebSocket;
 using Entities;
-using GeoClubBot;
 using Microsoft.Extensions.Configuration;
 using UseCases.OutputPorts;
 
@@ -10,7 +10,7 @@ namespace Infrastructure.OutputAdapters;
 public class DiscordStatusMessageSender(DiscordSocketClient client, IConfiguration config) : IStatusMessageSender
 {
     private const int MaxNumPlayersPerMessage = 15;
-    
+
     public async Task SendActivityStatusUpdateMessageAsync(List<GeoGuessrClubMemberActivityStatus> statuses)
     {
         // Get the server
@@ -36,12 +36,14 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
             .Where(s => !s.TargetAchieved)
             .OrderByDescending(s => s.NumStrikes)
             .ToList();
-        
+
         // Build the message first part of the message
-        var messageString = _buildStatusUpdateMessageBeginningString(playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList());
+        var messageString =
+            _buildStatusUpdateMessageBeginningString(
+                playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList());
 
         // Send the message
-        await channel.SendMessageAsync(messageString).ConfigureAwait(false);
+        await channel.SendMessageAsync(messageString);
 
         // While there are still players to be processed
         var skipCount = MaxNumPlayersPerMessage;
@@ -49,16 +51,16 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
         {
             // Create a string builder
             var builder = new StringBuilder();
-            
+
             // Get the players for this chunk
             var playersChunk = playersWithFailedRequirement.Skip(skipCount).Take(MaxNumPlayersPerMessage).ToList();
-            
+
             // Append the players to the string builder
             _appendPlayers(builder, playersChunk);
-            
+
             // Send the message
-            await channel.SendMessageAsync(builder.ToString()).ConfigureAwait(false);
-            
+            await channel.SendMessageAsync(builder.ToString());
+
             // Increase skip count
             skipCount += MaxNumPlayersPerMessage;
         }
@@ -82,10 +84,10 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
 
         // Append the players
         _appendPlayers(builder, players);
-        
+
         return builder.ToString();
     }
-    
+
     private void _appendPlayers(StringBuilder builder, List<GeoGuessrClubMemberActivityStatus> players)
     {
         // For every player that failed the requirement

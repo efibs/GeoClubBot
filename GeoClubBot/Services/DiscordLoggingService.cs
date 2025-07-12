@@ -1,5 +1,5 @@
 using Discord;
-using Discord.Commands;
+using Discord.Interactions;
 using Discord.WebSocket;
 
 namespace GeoClubBot.Services;
@@ -9,33 +9,34 @@ namespace GeoClubBot.Services;
 /// </summary>
 public class DiscordLoggingService
 {
-    public DiscordLoggingService(DiscordSocketClient client, CommandService commandService, ILoggerFactory loggerFactory)
+    public DiscordLoggingService(DiscordSocketClient client, InteractionService interactionService,
+        ILoggerFactory loggerFactory)
     {
         // Store the logger factory
         _loggerFactory = loggerFactory;
-        
+
         // Attach the log method
         client.Ready += ReadyAsync;
         client.Log += LogAsync;
-        commandService.Log += LogAsync;
+        interactionService.Log += LogAsync;
     }
 
     private Task ReadyAsync()
     {
         // Create the logger
         var logger = _loggerFactory.CreateLogger("Startup");
-        
+
         // Log startup message
         logger.LogInformation("Discord bot is ready.");
-        
+
         return Task.CompletedTask;
     }
-    
+
     private Task LogAsync(LogMessage message)
     {
         // Create the logger
         var logger = _loggerFactory.CreateLogger(message.Source);
-        
+
         switch (message.Severity)
         {
             case LogSeverity.Critical:
@@ -60,6 +61,6 @@ public class DiscordLoggingService
 
         return Task.CompletedTask;
     }
-    
+
     private readonly ILoggerFactory _loggerFactory;
 }

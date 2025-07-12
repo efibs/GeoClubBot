@@ -12,18 +12,17 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
     {
         // Create the http client
         var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
-        
+
         // Make the http call
         var members =
-            await client.GetFromJsonAsync<List<GeoGuessrClubMember>>($"v4/clubs/{clubId}/members")
-            .ConfigureAwait(false);
-        
+                await client.GetFromJsonAsync<List<GeoGuessrClubMember>>($"v4/clubs/{clubId}/members");
+
         // If the call resulted in no members
         if (members == null || members.Count == 0)
         {
             throw new DataException("No club members found");
         }
-        
+
         return members;
     }
 }

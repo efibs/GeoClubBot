@@ -1,3 +1,4 @@
+using Constants;
 using Extensions;
 using GeoClubBot;
 using Microsoft.Extensions.Configuration;
@@ -9,10 +10,11 @@ namespace Infrastructure.InputAdapters;
 
 public class ActivityCheckService : IHostedService, IDisposable
 {
-    public ActivityCheckService(ICheckGeoGuessrPlayerActivityUseCase useCase, IConfiguration config, ILogger<ActivityCheckService> logger)
+    public ActivityCheckService(ICheckGeoGuessrPlayerActivityUseCase useCase, IConfiguration config,
+        ILogger<ActivityCheckService> logger)
     {
         _logger = logger;
-        
+
         // Get the configured frequency
         var frequency = config.GetValue<string>(ConfigKeys.ActivityCheckerFrequencyConfigurationKey);
 
@@ -27,24 +29,25 @@ public class ActivityCheckService : IHostedService, IDisposable
             FrequencyValues.Yearly => TimeSpan.FromDays(365),
             _ => throw new InvalidOperationException($"Unknown frequency {frequency}")
         };
-        
+
         _useCase = useCase;
-        
+
         // Log debug message
         _logger.LogDebug($"Scheduling activity check for frequency: {_checkFrequency}");
     }
-    
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         // Get the next activity check time
         var nextCheckTime = DateTimeOffset.UtcNow.RoundUp(_checkFrequency);
-        
+
         // Create the new timer
         _timer = new Timer(_checkActivity, null, nextCheckTime - DateTimeOffset.UtcNow, _checkFrequency);
-        
+
         // Log information
-        _logger.LogInformation("Player activity checking scheduled. Next check time: {DateTimeOffset:R}", nextCheckTime);
-        
+        _logger.LogInformation("Player activity checking scheduled. Next check time: {DateTimeOffset:R}",
+            nextCheckTime);
+
         return Task.CompletedTask;
     }
 
@@ -52,7 +55,7 @@ public class ActivityCheckService : IHostedService, IDisposable
     {
         // Stop the timer
         _timer?.Change(Timeout.Infinite, 0);
-        
+
         return Task.CompletedTask;
     }
 
@@ -60,7 +63,7 @@ public class ActivityCheckService : IHostedService, IDisposable
     {
         _timer?.Dispose();
     }
-    
+
     private void _checkActivity(object? sender)
     {
         // Run the check in the background
@@ -71,14 +74,14 @@ public class ActivityCheckService : IHostedService, IDisposable
     {
         try
         {
-            await _useCase.CheckPlayerActivityAsync().ConfigureAwait(false);
+            await _useCase.CheckPlayerActivityAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking player activity.");
         }
     }
-    
+
     private readonly ICheckGeoGuessrPlayerActivityUseCase _useCase;
     private readonly TimeSpan _checkFrequency;
     private readonly ILogger<ActivityCheckService> _logger;

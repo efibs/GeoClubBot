@@ -1,5 +1,6 @@
 namespace Entities;
 
-public record GeoGuessrClubMemberActivityEntry(string Nickname, 
+public record GeoGuessrClubMemberActivityEntry(
+    string Nickname,
     int Xp,
     DateTimeOffset Timestamp);

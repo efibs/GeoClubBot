@@ -18,7 +18,7 @@ public class FileActivityRepository : IActivityRepository
     {
         // Create the directories if they do not exist
         Directory.CreateDirectory(DataFolderPath);
-        
+
         // Check if the activity history file exists
         if (!File.Exists(ActivityHistoryFileName))
         {
@@ -32,7 +32,7 @@ public class FileActivityRepository : IActivityRepository
             // Create the file with an empty dictionary
             File.WriteAllText(LatestActivityFileName, "{}");
         }
-        
+
         // Check if the statuses file exists
         if (!File.Exists(StatusesFileName))
         {
@@ -44,7 +44,7 @@ public class FileActivityRepository : IActivityRepository
     public async Task WriteActivityEntriesAsync(Dictionary<string, GeoGuessrClubMemberActivityEntry> entries)
     {
         // Read the activity history file
-        var currentActivityHistoryJson = await File.ReadAllTextAsync(ActivityHistoryFileName).ConfigureAwait(false);
+        var currentActivityHistoryJson = await File.ReadAllTextAsync(ActivityHistoryFileName);
 
         // Parse from json
         var currentActivityHistory =
@@ -58,7 +58,7 @@ public class FileActivityRepository : IActivityRepository
         }
 
         // Read the latest activity file
-        var currentLatestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName).ConfigureAwait(false);
+        var currentLatestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName);
 
         // Parse from json
         var currentLatestActivity =
@@ -80,10 +80,10 @@ public class FileActivityRepository : IActivityRepository
             {
                 // Get the current history
                 currentActivityHistory.TryGetValue(uId, out var currentHistoryList);
-                
+
                 // Set to empty list if not found
                 currentHistoryList ??= [];
-                
+
                 // Append the new entry to the list if the user has a new entry.
                 // Otherwise, just leave the entries unmodified.
                 return !entries.TryGetValue(uId, out var entry)
@@ -95,8 +95,7 @@ public class FileActivityRepository : IActivityRepository
         var newActivityHistoryJson = JsonSerializer.Serialize(newActivityHistory);
 
         // Write the new activity history
-        await File.WriteAllTextAsync(ActivityHistoryFileName, newActivityHistoryJson)
-            .ConfigureAwait(false);
+        await File.WriteAllTextAsync(ActivityHistoryFileName, newActivityHistoryJson);
 
         // Update the latest activity
         var newLatestActivity = new Dictionary<string, GeoGuessrClubMemberActivityEntry>(currentLatestActivity);
@@ -109,14 +108,13 @@ public class FileActivityRepository : IActivityRepository
         var newLatestActivityJson = JsonSerializer.Serialize(newLatestActivity);
 
         // Write the new latest activity
-        await File.WriteAllTextAsync(LatestActivityFileName, newLatestActivityJson)
-            .ConfigureAwait(false);
+        await File.WriteAllTextAsync(LatestActivityFileName, newLatestActivityJson);
     }
 
     public async Task<Dictionary<string, GeoGuessrClubMemberActivityEntry>> ReadLatestActivityEntriesAsync()
     {
         // Read the latest activity file
-        var latestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName).ConfigureAwait(false);
+        var latestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName);
 
         // Parse from json
         var latestActivities =
@@ -128,7 +126,7 @@ public class FileActivityRepository : IActivityRepository
     public async Task WriteMemberStatusesAsync(Dictionary<string, GeoGuessrClubMemberActivityStatus> statuses)
     {
         // Read the statuses file
-        var currentStatusesJson = await File.ReadAllTextAsync(StatusesFileName).ConfigureAwait(false);
+        var currentStatusesJson = await File.ReadAllTextAsync(StatusesFileName);
 
         // Parse from json
         var currentStatuses =
@@ -140,26 +138,25 @@ public class FileActivityRepository : IActivityRepository
         {
             throw new InvalidOperationException("Statuses are malformed");
         }
-        
+
         // Update the statuses
         var newStatuses = new Dictionary<string, GeoGuessrClubMemberActivityStatus>(currentStatuses);
         foreach (var entry in statuses)
         {
             newStatuses[entry.Key] = entry.Value;
         }
-        
+
         // Convert the new statuses to json
         var newStatusesJson = JsonSerializer.Serialize(newStatuses);
 
         // Write the new latest activity
-        await File.WriteAllTextAsync(StatusesFileName, newStatusesJson)
-            .ConfigureAwait(false);
+        await File.WriteAllTextAsync(StatusesFileName, newStatusesJson);
     }
 
     public async Task<Dictionary<string, GeoGuessrClubMemberActivityStatus>> ReadActivityStatusesAsync()
     {
         // Read the latest activity file
-        var statusesJson = await File.ReadAllTextAsync(StatusesFileName).ConfigureAwait(false);
+        var statusesJson = await File.ReadAllTextAsync(StatusesFileName);
 
         // Parse from json
         var statuses =

@@ -1,3 +1,4 @@
+using Constants;
 using Entities;
 using GeoClubBot;
 using Microsoft.Extensions.Configuration;
@@ -18,21 +19,18 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     {
         // Log debug message
         logger.LogDebug("Checking player activity...");
-        
+
         // Get the current members of the club
         var members = await geoGuessrAccess
-            .ReadClubMembersAsync(_clubId)
-            .ConfigureAwait(false);
+                .ReadClubMembersAsync(_clubId);
 
         // Get the latest activities
         var latestActivities = await activityRepository
-            .ReadLatestActivityEntriesAsync()
-            .ConfigureAwait(false);
+                .ReadLatestActivityEntriesAsync();
 
         // Get the statuses
         var previousStatuses = await activityRepository
-            .ReadActivityStatusesAsync()
-            .ConfigureAwait(false);
+                .ReadActivityStatusesAsync();
 
         // Get the current date
         var now = DateTimeOffset.UtcNow;
@@ -45,50 +43,47 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         // Calculate the new statuses
         var newStatuses = members
             .ToDictionary(m => m.User.UserId, m =>
-        {
-            // Get the latest activity of the player
-            var latestActivity = latestActivities.GetValueOrDefault(m.User.UserId);
-
-            // Calculate the xp since the last update
-            var xpSinceLastUpdate = m.Xp - (latestActivity?.Xp ?? 0);
-
-            // Calculate if the player achieved the target.
-            // Give new player the benefit of the doubt and say, they 
-            // achieved the target since we don't know when they joined.
-            var targetAchieved = latestActivity == null || xpSinceLastUpdate >= _xpRequirement;
-
-            // Get the previous status
-            var previousStatus = previousStatuses.GetValueOrDefault(m.User.UserId);
-
-            // Calculate the new number of strikes
-            var newNumberStrikes = previousStatus?.NumStrikes ?? 0;
-            
-            // If the player did not meet the requirement
-            if (!targetAchieved)
             {
-                // Add a strike
-                newNumberStrikes++;
-            }
+                // Get the latest activity of the player
+                var latestActivity = latestActivities.GetValueOrDefault(m.User.UserId);
 
-            return new GeoGuessrClubMemberActivityStatus(m.User.Nick, targetAchieved, xpSinceLastUpdate,
-                newNumberStrikes, newNumberStrikes > _maxNumStrikes);
-        });
+                // Calculate the xp since the last update
+                var xpSinceLastUpdate = m.Xp - (latestActivity?.Xp ?? 0);
+
+                // Calculate if the player achieved the target.
+                // Give new player the benefit of the doubt and say, they 
+                // achieved the target since we don't know when they joined.
+                var targetAchieved = latestActivity == null || xpSinceLastUpdate >= _xpRequirement;
+
+                // Get the previous status
+                var previousStatus = previousStatuses.GetValueOrDefault(m.User.UserId);
+
+                // Calculate the new number of strikes
+                var newNumberStrikes = previousStatus?.NumStrikes ?? 0;
+
+                // If the player did not meet the requirement
+                if (!targetAchieved)
+                {
+                    // Add a strike
+                    newNumberStrikes++;
+                }
+
+                return new GeoGuessrClubMemberActivityStatus(m.User.Nick, targetAchieved, xpSinceLastUpdate,
+                    newNumberStrikes, newNumberStrikes > _maxNumStrikes);
+            });
 
         // Save the new activity
         await activityRepository
-            .WriteActivityEntriesAsync(newLatestActivity)
-            .ConfigureAwait(false);
-        
+                .WriteActivityEntriesAsync(newLatestActivity) ;
+
         // Save the new statuses
         await activityRepository
-            .WriteMemberStatusesAsync(newStatuses)
-            .ConfigureAwait(false);
-        
+                .WriteMemberStatusesAsync(newStatuses) ;
+
         // Send the update message
         await statusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses.Values.ToList())
-            .ConfigureAwait(false);
-        
+                .SendActivityStatusUpdateMessageAsync(newStatuses.Values.ToList()) ;
+
         // Log debug message
         logger.LogDebug("Checking player activity done.");
     }
