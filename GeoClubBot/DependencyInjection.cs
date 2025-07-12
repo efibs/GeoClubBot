@@ -1,6 +1,11 @@
 using Discord.Commands;
 using Discord.WebSocket;
 using GeoClubBot.Services;
+using Infrastructure.InputAdapters;
+using Infrastructure.OutputAdapters;
+using UseCases;
+using UseCases.InputPorts;
+using UseCases.OutputPorts;
 
 namespace GeoClubBot;
 
@@ -23,5 +28,19 @@ public static class DependencyInjection
         
         // Add the discord bot service
         services.AddHostedService<DiscordBotService>();
+        
+        // Add the http client
+        services.AddHttpClient();
+        
+        // Add the input ports
+        services.AddHostedService<ActivityCheckService>();
+        
+        // Add the output ports 
+        services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
+        services.AddTransient<IActivityRepository, FileActivityRepository>();
+        services.AddTransient<IStatusMessageSender, DiscordStatusMessageSender>();
+        
+        // Add the use cases
+        services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
     }
 }
