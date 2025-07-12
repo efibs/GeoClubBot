@@ -28,6 +28,8 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
     private async Task _checkPlayerActivitySafeAsync()
     {
+        // TODO: Don't strike users that were not in the history before (new club members)
+        
         // Log debug message
         logger.LogDebug("Checking player activity...");
         
