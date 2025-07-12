@@ -16,8 +16,6 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 {
     public async Task CheckPlayerActivityAsync()
     {
-        // TODO: Don't strike users that were not in the history before (new club members)
-        
         // Log debug message
         logger.LogDebug("Checking player activity...");
         
@@ -54,8 +52,10 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             // Calculate the xp since the last update
             var xpSinceLastUpdate = m.Xp - (latestActivity?.Xp ?? 0);
 
-            // Calculate if the player achieved the target
-            var targetAchieved = xpSinceLastUpdate >= _xpRequirement;
+            // Calculate if the player achieved the target.
+            // Give new player the benefit of the doubt and say, they 
+            // achieved the target since we don't know when they joined.
+            var targetAchieved = latestActivity == null || xpSinceLastUpdate >= _xpRequirement;
 
             // Get the previous status
             var previousStatus = previousStatuses.GetValueOrDefault(m.User.UserId);
