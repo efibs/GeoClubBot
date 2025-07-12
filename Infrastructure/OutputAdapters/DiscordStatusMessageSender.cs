@@ -33,7 +33,7 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
 
         // Get the players that failed to meet the requirement
         var playersWithFailedRequirement = statuses
-            .Where(s => !s.TargetAchieved)
+            .Where(s => s is { TargetAchieved: false, Excused: false })
             .OrderByDescending(s => s.NumStrikes)
             .ToList();
 
@@ -63,6 +63,21 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
 
             // Increase skip count
             skipCount += MaxNumPlayersPerMessage;
+        }
+        
+        // Get the players that are currently excused
+        var excusedPlayers = statuses
+            .Where(s => s.Excused)
+            .ToList();
+        
+        // If there are players that are currently excused
+        if (excusedPlayers.Any())
+        {
+            // Build the messages for the excused players
+            var excusedPlayersMessage = _buildExcusedPlayersMessage(excusedPlayers);
+            
+            // Send the message
+            await channel.SendMessageAsync(excusedPlayersMessage);
         }
     }
 
@@ -122,6 +137,22 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
         }
     }
 
+    private string _buildExcusedPlayersMessage(List<GeoGuessrClubMemberActivityStatus> excusedPlayers)
+    {
+        // Create the builder
+        var builder = new StringBuilder("​\nPlayers that are currently excused:");
+        
+        // For every excused player
+        foreach (var player in excusedPlayers)
+        {
+            builder.AppendLine();
+            builder.Append("* ");
+            builder.Append(player.Nickname);
+        }
+        
+        return builder.ToString();
+    }
+    
     private readonly ulong _guildId = config.GetValue<ulong>(ConfigKeys.ActivityCheckerMainServerIdConfigurationKey);
     private readonly ulong _channelId = config.GetValue<ulong>(ConfigKeys.ActivityCheckerTextChannelIdConfigurationKey);
     private readonly int _requirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);

@@ -9,4 +9,7 @@ public partial class ActivityModule : InteractionModuleBase<SocketInteractionCon
 {
     [Group("strike", "Commands all about the strikes of every player")]
     public partial class ActivityStrikeModule : InteractionModuleBase<SocketInteractionContext>;
+    
+    [Group("excuse", "Commands all about excusing players")]
+    public partial class ActivityExcuseModule : InteractionModuleBase<SocketInteractionContext>;
 }

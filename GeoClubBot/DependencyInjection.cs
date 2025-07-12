@@ -64,17 +64,22 @@ public static class DependencyInjection
             client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrToken}");
         });
 
-        // Add the input ports
+        // Add the input adapters
         services.AddHostedService<ActivityCheckService>();
 
-        // Add the output ports 
+        // Add the output adapters 
         services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
         services.AddTransient<IActivityRepository, FileActivityRepository>();
         services.AddTransient<IStatusMessageSender, DiscordStatusMessageSender>();
+        services.AddTransient<IExcusesRepository, FileExcusesRepository>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
         services.AddTransient<IReadMemberNumStrikesUseCase, ReadMemberNumStrikesUseCase>();
         services.AddTransient<IWriteMemberNumStrikesUseCase, WriteMemberNumStrikesUseCase>();
+        services.AddTransient<IAddExcuseUseCase, AddExcuseUseCase>();
+        services.AddTransient<IRemoveExcuseUseCase, RemoveExcuseUseCase>();
+        services.AddTransient<IIsPlayerTrackedUseCase, IsPlayerTrackedUseCase>();
+        services.AddTransient<IReadExcusesUseCase, ReadExcusesUseCase>();
     }
 }

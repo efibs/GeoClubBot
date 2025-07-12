@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Constants", "Constants\Cons
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Extensions", "Extensions\Extensions.csproj", "{476A519F-966E-4A82-B8EE-AD1C3AB7022F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Utilities", "Utilities\Utilities.csproj", "{4824C301-1764-4965-8706-4E02B91AB7F7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -49,9 +51,14 @@ Global
 		{476A519F-966E-4A82-B8EE-AD1C3AB7022F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{476A519F-966E-4A82-B8EE-AD1C3AB7022F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{476A519F-966E-4A82-B8EE-AD1C3AB7022F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4824C301-1764-4965-8706-4E02B91AB7F7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4824C301-1764-4965-8706-4E02B91AB7F7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4824C301-1764-4965-8706-4E02B91AB7F7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4824C301-1764-4965-8706-4E02B91AB7F7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{541F1161-B5B6-43BA-8AEF-F4E536B10281} = {D1E67922-C47C-4C56-A089-764D793E0403}
 		{476A519F-966E-4A82-B8EE-AD1C3AB7022F} = {D1E67922-C47C-4C56-A089-764D793E0403}
+		{4824C301-1764-4965-8706-4E02B91AB7F7} = {D1E67922-C47C-4C56-A089-764D793E0403}
 	EndGlobalSection
 EndGlobal
