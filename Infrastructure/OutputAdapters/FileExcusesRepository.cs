@@ -8,6 +8,8 @@ public class FileExcusesRepository : IExcusesRepository
 {
     private static readonly string DataFolderPath = Path.Combine(Environment.GetEnvironmentVariable("HOME")!, "data");
     private static readonly string ExcusesFileName = Path.Combine(DataFolderPath, "excuses.json");
+    
+    private static readonly SemaphoreSlim Lock = new(1, 1);
 
     public FileExcusesRepository()
     {
@@ -24,89 +26,124 @@ public class FileExcusesRepository : IExcusesRepository
     
     public async Task<Dictionary<string, List<GeoGuessrClubMemberExcuse>>> ReadExcusesAsync()
     {
-        // Read the excuses file
-        var excusesJson = await File.ReadAllTextAsync(ExcusesFileName);
-        
-        // Parse from json
-        var excuses = JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberExcuse>>>(excusesJson);
-        
-        // Sanity check
-        if (excuses == null)
+        // Acquire the lock
+        await Lock.WaitAsync();
+
+        try
         {
-            throw new InvalidOperationException("Excuses are malformed");
+            // Read the excuses file
+            var excusesJson = await File.ReadAllTextAsync(ExcusesFileName);
+
+            // Parse from json
+            var excuses = JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberExcuse>>>(excusesJson);
+
+            // Sanity check
+            if (excuses == null)
+            {
+                throw new InvalidOperationException("Excuses are malformed");
+            }
+
+            return excuses;
         }
-        
-        return excuses;
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
     }
 
     public async Task WriteExcuseAsync(string memberNickname, GeoGuessrClubMemberExcuse excuse)
     {
-        // Read the excuses file
-        var existingExcusesJson = await File.ReadAllTextAsync(ExcusesFileName);
-        
-        // Parse from json
-        var existingExcuses = JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberExcuse>>>(existingExcusesJson);
-        
-        // Sanity check
-        if (existingExcuses == null)
-        {
-            throw new InvalidOperationException("Excuses are malformed");
-        }
-        
-        // Create the new excuses dictionary
-        var newExcusesDict =  new Dictionary<string, List<GeoGuessrClubMemberExcuse>>(existingExcuses);
-        
-        // Get the existing excuses of the player
-        existingExcuses.TryGetValue(memberNickname, out var existingExcusesOfPlayer);
-        existingExcusesOfPlayer ??= [];
+        // Acquire the lock
+        await Lock.WaitAsync();
 
-        newExcusesDict[memberNickname] = existingExcusesOfPlayer.Append(excuse).ToList();
-        
-        // Serialize new excuses
-        var newExcusesJson = JsonSerializer.Serialize(newExcusesDict);
-        
-        // Write new excuses to file
-        await File.WriteAllTextAsync(ExcusesFileName, newExcusesJson);
+        try
+        {
+            // Read the excuses file
+            var existingExcusesJson = await File.ReadAllTextAsync(ExcusesFileName);
+
+            // Parse from json
+            var existingExcuses =
+                JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberExcuse>>>(existingExcusesJson);
+
+            // Sanity check
+            if (existingExcuses == null)
+            {
+                throw new InvalidOperationException("Excuses are malformed");
+            }
+
+            // Create the new excuses dictionary
+            var newExcusesDict = new Dictionary<string, List<GeoGuessrClubMemberExcuse>>(existingExcuses);
+
+            // Get the existing excuses of the player
+            existingExcuses.TryGetValue(memberNickname, out var existingExcusesOfPlayer);
+            existingExcusesOfPlayer ??= [];
+
+            newExcusesDict[memberNickname] = existingExcusesOfPlayer.Append(excuse).ToList();
+
+            // Serialize new excuses
+            var newExcusesJson = JsonSerializer.Serialize(newExcusesDict);
+
+            // Write new excuses to file
+            await File.WriteAllTextAsync(ExcusesFileName, newExcusesJson);
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
     }
 
     public async Task<bool> DeleteExcuseAsync(Guid excuseId)
     {
-        // Read the excuses file
-        var existingExcusesJson = await File.ReadAllTextAsync(ExcusesFileName);
-        
-        // Parse from json
-        var existingExcuses = JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberExcuse>>>(existingExcusesJson);
-        
-        // Sanity check
-        if (existingExcuses == null)
-        {
-            throw new InvalidOperationException("Excuses are malformed");
-        }
+        // Acquire the lock
+        await Lock.WaitAsync();
 
-        // Create the new excuses dictionary
-        var newExcusesDict =  new Dictionary<string, List<GeoGuessrClubMemberExcuse>>(existingExcuses);
-        
-        // Find the player of the excuse to be deleted
-        var memberNickname = existingExcuses.FirstOrDefault(e => e.Value.Any(e => e.Id == excuseId)).Key;
-        
-        // If there is no excuse with that guid
-        if (memberNickname == null)
+        try
         {
-            return false;
-        }
-        
-        // Get the existing excuses of the player
-        var existingExcusesOfPlayer = existingExcuses[memberNickname];
+            // Read the excuses file
+            var existingExcusesJson = await File.ReadAllTextAsync(ExcusesFileName);
 
-        // Remove excuse with that Id
-        newExcusesDict[memberNickname] = existingExcusesOfPlayer.Where(e =>e.Id != excuseId).ToList();
-        
-        // Serialize new excuses
-        var newExcusesJson = JsonSerializer.Serialize(newExcusesDict);
-        
-        // Write new excuses to file
-        await File.WriteAllTextAsync(ExcusesFileName, newExcusesJson);
-        
-        return true;
+            // Parse from json
+            var existingExcuses =
+                JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberExcuse>>>(existingExcusesJson);
+
+            // Sanity check
+            if (existingExcuses == null)
+            {
+                throw new InvalidOperationException("Excuses are malformed");
+            }
+
+            // Create the new excuses dictionary
+            var newExcusesDict = new Dictionary<string, List<GeoGuessrClubMemberExcuse>>(existingExcuses);
+
+            // Find the player of the excuse to be deleted
+            var memberNickname = existingExcuses.FirstOrDefault(e => e.Value.Any(e => e.Id == excuseId)).Key;
+
+            // If there is no excuse with that guid
+            if (memberNickname == null)
+            {
+                return false;
+            }
+
+            // Get the existing excuses of the player
+            var existingExcusesOfPlayer = existingExcuses[memberNickname];
+
+            // Remove excuse with that Id
+            newExcusesDict[memberNickname] = existingExcusesOfPlayer.Where(e => e.Id != excuseId).ToList();
+
+            // Serialize new excuses
+            var newExcusesJson = JsonSerializer.Serialize(newExcusesDict);
+
+            // Write new excuses to file
+            await File.WriteAllTextAsync(ExcusesFileName, newExcusesJson);
+
+            return true;
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
     }
 }

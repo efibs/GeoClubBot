@@ -13,6 +13,8 @@ public class FileActivityRepository : IActivityRepository
     private static readonly string ActivityHistoryFileName = Path.Combine(DataFolderPath, "ActivityHistory.json");
     private static readonly string LatestActivityFileName = Path.Combine(DataFolderPath, "LatestActivity.json");
     private static readonly string StatusesFileName = Path.Combine(DataFolderPath, "Statuses.json");
+    
+    private static readonly SemaphoreSlim Lock = new SemaphoreSlim(1, 1);
 
     public FileActivityRepository()
     {
@@ -43,125 +45,169 @@ public class FileActivityRepository : IActivityRepository
 
     public async Task WriteActivityEntriesAsync(Dictionary<string, GeoGuessrClubMemberActivityEntry> entries)
     {
-        // Read the activity history file
-        var currentActivityHistoryJson = await File.ReadAllTextAsync(ActivityHistoryFileName);
-
-        // Parse from json
-        var currentActivityHistory =
-            JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberActivityEntry>>>(
-                currentActivityHistoryJson);
-
-        // Sanity check
-        if (currentActivityHistory == null)
+        // Acquire the lock
+        await Lock.WaitAsync();
+        
+        try
         {
-            throw new InvalidOperationException("Activity history is malformed");
-        }
+            // Read the activity history file
+            var currentActivityHistoryJson = await File.ReadAllTextAsync(ActivityHistoryFileName);
 
-        // Read the latest activity file
-        var currentLatestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName);
+            // Parse from json
+            var currentActivityHistory =
+                JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberActivityEntry>>>(
+                    currentActivityHistoryJson);
 
-        // Parse from json
-        var currentLatestActivity =
-            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityEntry>>(
-                currentLatestActivityJson);
-
-        // Sanity check
-        if (currentLatestActivity == null)
-        {
-            throw new InvalidOperationException("Latest activity is malformed");
-        }
-
-        // Get a list of all user ids past and current members
-        var userIds = currentActivityHistory.Keys.ToList().Union(entries.Keys.ToList());
-
-        // Create the new activity history
-        var newActivityHistory = userIds.ToDictionary(uId => uId,
-            uId =>
+            // Sanity check
+            if (currentActivityHistory == null)
             {
-                // Get the current history
-                currentActivityHistory.TryGetValue(uId, out var currentHistoryList);
+                throw new InvalidOperationException("Activity history is malformed");
+            }
 
-                // Set to empty list if not found
-                currentHistoryList ??= [];
+            // Read the latest activity file
+            var currentLatestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName);
 
-                // Append the new entry to the list if the user has a new entry.
-                // Otherwise, just leave the entries unmodified.
-                return !entries.TryGetValue(uId, out var entry)
-                    ? currentHistoryList
-                    : currentHistoryList.Append(entry);
-            });
+            // Parse from json
+            var currentLatestActivity =
+                JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityEntry>>(
+                    currentLatestActivityJson);
 
-        // Convert the new activity history to json
-        var newActivityHistoryJson = JsonSerializer.Serialize(newActivityHistory);
+            // Sanity check
+            if (currentLatestActivity == null)
+            {
+                throw new InvalidOperationException("Latest activity is malformed");
+            }
 
-        // Write the new activity history
-        await File.WriteAllTextAsync(ActivityHistoryFileName, newActivityHistoryJson);
+            // Get a list of all user ids past and current members
+            var userIds = currentActivityHistory.Keys.ToList().Union(entries.Keys.ToList());
 
-        // Update the latest activity
-        var newLatestActivity = new Dictionary<string, GeoGuessrClubMemberActivityEntry>(currentLatestActivity);
-        foreach (var entry in entries)
-        {
-            newLatestActivity[entry.Key] = entry.Value;
+            // Create the new activity history
+            var newActivityHistory = userIds.ToDictionary(uId => uId,
+                uId =>
+                {
+                    // Get the current history
+                    currentActivityHistory.TryGetValue(uId, out var currentHistoryList);
+
+                    // Set to empty list if not found
+                    currentHistoryList ??= [];
+
+                    // Append the new entry to the list if the user has a new entry.
+                    // Otherwise, just leave the entries unmodified.
+                    return !entries.TryGetValue(uId, out var entry)
+                        ? currentHistoryList
+                        : currentHistoryList.Append(entry);
+                });
+
+            // Convert the new activity history to json
+            var newActivityHistoryJson = JsonSerializer.Serialize(newActivityHistory);
+
+            // Write the new activity history
+            await File.WriteAllTextAsync(ActivityHistoryFileName, newActivityHistoryJson);
+
+            // Update the latest activity
+            var newLatestActivity = new Dictionary<string, GeoGuessrClubMemberActivityEntry>(currentLatestActivity);
+            foreach (var entry in entries)
+            {
+                newLatestActivity[entry.Key] = entry.Value;
+            }
+
+            // Convert the new latest activity to json
+            var newLatestActivityJson = JsonSerializer.Serialize(newLatestActivity);
+
+            // Write the new latest activity
+            await File.WriteAllTextAsync(LatestActivityFileName, newLatestActivityJson);
         }
-
-        // Convert the new latest activity to json
-        var newLatestActivityJson = JsonSerializer.Serialize(newLatestActivity);
-
-        // Write the new latest activity
-        await File.WriteAllTextAsync(LatestActivityFileName, newLatestActivityJson);
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
     }
 
     public async Task<Dictionary<string, GeoGuessrClubMemberActivityEntry>> ReadLatestActivityEntriesAsync()
     {
-        // Read the latest activity file
-        var latestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName);
+        // Acquire the lock
+        await Lock.WaitAsync();
 
-        // Parse from json
-        var latestActivities =
-            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityEntry>>(latestActivityJson);
+        try
+        {
+            // Read the latest activity file
+            var latestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName);
 
-        return latestActivities ?? new Dictionary<string, GeoGuessrClubMemberActivityEntry>();
+            // Parse from json
+            var latestActivities =
+                JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityEntry>>(latestActivityJson);
+
+            return latestActivities ?? new Dictionary<string, GeoGuessrClubMemberActivityEntry>();
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
     }
 
     public async Task WriteMemberStatusesAsync(Dictionary<string, GeoGuessrClubMemberActivityStatus> statuses)
     {
-        // Read the statuses file
-        var currentStatusesJson = await File.ReadAllTextAsync(StatusesFileName);
+        // Acquire the lock
+        await Lock.WaitAsync();
 
-        // Parse from json
-        var currentStatuses =
-            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityStatus>>(
-                currentStatusesJson);
-
-        // Sanity check
-        if (currentStatuses == null)
+        try
         {
-            throw new InvalidOperationException("Statuses are malformed");
-        }
+            // Read the statuses file
+            var currentStatusesJson = await File.ReadAllTextAsync(StatusesFileName);
 
-        // Update the statuses
-        var newStatuses = new Dictionary<string, GeoGuessrClubMemberActivityStatus>(currentStatuses);
-        foreach (var entry in statuses)
+            // Parse from json
+            var currentStatuses =
+                JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityStatus>>(
+                    currentStatusesJson);
+
+            // Sanity check
+            if (currentStatuses == null)
+            {
+                throw new InvalidOperationException("Statuses are malformed");
+            }
+
+            // Update the statuses
+            var newStatuses = new Dictionary<string, GeoGuessrClubMemberActivityStatus>(currentStatuses);
+            foreach (var entry in statuses)
+            {
+                newStatuses[entry.Key] = entry.Value;
+            }
+
+            // Convert the new statuses to json
+            var newStatusesJson = JsonSerializer.Serialize(newStatuses);
+
+            // Write the new latest activity
+            await File.WriteAllTextAsync(StatusesFileName, newStatusesJson);
+        }
+        finally
         {
-            newStatuses[entry.Key] = entry.Value;
+            // Release the lock
+            Lock.Release();
         }
-
-        // Convert the new statuses to json
-        var newStatusesJson = JsonSerializer.Serialize(newStatuses);
-
-        // Write the new latest activity
-        await File.WriteAllTextAsync(StatusesFileName, newStatusesJson);
     }
 
     public async Task<Dictionary<string, GeoGuessrClubMemberActivityStatus>> ReadActivityStatusesAsync()
     {
-        // Read the latest activity file
-        var statusesJson = await File.ReadAllTextAsync(StatusesFileName);
+        // Acquire the lock
+        await Lock.WaitAsync();
 
-        // Parse from json
-        var statuses =
-            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityStatus>>(statusesJson);
+        try
+        {
+            // Read the latest activity file
+            var statusesJson = await File.ReadAllTextAsync(StatusesFileName);
 
-        return statuses ?? new Dictionary<string, GeoGuessrClubMemberActivityStatus>();
+            // Parse from json
+            var statuses =
+                JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityStatus>>(statusesJson);
+
+            return statuses ?? new Dictionary<string, GeoGuessrClubMemberActivityStatus>();
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
     }
 }
