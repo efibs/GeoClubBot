@@ -41,14 +41,14 @@ public class FileActivityRepository : IActivityRepository
         }
     }
 
-    public async Task WriteActivityEntriesAsync(Dictionary<Guid, GeoGuessrClubMemberActivityEntry> entries)
+    public async Task WriteActivityEntriesAsync(Dictionary<string, GeoGuessrClubMemberActivityEntry> entries)
     {
         // Read the activity history file
         var currentActivityHistoryJson = await File.ReadAllTextAsync(ActivityHistoryFileName).ConfigureAwait(false);
 
         // Parse from json
         var currentActivityHistory =
-            JsonSerializer.Deserialize<Dictionary<Guid, List<GeoGuessrClubMemberActivityEntry>>>(
+            JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberActivityEntry>>>(
                 currentActivityHistoryJson);
 
         // Sanity check
@@ -62,7 +62,7 @@ public class FileActivityRepository : IActivityRepository
 
         // Parse from json
         var currentLatestActivity =
-            JsonSerializer.Deserialize<Dictionary<Guid, GeoGuessrClubMemberActivityEntry>>(
+            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityEntry>>(
                 currentLatestActivityJson);
 
         // Sanity check
@@ -74,12 +74,22 @@ public class FileActivityRepository : IActivityRepository
         // Get a list of all user ids past and current members
         var userIds = currentActivityHistory.Keys.ToList().Union(entries.Keys.ToList());
 
-        // Create the new activity history. Append the new entry to the list if the user has 
-        // a new entry. Otherwise, just leave the entries unmodified.
+        // Create the new activity history
         var newActivityHistory = userIds.ToDictionary(uId => uId,
-            uId => !entries.TryGetValue(uId, out var entry)
-                ? currentActivityHistory[uId]
-                : currentActivityHistory[uId].Append(entry));
+            uId =>
+            {
+                // Get the current history
+                currentActivityHistory.TryGetValue(uId, out var currentHistoryList);
+                
+                // Set to empty list if not found
+                currentHistoryList ??= [];
+                
+                // Append the new entry to the list if the user has a new entry.
+                // Otherwise, just leave the entries unmodified.
+                return !entries.TryGetValue(uId, out var entry)
+                    ? currentHistoryList
+                    : currentHistoryList.Append(entry);
+            });
 
         // Convert the new activity history to json
         var newActivityHistoryJson = JsonSerializer.Serialize(newActivityHistory);
@@ -89,7 +99,7 @@ public class FileActivityRepository : IActivityRepository
             .ConfigureAwait(false);
 
         // Update the latest activity
-        var newLatestActivity = new Dictionary<Guid, GeoGuessrClubMemberActivityEntry>(currentLatestActivity);
+        var newLatestActivity = new Dictionary<string, GeoGuessrClubMemberActivityEntry>(currentLatestActivity);
         foreach (var entry in entries)
         {
             newLatestActivity[entry.Key] = entry.Value;
@@ -103,26 +113,26 @@ public class FileActivityRepository : IActivityRepository
             .ConfigureAwait(false);
     }
 
-    public async Task<Dictionary<Guid, GeoGuessrClubMemberActivityEntry>> ReadLatestActivityEntriesAsync()
+    public async Task<Dictionary<string, GeoGuessrClubMemberActivityEntry>> ReadLatestActivityEntriesAsync()
     {
         // Read the latest activity file
         var latestActivityJson = await File.ReadAllTextAsync(LatestActivityFileName).ConfigureAwait(false);
 
         // Parse from json
         var latestActivities =
-            JsonSerializer.Deserialize<Dictionary<Guid, GeoGuessrClubMemberActivityEntry>>(latestActivityJson);
+            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityEntry>>(latestActivityJson);
 
-        return latestActivities ?? new Dictionary<Guid, GeoGuessrClubMemberActivityEntry>();
+        return latestActivities ?? new Dictionary<string, GeoGuessrClubMemberActivityEntry>();
     }
 
-    public async Task WriteMemberStatusesAsync(Dictionary<Guid, GeoGuessrClubMemberActivityStatus> statuses)
+    public async Task WriteMemberStatusesAsync(Dictionary<string, GeoGuessrClubMemberActivityStatus> statuses)
     {
         // Read the statuses file
         var currentStatusesJson = await File.ReadAllTextAsync(StatusesFileName).ConfigureAwait(false);
 
         // Parse from json
         var currentStatuses =
-            JsonSerializer.Deserialize<Dictionary<Guid, GeoGuessrClubMemberActivityStatus>>(
+            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityStatus>>(
                 currentStatusesJson);
 
         // Sanity check
@@ -132,7 +142,7 @@ public class FileActivityRepository : IActivityRepository
         }
         
         // Update the statuses
-        var newStatuses = new Dictionary<Guid, GeoGuessrClubMemberActivityStatus>(currentStatuses);
+        var newStatuses = new Dictionary<string, GeoGuessrClubMemberActivityStatus>(currentStatuses);
         foreach (var entry in statuses)
         {
             newStatuses[entry.Key] = entry.Value;
@@ -146,15 +156,15 @@ public class FileActivityRepository : IActivityRepository
             .ConfigureAwait(false);
     }
 
-    public async Task<Dictionary<Guid, GeoGuessrClubMemberActivityStatus>> ReadActivityStatusesAsync()
+    public async Task<Dictionary<string, GeoGuessrClubMemberActivityStatus>> ReadActivityStatusesAsync()
     {
         // Read the latest activity file
         var statusesJson = await File.ReadAllTextAsync(StatusesFileName).ConfigureAwait(false);
 
         // Parse from json
         var statuses =
-            JsonSerializer.Deserialize<Dictionary<Guid, GeoGuessrClubMemberActivityStatus>>(statusesJson);
+            JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityStatus>>(statusesJson);
 
-        return statuses ?? new Dictionary<Guid, GeoGuessrClubMemberActivityStatus>();
+        return statuses ?? new Dictionary<string, GeoGuessrClubMemberActivityStatus>();
     }
 }

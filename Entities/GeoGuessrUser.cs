@@ -1,7 +1,7 @@
 namespace Entities;
 
 public record GeoGuessrUser(
-    Guid UserId,
+    string UserId,
     string Nick,
     string Avatar,
     string FullbodyAvatar,

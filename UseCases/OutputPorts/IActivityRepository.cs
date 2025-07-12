@@ -4,11 +4,11 @@ namespace UseCases.OutputPorts;
 
 public interface IActivityRepository
 {
-    Task WriteActivityEntriesAsync(Dictionary<Guid, GeoGuessrClubMemberActivityEntry> entries);
+    Task WriteActivityEntriesAsync(Dictionary<string, GeoGuessrClubMemberActivityEntry> entries);
     
-    Task<Dictionary<Guid, GeoGuessrClubMemberActivityEntry>> ReadLatestActivityEntriesAsync();
+    Task<Dictionary<string, GeoGuessrClubMemberActivityEntry>> ReadLatestActivityEntriesAsync();
 
-    Task WriteMemberStatusesAsync(Dictionary<Guid, GeoGuessrClubMemberActivityStatus> statuses);
+    Task WriteMemberStatusesAsync(Dictionary<string, GeoGuessrClubMemberActivityStatus> statuses);
     
-    Task<Dictionary<Guid, GeoGuessrClubMemberActivityStatus>> ReadActivityStatusesAsync();
+    Task<Dictionary<string, GeoGuessrClubMemberActivityStatus>> ReadActivityStatusesAsync();
 }

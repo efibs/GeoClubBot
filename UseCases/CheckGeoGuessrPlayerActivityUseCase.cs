@@ -52,7 +52,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         // Create the new latest activity for the players
         var newLatestActivity =
             members.ToDictionary(m => m.User.UserId,
-                m => new GeoGuessrClubMemberActivityEntry(m.User.UserId, m.User.Nick, m.Xp, now));
+                m => new GeoGuessrClubMemberActivityEntry(m.User.Nick, m.Xp, now));
 
         // Calculate the new statuses
         var newStatuses = members

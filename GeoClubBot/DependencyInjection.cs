@@ -29,8 +29,24 @@ public static class DependencyInjection
         // Add the discord bot service
         services.AddHostedService<DiscordBotService>();
         
+        // Get the geoguessr token
+        var geoGuessrToken = configuration.GetValue<string>(ConfigKeys.GeoGuessrTokenConfigurationKey);
+            
+        // Sanity check
+        if (string.IsNullOrWhiteSpace(geoGuessrToken))
+        {
+            throw new InvalidOperationException("GeoGuessrToken is not set");
+        }
+        
         // Add the http client
-        services.AddHttpClient();
+        services.AddHttpClient(HttpClientConstants.GeoGuessrHttpClientName, client =>
+        {
+            // Set the base address
+            client.BaseAddress = new Uri(HttpClientConstants.GeoGuessrBaseUrl);
+
+            // Set the token in the cookies
+            client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrToken}");
+        });
         
         // Add the input ports
         services.AddHostedService<ActivityCheckService>();
