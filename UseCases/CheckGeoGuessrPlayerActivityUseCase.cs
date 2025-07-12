@@ -16,18 +16,6 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 {
     public async Task CheckPlayerActivityAsync()
     {
-        try
-        {
-            await _checkPlayerActivitySafeAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error checking player activity.");
-        }
-    }
-
-    private async Task _checkPlayerActivitySafeAsync()
-    {
         // TODO: Don't strike users that were not in the history before (new club members)
         
         // Log debug message

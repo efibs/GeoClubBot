@@ -11,6 +11,8 @@ public class ActivityCheckService : IHostedService, IDisposable
 {
     public ActivityCheckService(ICheckGeoGuessrPlayerActivityUseCase useCase, IConfiguration config, ILogger<ActivityCheckService> logger)
     {
+        _logger = logger;
+        
         // Get the configured frequency
         var frequency = config.GetValue<string>(ConfigKeys.ActivityCheckerFrequencyConfigurationKey);
 
@@ -29,7 +31,7 @@ public class ActivityCheckService : IHostedService, IDisposable
         _useCase = useCase;
         
         // Log debug message
-        logger.LogDebug($"Scheduling activity check for frequency: {_checkFrequency}");
+        _logger.LogDebug($"Scheduling activity check for frequency: {_checkFrequency}");
     }
     
     public Task StartAsync(CancellationToken cancellationToken)
@@ -59,10 +61,23 @@ public class ActivityCheckService : IHostedService, IDisposable
     private void _checkActivity(object? sender)
     {
         // Run the check in the background
-        Task.Run(_useCase.CheckPlayerActivityAsync);
+        Task.Run(_checkActivityAsync);
+    }
+
+    private async Task _checkActivityAsync()
+    {
+        try
+        {
+            await _useCase.CheckPlayerActivityAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking player activity.");
+        }
     }
     
     private readonly ICheckGeoGuessrPlayerActivityUseCase _useCase;
     private readonly TimeSpan _checkFrequency;
+    private readonly ILogger<ActivityCheckService> _logger;
     private Timer? _timer;
 }
