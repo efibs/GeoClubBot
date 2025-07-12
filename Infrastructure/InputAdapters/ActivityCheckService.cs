@@ -42,6 +42,9 @@ public class ActivityCheckService : IHostedService, IDisposable
         // Create the new timer
         _timer = new Timer(_checkActivity, null, nextCheckTime - DateTimeOffset.UtcNow, _checkFrequency);
         
+        // Log information
+        _logger.LogInformation("Player activity checking scheduled. Next check time: {DateTimeOffset:R}", nextCheckTime);
+        
         return Task.CompletedTask;
     }
 
