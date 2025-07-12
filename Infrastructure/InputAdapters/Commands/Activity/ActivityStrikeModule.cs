@@ -19,13 +19,15 @@ public partial class ActivityModule
             if (numStrikes.HasValue)
             {
                 // Respond
-                await RespondAsync($"The player {memberNickname} currently has {numStrikes} strikes");
+                await RespondAsync($"The player {memberNickname} currently has {numStrikes} strikes",
+                    ephemeral: true);
             }
             else
             {
                 // Respond
                 await RespondAsync($"There is no player with the nickname {memberNickname} currently being tracked. " +
-                                   $"Either the nickname is incorrect or the member just joined and is not yet being tracked.");
+                                   $"Either the nickname is incorrect or the member just joined and is not yet being tracked.",
+                    ephemeral: true);
             }
         }
 
@@ -40,13 +42,15 @@ public partial class ActivityModule
             {
                 // Respond
                 await RespondAsync(
-                    $"The number of strikes of player {memberNickname} successfully was set to {numStrikes}");
+                    $"The number of strikes of player {memberNickname} successfully was set to {numStrikes}",
+                    ephemeral: true);
             }
             else
             {
                 // Respond
                 await RespondAsync($"There is no player with the nickname {memberNickname} currently being tracked. " +
-                                   $"Either the nickname is incorrect or the member just joined and is not yet being tracked.");
+                                   $"Either the nickname is incorrect or the member just joined and is not yet being tracked.",
+                    ephemeral: true);
             }
         }
     }
