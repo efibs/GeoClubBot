@@ -77,7 +77,7 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
         // If no player failed the requirement
         if (!players.Any())
         {
-            builder.Append("\n```diff\n+ None :)\n```");
+            builder.Append("\n```ansi\n\e[2;31m\e[0m\e[2;32mNone :)\e[0m\n```");
         }
 
         // Append the players
@@ -98,13 +98,13 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
             if (player.IsOutOfStrikes)
             {
                 // Append player in red text
-                builder.Append("```diff\n- ");
+                builder.Append("```ansi\n\e[2;31m");
                 builder.Append(player.Nickname);
-                builder.Append(" got only ");
+                builder.Append("\e[0m got only ");
                 builder.Append(player.XpSinceLastUpdate);
                 builder.Append("XP and already had ");
                 builder.Append(player.NumStrikes - 1);
-                builder.Append(" strikes and therefore needs to be kicked.\n```");
+                builder.Append(" strikes and therefore \e[2;31mneeds to be kicked\e[0m.\n```");
             }
             else
             {
