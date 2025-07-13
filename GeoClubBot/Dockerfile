@@ -8,6 +8,12 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["GeoClubBot/GeoClubBot.csproj", "GeoClubBot/"]
+COPY ["Constants/Constants.csproj", "Constants/"]
+COPY ["Extensions/Extensions.csproj", "Extensions/"]
+COPY ["Utilities/Utilities.csproj", "Utilities/"]
+COPY ["Entities/Entities.csproj", "Entities/"]
+COPY ["Infrastructure/Infrastructure.csproj", "Infrastructure/"]
+COPY ["UseCases/UseCases.csproj", "UseCases/"]
 RUN dotnet restore "GeoClubBot/GeoClubBot.csproj"
 COPY . .
 WORKDIR "/src/GeoClubBot"
