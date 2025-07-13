@@ -6,4 +6,5 @@ public record GeoGuessrClubMemberActivityStatus(
     bool Excused,
     int XpSinceLastUpdate,
     int NumStrikes,
-    bool IsOutOfStrikes);
+    bool IsOutOfStrikes,
+    DateTimeOffset Timestamp);

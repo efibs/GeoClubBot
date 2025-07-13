@@ -81,5 +81,6 @@ public static class DependencyInjection
         services.AddTransient<IRemoveExcuseUseCase, RemoveExcuseUseCase>();
         services.AddTransient<IIsPlayerTrackedUseCase, IsPlayerTrackedUseCase>();
         services.AddTransient<IReadExcusesUseCase, ReadExcusesUseCase>();
+        services.AddTransient<ICleanupUseCase, CleanupUseCase>();
     }
 }

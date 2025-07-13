@@ -13,7 +13,7 @@ public class FileActivityRepository : IActivityRepository
     private static readonly string ActivityHistoryFileName = Path.Combine(DataFolderPath, "ActivityHistory.json");
     private static readonly string LatestActivityFileName = Path.Combine(DataFolderPath, "LatestActivity.json");
     private static readonly string StatusesFileName = Path.Combine(DataFolderPath, "Statuses.json");
-    
+
     private static readonly SemaphoreSlim Lock = new SemaphoreSlim(1, 1);
 
     public FileActivityRepository()
@@ -47,7 +47,7 @@ public class FileActivityRepository : IActivityRepository
     {
         // Acquire the lock
         await Lock.WaitAsync();
-        
+
         try
         {
             // Read the activity history file
@@ -124,6 +124,56 @@ public class FileActivityRepository : IActivityRepository
         }
     }
 
+    public async Task<Dictionary<string, List<GeoGuessrClubMemberActivityEntry>>> ReadActivityHistoryAsync()
+    {
+        // Acquire the lock
+        await Lock.WaitAsync();
+
+        try
+        {
+            // Read activity history
+            var activityHistoryJson = await File.ReadAllTextAsync(ActivityHistoryFileName);
+
+            // Parse
+            var activityHistory =
+                JsonSerializer.Deserialize<Dictionary<string, List<GeoGuessrClubMemberActivityEntry>>>(
+                    activityHistoryJson);
+
+            // Sanity check
+            if (activityHistory == null)
+            {
+                throw new InvalidOperationException("Activity history is malformed");
+            }
+
+            return activityHistory;
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
+    }
+
+    public async Task OverwriteActivityHistoryAsync(Dictionary<string, List<GeoGuessrClubMemberActivityEntry>> entries)
+    {
+        // Acquire the lock
+        await Lock.WaitAsync();
+
+        try
+        {
+            // Serialize to json
+            var newEntriesJson = JsonSerializer.Serialize(entries);
+
+            // Write to file
+            await File.WriteAllTextAsync(ActivityHistoryFileName, newEntriesJson);
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
+    }
+
     public async Task<Dictionary<string, GeoGuessrClubMemberActivityEntry>> ReadLatestActivityEntriesAsync()
     {
         // Acquire the lock
@@ -139,6 +189,26 @@ public class FileActivityRepository : IActivityRepository
                 JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityEntry>>(latestActivityJson);
 
             return latestActivities ?? new Dictionary<string, GeoGuessrClubMemberActivityEntry>();
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
+    }
+
+    public async Task OverwriteLatestActivityEntriesAsync(Dictionary<string, GeoGuessrClubMemberActivityEntry> entries)
+    {
+        // Acquire the lock
+        await Lock.WaitAsync();
+
+        try
+        {
+            // Serialize to json
+            var newEntriesJson = JsonSerializer.Serialize(entries);
+
+            // Write to file
+            await File.WriteAllTextAsync(LatestActivityFileName, newEntriesJson);
         }
         finally
         {
@@ -203,6 +273,26 @@ public class FileActivityRepository : IActivityRepository
                 JsonSerializer.Deserialize<Dictionary<string, GeoGuessrClubMemberActivityStatus>>(statusesJson);
 
             return statuses ?? new Dictionary<string, GeoGuessrClubMemberActivityStatus>();
+        }
+        finally
+        {
+            // Release the lock
+            Lock.Release();
+        }
+    }
+
+    public async Task OverwriteActivityStatusesAsync(Dictionary<string, GeoGuessrClubMemberActivityStatus> statuses)
+    {
+        // Acquire the lock
+        await Lock.WaitAsync();
+
+        try
+        {
+            // Convert to json string
+            var newStatusesJson = JsonSerializer.Serialize(statuses);
+
+            // Write to file
+            await File.WriteAllTextAsync(StatusesFileName, newStatusesJson);
         }
         finally
         {

@@ -14,6 +14,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     IActivityRepository activityRepository,
     IStatusMessageSender statusMessageSender,
     IExcusesRepository excusesRepository,
+    ICleanupUseCase cleanupUseCase,
     IConfiguration config,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
 {
@@ -72,6 +73,9 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         // Log debug message
         logger.LogDebug("Checking player activity done.");
+        
+        // Trigger the cleanup
+        await cleanupUseCase.DoCleanupAsync();
     }
 
     private GeoGuessrClubMemberActivityStatus _calculateStatus(GeoGuessrClubMember member,
@@ -110,7 +114,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         // Create the status object
         return new GeoGuessrClubMemberActivityStatus(member.User.Nick, targetAchieved, playerHasExcuse,
             xpSinceLastUpdate,
-            newNumberStrikes, newNumberStrikes > _maxNumStrikes);
+            newNumberStrikes, newNumberStrikes > _maxNumStrikes, DateTimeOffset.UtcNow);
     }
 
     private bool _hasExcuse(string memberNickname,
