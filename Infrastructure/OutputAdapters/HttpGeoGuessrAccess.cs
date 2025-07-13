@@ -15,7 +15,7 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
 
         // Make the http call
         var members =
-                await client.GetFromJsonAsync<List<GeoGuessrClubMember>>($"v4/clubs/{clubId}/members");
+            await client.GetFromJsonAsync<List<GeoGuessrClubMember>>($"v4/clubs/{clubId}/members");
 
         // If the call resulted in no members
         if (members == null || members.Count == 0)
@@ -24,5 +24,23 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
         }
 
         return members;
+    }
+
+    public async Task<GeoGuessrClub> ReadClubAsync(Guid clubId)
+    {
+        // Create the http client
+        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
+
+        // Make the http call
+        var club =
+            await client.GetFromJsonAsync<GeoGuessrClub>($"v4/clubs/{clubId}");
+
+        // If the call resulted in nothing
+        if (club == null)
+        {
+            throw new DataException("Club not found");
+        }
+
+        return club;
     }
 }

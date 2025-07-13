@@ -1,10 +1,9 @@
 using Constants;
 using Discord;
-using Discord.Commands;
 using Discord.Interactions;
-using Discord.Rest;
 using Discord.WebSocket;
 using GeoClubBot.Services;
+using Infrastructure;
 using Infrastructure.InputAdapters;
 using Infrastructure.OutputAdapters;
 using UseCases;
@@ -64,14 +63,19 @@ public static class DependencyInjection
             client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrToken}");
         });
 
+        // Add auxiliary services
+        services.AddSingleton<DiscordBotReadyService>();
+        
         // Add the input adapters
         services.AddHostedService<ActivityCheckService>();
+        services.AddHostedService<CheckClubLevelService>();
 
         // Add the output adapters 
         services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
         services.AddTransient<IActivityRepository, FileActivityRepository>();
         services.AddTransient<IStatusMessageSender, DiscordStatusMessageSender>();
         services.AddTransient<IExcusesRepository, FileExcusesRepository>();
+        services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
@@ -83,5 +87,6 @@ public static class DependencyInjection
         services.AddTransient<IReadExcusesUseCase, ReadExcusesUseCase>();
         services.AddTransient<ICleanupUseCase, CleanupUseCase>();
         services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();
+        services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
     }
 }

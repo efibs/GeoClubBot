@@ -21,9 +21,6 @@ public class DiscordBotService(DiscordSocketClient client, IConfiguration config
             throw new InvalidOperationException("Discord Bot token not set.");
         }
 
-        // Attach the ready callback
-        client.Ready += _onDiscordSocketClientReady;
-
         // Login the bot
         await client.LoginAsync(TokenType.Bot, token);
 
@@ -36,14 +33,4 @@ public class DiscordBotService(DiscordSocketClient client, IConfiguration config
         // Nothing to do here
         return Task.CompletedTask;
     }
-
-    public Task DiscordSocketClientReady => _discordSocketClientReadyCompletionSource.Task;
-
-    private Task _onDiscordSocketClientReady()
-    {
-        _discordSocketClientReadyCompletionSource.SetResult();
-        return Task.CompletedTask;
-    }
-
-    private readonly TaskCompletionSource _discordSocketClientReadyCompletionSource = new TaskCompletionSource();
 }
