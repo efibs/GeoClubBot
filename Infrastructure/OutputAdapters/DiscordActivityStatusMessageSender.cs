@@ -7,7 +7,7 @@ using UseCases.OutputPorts;
 
 namespace Infrastructure.OutputAdapters;
 
-public class DiscordStatusMessageSender(DiscordSocketClient client, IConfiguration config) : IStatusMessageSender
+public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IConfiguration config) : IActivityStatusMessageSender
 {
     private const int MaxNumPlayersPerMessage = 15;
 

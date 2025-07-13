@@ -73,9 +73,10 @@ public static class DependencyInjection
         // Add the output adapters 
         services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
         services.AddTransient<IActivityRepository, FileActivityRepository>();
-        services.AddTransient<IStatusMessageSender, DiscordStatusMessageSender>();
+        services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IExcusesRepository, FileExcusesRepository>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
+        services.AddTransient<IMessageSender, DiscordMessageSender>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();

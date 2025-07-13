@@ -1,4 +1,5 @@
 using Constants;
+using Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -44,11 +45,31 @@ public class CheckClubLevelUseCase(
             // Update the status
             await statusUpdater.UpdateStatusAsync(newStatus);
 
+            // If the previous level is known
+            if (_lastLevel != null)
+            {
+                // Get the send message service
+                var sendMessageService = scope.ServiceProvider.GetRequiredService<IMessageSender>();
+                
+                // Send the level up message
+                await _sendClubLevelUpMessage(club, sendMessageService);
+            }
+            
             // Set the new last level
             _lastLevel = clubLevel;
         }
     }
 
-    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.ActivityCheckerClubIdConfigurationKey);
+    private async Task _sendClubLevelUpMessage(GeoGuessrClub club, IMessageSender messageSender)
+    {
+        // Build the message
+        var message = $"{club.Name} is now level {club.Level} in GeoGuessr! :partying_face: ";
+        
+        // Send the message
+        await messageSender.SendMessageAsync(message, _levelUpMessageChannelId);
+    }
+    
+    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
+    private readonly string _levelUpMessageChannelId = config.GetValue<string>(ConfigKeys.ClubLevelCheckerLevelUpMessageChannelIdConfigurationKey)!;
     private int? _lastLevel = null;
 }

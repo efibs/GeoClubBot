@@ -1,6 +1,5 @@
 using Constants;
 using Entities;
-using GeoClubBot;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts;
@@ -12,7 +11,7 @@ namespace UseCases;
 public class CheckGeoGuessrPlayerActivityUseCase(
     IGeoGuessrAccess geoGuessrAccess,
     IActivityRepository activityRepository,
-    IStatusMessageSender statusMessageSender,
+    IActivityStatusMessageSender activityStatusMessageSender,
     IExcusesRepository excusesRepository,
     ICleanupUseCase cleanupUseCase,
     IConfiguration config,
@@ -68,7 +67,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             .WriteMemberStatusesAsync(newStatuses);
 
         // Send the update message
-        await statusMessageSender
+        await activityStatusMessageSender
             .SendActivityStatusUpdateMessageAsync(newStatuses.Values.ToList());
 
         // Log debug message
@@ -136,8 +135,8 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         return isExcused;
     }
-
+    
     private readonly int _xpRequirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
     private readonly int _maxNumStrikes = config.GetValue<int>(ConfigKeys.ActivityCheckerMaxNumStrikesConfigurationKey);
-    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.ActivityCheckerClubIdConfigurationKey);
+    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
 }

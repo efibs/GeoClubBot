@@ -2,7 +2,7 @@ using Entities;
 
 namespace UseCases.OutputPorts;
 
-public interface IStatusMessageSender
+public interface IActivityStatusMessageSender
 {
     Task SendActivityStatusUpdateMessageAsync(List<GeoGuessrClubMemberActivityStatus> statuses);
 }
