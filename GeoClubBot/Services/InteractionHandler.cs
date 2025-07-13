@@ -30,12 +30,8 @@ public class InteractionHandler
         await _interactionService.AddModulesAsync(commandsAssembly, _serviceProvider);
 
         // Register the slash commands
-#if DEBUG
         await _interactionService.RegisterCommandsToGuildAsync(
-            _config.GetValue<ulong>(ConfigKeys.ActivityCheckerMainServerIdConfigurationKey));
-#else
-        await _interactionService.RegisterCommandsGloballyAsync();
-#endif
+            _config.GetValue<ulong>(ConfigKeys.DiscordServerIdConfigurationKey));
 
         // Log information
         _logger.LogInformation("Slash commands registered");

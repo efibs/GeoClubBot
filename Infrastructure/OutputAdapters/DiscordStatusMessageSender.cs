@@ -153,7 +153,7 @@ public class DiscordStatusMessageSender(DiscordSocketClient client, IConfigurati
         return builder.ToString();
     }
     
-    private readonly ulong _guildId = config.GetValue<ulong>(ConfigKeys.ActivityCheckerMainServerIdConfigurationKey);
+    private readonly ulong _guildId = config.GetValue<ulong>(ConfigKeys.DiscordServerIdConfigurationKey);
     private readonly ulong _channelId = config.GetValue<ulong>(ConfigKeys.ActivityCheckerTextChannelIdConfigurationKey);
     private readonly int _requirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
 }
