@@ -4,6 +4,7 @@ using UseCases.InputPorts;
 
 namespace Infrastructure.InputAdapters.Commands;
 
+[CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
 [Group("member-activity", "Commands for interacting with the club member activity checker")]
 public partial class ActivityModule(IGetLastCheckTimeUseCase getLastCheckTimeUseCase) : InteractionModuleBase<SocketInteractionContext>
