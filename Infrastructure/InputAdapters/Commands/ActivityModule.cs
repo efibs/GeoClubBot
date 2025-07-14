@@ -25,12 +25,12 @@ public partial class ActivityModule(IGetLastCheckTimeUseCase getLastCheckTimeUse
         if (lastCheckTime.HasValue)
         {
             // Respond
-            await RespondAsync($"The last check was {lastCheckTime:f} UTC.");
+            await RespondAsync($"The last check was {lastCheckTime:f} UTC.", ephemeral: true);
         }
         else
         {
             // Respond
-            await RespondAsync("There has not been any checks yet.");
+            await RespondAsync("There has not been any checks yet.", ephemeral: true);
         }
     }
 }
