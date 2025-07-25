@@ -5,6 +5,8 @@ namespace Constants;
 /// </summary>
 public static class ConfigKeys
 {
+    public const string PostgresConnectionString = "PostgreSQL";
+    
     public const string DiscordBotTokenConfigurationKey = "Discord:BotToken";
     public const string DiscordServerIdConfigurationKey = "Discord:ServerId";
 

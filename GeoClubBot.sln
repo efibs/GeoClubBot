@@ -1,17 +1,20 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot", "GeoClubBot\GeoClubBot.csproj", "{B4710E6B-2082-4B41-A34A-70F5CD7784E4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.API", "GeoClubBot.API\GeoClubBot.API.csproj", "{B4710E6B-2082-4B41-A34A-70F5CD7784E4}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{0936FAB1-36AC-4536-A45E-F84EA16A7691}"
 	ProjectSection(SolutionItems) = preProject
 		compose.yaml = compose.yaml
+		postgresql-healthcheck.sh = postgresql-healthcheck.sh
+		.env.postgresqldb-password = .env.postgresqldb-password
+		.env.postgresqldb-username = .env.postgresqldb-username
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure", "Infrastructure\Infrastructure.csproj", "{D38D6E28-1D89-4B71-818A-75D55A14A445}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Infrastructure", "GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj", "{D38D6E28-1D89-4B71-818A-75D55A14A445}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UseCases", "UseCases\UseCases.csproj", "{B5583E42-C94D-42DE-8072-A88FD0704A69}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Application", "GeoClubBot.Application\GeoClubBot.Application.csproj", "{B5583E42-C94D-42DE-8072-A88FD0704A69}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Entities", "Entities\Entities.csproj", "{2BB9D4C9-19FF-409B-9C1B-7EF40EB1B301}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Domain", "GeoClubBot.Domain\GeoClubBot.Domain.csproj", "{2BB9D4C9-19FF-409B-9C1B-7EF40EB1B301}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{D1E67922-C47C-4C56-A089-764D793E0403}"
 EndProject

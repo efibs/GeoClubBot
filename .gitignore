@@ -6,3 +6,4 @@ riderModule.iml
 
 # Appsettings
 appsettings.*.json
+.env.*

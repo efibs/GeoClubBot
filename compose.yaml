@@ -4,4 +4,34 @@
     build:
       context: .
       dockerfile: GeoClubBot/Dockerfile
-
+    depends_on:
+      postgresqldb:
+        condition: service_healthy
+  postgresqldb:
+    image: postgres:17.5
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgresqldb-password
+      POSTGRES_USER_FILE: /run/secrets/postgresqldb-username
+      POSTGRES_DB: geoclubbot
+    volumes:
+      - type: volume
+        source: postgresqldb-data
+        target: /var/lib/postgresql/data
+      - ./postgresql-healthcheck.sh:/postgresql-healthcheck.sh:ro
+    secrets:
+      - postgresqldb-username
+      - postgresqldb-password
+    healthcheck:
+      test: [ "CMD", "/postgresql-healthcheck.sh" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+secrets:
+  postgresqldb-username:
+    file: .env.postgresqldb-username
+  postgresqldb-password:
+    file: .env.postgresqldb-password
+volumes:
+  postgresqldb-data:
