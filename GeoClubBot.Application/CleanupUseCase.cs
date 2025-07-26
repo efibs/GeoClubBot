@@ -10,7 +10,6 @@ namespace UseCases;
 public class CleanupUseCase(
     IHistoryRepository historyRepository,
     IExcusesRepository excusesRepository,
-    IStrikesRepository strikesRepository,
     IClubMemberRepository clubMemberRepository,
     IConfiguration config,
     ILogger<CleanupUseCase> logger) : ICleanupUseCase

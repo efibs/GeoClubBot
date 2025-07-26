@@ -72,12 +72,15 @@ public static class DependencyInjection
         // Add the input adapters
         services.AddHostedService<ActivityCheckService>();
         services.AddHostedService<CheckClubLevelService>();
+        services.AddHostedService<InitialSyncService>();
 
         // Add the output adapters 
         services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
+        services.AddTransient<IClubRepository, EfClubRepository>();
+        services.AddTransient<IClubMemberRepository, EfClubMemberRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
-        services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IExcusesRepository, EfExcusesRepository>();
+        services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();
 
@@ -90,6 +93,7 @@ public static class DependencyInjection
         services.AddTransient<ICleanupUseCase, CleanupUseCase>();
         services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();
         services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
+        services.AddTransient<IReadOrSyncClubMemberUseCase, ReadOrSyncClubMemberUseCase>();
         
         // Add the db context
         services.AddDbContext<GeoClubBotDbContext>(options => 

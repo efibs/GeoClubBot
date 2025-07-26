@@ -15,6 +15,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     IActivityStatusMessageSender activityStatusMessageSender,
     IExcusesRepository excusesRepository,
     IStrikesRepository strikesRepository,
+    IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
     ICleanupUseCase cleanupUseCase,
     IConfiguration config,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
@@ -105,14 +106,24 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         TimeRange checkTimeRange,
         DateTimeOffset now)
     {
+        // Read the member from the database
+        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.UserDto.Nick);
+        
+        // If the club member could not be retrieved
+        if (clubMember == null)
+        {
+            // Log warning
+            logger.LogWarning($"Club member {memberDto.UserDto.Nick} could not be found.");
+        }
+        
         // Get the latest activity of the player
-        var latestActivity = latestActivities.GetValueOrDefault(memberDto.UserDto.UserId);
+        var latestActivity = latestActivities.GetValueOrDefault(clubMember!.UserId);
 
         // Calculate the xp since the last update
         var xpSinceLastUpdate = memberDto.Xp - (latestActivity?.Xp ?? 0);
 
         // Check if the player has an excuse
-        var playerHasExcuse = _hasExcuse(memberDto.UserDto.Nick, checkTimeRange, excuses);
+        var playerHasExcuse = _hasExcuse(clubMember.Nickname, checkTimeRange, excuses);
 
         // Calculate if the player achieved the target.
         // Give new player the benefit of the doubt and say, they 
@@ -123,14 +134,14 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         if (!targetAchieved && !playerHasExcuse)
         {
             // Add the strike
-            await _addStrikeAsync(memberDto.UserDto.UserId, now);
+            await _addStrikeAsync(clubMember.UserId, now);
         }
 
         // Read the number of strikes of the player
-        var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(memberDto.UserDto.UserId);
+        var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId) ?? 0;
         
         // Create the status object
-        return new ClubMemberActivityStatus(memberDto.UserDto.Nick, targetAchieved, playerHasExcuse,
+        return new ClubMemberActivityStatus(clubMember.Nickname, targetAchieved, playerHasExcuse,
             xpSinceLastUpdate,
             numStrikes, numStrikes > _maxNumStrikes);
     }

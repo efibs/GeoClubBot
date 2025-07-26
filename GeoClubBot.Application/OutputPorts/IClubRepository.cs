@@ -6,5 +6,7 @@ public interface IClubRepository
 {
     Task<Club?> CreateClubAsync(Club club);
     
+    Task<Club> CreateOrUpdateClubAsync(Club club);
+    
     Task<Club?> ReadClubByIdAsync(Guid clubId);
 }
