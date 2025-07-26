@@ -17,6 +17,14 @@ public partial class ActivityModule
             [Summary(description: "To date in format YYYY-MM-DD")]
             DateTime to)
         {
+            // Add one day to the to time and subtract a tick so that the 
+            // day still counts for the excuse
+            to = to.AddDays(1).AddTicks(-1);
+            
+            // Specify the date times as utc
+            from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+            to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+            
             // Add the excuse
             var excuseGuid = await addExcuseUseCase.AddExcuseAsync(memberNickname, from, to);
 
