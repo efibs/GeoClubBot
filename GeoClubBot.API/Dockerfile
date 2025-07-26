@@ -9,23 +9,23 @@ EXPOSE 8081
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["GeoClubBot/GeoClubBot.csproj", "GeoClubBot/"]
+COPY ["GeoClubBot.API/GeoClubBot.API.csproj", "GeoClubBot.API/"]
 COPY ["Constants/Constants.csproj", "Constants/"]
 COPY ["Extensions/Extensions.csproj", "Extensions/"]
 COPY ["Utilities/Utilities.csproj", "Utilities/"]
-COPY ["Entities/Entities.csproj", "Entities/"]
-COPY ["Infrastructure/Infrastructure.csproj", "Infrastructure/"]
-COPY ["UseCases/UseCases.csproj", "UseCases/"]
-RUN dotnet restore "GeoClubBot/GeoClubBot.csproj"
+COPY ["GeoClubBot.Domain/GeoClubBot.Domain.csproj", "GeoClubBot.Domain/"]
+COPY ["GeoClubBot.Infrastructure/GeoClubBot.Infrastructure.csproj", "GeoClubBot.Infrastructure/"]
+COPY ["GeoClubBot.Application/GeoClubBot.Application.csproj", "GeoClubBot.Application/"]
+RUN dotnet restore "GeoClubBot.API/GeoClubBot.API.csproj"
 COPY . .
-WORKDIR "/src/GeoClubBot"
-RUN dotnet build "./GeoClubBot.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/GeoClubBot.API"
+RUN dotnet build "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./GeoClubBot.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "GeoClubBot.dll"]
+ENTRYPOINT ["dotnet", "GeoClubBot.API.dll"]

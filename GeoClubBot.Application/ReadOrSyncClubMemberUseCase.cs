@@ -15,13 +15,13 @@ public class ReadOrSyncClubMemberUseCase(
     public async Task<ClubMember?> ReadOrSyncClubMemberByNicknameAsync(string nickname)
     {
         return await _readOrSyncGenericAsync(nickname, clubMemberRepository.ReadClubMemberByNicknameAsync,
-            m => m.UserDto.Nick == nickname);
+            m => m.User.Nick == nickname);
     }
 
     public async Task<ClubMember?> ReadOrSyncClubMemberByUserIdAsync(string userId)
     {
         return await _readOrSyncGenericAsync(userId, clubMemberRepository.ReadClubMemberByUserIdAsync,
-            m => m.UserDto.UserId == userId);
+            m => m.User.UserId == userId);
     }
 
     private async Task<ClubMember?> _readOrSyncGenericAsync<T>(T id,
@@ -50,7 +50,12 @@ public class ReadOrSyncClubMemberUseCase(
         }
 
         // Build the club member entity
-        clubMember = new ClubMember(geoGuessrClubMember.UserDto.UserId, _clubId, geoGuessrClubMember.UserDto.Nick);
+        clubMember = new ClubMember
+        {
+            UserId = geoGuessrClubMember.User.UserId,
+            ClubId = _clubId,
+            Nickname = geoGuessrClubMember.User.Nick
+        };
 
         // Save to the database
         var createdClubMember = await clubMemberRepository.CreateClubMemberAsync(clubMember);

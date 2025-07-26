@@ -2,6 +2,7 @@ using Constants;
 using Extensions;
 using GeoClubBot;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts;
@@ -10,9 +11,11 @@ namespace Infrastructure.InputAdapters;
 
 public class ActivityCheckService : IHostedService, IDisposable
 {
-    public ActivityCheckService(ICheckGeoGuessrPlayerActivityUseCase useCase, IConfiguration config,
+    public ActivityCheckService(IServiceProvider serviceProvider, 
+        IConfiguration config,
         ILogger<ActivityCheckService> logger)
     {
+        _serviceProvider = serviceProvider;
         _logger = logger;
 
         // Get the configured frequency
@@ -29,8 +32,6 @@ public class ActivityCheckService : IHostedService, IDisposable
             FrequencyValues.Yearly => TimeSpan.FromDays(365),
             _ => throw new InvalidOperationException($"Unknown frequency {frequency}")
         };
-
-        _useCase = useCase;
 
         // Log debug message
         _logger.LogDebug($"Scheduling activity check for frequency: {_checkFrequency}");
@@ -74,7 +75,14 @@ public class ActivityCheckService : IHostedService, IDisposable
     {
         try
         {
-            await _useCase.CheckPlayerActivityAsync();
+            // Create a scope
+            using var scope = _serviceProvider.CreateScope();
+            
+            // Create the use case
+            var useCase = scope.ServiceProvider.GetRequiredService<ICheckGeoGuessrPlayerActivityUseCase>();
+            
+            // Execute the use case
+            await useCase.CheckPlayerActivityAsync();
         }
         catch (Exception ex)
         {
@@ -82,7 +90,7 @@ public class ActivityCheckService : IHostedService, IDisposable
         }
     }
 
-    private readonly ICheckGeoGuessrPlayerActivityUseCase _useCase;
+    private readonly IServiceProvider _serviceProvider;
     private readonly TimeSpan _checkFrequency;
     private readonly ILogger<ActivityCheckService> _logger;
     private Timer? _timer;

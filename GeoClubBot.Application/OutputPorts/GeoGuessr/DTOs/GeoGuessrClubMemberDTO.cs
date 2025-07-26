@@ -1,5 +1,5 @@
 namespace Entities;
 
 public record GeoGuessrClubMemberDTO(
-    GeoGuessrUserDTO UserDto,
+    GeoGuessrUserDTO User,
     int Xp);

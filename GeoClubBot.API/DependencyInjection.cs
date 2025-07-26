@@ -80,6 +80,7 @@ public static class DependencyInjection
         services.AddTransient<IClubMemberRepository, EfClubMemberRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
         services.AddTransient<IExcusesRepository, EfExcusesRepository>();
+        services.AddTransient<IStrikesRepository, EfStrikesRepository>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();
@@ -94,9 +95,13 @@ public static class DependencyInjection
         services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();
         services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
         services.AddTransient<IReadOrSyncClubMemberUseCase, ReadOrSyncClubMemberUseCase>();
+        services.AddTransient<ISyncClubUseCase, SyncClubUseCase>();
+        
+        // Get the connection string
+        var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString);
         
         // Add the db context
         services.AddDbContext<GeoClubBotDbContext>(options => 
-            options.UseNpgsql(configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)));
+            options.UseNpgsql(connectionString));
     }
 }

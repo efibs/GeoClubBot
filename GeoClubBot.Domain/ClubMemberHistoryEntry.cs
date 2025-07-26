@@ -1,12 +1,21 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Constants;
+using Microsoft.EntityFrameworkCore;
 
 namespace Entities;
 
-public record ClubMemberHistoryEntry(
-    [property: Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
-    DateTimeOffset Timestamp,
-    [property: ForeignKey(nameof(ClubMember))]
-    string UserId,
-    int Xp,
-    ClubMember? ClubMember = null);
+[PrimaryKey(nameof(Timestamp), nameof(UserId))]
+public class ClubMemberHistoryEntry
+{
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public DateTimeOffset Timestamp { get; set; }
+    
+    [ForeignKey(nameof(ClubMember))]
+    [MaxLength(StringLengthConstants.GeoGuessrUserIdLength)]
+    public string UserId { get; set; } = string.Empty;
+
+    public int Xp { get; set; }
+    
+    public ClubMember? ClubMember { get; set; }
+}

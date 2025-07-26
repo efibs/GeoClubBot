@@ -1,17 +1,29 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Constants;
 using Microsoft.EntityFrameworkCore;
 
 namespace Entities;
 
 [Index(nameof(Nickname))]
-public record ClubMember(
-    [property: Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
-    string UserId,
-    [property: ForeignKey(nameof(Club))]
-    Guid ClubId,
-    string Nickname,
-    Club? Club = null,
-    List<ClubMemberHistoryEntry>? History = null,
-    List<ClubMemberStrike>? Strikes = null,
-    List<ClubMemberExcuse>? Excuses = null);
+public class ClubMember
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    [MaxLength(StringLengthConstants.GeoGuessrUserIdLength)]
+    public string UserId { get; set; } = string.Empty;
+    
+    [ForeignKey(nameof(Club))]
+    public Guid ClubId { get; set; }
+
+    [MaxLength(StringLengthConstants.GeoGuessrPlayerNicknameMaxLength)]
+    public string Nickname { get; set; } = string.Empty;
+    
+    public Club? Club { get; set; }
+    
+    public List<ClubMemberHistoryEntry>? History { get; set; }
+    
+    public List<ClubMemberStrike>? Strikes { get; set; }
+    
+    public List<ClubMemberExcuse>? Excuses { get; set; }
+}

@@ -18,11 +18,17 @@ public class AddExcuseUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase
         }
         
         // Build the new excuse
-        var newExcuse = new ClubMemberExcuse(Guid.NewGuid(), clubMember.UserId, from, to);
+        var newExcuse = new ClubMemberExcuse
+        {
+            ExcuseId = Guid.NewGuid(),
+            From = from,
+            To = to,
+            UserId = clubMember.UserId,
+        };
         
         // Write the excuse
         var createdExcuse = await excusesRepository.CreateExcuseAsync(newExcuse);
         
-        return createdExcuse?.Id;
+        return createdExcuse?.ExcuseId;
     }
 }

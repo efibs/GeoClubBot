@@ -10,7 +10,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
     public async Task<ClubMemberExcuse?> CreateExcuseAsync(ClubMemberExcuse excuse)
     {
         // Try to find an existing excuse with that id
-        var excuseExists = await dbContext.ClubMemberExcuses.AnyAsync(e => e.Id == excuse.Id);
+        var excuseExists = await dbContext.ClubMemberExcuses.AnyAsync(e => e.ExcuseId == excuse.ExcuseId);
 
         // If the club member already exists
         if (excuseExists)

@@ -8,7 +8,7 @@ public class ReadMemberNumStrikesUseCase(IStrikesRepository strikesRepository) :
     public async Task<int?> ReadMemberNumStrikesAsync(string memberNickname)
     {
         // Read the number of strikes
-        var strikes = await strikesRepository.ReadNumberOfStrikesByMemberNicknameAsync(memberNickname);
+        var strikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberNicknameAsync(memberNickname);
 
         return strikes;
     }

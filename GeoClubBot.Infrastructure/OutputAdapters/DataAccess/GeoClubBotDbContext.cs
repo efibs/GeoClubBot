@@ -5,6 +5,10 @@ namespace Infrastructure.OutputAdapters.DataAccess;
 
 public class GeoClubBotDbContext : DbContext
 {
+    public GeoClubBotDbContext(DbContextOptions<GeoClubBotDbContext> options) : base(options)
+    {
+    }
+    
     public DbSet<Club> Clubs { get; set; }
     
     public DbSet<ClubMember> ClubMembers { get; set; }

@@ -1,4 +1,7 @@
+using Constants;
 using GeoClubBot;
+using Infrastructure.OutputAdapters.DataAccess;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +18,15 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+}
+
+// If the db migrations should be applied
+if (app.Configuration.GetValue<bool>(ConfigKeys.SQLMigrateConfigurationKey))
+{
+    // Apply the database migrations
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<GeoClubBotDbContext>();
+    await db.Database.MigrateAsync();
 }
 
 app.UseHttpsRedirection();

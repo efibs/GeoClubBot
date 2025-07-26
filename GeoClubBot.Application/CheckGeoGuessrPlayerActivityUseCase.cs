@@ -46,8 +46,13 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         // Create the new latest activity for the players
         var newLatestHistoryEntries =
-            members.ToDictionary(m => m.UserDto.UserId,
-                m => new ClubMemberHistoryEntry(now, m.UserDto.UserId, m.Xp));
+            members.ToDictionary(m => m.User.UserId,
+                m => new ClubMemberHistoryEntry
+                {
+                    Timestamp = now,
+                    UserId = m.User.UserId,
+                    Xp = m.Xp
+                });
 
         // Save the new activity
         await historyRepository
@@ -93,13 +98,17 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         {
             // Calculate his new status
             var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange, now);
-            statuses.Add(newStatus);
+
+            if (newStatus != null)
+            {
+                statuses.Add(newStatus);
+            }
         }
         
         return statuses;
     }
 
-    private async Task<ClubMemberActivityStatus> _calculateStatusAsync(
+    private async Task<ClubMemberActivityStatus?> _calculateStatusAsync(
         GeoGuessrClubMemberDTO memberDto,
         Dictionary<string, ClubMemberHistoryEntry> latestActivities,
         Dictionary<string, List<ClubMemberExcuse>> excuses,
@@ -107,13 +116,14 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         DateTimeOffset now)
     {
         // Read the member from the database
-        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.UserDto.Nick);
+        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.User.UserId);
         
         // If the club member could not be retrieved
         if (clubMember == null)
         {
             // Log warning
-            logger.LogWarning($"Club member {memberDto.UserDto.Nick} could not be found.");
+            logger.LogError($"Club member {memberDto.User.UserId} could not be found.");
+            return null;
         }
         
         // Get the latest activity of the player
@@ -174,7 +184,12 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         while (createdStrike == null && numTries++ < _createStrikeMaxRetryCount)
         {
             // Build a new strike
-            var newStrike = new ClubMemberStrike(Guid.NewGuid(), memberUserId, now);
+            var newStrike = new ClubMemberStrike
+            {
+                StrikeId = Guid.NewGuid(),
+                UserId = memberUserId,
+                Timestamp = now
+            };
             
             // Add the strike
             createdStrike = await strikesRepository.CreateStrikeAsync(newStrike);
