@@ -26,4 +26,9 @@ public class ClubMember
     public List<ClubMemberStrike>? Strikes { get; set; }
     
     public List<ClubMemberExcuse>? Excuses { get; set; }
+
+    public override string ToString()
+    {
+        return Nickname;
+    }
 }

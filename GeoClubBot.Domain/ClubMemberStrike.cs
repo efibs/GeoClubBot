@@ -21,4 +21,9 @@ public class ClubMemberStrike
     public bool Revoked { get; set; }
     
     public ClubMember? ClubMember { get; set; }
+
+    public override string ToString()
+    {
+        return $"{Timestamp:d} - Revoked: {Revoked}";
+    }
 }

@@ -29,8 +29,8 @@ public partial class ActivityModule
             else
             {
                 await RespondAsync(
-                    $"Excuse with id {excuseGuid} for the time range {from:D} to {to:D} was added to player " +
-                    $"{memberNickname}.",
+                    $"Excuse with id {excuseGuid} for the time range **{from:D}** to **{to:D}** was added to player " +
+                    $"**{memberNickname}**.",
                     ephemeral: true);
             }
         }

@@ -18,4 +18,9 @@ public class Club
     public DateTimeOffset? LatestActivityCheckTime { get; set; }
     
     public List<ClubMember>? Members { get; set; }
+
+    public override string ToString()
+    {
+        return Name;
+    }
 }

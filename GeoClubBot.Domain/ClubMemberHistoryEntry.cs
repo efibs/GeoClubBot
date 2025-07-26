@@ -18,4 +18,9 @@ public class ClubMemberHistoryEntry
     public int Xp { get; set; }
     
     public ClubMember? ClubMember { get; set; }
+
+    public override string ToString()
+    {
+        return $"{Timestamp:d}: {Xp}XP";
+    }
 }

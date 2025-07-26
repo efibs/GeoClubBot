@@ -21,4 +21,9 @@ public class ClubMemberExcuse
     public DateTimeOffset To { get; set; }
     
     public ClubMember? ClubMember { get; set; }
+
+    public override string ToString()
+    {
+        return $"{From:d} - {To:d} (Id: {ExcuseId})";
+    }
 }
