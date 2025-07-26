@@ -1,0 +1,21 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using Constants;
+
+namespace Entities;
+
+public class Club
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public Guid ClubId { get; set; }
+    
+    [MaxLength(StringLengthConstants.GeoGuessrClubNameMaxLength)]
+    public string Name { get; set; } = string.Empty;
+    
+    public int Level { get; set; }
+    
+    public DateTimeOffset? LatestActivityCheckTime { get; set; }
+    
+    public List<ClubMember>? Members { get; set; }
+}
