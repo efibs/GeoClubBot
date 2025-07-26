@@ -18,6 +18,7 @@ public static class ConfigKeys
     public const string ActivityCheckerMinXpConfigurationKey = "ActivityChecker:MinXP";
     public const string ActivityCheckerMaxNumStrikesConfigurationKey = "ActivityChecker:MaxNumStrikes";
     public const string ActivityCheckerHistoryKeepTimeSpanConfigurationKey = "ActivityChecker:HistoryKeepTimeSpan";
+    public const string ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey = "ActivityChecker:CreateStrikeMaxRetryCount";
     
     public const string ClubLevelCheckerFrequencyConfigurationKey =  "ClubLevelChecker:CheckFrequency";
     public const string ClubLevelCheckerLevelUpMessageChannelIdConfigurationKey =  "ClubLevelChecker:LevelUpMessageChannelId";

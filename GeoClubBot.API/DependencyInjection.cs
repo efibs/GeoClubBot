@@ -84,10 +84,8 @@ public static class DependencyInjection
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
         services.AddTransient<IReadMemberNumStrikesUseCase, ReadMemberNumStrikesUseCase>();
-        services.AddTransient<IWriteMemberNumStrikesUseCase, WriteMemberNumStrikesUseCase>();
         services.AddTransient<IAddExcuseUseCase, AddExcuseUseCase>();
         services.AddTransient<IRemoveExcuseUseCase, RemoveExcuseUseCase>();
-        services.AddTransient<IIsPlayerTrackedUseCase, IsPlayerTrackedUseCase>();
         services.AddTransient<IReadExcusesUseCase, ReadExcusesUseCase>();
         services.AddTransient<ICleanupUseCase, CleanupUseCase>();
         services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();

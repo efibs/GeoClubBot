@@ -61,10 +61,10 @@ public class CheckClubLevelUseCase(
         }
     }
 
-    private async Task _sendClubLevelUpMessage(GeoGuessrClub club, IMessageSender messageSender)
+    private async Task _sendClubLevelUpMessage(GeoGuessrClubDTO clubDto, IMessageSender messageSender)
     {
         // Build the message
-        var message = $"{club.Name} is now level {club.Level} in GeoGuessr! :partying_face: ";
+        var message = $"{clubDto.Name} is now level {clubDto.Level} in GeoGuessr! :partying_face: ";
         
         // Send the message
         await messageSender.SendMessageAsync(message, _levelUpMessageChannelId);

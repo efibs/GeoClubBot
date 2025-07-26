@@ -11,5 +11,5 @@ public record ClubMemberStrike(
     [property: ForeignKey(nameof(ClubMember))]
     string UserId,
     DateTimeOffset Timestamp,
-    bool Revoked,
+    bool Revoked = false,
     ClubMember? ClubMember = null);

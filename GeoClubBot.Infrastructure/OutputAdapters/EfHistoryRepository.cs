@@ -15,6 +15,11 @@ public class EfHistoryRepository : IHistoryRepository
         throw new NotImplementedException();
     }
 
+    public Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesAsync()
+    {
+        throw new NotImplementedException();
+    }
+
     public Task<int> DeleteHistoryEntriesBeforeAsync(DateTimeOffset threshold)
     {
         throw new NotImplementedException();

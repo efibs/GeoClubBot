@@ -1,6 +1,6 @@
 namespace Entities;
 
-public record GeoGuessrUser(
+public record GeoGuessrUserDTO(
     string UserId,
     string Nick,
     string Avatar,

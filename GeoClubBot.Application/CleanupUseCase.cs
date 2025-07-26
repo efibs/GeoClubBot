@@ -22,10 +22,7 @@ public class CleanupUseCase(
         
         // Cleanup excuses
         var deletedExcuses = await excusesRepository.DeleteExcusesBeforeAsync(threshold);
-        
-        // Cleanup strikes
-        var deletedStrikes = await strikesRepository.DeleteStrikesBeforeAsync(threshold);
-        
+
         // Cleanup History
         var deletedHistoryEntries = await historyRepository.DeleteHistoryEntriesBeforeAsync(threshold);
         
@@ -33,7 +30,7 @@ public class CleanupUseCase(
         var deletedMembers = await clubMemberRepository.DeleteClubMembersWithoutHistoryAsync();
         
         // Print info log
-        logger.LogInformation($"Deleted {deletedExcuses} excuses, {deletedStrikes} strikes, {deletedHistoryEntries} history entries and {deletedMembers} members.");
+        logger.LogInformation($"Deleted {deletedExcuses} excuses, {deletedHistoryEntries} history entries and {deletedMembers} members.");
     }
 
     private readonly TimeSpan _historyKeepThreshold =

@@ -1,6 +1,6 @@
 namespace Entities;
 
-public record GeoGuessrClub(
+public record GeoGuessrClubDTO(
     Guid ClubId,
     string Name,
     int Level);

@@ -14,6 +14,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     IHistoryRepository historyRepository,
     IActivityStatusMessageSender activityStatusMessageSender,
     IExcusesRepository excusesRepository,
+    IStrikesRepository strikesRepository,
     ICleanupUseCase cleanupUseCase,
     IConfiguration config,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
@@ -28,93 +29,110 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             .ReadClubMembersAsync(_clubId);
 
         // Get the latest activities
-        var latestActivities = await historyRepository
-            .ReadLatestActivityEntriesAsync();
-
-        // Get the statuses
-        var previousStatuses = await historyRepository
-            .ReadActivityStatusesAsync();
+        var latestHistoryEntries = await historyRepository
+            .ReadLatestHistoryEntriesAsync();
 
         // Get the excuses
         var excuses = await excusesRepository.ReadExcusesAsync();
 
         // Get the last activity check time
-        var lastActivityCheckTime = latestActivities.Any()
-            ? latestActivities.Values.Select(a => a.Timestamp).Max()
+        var lastActivityCheckTime = latestHistoryEntries.Any()
+            ? latestHistoryEntries.Select(a => a.Timestamp).Max()
             : DateTimeOffset.MinValue;
 
         // Get the current date
         var now = DateTimeOffset.UtcNow;
 
-        // Build the time range of the check interval
-        var checkTimeRange = new TimeRange(lastActivityCheckTime, now);
-
         // Create the new latest activity for the players
-        var newLatestActivity =
-            members.ToDictionary(m => m.User.UserId,
-                m => new ClubMemberHistoryEntry(m.User.Nick, m.Xp, now));
-
-        // Calculate the new statuses
-        var newStatuses = members
-            .ToDictionary(m => m.User.UserId,
-                m => _calculateStatus(m, latestActivities, excuses, previousStatuses, checkTimeRange));
+        var newLatestHistoryEntries =
+            members.ToDictionary(m => m.UserDto.UserId,
+                m => new ClubMemberHistoryEntry(now, m.UserDto.UserId, m.Xp));
 
         // Save the new activity
         await historyRepository
-            .WriteActivityEntriesAsync(newLatestActivity);
+            .CreateHistoryEntriesAsync(newLatestHistoryEntries.Values);
 
-        // Save the new statuses
-        await historyRepository
-            .WriteMemberStatusesAsync(newStatuses);
+        // Build the new statuses
+        var newStatuses = await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now);
 
         // Send the update message
         await activityStatusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses.Values.ToList());
+            .SendActivityStatusUpdateMessageAsync(newStatuses);
 
         // Log debug message
         logger.LogDebug("Checking player activity done.");
-        
+
         // Trigger the cleanup
         await cleanupUseCase.DoCleanupAsync();
     }
 
-    private ClubMemberActivityStatus _calculateStatus(GeoGuessrClubMember member,
+    private async Task<List<ClubMemberActivityStatus>> _calculateStatusesAsync(
+        List<GeoGuessrClubMemberDTO> memberDtos,
+        IEnumerable<ClubMemberHistoryEntry> latestHistoryEntries,
+        IEnumerable<ClubMemberExcuse> excuses,
+        DateTimeOffset lastActivityCheckTime,
+        DateTimeOffset now)
+    {
+        var statuses = new List<ClubMemberActivityStatus>(memberDtos.Count);
+        
+        // Convert the latest history entries to dictionary
+        var latestHistoryEntriesDict = latestHistoryEntries
+            .ToDictionary(e => e.UserId, e => e);
+
+        // Convert excuses to dictionary
+        var excusesDict = excuses
+            .GroupBy(e => e.UserId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Build the time range of the check interval
+        var checkTimeRange = new TimeRange(lastActivityCheckTime, now);
+        
+        // For every member
+        foreach (var member in memberDtos)
+        {
+            // Calculate his new status
+            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange, now);
+            statuses.Add(newStatus);
+        }
+        
+        return statuses;
+    }
+
+    private async Task<ClubMemberActivityStatus> _calculateStatusAsync(
+        GeoGuessrClubMemberDTO memberDto,
         Dictionary<string, ClubMemberHistoryEntry> latestActivities,
         Dictionary<string, List<ClubMemberExcuse>> excuses,
-        Dictionary<string, ClubMemberActivityStatus> previousStatuses,
-        TimeRange checkTimeRange)
+        TimeRange checkTimeRange,
+        DateTimeOffset now)
     {
         // Get the latest activity of the player
-        var latestActivity = latestActivities.GetValueOrDefault(member.User.UserId);
+        var latestActivity = latestActivities.GetValueOrDefault(memberDto.UserDto.UserId);
 
         // Calculate the xp since the last update
-        var xpSinceLastUpdate = member.Xp - (latestActivity?.Xp ?? 0);
+        var xpSinceLastUpdate = memberDto.Xp - (latestActivity?.Xp ?? 0);
 
         // Check if the player has an excuse
-        var playerHasExcuse = _hasExcuse(member.User.Nick, checkTimeRange, excuses);
+        var playerHasExcuse = _hasExcuse(memberDto.UserDto.Nick, checkTimeRange, excuses);
 
         // Calculate if the player achieved the target.
         // Give new player the benefit of the doubt and say, they 
         // achieved the target since we don't know when they joined.
         var targetAchieved = latestActivity == null || xpSinceLastUpdate >= _xpRequirement;
 
-        // Get the previous status
-        var previousStatus = previousStatuses.GetValueOrDefault(member.User.UserId);
-
-        // Calculate the new number of strikes
-        var newNumberStrikes = previousStatus?.NumStrikes ?? 0;
-
         // If the player did not meet the requirement and was not excused
         if (!targetAchieved && !playerHasExcuse)
         {
-            // Add a strike
-            newNumberStrikes++;
+            // Add the strike
+            await _addStrikeAsync(memberDto.UserDto.UserId, now);
         }
 
+        // Read the number of strikes of the player
+        var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(memberDto.UserDto.UserId);
+        
         // Create the status object
-        return new ClubMemberActivityStatus(member.User.Nick, targetAchieved, playerHasExcuse,
+        return new ClubMemberActivityStatus(memberDto.UserDto.Nick, targetAchieved, playerHasExcuse,
             xpSinceLastUpdate,
-            newNumberStrikes, newNumberStrikes > _maxNumStrikes, DateTimeOffset.UtcNow);
+            numStrikes, numStrikes > _maxNumStrikes);
     }
 
     private bool _hasExcuse(string memberNickname,
@@ -136,8 +154,39 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         return isExcused;
     }
+
+    private async Task _addStrikeAsync(string memberUserId, DateTimeOffset now)
+    {
+        ClubMemberStrike? createdStrike = null;
+        var numTries = 0;
+
+        while (createdStrike == null && numTries++ < _createStrikeMaxRetryCount)
+        {
+            // Build a new strike
+            var newStrike = new ClubMemberStrike(Guid.NewGuid(), memberUserId, now);
+            
+            // Add the strike
+            createdStrike = await strikesRepository.CreateStrikeAsync(newStrike);
+            
+            // If the creation failed
+            if (createdStrike == null)
+            {
+                // Log warning
+                logger.LogWarning($"Failed to create strike: {newStrike}");
+            }
+        }
+        
+        // If the strike is still not created
+        if (createdStrike == null)
+        {
+            // Log error
+            logger.LogError($"Strike for member {memberUserId} could not be created.");
+        }
+    }
     
     private readonly int _xpRequirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
     private readonly int _maxNumStrikes = config.GetValue<int>(ConfigKeys.ActivityCheckerMaxNumStrikesConfigurationKey);
+    private readonly int _createStrikeMaxRetryCount =
+        config.GetValue<int>(ConfigKeys.ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey);
     private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
 }
