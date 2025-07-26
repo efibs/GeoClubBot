@@ -33,8 +33,9 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
 
         // Get the players that failed to meet the requirement
         var playersWithFailedRequirement = statuses
-            .Where(s => s is { TargetAchieved: false, Excused: false })
+            .Where(s => s.TargetAchieved == false)
             .OrderByDescending(s => s.NumStrikes)
+            .ThenBy(s => s.XpSinceLastUpdate)
             .ToList();
 
         // Build the message first part of the message
@@ -67,7 +68,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
         
         // Get the players that are currently excused
         var excusedPlayers = statuses
-            .Where(s => s.Excused)
+            .Where(s => s.individualTarget == 0)
             .ToList();
         
         // If there are players that are currently excused
@@ -119,7 +120,16 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
                 builder.Append(player.Nickname);
                 builder.Append("\e[0m got only ");
                 builder.Append(player.XpSinceLastUpdate);
-                builder.Append("XP and already had ");
+                builder.Append("XP");
+                if (player.individualTargetReason != null)
+                {
+                    builder.Append(" (individual target: ");
+                    builder.Append(player.individualTarget);
+                    builder.Append("XP - ");
+                    builder.Append(player.individualTargetReason);
+                    builder.Append(")");
+                }
+                builder.Append(" and already had ");
                 builder.Append(player.NumStrikes - 1);
                 builder.Append(" strikes and therefore \e[2;31mneeds to be kicked\e[0m.\n```");
             }
@@ -130,7 +140,16 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
                 builder.Append(player.Nickname);
                 builder.Append(" got only ");
                 builder.Append(player.XpSinceLastUpdate);
-                builder.Append("XP and therefore is now on ");
+                builder.Append("XP");
+                if (player.individualTargetReason != null)
+                {
+                    builder.Append(" (individual target: ");
+                    builder.Append(player.individualTarget);
+                    builder.Append("XP - ");
+                    builder.Append(player.individualTargetReason);
+                    builder.Append(")");
+                }
+                builder.Append(" and therefore is now on ");
                 builder.Append(player.NumStrikes);
                 builder.Append(" strikes.");
             }
@@ -140,7 +159,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
     private string _buildExcusedPlayersMessage(List<ClubMemberActivityStatus> excusedPlayers)
     {
         // Create the builder
-        var builder = new StringBuilder("​\nPlayers that are currently excused:");
+        var builder = new StringBuilder("​\nPlayers that are currently fully excused:");
         
         // For every excused player
         foreach (var player in excusedPlayers)

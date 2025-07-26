@@ -18,4 +18,10 @@ public class GeoClubBotDbContext : DbContext
     public DbSet<ClubMemberStrike> ClubMemberStrikes { get; set; }
     
     public DbSet<ClubMemberHistoryEntry> ClubMemberHistoryEntries { get; set; }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>().HaveConversion<DateTimeOffsetConverter>();
+        base.ConfigureConventions(configurationBuilder);
+    }
 }

@@ -2,4 +2,5 @@ namespace Entities;
 
 public record GeoGuessrClubMemberDTO(
     GeoGuessrUserDTO User,
-    int Xp);
+    int Xp,
+    DateTimeOffset JoinedAt);

@@ -97,7 +97,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         foreach (var member in memberDtos)
         {
             // Calculate his new status
-            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange, now);
+            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange);
 
             if (newStatus != null)
             {
@@ -112,8 +112,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         GeoGuessrClubMemberDTO memberDto,
         Dictionary<string, ClubMemberHistoryEntry> latestActivities,
         Dictionary<string, List<ClubMemberExcuse>> excuses,
-        TimeRange checkTimeRange,
-        DateTimeOffset now)
+        TimeRange checkTimeRange)
     {
         // Read the member from the database
         var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.User.UserId);
@@ -132,48 +131,29 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         // Calculate the xp since the last update
         var xpSinceLastUpdate = memberDto.Xp - (latestActivity?.Xp ?? 0);
 
-        // Check if the player has an excuse
-        var playerHasExcuse = _hasExcuse(clubMember.Nickname, checkTimeRange, excuses);
-
+        // Calculate the players target respecting excuses and joined time
+        var (target, individualTargetReason) = _calculateIndividualTarget(memberDto, checkTimeRange, excuses);
+        
         // Calculate if the player achieved the target.
-        // Give new player the benefit of the doubt and say, they 
-        // achieved the target since we don't know when they joined.
-        var targetAchieved = latestActivity == null || xpSinceLastUpdate >= _xpRequirement;
+        var targetAchieved = xpSinceLastUpdate >= target;
 
         // If the player did not meet the requirement and was not excused
-        if (!targetAchieved && !playerHasExcuse)
+        if (!targetAchieved)
         {
             // Add the strike
-            await _addStrikeAsync(clubMember.UserId, now);
+            await _addStrikeAsync(clubMember.UserId, checkTimeRange.To);
         }
 
         // Read the number of strikes of the player
         var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId) ?? 0;
         
         // Create the status object
-        return new ClubMemberActivityStatus(clubMember.Nickname, targetAchieved, playerHasExcuse,
+        return new ClubMemberActivityStatus(clubMember.Nickname, targetAchieved,
             xpSinceLastUpdate,
-            numStrikes, numStrikes > _maxNumStrikes);
-    }
-
-    private bool _hasExcuse(string memberNickname,
-        TimeRange checkTimeRange,
-        Dictionary<string, List<ClubMemberExcuse>> excuses)
-    {
-        // Try to get the excuses of the player
-        var excusesFound = excuses.TryGetValue(memberNickname, out var playerExcuses);
-
-        // If no excuses were found
-        if (!excusesFound || playerExcuses == null)
-        {
-            // The player is not excused
-            return false;
-        }
-
-        // Try to find any excuse that intersects with the check time range
-        var isExcused = playerExcuses.Any(e => checkTimeRange.Intersects(new TimeRange(e.From, e.To)));
-
-        return isExcused;
+            numStrikes, 
+            numStrikes > _maxNumStrikes,
+            target,
+            individualTargetReason);
     }
 
     private async Task _addStrikeAsync(string memberUserId, DateTimeOffset now)
@@ -208,6 +188,78 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             // Log error
             logger.LogError($"Strike for member {memberUserId} could not be created.");
         }
+    }
+
+    private (int IndividualTarget, string? IndividualTargetReason) _calculateIndividualTarget(
+        GeoGuessrClubMemberDTO memberDto, 
+        TimeRange checkTimeRange,
+        Dictionary<string, List<ClubMemberExcuse>> excuses)
+    {
+        var isNew = false;
+        var isExcused = false;
+        
+        // The list of all time ranges where the player is excused
+        var blockingTimeRanges = new List<TimeRange>();
+        
+        // If the member joined since the last activity check
+        if (checkTimeRange.Contains(memberDto.JoinedAt))
+        {
+            // Add the not in club time range
+            blockingTimeRanges.Add(checkTimeRange with { To = memberDto.JoinedAt });
+            isNew = true;
+        }
+        
+        // Try to get the excuses of the player
+        excuses.TryGetValue(memberDto.User.UserId, out var memberExcuses);
+        memberExcuses ??= [];
+        
+        // Calculate the intersections between the check time range and the
+        // excuses
+        var excuseIntersections = memberExcuses
+            .Select(e => new TimeRange(e.From, e.To))
+            .Where(e => checkTimeRange.Intersects(e))
+            .Select(e => checkTimeRange & e)
+            .ToList();
+        
+        // If there are excuses
+        if (excuseIntersections.Any())
+        {
+            isExcused = true;
+        }
+        
+        // Add the excuses
+        blockingTimeRanges.AddRange(excuseIntersections);
+        
+        // Calculate the free percent
+        var freePercent = checkTimeRange.CalculateFreePercent(blockingTimeRanges);
+
+        // Build the individual target reason
+        var individualTargetReason = _buildTargetReasons(isNew, isExcused);
+        
+        return ((int)Math.Floor(freePercent * _xpRequirement), individualTargetReason);
+    }
+
+    private static string? _buildTargetReasons(bool isNew, bool isExcused)
+    {
+        if (!isNew && !isExcused)
+        {
+            return null;
+        }
+        
+        var individualTargetReasons = new List<string>();
+        if (isNew)
+        {
+            individualTargetReasons.Add("New member");
+        }
+
+        if (isExcused)
+        {
+            individualTargetReasons.Add("Excused");
+        }
+        
+        var individualTargetReason = string.Join(", ", individualTargetReasons);
+
+        return individualTargetReason;
     }
     
     private readonly int _xpRequirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
