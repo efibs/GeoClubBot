@@ -1,6 +1,6 @@
 namespace Constants;
 
-public class StringLengthConstants
+public static class StringLengthConstants
 {
     public const int GeoGuessrClubNameMaxLength = 64;
     public const int GeoGuessrPlayerNicknameMaxLength = 30;

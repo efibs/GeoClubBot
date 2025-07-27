@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using UseCases.InputPorts;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.GeoGuessr.DTOs;
 using Utilities;
 
 namespace UseCases;

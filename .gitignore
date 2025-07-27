@@ -10,3 +10,4 @@ appsettings.*.json
 
 # Misc files
 OldHistory.json
+ChallengesConfig.json

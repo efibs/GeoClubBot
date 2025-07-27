@@ -1,4 +1,6 @@
-namespace Entities;
+using Entities;
+
+namespace UseCases.OutputPorts.GeoGuessr.DTOs;
 
 public record GeoGuessrClubMemberDTO(
     GeoGuessrUserDTO User,

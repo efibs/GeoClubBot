@@ -2,6 +2,7 @@ using Constants;
 using HistoryFileToSqlMigrationTool;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
+using QuartzExtensions;
 
 var builder = WebApplication.CreateBuilder(args);
 

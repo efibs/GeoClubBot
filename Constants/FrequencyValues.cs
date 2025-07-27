@@ -1,4 +1,4 @@
-namespace GeoClubBot;
+namespace Constants;
 
 public static class FrequencyValues
 {

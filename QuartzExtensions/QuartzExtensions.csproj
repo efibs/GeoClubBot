@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Reference Include="Microsoft.Extensions.Configuration.Abstractions">
+        <HintPath>..\..\..\.nuget\packages\microsoft.extensions.configuration.abstractions\9.0.7\lib\net9.0\Microsoft.Extensions.Configuration.Abstractions.dll</HintPath>
+      </Reference>
+      <Reference Include="Quartz">
+        <HintPath>..\..\..\.nuget\packages\quartz\3.14.0\lib\net9.0\Quartz.dll</HintPath>
+      </Reference>
+      <Reference Include="Quartz.Extensions.DependencyInjection">
+        <HintPath>..\..\..\.nuget\packages\quartz.extensions.dependencyinjection\3.14.0\lib\net9.0\Quartz.Extensions.DependencyInjection.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.7" />
+    </ItemGroup>
+
+</Project>

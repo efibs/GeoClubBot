@@ -24,5 +24,9 @@ public static class ConfigKeys
     public const string ClubLevelCheckerFrequencyConfigurationKey =  "ClubLevelChecker:CheckFrequency";
     public const string ClubLevelCheckerLevelUpMessageChannelIdConfigurationKey =  "ClubLevelChecker:LevelUpMessageChannelId";
     
+    public const string DailyChallengesCronScheduleConfigurationKey = "DailyChallenges:Schedule";
+    public const string DailyChallengesTextChannelIdConfigurationKey = "DailyChallenges:TextChannelId";
+    public const string DailyChallengesConfigurationFilePathConfigurationKey = "DailyChallenges:ConfigurationFilePath";
+    
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

@@ -9,6 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.env.postgresqldb-password = .env.postgresqldb-password
 		.env.postgresqldb-username = .env.postgresqldb-username
 		README.md = README.md
+		ChallengesConfig.json = ChallengesConfig.json
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Infrastructure", "GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj", "{D38D6E28-1D89-4B71-818A-75D55A14A445}"
@@ -28,6 +29,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{C4AD4F52-F0E5-42D9-89C5-2B82CA35765B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HistoryFileToSqlMigrationTool", "HistoryFileToSqlMigrationTool\HistoryFileToSqlMigrationTool.csproj", "{84C28F2A-1DB9-45B5-BA59-0FD4C4BD4115}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuartzExtensions", "QuartzExtensions\QuartzExtensions.csproj", "{95843BB6-DC6E-423A-9F19-03262F15EDD0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -67,11 +70,16 @@ Global
 		{84C28F2A-1DB9-45B5-BA59-0FD4C4BD4115}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{84C28F2A-1DB9-45B5-BA59-0FD4C4BD4115}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{84C28F2A-1DB9-45B5-BA59-0FD4C4BD4115}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95843BB6-DC6E-423A-9F19-03262F15EDD0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95843BB6-DC6E-423A-9F19-03262F15EDD0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95843BB6-DC6E-423A-9F19-03262F15EDD0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95843BB6-DC6E-423A-9F19-03262F15EDD0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{541F1161-B5B6-43BA-8AEF-F4E536B10281} = {D1E67922-C47C-4C56-A089-764D793E0403}
 		{476A519F-966E-4A82-B8EE-AD1C3AB7022F} = {D1E67922-C47C-4C56-A089-764D793E0403}
 		{4824C301-1764-4965-8706-4E02B91AB7F7} = {D1E67922-C47C-4C56-A089-764D793E0403}
 		{84C28F2A-1DB9-45B5-BA59-0FD4C4BD4115} = {C4AD4F52-F0E5-42D9-89C5-2B82CA35765B}
+		{95843BB6-DC6E-423A-9F19-03262F15EDD0} = {D1E67922-C47C-4C56-A089-764D793E0403}
 	EndGlobalSection
 EndGlobal

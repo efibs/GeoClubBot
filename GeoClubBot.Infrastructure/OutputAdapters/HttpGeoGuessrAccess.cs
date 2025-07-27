@@ -1,9 +1,11 @@
 using System.Data;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Constants;
 using Entities;
-using GeoClubBot;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.GeoGuessr.DTOs;
 
 namespace Infrastructure.OutputAdapters;
 
@@ -43,5 +45,37 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
         }
 
         return club;
+    }
+
+    public async Task<GeoGuessrCreateChallengeResponseDTO> CreateChallengeAsync(
+        GeoGuessrCreateChallengeRequestDTO request)
+    {
+        // Create the http client
+        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
+
+        // Make the http call
+        var response = await client.PostAsJsonAsync("v3/challenges", request);
+
+        // Get the response as a json string
+        var responseJson = await response.Content.ReadAsStringAsync();
+
+        return JsonSerializer.Deserialize<GeoGuessrCreateChallengeResponseDTO>(responseJson, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        })!;
+    }
+
+    public async Task<GeoGuessrChallengeResultHighscores?> ReadHighscoresAsync(string challengeId, int limit,
+        int minRounds)
+    {
+        // Create the http client
+        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
+
+        // Make the http call
+        var results =
+            await client.GetFromJsonAsync<GeoGuessrChallengeResultHighscores>(
+                $"v3/results/highscores/{challengeId}?friends=false&limit={limit}&minrounds={minRounds}");
+
+        return results;
     }
 }
