@@ -12,5 +12,7 @@ public interface IStrikesRepository
     
     Task<bool> RevokeStrikeByIdAsync(Guid strikeId);
     
+    Task<bool> UnrevokeStrikeByIdAsync(Guid strikeId);
+    
     Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold);
 }

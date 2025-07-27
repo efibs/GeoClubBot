@@ -67,6 +67,25 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
 
         return true;
     }
+    
+    public async Task<bool> UnrevokeStrikeByIdAsync(Guid strikeId)
+    {
+        // Read the strike
+        var strike = await dbContext.ClubMemberStrikes.FindAsync(strikeId);
+
+        if (strike == null)
+        {
+            return false;
+        }
+        
+        // Unrevoke the strike
+        strike.Revoked = false;
+        
+        // Save the changes to the database
+        await dbContext.SaveChangesAsync();
+
+        return true;
+    }
 
     public async Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold)
     {
