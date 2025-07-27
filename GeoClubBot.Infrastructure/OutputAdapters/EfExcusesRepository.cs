@@ -30,7 +30,9 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
     public async Task<List<ClubMemberExcuse>> ReadExcusesAsync()
     {
         // Get all the excuses
-        var excuses = await dbContext.ClubMemberExcuses.ToListAsync();
+        var excuses = await dbContext.ClubMemberExcuses
+            .Include(e => e.ClubMember)
+            .ToListAsync();
         
         return excuses;
     }

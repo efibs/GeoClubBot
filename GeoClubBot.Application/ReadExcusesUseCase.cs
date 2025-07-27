@@ -13,4 +13,12 @@ public class ReadExcusesUseCase(IExcusesRepository excusesRepository) : IReadExc
         
         return excuses;
     }
+    
+    public async Task<List<ClubMemberExcuse>> ReadExcusesAsync()
+    {
+        // Read the excuses
+        var excuses = await excusesRepository.ReadExcusesAsync();
+        
+        return excuses;
+    }
 }

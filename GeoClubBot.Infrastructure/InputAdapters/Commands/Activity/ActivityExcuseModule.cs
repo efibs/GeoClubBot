@@ -95,5 +95,28 @@ public partial class ActivityModule
                     ephemeral: true);
             }
         }
+        
+        [SlashCommand("read-all", "Read all excuses in the system")]
+        public async Task ReadExcusesAsync()
+        {
+            // Read the excuses
+            var excuses = await readExcusesUseCase.ReadExcusesAsync();
+
+            // If there are no excuses
+            if (excuses.Count == 0)
+            {
+                // Respond
+                await RespondAsync($"There are currently no excuses in the system.", ephemeral: true);
+            }
+            else
+            {
+                // Build excuses string
+                var excusesString = string.Join("\n", excuses.Select(e => $"* {e.ToStringWithPlayerName()}"));
+
+                // Respond
+                await RespondAsync($"The following excuses are currently entered in the system:\n{excusesString}",
+                    ephemeral: true);
+            }
+        }
     }
 }
