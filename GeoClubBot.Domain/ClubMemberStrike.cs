@@ -24,6 +24,6 @@ public class ClubMemberStrike
 
     public override string ToString()
     {
-        return $"{Timestamp:d} - Revoked: {Revoked}";
+        return $"{Timestamp:d} - Revoked: {Revoked} (Id: {StrikeId})";
     }
 }

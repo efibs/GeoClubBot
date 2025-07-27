@@ -8,7 +8,7 @@ public interface IStrikesRepository
 
     Task<int?> ReadNumberOfActiveStrikesByMemberUserIdAsync(string memberUserId);
     
-    Task<int?> ReadNumberOfActiveStrikesByMemberNicknameAsync(string memberNickname);
+    Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname);
     
     Task<bool> RevokeStrikeByIdAsync(Guid strikeId);
     
