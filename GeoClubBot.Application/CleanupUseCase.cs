@@ -26,7 +26,7 @@ public class CleanupUseCase(
         var deletedHistoryEntries = await historyRepository.DeleteHistoryEntriesBeforeAsync(threshold);
         
         // Cleanup members that have no history anymore
-        var deletedMembers = await clubMemberRepository.DeleteClubMembersWithoutHistoryAsync();
+        var deletedMembers = await clubMemberRepository.DeleteClubMembersWithoutHistoryAndStrikesAsync();
         
         // Print info log
         logger.LogInformation($"Deleted {deletedExcuses} excuses, {deletedHistoryEntries} history entries and {deletedMembers} members.");

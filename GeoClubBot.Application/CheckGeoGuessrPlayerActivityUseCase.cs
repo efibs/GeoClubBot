@@ -15,6 +15,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     IActivityStatusMessageSender activityStatusMessageSender,
     IExcusesRepository excusesRepository,
     IStrikesRepository strikesRepository,
+    ICheckStrikeDecayUseCase checkStrikeDecayUseCase,
     IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
     ICleanupUseCase cleanupUseCase,
     IConfiguration config,
@@ -22,6 +23,9 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 {
     public async Task CheckPlayerActivityAsync()
     {
+        // Check the strikes for decayed strikes and remove them
+        await checkStrikeDecayUseCase.CheckStrikeDecayAsync();
+        
         // Log debug message
         logger.LogDebug("Checking player activity...");
 

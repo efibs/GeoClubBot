@@ -96,6 +96,7 @@ public static class DependencyInjection
         services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
         services.AddTransient<IReadOrSyncClubMemberUseCase, ReadOrSyncClubMemberUseCase>();
         services.AddTransient<ISyncClubUseCase, SyncClubUseCase>();
+        services.AddTransient<ICheckStrikeDecayUseCase, CheckStrikeDecayUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString);

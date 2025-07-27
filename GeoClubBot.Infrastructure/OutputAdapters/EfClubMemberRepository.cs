@@ -67,11 +67,13 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         return clubMember;
     }
 
-    public async Task<int> DeleteClubMembersWithoutHistoryAsync()
+    public async Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync()
     {
         // Delete the entities
         var numDeletedClubMembers = await dbContext.ClubMembers
-            .Where(m => m.History != null && !m.History.Any())
+            .Include(m => m.History)
+            .Include(m => m.Strikes)
+            .Where(m => !m.History!.Any() && !m.Strikes!.Any())
             .ExecuteDeleteAsync();
 
         return numDeletedClubMembers;

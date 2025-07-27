@@ -21,7 +21,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // If the db migrations should be applied
-if (app.Configuration.GetValue<bool>(ConfigKeys.SQLMigrateConfigurationKey))
+if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 {
     // Apply the database migrations
     using var scope = app.Services.CreateScope();

@@ -19,9 +19,10 @@ public static class ConfigKeys
     public const string ActivityCheckerMaxNumStrikesConfigurationKey = "ActivityChecker:MaxNumStrikes";
     public const string ActivityCheckerHistoryKeepTimeSpanConfigurationKey = "ActivityChecker:HistoryKeepTimeSpan";
     public const string ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey = "ActivityChecker:CreateStrikeMaxRetryCount";
+    public const string ActivityCheckerStrikeDecayTimeSpanConfigurationKey = "ActivityChecker:StrikeDecayTimeSpan";
     
     public const string ClubLevelCheckerFrequencyConfigurationKey =  "ClubLevelChecker:CheckFrequency";
     public const string ClubLevelCheckerLevelUpMessageChannelIdConfigurationKey =  "ClubLevelChecker:LevelUpMessageChannelId";
     
-    public const string SQLMigrateConfigurationKey = "SQL:Migrate";
+    public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

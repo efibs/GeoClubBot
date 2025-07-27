@@ -12,5 +12,5 @@ public interface IClubMemberRepository
     
     Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId);
 
-    Task<int> DeleteClubMembersWithoutHistoryAsync();
+    Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync();
 }
