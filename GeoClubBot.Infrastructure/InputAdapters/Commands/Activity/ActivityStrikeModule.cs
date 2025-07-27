@@ -6,14 +6,40 @@ namespace Infrastructure.InputAdapters.Commands;
 public partial class ActivityModule
 {
     public partial class ActivityStrikeModule(
+        IAddStrikeUseCase addStrikeUseCase,
         IReadMemberStrikesUseCase readMemberStrikesUseCase,
         IRevokeStrikeUseCase revokeStrikeUseCase,
         IUnrevokeStrikeUseCase unrevokeStrikeUseCase)
     {
-        [SlashCommand("read", "Read the strikes a player currently has")]
-        public async Task ReadNumStrikesAsync(string memberNickname)
+        [SlashCommand("add", "Create a new strike for a player")]
+        public async Task CreateStrikeAsync(string memberNickname,
+            [Summary(description: "Strike date in format YYYY-MM-DD")]
+            DateTime strikeDate)
         {
-            // Read the number of strikes
+            // Specify the date time as utc
+            strikeDate = DateTime.SpecifyKind(strikeDate, DateTimeKind.Utc);
+            
+            // Add the strike
+            var strikeId = await addStrikeUseCase.AddStrikeAsync(memberNickname, strikeDate);
+
+            // If the player has a status set
+            if (strikeId == null)
+            {
+                await RespondAsync($"Excuse could not be added for player '{memberNickname}'. Is the nickname wrong?",
+                    ephemeral: true);
+            }
+            else
+            {
+                await RespondAsync(
+                    $"Strike with id {strikeId} was added to player **{memberNickname}**.",
+                    ephemeral: true);
+            }
+        }
+        
+        [SlashCommand("read", "Read the strikes a player currently has")]
+        public async Task ReadStrikesAsync(string memberNickname)
+        {
+            // Read the strikes
             var strikeStatus = await readMemberStrikesUseCase.ReadMemberStrikesAsync(memberNickname);
 
             // If the player has a status set
