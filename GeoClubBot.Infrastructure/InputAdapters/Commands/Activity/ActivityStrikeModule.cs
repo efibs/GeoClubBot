@@ -111,7 +111,7 @@ public partial class ActivityModule
             }
             else
             {
-                await RespondAsync($"The strikes currently in the system are: {strikesListString}",
+                await RespondAsync($"The strikes currently in the system are: \n{strikesListString}",
                     ephemeral: true);
             }
         }
