@@ -1,6 +1,8 @@
 namespace UseCases.OutputPorts.GeoGuessr.DTOs;
 
-public record GeoGuessrChallengeResultHighscores(List<GeoGuessrChallengeResultGame> Items);
+public record GeoGuessrChallengeResultHighscores(List<GeoGuessrChallengeResultItem> Items);
+
+public record GeoGuessrChallengeResultItem(GeoGuessrChallengeResultGame Game);
 
 public record GeoGuessrChallengeResultGame(GeoGuessrChallengeResultPlayer Player);
 

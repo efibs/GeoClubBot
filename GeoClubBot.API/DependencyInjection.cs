@@ -85,6 +85,7 @@ public static class DependencyInjection
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
         services.AddTransient<IExcusesRepository, EfExcusesRepository>();
         services.AddTransient<IStrikesRepository, EfStrikesRepository>();
+        services.AddTransient<IClubChallengeRepository, EfClubChallengeRepository>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();

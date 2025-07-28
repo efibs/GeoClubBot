@@ -21,6 +21,8 @@ public class GeoClubBotDbContext : DbContext
     
     public DbSet<ClubMemberHistoryEntry> ClubMemberHistoryEntries { get; set; }
 
+    public DbSet<ClubChallengeLink> LatestClubChallengeLinks { get; set; }
+    
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<DateTimeOffset>().HaveConversion<DateTimeOffsetConverter>();
