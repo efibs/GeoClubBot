@@ -104,6 +104,7 @@ public static class DependencyInjection
         services.AddTransient<IUnrevokeStrikeUseCase, UnrevokeStrikeUseCase>();
         services.AddTransient<IAddStrikeUseCase, AddStrikeUseCase>();
         services.AddTransient<IDailyChallengeUseCase, DailyChallengeUseCase>();
+        services.AddTransient<IReadAllStrikesUseCase, ReadAllStrikesUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

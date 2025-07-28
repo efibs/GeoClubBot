@@ -1,4 +1,6 @@
+using Constants;
 using Discord.Interactions;
+using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts;
 
 namespace Infrastructure.InputAdapters.Commands;
@@ -8,8 +10,10 @@ public partial class ActivityModule
     public partial class ActivityStrikeModule(
         IAddStrikeUseCase addStrikeUseCase,
         IReadMemberStrikesUseCase readMemberStrikesUseCase,
+        IReadAllStrikesUseCase readAllStrikesUseCase,
         IRevokeStrikeUseCase revokeStrikeUseCase,
-        IUnrevokeStrikeUseCase unrevokeStrikeUseCase)
+        IUnrevokeStrikeUseCase unrevokeStrikeUseCase,
+        IConfiguration config)
     {
         [SlashCommand("add", "Create a new strike for a player")]
         public async Task CreateStrikeAsync(string memberNickname,
@@ -67,6 +71,49 @@ public partial class ActivityModule
             // Respond
             await RespondAsync($"The player {memberNickname} currently has {strikeStatus.NumActiveStrikes} active strikes:\n{strikesListString}",
                 ephemeral: true);
+        }
+        
+        [SlashCommand("read-all", "Read all strikes currently in the system")]
+        public async Task ReadAllStrikesAsync()
+        {
+            // Read the strikes
+            var strikes = await readAllStrikesUseCase.ReadAllStrikesAsync();
+
+            // If the player has a status set
+            if (strikes.Count == 0)
+            {
+                // Respond
+                await RespondAsync("There are currently no strikes in the system.",
+                    ephemeral: true);
+                return;
+            }
+            
+            // Get the expiration time span
+            var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+            
+            // Build the list of strikes
+            var strikesListString = string.Join("\n", strikes
+                .OrderBy(s => s.ClubMember!.Nickname)
+                .ThenBy(s => s.Timestamp)
+                .Select(s => $"- {s.ToStringDetailed(expirationTimeSpan)}"));
+                
+            // If the strikes list is too long
+            if (strikesListString.Length > 1500)
+            {
+                // Convert string to stream
+                var stream = new MemoryStream();
+                var writer = new StreamWriter(stream);
+                await writer.WriteAsync(strikesListString);
+                await writer.FlushAsync();
+                stream.Position = 0;
+
+                await RespondWithFileAsync(stream, fileName:"strikes.txt", text: $"The strikes currently in the system are:");
+            }
+            else
+            {
+                await RespondAsync($"The strikes currently in the system are: {strikesListString}",
+                    ephemeral: true);
+            }
         }
 
         [SlashCommand("revoke", "Revoke a strike")]

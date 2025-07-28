@@ -26,4 +26,12 @@ public class ClubMemberStrike
     {
         return $"{Timestamp:d} - Revoked: {Revoked} (Id: {StrikeId})";
     }
+    
+    public string ToStringDetailed(TimeSpan expirationTimeSpan)
+    {
+        // Get the expiration date
+        var expiration = Timestamp + expirationTimeSpan;
+        
+        return $"Player {ClubMember?.Nickname ?? "N/A"}: {Timestamp:d} - Revoked: {Revoked} (Id: {StrikeId}, expires: {expiration:d})";
+    }
 }

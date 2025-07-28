@@ -49,6 +49,16 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         return member?.Strikes;
     }
 
+    public async Task<List<ClubMemberStrike>> ReadAllStrikesAsync()
+    {
+        // Read the strikes
+        var strikes = await dbContext.ClubMemberStrikes
+            .Include(s => s.ClubMember)
+            .ToListAsync();
+        
+        return strikes;
+    }
+
     public async Task<bool> RevokeStrikeByIdAsync(Guid strikeId)
     {
         // Read the strike

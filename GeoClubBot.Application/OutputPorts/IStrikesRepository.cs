@@ -10,6 +10,8 @@ public interface IStrikesRepository
     
     Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname);
     
+    Task<List<ClubMemberStrike>> ReadAllStrikesAsync();
+    
     Task<bool> RevokeStrikeByIdAsync(Guid strikeId);
     
     Task<bool> UnrevokeStrikeByIdAsync(Guid strikeId);
