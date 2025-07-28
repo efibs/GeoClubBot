@@ -105,6 +105,7 @@ public static class DependencyInjection
         services.AddTransient<IAddStrikeUseCase, AddStrikeUseCase>();
         services.AddTransient<IDailyChallengeUseCase, DailyChallengeUseCase>();
         services.AddTransient<IReadAllStrikesUseCase, ReadAllStrikesUseCase>();
+        services.AddTransient<ISetClubLevelStatusUseCase, SetClubLevelStatusUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

@@ -11,6 +11,7 @@ public class SyncClubUseCase(
     IGeoGuessrAccess geoGuessrAccess,
     IClubRepository clubRepository,
     IClubMemberRepository clubMemberRepository,
+    ISetClubLevelStatusUseCase setClubLevelStatusUseCase,
     IConfiguration config) : ISyncClubUseCase
 {
     public async Task SyncClubAsync()
@@ -28,6 +29,9 @@ public class SyncClubUseCase(
         
         // Sync the club
         await clubRepository.CreateOrUpdateClubAsync(club);
+        
+        // Set the status
+        await setClubLevelStatusUseCase.SetClubLevelStatusAsync(club.Level);
         
         // Read the members of the club 
         var geoGuessrClubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId);

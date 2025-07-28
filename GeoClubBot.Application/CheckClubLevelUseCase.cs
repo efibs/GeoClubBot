@@ -39,13 +39,10 @@ public class CheckClubLevelUseCase(
             logger.LogDebug($"Club level changed to {clubLevel}");
 
             // Get the status updater
-            var statusUpdater = scope.ServiceProvider.GetRequiredService<IStatusUpdater>();
-
-            // Build the status message
-            var newStatus = $"Level {clubLevel} club!";
+            var statusUpdater = scope.ServiceProvider.GetRequiredService<ISetClubLevelStatusUseCase>();
 
             // Update the status
-            await statusUpdater.UpdateStatusAsync(newStatus);
+            await statusUpdater.SetClubLevelStatusAsync(clubLevel);
 
             // If the previous level is known
             if (_lastLevel != null)
