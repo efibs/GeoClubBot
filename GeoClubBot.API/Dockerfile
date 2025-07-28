@@ -1,6 +1,4 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-RUN mkdir /home/app/data && \
-    chown -R 1654:1654 /home/app/data
 USER 1654
 WORKDIR /app
 EXPOSE 8080
@@ -12,6 +10,7 @@ WORKDIR /src
 COPY ["GeoClubBot.API/GeoClubBot.API.csproj", "GeoClubBot.API/"]
 COPY ["Constants/Constants.csproj", "Constants/"]
 COPY ["Extensions/Extensions.csproj", "Extensions/"]
+COPY ["QuartzExtensions/QuartzExtensions.csproj", "QuartzExtensions/"]
 COPY ["Utilities/Utilities.csproj", "Utilities/"]
 COPY ["GeoClubBot.Domain/GeoClubBot.Domain.csproj", "GeoClubBot.Domain/"]
 COPY ["GeoClubBot.Infrastructure/GeoClubBot.Infrastructure.csproj", "GeoClubBot.Infrastructure/"]
