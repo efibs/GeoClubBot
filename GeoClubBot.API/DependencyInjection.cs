@@ -5,9 +5,13 @@ using Discord.WebSocket;
 using GeoClubBot.Services;
 using Infrastructure;
 using Infrastructure.InputAdapters;
+using Infrastructure.InputAdapters.Jobs;
 using Infrastructure.OutputAdapters;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
+using Quartz;
+using Quartz.Impl.AdoJobStore;
+using QuartzExtensions;
 using UseCases;
 using UseCases.InputPorts;
 using UseCases.OutputPorts;
@@ -81,6 +85,7 @@ public static class DependencyInjection
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
         services.AddTransient<IExcusesRepository, EfExcusesRepository>();
         services.AddTransient<IStrikesRepository, EfStrikesRepository>();
+        services.AddTransient<IClubChallengeRepository, EfClubChallengeRepository>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();
@@ -100,12 +105,35 @@ public static class DependencyInjection
         services.AddTransient<IRevokeStrikeUseCase, RevokeStrikeUseCase>();
         services.AddTransient<IUnrevokeStrikeUseCase, UnrevokeStrikeUseCase>();
         services.AddTransient<IAddStrikeUseCase, AddStrikeUseCase>();
+        services.AddTransient<IDailyChallengeUseCase, DailyChallengeUseCase>();
         
         // Get the connection string
-        var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString);
+        var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
         
         // Add the db context
         services.AddDbContext<GeoClubBotDbContext>(options => 
             options.UseNpgsql(connectionString));
+        
+        // Add the quartz scheduler
+        services.AddQuartz(q =>
+        {
+            // Set the scheduler name
+            q.SchedulerId = StringConstants.QuartzSchedulerName;
+
+            // Get the assembly containing the jobs
+            var commandsAssembly = typeof(JobAssemblyMarker).Assembly;
+            
+            // Detect and add the jobs automatically
+            q.AddCronJobs(commandsAssembly);
+        });
+        
+        // ASP.NET Core hosting
+        services.AddQuartzHostedService(options =>
+        {
+            options.AwaitApplicationStarted = true;
+            
+            // when shutting down we want jobs to complete gracefully
+            options.WaitForJobsToComplete = true;
+        });
     }
 }

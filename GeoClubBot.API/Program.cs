@@ -2,8 +2,12 @@ using Constants;
 using GeoClubBot;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
+using QuartzExtensions;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Set the configuration to the configured cron job
+ConfiguredCronJobAttribute.Config = builder.Configuration;
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
