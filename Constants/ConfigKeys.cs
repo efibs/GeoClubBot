@@ -12,8 +12,8 @@ public static class ConfigKeys
 
     public const string GeoGuessrTokenConfigurationKey = "GeoGuessr:NcfaToken";
     public const string GeoGuessrClubIdConfigurationKey = "GeoGuessr:ClubId";
-
-    public const string ActivityCheckerFrequencyConfigurationKey = "ActivityChecker:CheckFrequency";
+    
+    public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
     public const string ActivityCheckerTextChannelIdConfigurationKey = "ActivityChecker:TextChannelId";
     public const string ActivityCheckerMinXpConfigurationKey = "ActivityChecker:MinXP";
     public const string ActivityCheckerMaxNumStrikesConfigurationKey = "ActivityChecker:MaxNumStrikes";
@@ -21,7 +21,7 @@ public static class ConfigKeys
     public const string ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey = "ActivityChecker:CreateStrikeMaxRetryCount";
     public const string ActivityCheckerStrikeDecayTimeSpanConfigurationKey = "ActivityChecker:StrikeDecayTimeSpan";
     
-    public const string ClubLevelCheckerFrequencyConfigurationKey =  "ClubLevelChecker:CheckFrequency";
+    public const string ClubLevelCheckerCronScheduleConfigurationKey =  "ClubLevelChecker:Schedule";
     public const string ClubLevelCheckerLevelUpMessageChannelIdConfigurationKey =  "ClubLevelChecker:LevelUpMessageChannelId";
     
     public const string DailyChallengesCronScheduleConfigurationKey = "DailyChallenges:Schedule";

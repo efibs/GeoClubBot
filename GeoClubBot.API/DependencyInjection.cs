@@ -74,8 +74,6 @@ public static class DependencyInjection
         services.AddSingleton<DiscordBotReadyService>();
         
         // Add the input adapters
-        services.AddHostedService<ActivityCheckService>();
-        services.AddHostedService<CheckClubLevelService>();
         services.AddHostedService<InitialSyncService>();
 
         // Add the output adapters 
