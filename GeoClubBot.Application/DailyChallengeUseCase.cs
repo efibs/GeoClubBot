@@ -76,96 +76,12 @@ public class DailyChallengeUseCase(
 
         // Get the last challenge high scores
         var lastChallengeHighScores = await _readLastChallengeHighScoresAsync(oldClubChallenges);
-        
-        // Build the message
-        var messageText = _buildMessage(lastChallengeHighScores, nextChallenges);
 
-        // Send the message
-        await messageSender.SendMessageAsync(messageText, _textChannelId);
-        
         // Delete the old club challenges
         await clubChallengeRepository.DeleteLatestClubChallengeLinksAsync(oldClubChallenges.Select(c => c.Id).ToList());
-    }
-
-    private string _buildMessage(List<ClubChallengeResult>? lastChallengeResults,
-        List<ClubChallenge> nextChallenges)
-    {
-        var builder = new StringBuilder();
-        if (lastChallengeResults is { Count: > 0 })
-        {
-            _appendLastChallengeResults(builder, lastChallengeResults);
-        }
-
-        builder.Append("\n# :dart: Next challenges :dart:");
-
-        foreach (var nextChallenge in nextChallenges)
-        {
-            // If the challenge could not be retrieved
-            if (nextChallenge.ChallengeId == string.Empty)
-            {
-                builder.Append("\n - ");
-                builder.Append(nextChallenge.Difficulty);
-                builder.Append(": ERROR");
-                continue;
-            }
-            
-            builder.Append("\n - [");
-            builder.Append(nextChallenge.Difficulty);
-            builder.Append(" (");
-            builder.Append(nextChallenge.Description);
-            builder.Append(")](https://www.geoguessr.com/challenge/");
-            builder.Append(nextChallenge.ChallengeId);
-            builder.Append(")");
-        }
-
-        return builder.ToString();
-    }
-
-    private void _appendLastChallengeResults(StringBuilder builder,
-        List<ClubChallengeResult> lastChallengeResults)
-    {
-        builder.Append("# :trophy: The results are in! :trophy: ");
-
-        foreach (var lastChallengeResult in lastChallengeResults)
-        {
-            builder.Append("\n## ");
-            builder.Append(lastChallengeResult.Difficulty);
-
-            if (!lastChallengeResult.Players.Any())
-            {
-                builder.AppendLine();
-                builder.Append("No one participated :frowning2: ");
-                continue;
-            }
-
-            var place = 1;
-            foreach (var player in lastChallengeResult.Players)
-            {
-                builder.AppendLine();
-                switch (place++)
-                {
-                    case 1:
-                        builder.Append(":first_place:");
-                        break;
-                    case 2:
-                        builder.Append(":second_place:");
-                        break;
-                    case 3:
-                        builder.Append(":third_place:");
-                        break;
-                    default:
-                        builder.Append(place);
-                        builder.Append(". ");
-                        break;
-                }
-                builder.Append(player.Nickname);
-                builder.Append(" (");
-                builder.Append(player.TotalScore);
-                builder.Append(", ");
-                builder.Append(player.TotalDistance);
-                builder.Append(')');
-            }
-        }
+        
+        // Send the messages
+        await _sendMessagesAsync(lastChallengeHighScores, nextChallenges);
     }
 
     private async Task<List<ClubChallengeResult>> _readLastChallengeHighScoresAsync(List<ClubChallengeLink> oldChallengeLinks)
@@ -199,6 +115,107 @@ public class DailyChallengeUseCase(
         }
 
         return results;
+    }
+
+    private async Task _sendMessagesAsync(List<ClubChallengeResult> lastChallengeHighScores, List<ClubChallenge> nextChallenges)
+    {
+        // If there are last challenges
+        if (lastChallengeHighScores is { Count: > 0 })
+        {
+            // Send the last challenge results
+            await _sendLastChallengeResults(lastChallengeHighScores);
+        }
+        
+        // Send the next challenges
+        await _sendNextChallengesAsync(nextChallenges);
+    }
+    
+    private async Task _sendLastChallengeResults(List<ClubChallengeResult> lastChallengeResults)
+    {
+        var builder = new StringBuilder("# :trophy: The results are in! :trophy: ");
+
+        foreach (var lastChallengeResult in lastChallengeResults)
+        {
+            builder.Append("\n## ");
+            builder.Append(lastChallengeResult.Difficulty);
+
+            if (!lastChallengeResult.Players.Any())
+            {
+                builder.AppendLine();
+                builder.Append("No one participated :frowning2: ");
+            }
+            else
+            {
+                // Append the players
+                _appendPlayers(builder, lastChallengeResult.Players);
+            }
+
+            // Send the result
+            await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId);
+            
+            // Reset the string builder
+            builder = new StringBuilder();
+        }
+    }
+
+    private void _appendPlayers(StringBuilder builder, List<ClubChallengeResultPlayer> players)
+    {
+        var place = 1;
+        foreach (var player in players)
+        {
+            builder.AppendLine();
+            switch (place++)
+            {
+                case 1:
+                    builder.Append(":first_place:");
+                    break;
+                case 2:
+                    builder.Append(":second_place:");
+                    break;
+                case 3:
+                    builder.Append(":third_place:");
+                    break;
+                default:
+                    builder.Append(place);
+                    builder.Append(". ");
+                    break;
+            }
+
+            builder.Append(player.Nickname);
+            builder.Append(" (");
+            builder.Append(player.TotalScore);
+            builder.Append(", ");
+            builder.Append(player.TotalDistance);
+            builder.Append(')');
+        }
+    }
+    
+    private async Task _sendNextChallengesAsync(List<ClubChallenge> nextChallenges)
+    {
+        var builder = new StringBuilder("# :dart: Next challenges :dart:");
+
+        foreach (var nextChallenge in nextChallenges)
+        {
+            // If the challenge could not be retrieved
+            if (nextChallenge.ChallengeId == string.Empty)
+            {
+                builder.Append("\n - ");
+                builder.Append(nextChallenge.Difficulty);
+                builder.Append(": ERROR");
+                continue;
+            }
+            
+            builder.Append("\n - [");
+            builder.Append(nextChallenge.Difficulty);
+            builder.Append(" (");
+            builder.Append(nextChallenge.Description);
+            builder.Append(")](https://www.geoguessr.com/challenge/");
+            builder.Append(nextChallenge.ChallengeId);
+            builder.Append(")");
+        }
+
+        // Send the next challenges
+        await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId);
     }
     
     private readonly string _challengesConfigurationFilePath =
