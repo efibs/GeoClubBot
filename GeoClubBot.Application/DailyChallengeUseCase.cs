@@ -15,6 +15,7 @@ public class DailyChallengeUseCase(
     IGeoGuessrAccess geoGuessrAccess,
     IClubChallengeRepository clubChallengeRepository,
     IMessageSender messageSender,
+    IDistributeDailyChallengeRolesUseCase distributeDailyChallengeRolesUseCase,
     IConfiguration config,
     ILogger<DailyChallengeUseCase> logger) : IDailyChallengeUseCase
 {
@@ -82,6 +83,9 @@ public class DailyChallengeUseCase(
         
         // Send the messages
         await _sendMessagesAsync(lastChallengeHighScores, nextChallenges);
+        
+        // Distribute the roles
+        await distributeDailyChallengeRolesUseCase.DistributeDailyChallengeRolesAsync(lastChallengeHighScores);
     }
 
     private async Task<List<ClubChallengeResult>> _readLastChallengeHighScoresAsync(List<ClubChallengeLink> oldChallengeLinks)
@@ -109,7 +113,7 @@ public class DailyChallengeUseCase(
                 .ToList();
             
             // Build the result object
-            var result = new ClubChallengeResult(oldChallengeLink.Difficulty, players);
+            var result = new ClubChallengeResult(oldChallengeLink.Difficulty, oldChallengeLink.RolePriority, players);
             
             results.Add(result);
         }

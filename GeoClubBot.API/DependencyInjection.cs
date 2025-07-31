@@ -30,7 +30,8 @@ public static class DependencyInjection
         // Add the discord socket client
         services.AddSingleton<DiscordSocketClient>(_ => new DiscordSocketClient(new DiscordSocketConfig
         {
-            GatewayIntents = GatewayIntents.AllUnprivileged
+            GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.GuildMembers,
+            AlwaysDownloadUsers = true
         }));
 
         // Add the interaction service
@@ -87,6 +88,7 @@ public static class DependencyInjection
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();
+        services.AddTransient<IServerRolesAccess, DiscordServerRolesAccess>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
@@ -106,6 +108,7 @@ public static class DependencyInjection
         services.AddTransient<IDailyChallengeUseCase, DailyChallengeUseCase>();
         services.AddTransient<IReadAllStrikesUseCase, ReadAllStrikesUseCase>();
         services.AddTransient<ISetClubLevelStatusUseCase, SetClubLevelStatusUseCase>();
+        services.AddTransient<IDistributeDailyChallengeRolesUseCase, DistributeDailyChallengeRolesUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

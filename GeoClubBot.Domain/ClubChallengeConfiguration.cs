@@ -2,6 +2,7 @@ namespace Entities;
 
 public record ClubChallengeConfigurationDifficulty(
     string Difficulty,
+    int RolePriority,
     List<ClubChallengeConfigurationDifficultyEntry> Entries);
 
 public record ClubChallengeConfigurationDifficultyEntry(

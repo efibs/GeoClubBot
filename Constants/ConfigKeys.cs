@@ -27,6 +27,9 @@ public static class ConfigKeys
     public const string DailyChallengesCronScheduleConfigurationKey = "DailyChallenges:Schedule";
     public const string DailyChallengesTextChannelIdConfigurationKey = "DailyChallenges:TextChannelId";
     public const string DailyChallengesConfigurationFilePathConfigurationKey = "DailyChallenges:ConfigurationFilePath";
+    public const string DailyChallengesFirstRoleIdConfigurationKey = "DailyChallenges:FirstRoleId";
+    public const string DailyChallengesSecondRoleIdConfigurationKey = "DailyChallenges:SecondRoleId";
+    public const string DailyChallengesThirdRoleIdConfigurationKey = "DailyChallenges:ThirdRoleId";
     
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

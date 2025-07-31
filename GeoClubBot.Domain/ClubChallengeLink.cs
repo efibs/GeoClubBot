@@ -12,6 +12,8 @@ public class ClubChallengeLink
 
     public string Difficulty { get; set; } = string.Empty;
 
+    public int RolePriority { get; set; }
+    
     [MaxLength(StringLengthConstants.GeoGuessrChallengeIdLength)]
     public string ChallengeId { get; set; } = string.Empty;
 }
