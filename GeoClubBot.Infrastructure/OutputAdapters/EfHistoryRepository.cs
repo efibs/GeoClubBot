@@ -26,6 +26,27 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         return entries;
     }
 
+    public async Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname)
+    {
+        // Get if the player is tracked
+        var playerExists = await dbContext.ClubMembers
+            .AnyAsync(e => e.Nickname == playerNickname);
+        
+        // If the player is not tracked
+        if (!playerExists)
+        {
+            return null;
+        }
+        
+        // Read the entries
+        var entries = await dbContext.ClubMemberHistoryEntries
+            .Include(e => e.ClubMember)
+            .Where(e => e.ClubMember!.Nickname == playerNickname)
+            .ToListAsync();
+
+        return entries;
+    }
+
     public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesAsync()
     {
         // Read the latest entries
