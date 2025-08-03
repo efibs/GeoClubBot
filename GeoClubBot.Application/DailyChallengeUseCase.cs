@@ -168,7 +168,7 @@ public class DailyChallengeUseCase(
         foreach (var player in players)
         {
             builder.AppendLine();
-            switch (place++)
+            switch (place)
             {
                 case 1:
                     builder.Append(":first_place:");
@@ -191,6 +191,8 @@ public class DailyChallengeUseCase(
             builder.Append(", ");
             builder.Append(player.TotalDistance);
             builder.Append(')');
+
+            place++;
         }
     }
     
