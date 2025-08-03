@@ -4,10 +4,13 @@ using UseCases.InputPorts;
 
 namespace Infrastructure.InputAdapters;
 
-public class InitialSyncService(IServiceProvider serviceProvider) : IHostedService
+public class InitialSyncService(DiscordBotReadyService botReadyService, IServiceProvider serviceProvider) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // Wait for the bot to be ready
+        await botReadyService.DiscordSocketClientReady;
+        
         // Create a scope
         using var scope = serviceProvider.CreateScope();
         
