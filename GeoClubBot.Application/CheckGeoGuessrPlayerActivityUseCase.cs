@@ -19,6 +19,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     ICheckStrikeDecayUseCase checkStrikeDecayUseCase,
     IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
     ICleanupUseCase cleanupUseCase,
+    IClubMemberRepository clubMemberRepository, 
     IConfiguration config,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
 {
@@ -34,6 +35,21 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         var members = await geoGuessrAccess
             .ReadClubMembersAsync(_clubId);
 
+        // For every member of the club
+        foreach (var geoGuessrClubMember in members)
+        {
+            // Create the member entity
+            var member = new ClubMember
+            {
+                UserId = geoGuessrClubMember.User.UserId,
+                ClubId = _clubId,
+                Nickname = geoGuessrClubMember.User.Nick,
+            };
+            
+            // Ensure the member exists and is up to date
+            await clubMemberRepository.CreateOrUpdateClubMemberAsync(member);
+        }
+        
         // Get the latest activities
         var latestHistoryEntries = await historyRepository
             .ReadLatestHistoryEntriesAsync();
