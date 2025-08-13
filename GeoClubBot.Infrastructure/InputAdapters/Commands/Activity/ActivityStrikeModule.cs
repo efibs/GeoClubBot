@@ -22,7 +22,7 @@ public partial class ActivityModule
         {
             // Specify the date time as utc
             strikeDate = DateTime.SpecifyKind(strikeDate, DateTimeKind.Utc);
-            
+
             // Add the strike
             var strikeId = await addStrikeUseCase.AddStrikeAsync(memberNickname, strikeDate);
 
@@ -39,7 +39,7 @@ public partial class ActivityModule
                     ephemeral: true);
             }
         }
-        
+
         [SlashCommand("read", "Read the strikes a player currently has")]
         public async Task ReadStrikesAsync(string memberNickname)
         {
@@ -64,15 +64,16 @@ public partial class ActivityModule
                     ephemeral: true);
                 return;
             }
-            
+
             // Build the list of strikes
             var strikesListString = string.Join("\n", strikeStatus.Strikes.Select(s => $"- {s}"));
-                
+
             // Respond
-            await RespondAsync($"The player {memberNickname} currently has {strikeStatus.NumActiveStrikes} active strikes:\n{strikesListString}",
+            await RespondAsync(
+                $"The player {memberNickname} currently has {strikeStatus.NumActiveStrikes} active strikes:\n{strikesListString}",
                 ephemeral: true);
         }
-        
+
         [SlashCommand("read-all", "Read all strikes currently in the system")]
         public async Task ReadAllStrikesAsync()
         {
@@ -87,16 +88,17 @@ public partial class ActivityModule
                     ephemeral: true);
                 return;
             }
-            
+
             // Get the expiration time span
-            var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
-            
+            var expirationTimeSpan =
+                config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+
             // Build the list of strikes
             var strikesListString = string.Join("\n", strikes
                 .OrderBy(s => s.ClubMember!.Nickname)
                 .ThenBy(s => s.Timestamp)
                 .Select(s => $"- {s.ToStringDetailed(expirationTimeSpan)}"));
-                
+
             // If the strikes list is too long
             if (strikesListString.Length > 1500)
             {
@@ -107,7 +109,8 @@ public partial class ActivityModule
                 await writer.FlushAsync();
                 stream.Position = 0;
 
-                await RespondWithFileAsync(stream, fileName:"strikes.txt", text: $"The strikes currently in the system are:");
+                await RespondWithFileAsync(stream, fileName: "strikes.txt",
+                    text: "The strikes currently in the system are:", ephemeral: true);
             }
             else
             {
@@ -129,10 +132,10 @@ public partial class ActivityModule
                 await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true);
                 return;
             }
-            
+
             // Revoke the strike
             var revokeSuccessful = await revokeStrikeUseCase.RevokeStrikeAsync(strikeIdGuid);
-            
+
             // If the revoke was successful
             if (revokeSuccessful)
             {
@@ -145,7 +148,7 @@ public partial class ActivityModule
                 await RespondAsync($"Strike with id {strikeId} could not be revoked.", ephemeral: true);
             }
         }
-        
+
         [SlashCommand("unrevoke", "Remove a revocation of a strike")]
         public async Task UnrevokeStrikeAsync(string strikeId)
         {
@@ -159,15 +162,16 @@ public partial class ActivityModule
                 await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true);
                 return;
             }
-            
+
             // Revoke the strike
             var revokeSuccessful = await unrevokeStrikeUseCase.UnrevokeStrikeAsync(strikeIdGuid);
-            
+
             // If the revoke was successful
             if (revokeSuccessful)
             {
                 // Respond
-                await RespondAsync($"Revocation of strike with id {strikeId} was successfully removed.", ephemeral: true);
+                await RespondAsync($"Revocation of strike with id {strikeId} was successfully removed.",
+                    ephemeral: true);
             }
             else
             {
