@@ -1,6 +1,12 @@
 # GeoClubBot
 TODO
 
+# Start the database
+
+```bash
+docker compose up postgresqldb
+```
+
 # Building and Publishing
 
 To build the docker image, run:
