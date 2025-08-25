@@ -27,8 +27,7 @@ public class ClubStatisticsUseCase(IClubRepository clubRepository, IHistoryRepos
             .GroupBy(e => e.UserId)
             .Select(g => g.Select(e => e.Xp).ToList())
             .Select(g => g
-                .Skip(1)
-                .Zip(g, (a, b) => a - b)
+                .Zip(g.Prepend(0), (a, b) => a - b)
                 .Average())
             .Order()
             .ToList();
