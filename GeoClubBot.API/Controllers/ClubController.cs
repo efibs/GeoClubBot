@@ -9,7 +9,7 @@ using UseCases.OutputPorts;
 namespace GeoClubBot.Controllers;
 
 [ApiController]
-[Route("/club")]
+[Route("/api/v1/club")]
 public class ClubController(IConfiguration config) : ControllerBase
 {
     [HttpGet]
