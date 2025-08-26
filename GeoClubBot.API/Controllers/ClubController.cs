@@ -1,7 +1,7 @@
 using Constants;
 using GeoClubBot.DTOs;
 using GeoClubBot.DTOs.Assemblers;
-using GeoClubBot.Hubs;
+using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using UseCases.OutputPorts;

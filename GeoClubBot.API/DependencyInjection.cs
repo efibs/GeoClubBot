@@ -89,6 +89,8 @@ public static class DependencyInjection
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();
         services.AddTransient<IServerRolesAccess, DiscordServerRolesAccess>();
+        services.AddTransient<IClubEventNotifier, SignalRClubEventNotifier>();
+        services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
