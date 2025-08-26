@@ -1,5 +1,6 @@
 using Constants;
 using GeoClubBot;
+using GeoClubBot.Hubs;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
 using QuartzExtensions;
@@ -11,6 +12,7 @@ ConfiguredCronJobAttribute.Config = builder.Configuration;
 
 // Add services to the container.
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -50,4 +52,5 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.MapControllers();
+app.MapHub<ClubNotificationHub>("/clubNotificationHub");
 app.Run();
