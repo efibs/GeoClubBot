@@ -52,5 +52,5 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.MapControllers();
-app.MapHub<ClubNotificationHub>("/clubNotificationHub");
+app.MapHub<ClubNotificationHub>("/api/clubNotificationHub");
 app.Run();
