@@ -1,6 +1,7 @@
 using Constants;
 using GeoClubBot;
 using Infrastructure.OutputAdapters.DataAccess;
+using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.EntityFrameworkCore;
 using QuartzExtensions;
 
@@ -10,6 +11,19 @@ var builder = WebApplication.CreateBuilder(args);
 ConfiguredCronJobAttribute.Config = builder.Configuration;
 
 // Add services to the container.
+builder.Services.AddControllers();
+builder.Services.AddSignalR();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+    });
+});
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -22,6 +36,8 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 // If the db migrations should be applied
@@ -34,4 +50,7 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowAll");
+app.MapControllers();
+app.MapHub<ClubNotificationHub>("/api/clubNotificationHub");
 app.Run();
