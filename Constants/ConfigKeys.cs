@@ -9,6 +9,8 @@ public static class ConfigKeys
     
     public const string DiscordBotTokenConfigurationKey = "Discord:BotToken";
     public const string DiscordServerIdConfigurationKey = "Discord:ServerId";
+    public const string DiscordWelcomeMessageConfigurationKey = "Discord:WelcomeMessage";
+    public const string DiscordWelcomeTextChannelIdConfigurationKey = "Discord:WelcomeTextChannelId";
 
     public const string GeoGuessrTokenConfigurationKey = "GeoGuessr:NcfaToken";
     public const string GeoGuessrClubIdConfigurationKey = "GeoGuessr:ClubId";

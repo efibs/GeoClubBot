@@ -90,6 +90,7 @@ public static class DependencyInjection
         
         // Add the input adapters
         services.AddHostedService<InitialSyncService>();
+        services.AddHostedService<UserJoinedService>();
 
         // Add the output adapters 
         services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
