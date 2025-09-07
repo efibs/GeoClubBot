@@ -3,7 +3,6 @@ using Constants;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
@@ -12,11 +11,9 @@ namespace Infrastructure.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
 [Group("gg-account-link", "Commands for linking Discord accounts to GeoGuessr accounts")]
-public class GeoGuessrAccountLinkModule(IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase, 
+public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase, 
     IStartAccountLinkingProcessUseCase startAccountLinkingProcessUseCase, 
-    ICompleteAccountLinkingUseCase completeAccountLinkingUseCase,
-    IUnlinkAccountsUseCase unlinkAccountsUseCase,
-    ILogger<GeoGuessrAccountLinkModule> logger,
+    ILogger<GeoGuessrAccountLinkPublicModule> logger,
     IConfiguration config) : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("link", "Link your Discord account to a GeoGuessr account")]
@@ -95,78 +92,6 @@ public class GeoGuessrAccountLinkModule(IGetLinkedDiscordUserIdUseCase getLinked
         }
     }
     
-    [SlashCommand("complete", "Complete the account linking process")]
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
-    public async Task CompleteAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId, string oneTimePassword)
-    {
-        // Complete the account linking
-        var result =
-            await completeAccountLinkingUseCase.CompleteLinkingAsync(discordUser.Id, geoGuessrUserId, oneTimePassword);
-        
-        // Handle the linking ended
-        await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, null);
-    }
-    
-    [SlashCommand("unlink", "Unlink the accounts of a user")]
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
-    public async Task UnlinkAccountsSlashCommandAsync(IUser discordUser, string geoGuessrUserId)
-    {
-        // Unlink the accounts
-        var successful = await unlinkAccountsUseCase.UnlinkAccountsAsync(discordUser.Id, geoGuessrUserId);
-        
-        // If the unlink was not successful
-        if (successful == false)
-        {
-            // Respond with error
-            await RespondAsync("The given accounts are not linked", ephemeral: true);
-            return;
-        }
-        
-        // Respond with successful message
-        await RespondAsync("Account linking was successfully removed.", ephemeral: true);
-    }
-
-    [ComponentInteraction($"{ComponentIds.GeoGuessrAccountLinkingCompleteButtonId}:*,*", true)]
-    public async Task CompleteLinkingButtonPressedAsync(string discordUserIdString, string geoGuessrUserId)
-    {
-        // Get the message id
-        var messageId = (Context.Interaction as SocketMessageComponent)?.Message?.Id;
-        
-        // Build the modal id
-        var modalId = $"{ComponentIds.GeoGuessrAccountLinkingCompleteModalId}:{discordUserIdString},{geoGuessrUserId},{messageId}";
-        
-        // Send the modal
-        await Context.Interaction.RespondWithModalAsync<CompleteAccountLinkModal>(modalId);
-    }
-
-    [ModalInteraction($"{ComponentIds.GeoGuessrAccountLinkingCompleteModalId}:*,*,*", true)]
-    public async Task CompleteLinkingPasswordSubmitted(string discordUserIdString, string geoGuessrUserId, string messageIdString, CompleteAccountLinkModal modal)
-    {
-        try
-        {
-            // Parse the discord user id
-            var discordUserId = ulong.Parse(discordUserIdString);
-
-            // Complete the request
-            var result = await completeAccountLinkingUseCase
-                .CompleteLinkingAsync(discordUserId, geoGuessrUserId, modal.OneTimePassword);
-
-            // Get the discord user
-            var discordUser = Context.Guild.GetUser(discordUserId);
-            
-            // Handle the linking ended
-            await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString);
-        }
-        catch (Exception ex)
-        {
-            // Log error
-            logger.LogError(ex, $"Failed to link GeoGuessr Account '{geoGuessrUserId}' to Discord user '{discordUserIdString}'.");
-            
-            // Respond with error
-            await RespondAsync("Failed to complete linking process.", ephemeral: true);
-        }
-    }
-    
     private bool _tryParseUserIdFromProfileLink(string profileLink, out string? userId)
     {
         // Initialize user id to null
@@ -209,57 +134,9 @@ public class GeoGuessrAccountLinkModule(IGetLinkedDiscordUserIdUseCase getLinked
                               $"**Only accept the password if it was sent to you by the correct user inside GeoGuessr!**", 
                 components: completeButton);
     }
-
-    private async Task _handleLinkingEndedAsync(bool successful, GeoGuessrUser? geoGuessrUser, IUser discordUser, string? messageIdString)
-    {
-        try
-        {
-            // If the linking was not successful
-            if (successful == false)
-            {
-                // Respond with wrong password message
-                await RespondAsync("Account linking failed: Wrong password. Please try again.", ephemeral: true);
-                return;
-            }
-
-            // Respond with successful message
-            await RespondAsync("Account linking was successful.", ephemeral: true);
-        }
-        catch
-        {
-            // ignored
-        }
-
-        try
-        {
-            // Create a direct message channel with the user
-            var dmChannel = await discordUser.CreateDMChannelAsync();
-            
-            // Send successful message
-            await dmChannel.SendMessageAsync(
-                $"Your GeoGuessr account \"{geoGuessrUser?.Nickname ?? "N/A"}\" was successfully linked to this Discord account.");
-        }
-        catch
-        {
-            // ignored
-        }
-
-        // If the original message id is still existing
-        if (messageIdString != null)
-        {
-            // Parse the message id
-            var messageId = ulong.Parse(messageIdString);
-            
-            // Get the original message
-            var message = await Context.Channel.GetMessageAsync(messageId);
-            
-            // Delete the original message
-            await message.DeleteAsync();
-        }
-    }
     
     private static readonly Regex ShareProfileLinkCheckerRegex =
-        new Regex(@"^https:\/\/www\.geoguessr\.com\/user\/[\da-z]{24}$", RegexOptions.Compiled);
+        new(@"^https:\/\/www\.geoguessr\.com\/user\/[\da-z]{24}$", RegexOptions.Compiled);
 
     private readonly ulong _accountLinkingAdminChannelId =
         config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingAdminChannelIdConfigurationKey);
