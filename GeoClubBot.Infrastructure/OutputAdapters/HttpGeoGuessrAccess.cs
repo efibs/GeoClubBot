@@ -47,6 +47,24 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
         return club;
     }
 
+    public async Task<GeoGuessrUserDTO?> ReadUserAsync(string userId)
+    {
+        // Create the http client
+        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
+        
+        // Make the http call
+        var user =
+            await client.GetFromJsonAsync<GeoGuessrUserDTO>($"v3/users/{userId}");
+        
+        // If the call resulted in nothing
+        if (user == null)
+        {
+            throw new DataException("User not found");
+        }
+        
+        return user;
+    }
+
     public async Task<GeoGuessrCreateChallengeResponseDTO> CreateChallengeAsync(
         GeoGuessrCreateChallengeRequestDTO request)
     {

@@ -22,6 +22,10 @@ public class GeoClubBotDbContext : DbContext
     public DbSet<ClubMemberHistoryEntry> ClubMemberHistoryEntries { get; set; }
 
     public DbSet<ClubChallengeLink> LatestClubChallengeLinks { get; set; }
+
+    public DbSet<GeoGuessrUser> GeoGuessrUsers { get; set; }
+    
+    public DbSet<GeoGuessrAccountLinkingRequest> GeoGuessrAccountLinkingRequests { get; set; }
     
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {

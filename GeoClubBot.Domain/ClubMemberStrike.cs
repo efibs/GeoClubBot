@@ -32,6 +32,6 @@ public class ClubMemberStrike
         // Get the expiration date
         var expiration = Timestamp + expirationTimeSpan;
         
-        return $"Player {ClubMember?.Nickname ?? "N/A"}: {Timestamp:d} - Revoked: {Revoked} (Id: {StrikeId}, expires: {expiration:d})";
+        return $"Player {ClubMember?.User?.Nickname ?? "N/A"}: {Timestamp:d} - Revoked: {Revoked} (Id: {StrikeId}, expires: {expiration:d})";
     }
 }

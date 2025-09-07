@@ -54,7 +54,8 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
     {
         // Try to find the club member by nickname
         var clubMember = await dbContext.ClubMembers
-            .FirstOrDefaultAsync(m => m.Nickname == nickname);
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.User!.Nickname == nickname);
 
         return clubMember;
     }
@@ -62,7 +63,9 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
     public async Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId)
     {
         // Try to find the club member
-        var clubMember = await dbContext.ClubMembers.FindAsync(userId);
+        var clubMember = await dbContext.ClubMembers
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.UserId == userId);
         
         return clubMember;
     }

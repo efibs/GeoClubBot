@@ -42,7 +42,8 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         // Read the member
         var member = await dbContext.ClubMembers
             .Include(clubMember => clubMember.Excuses)
-            .FirstOrDefaultAsync(m => m.Nickname == memberNickname);
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname);
 
         return member?.Excuses ?? [];
     }
@@ -60,6 +61,9 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         
         // Delete the entity
         dbContext.Remove(excuse);
+        
+        // Save the changes to the database
+        await dbContext.SaveChangesAsync();
         
         return true;
     }

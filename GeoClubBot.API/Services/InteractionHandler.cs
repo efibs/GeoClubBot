@@ -2,7 +2,7 @@ using System.Reflection;
 using Constants;
 using Discord.Interactions;
 using Discord.WebSocket;
-using Infrastructure.InputAdapters.Commands;
+using Infrastructure.InputAdapters.Interactions;
 
 namespace GeoClubBot.Services;
 
@@ -18,13 +18,13 @@ public class InteractionHandler
         _config = config;
 
         client.Ready += _createSlashCommandsAsync;
-        client.InteractionCreated += HandleSlashCommandAsync;
+        client.InteractionCreated += _handleInteractionAsync;
     }
 
     private async Task _createSlashCommandsAsync()
     {
         // Get the assembly containing the commands
-        var commandsAssembly = typeof(CommandAssemblyMarker).Assembly;
+        var commandsAssembly = typeof(InteractionsAssemblyMarker).Assembly;
 
         // Add the modules via reflection
         await _interactionService.AddModulesAsync(commandsAssembly, _serviceProvider);
@@ -37,7 +37,7 @@ public class InteractionHandler
         _logger.LogInformation("Slash commands registered");
     }
 
-    private async Task HandleSlashCommandAsync(SocketInteraction interaction)
+    private async Task _handleInteractionAsync(SocketInteraction interaction)
     {
         // Log debug
         _logger.LogDebug("Handling interaction on guild {guild} in channel {channel}", interaction.GuildId,

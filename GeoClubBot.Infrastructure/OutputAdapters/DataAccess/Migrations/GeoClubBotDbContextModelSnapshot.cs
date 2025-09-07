@@ -77,16 +77,9 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.Property<Guid>("ClubId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Nickname")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.HasKey("UserId");
 
                     b.HasIndex("ClubId");
-
-                    b.HasIndex("Nickname");
 
                     b.ToTable("ClubMembers");
                 });
@@ -161,6 +154,46 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("ClubMemberStrikes");
                 });
 
+            modelBuilder.Entity("Entities.GeoGuessrAccountLinkingRequest", b =>
+                {
+                    b.Property<decimal>("DiscordUserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("GeoGuessrUserId")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("OneTimePassword")
+                        .IsRequired()
+                        .HasMaxLength(18)
+                        .HasColumnType("character varying(18)");
+
+                    b.HasKey("DiscordUserId", "GeoGuessrUserId");
+
+                    b.ToTable("GeoGuessrAccountLinkingRequests");
+                });
+
+            modelBuilder.Entity("Entities.GeoGuessrUser", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<decimal?>("DiscordUserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("Nickname")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("Nickname");
+
+                    b.ToTable("GeoGuessrUsers");
+                });
+
             modelBuilder.Entity("Entities.ClubMember", b =>
                 {
                     b.HasOne("Entities.Club", "Club")
@@ -169,7 +202,15 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Entities.GeoGuessrUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Club");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Entities.ClubMemberExcuse", b =>

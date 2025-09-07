@@ -14,8 +14,22 @@ using Quartz.Impl.AdoJobStore;
 using QuartzExtensions;
 using UseCases;
 using UseCases.InputPorts;
+using UseCases.InputPorts.Club;
+using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.InputPorts.DailyChallenge;
+using UseCases.InputPorts.Excuses;
+using UseCases.InputPorts.GeoGuessrAccountLinking;
+using UseCases.InputPorts.Organization;
+using UseCases.InputPorts.Strikes;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.UseCases.Club;
+using UseCases.UseCases.ClubMemberActivity;
+using UseCases.UseCases.DailyChallenge;
+using UseCases.UseCases.Excuses;
+using UseCases.UseCases.GeoGuessrAccountLinking;
+using UseCases.UseCases.Organization;
+using UseCases.UseCases.Strikes;
 using RunMode = Discord.Interactions.RunMode;
 
 namespace GeoClubBot;
@@ -85,6 +99,8 @@ public static class DependencyInjection
         services.AddTransient<IExcusesRepository, EfExcusesRepository>();
         services.AddTransient<IStrikesRepository, EfStrikesRepository>();
         services.AddTransient<IClubChallengeRepository, EfClubChallengeRepository>();
+        services.AddTransient<IGeoGuessrUserRepository, EfGeoGuessrUserRepository>();
+        services.AddTransient<IAccountLinkingRequestRepository, EfAccountLinkingRequestRepository>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();
@@ -113,6 +129,12 @@ public static class DependencyInjection
         services.AddTransient<IDistributeDailyChallengeRolesUseCase, DistributeDailyChallengeRolesUseCase>();
         services.AddTransient<IPlayerStatisticsUseCase, PlayerStatisticsUseCase>();
         services.AddTransient<IClubStatisticsUseCase, ClubStatisticsUseCase>();
+        services.AddTransient<ISaveClubMembersUseCase, SaveClubMembersUseCase>();
+        services.AddTransient<IGetLinkedDiscordUserIdUseCase, GetLinkedDiscordUserIdUseCase>();
+        services.AddTransient<IStartAccountLinkingProcessUseCase, StartAccountLinkingUseCase>();
+        services.AddTransient<ICompleteAccountLinkingUseCase, CompleteAccountLinkingUseCase>();
+        services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
+        services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

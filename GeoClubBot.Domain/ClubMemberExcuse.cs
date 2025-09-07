@@ -29,6 +29,6 @@ public class ClubMemberExcuse
 
     public string ToStringWithPlayerName()
     {
-        return $"Player {ClubMember?.Nickname ?? "N/A"}: {From:d} - {To:d} (Id: {ExcuseId})";
+        return $"Player {ClubMember?.User?.Nickname ?? "N/A"}: {From:d} - {To:d} (Id: {ExcuseId})";
     }
 }

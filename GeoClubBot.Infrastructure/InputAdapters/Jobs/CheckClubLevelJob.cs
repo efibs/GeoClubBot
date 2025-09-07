@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Quartz;
 using QuartzExtensions;
 using UseCases.InputPorts;
+using UseCases.InputPorts.Club;
 
 namespace Infrastructure.InputAdapters.Jobs;
 

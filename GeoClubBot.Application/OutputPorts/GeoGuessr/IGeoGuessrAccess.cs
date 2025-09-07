@@ -8,6 +8,8 @@ public interface IGeoGuessrAccess
     Task<List<GeoGuessrClubMemberDTO>> ReadClubMembersAsync(Guid clubId);
     
     Task<GeoGuessrClubDTO> ReadClubAsync(Guid clubId);
+    
+    Task<GeoGuessrUserDTO?> ReadUserAsync(string userId);
 
     Task<GeoGuessrCreateChallengeResponseDTO> CreateChallengeAsync(GeoGuessrCreateChallengeRequestDTO request);
     

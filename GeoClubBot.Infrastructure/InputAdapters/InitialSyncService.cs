@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using UseCases.InputPorts;
+using UseCases.InputPorts.Organization;
 
 namespace Infrastructure.InputAdapters;
 

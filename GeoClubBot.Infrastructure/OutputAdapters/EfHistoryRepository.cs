@@ -30,7 +30,8 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
     {
         // Get if the player is tracked
         var playerExists = await dbContext.ClubMembers
-            .AnyAsync(e => e.Nickname == playerNickname);
+            .Include(m => m.User)
+            .AnyAsync(m => m.User!.Nickname == playerNickname);
         
         // If the player is not tracked
         if (!playerExists)
@@ -41,7 +42,8 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         // Read the entries
         var entries = await dbContext.ClubMemberHistoryEntries
             .Include(e => e.ClubMember)
-            .Where(e => e.ClubMember!.Nickname == playerNickname)
+            .ThenInclude(m => m!.User)
+            .Where(e => e.ClubMember!.User!.Nickname == playerNickname)
             .ToListAsync();
 
         return entries;

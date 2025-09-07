@@ -5,21 +5,20 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Entities;
 
-[Index(nameof(Nickname))]
 public class ClubMember
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     [MaxLength(StringLengthConstants.GeoGuessrUserIdLength)]
+    [ForeignKey(nameof(User))]
     public string UserId { get; set; } = string.Empty;
     
     [ForeignKey(nameof(Club))]
     public Guid ClubId { get; set; }
-
-    [MaxLength(StringLengthConstants.GeoGuessrPlayerNicknameMaxLength)]
-    public string Nickname { get; set; } = string.Empty;
     
     public Club? Club { get; set; }
+
+    public GeoGuessrUser? User { get; set; }
     
     public List<ClubMemberHistoryEntry>? History { get; set; }
     
@@ -29,6 +28,6 @@ public class ClubMember
 
     public override string ToString()
     {
-        return Nickname;
+        return User?.ToString() ?? "N/A";
     }
 }

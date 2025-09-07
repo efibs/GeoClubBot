@@ -44,7 +44,8 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         // Read the member
         var member = await dbContext.ClubMembers
             .Include(m => m.Strikes)
-            .FirstOrDefaultAsync(m => m.Nickname == memberNickname);
+            .Include(m => m.User)
+            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname);
         
         return member?.Strikes;
     }
@@ -54,6 +55,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         // Read the strikes
         var strikes = await dbContext.ClubMemberStrikes
             .Include(s => s.ClubMember)
+            .ThenInclude(m => m!.User)
             .ToListAsync();
         
         return strikes;

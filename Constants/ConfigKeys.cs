@@ -31,5 +31,7 @@ public static class ConfigKeys
     public const string DailyChallengesSecondRoleIdConfigurationKey = "DailyChallenges:SecondRoleId";
     public const string DailyChallengesThirdRoleIdConfigurationKey = "DailyChallenges:ThirdRoleId";
     
+    public const string GeoGuessrAccountLinkingAdminChannelIdConfigurationKey = "GeoGuessrAccountLinking:AdminChannelId";
+    
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }
