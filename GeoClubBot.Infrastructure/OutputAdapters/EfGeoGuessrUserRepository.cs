@@ -38,4 +38,14 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
         
         return clubMember;
     }
+
+    public async Task<List<GeoGuessrUser>> ReadAllLinkedUsersAsync()
+    {
+        // Get the club members that have a discord user id set
+        var linkedUsers = await dbContext.GeoGuessrUsers
+            .Where(u => u.DiscordUserId.HasValue)
+            .ToListAsync();
+        
+        return linkedUsers;
+    }
 }

@@ -27,7 +27,19 @@ public class DiscordServerRolesAccess(DiscordSocketClient client, IConfiguration
         
         return usersWithRole.Count;
     }
-    
+
+    public async Task RemoveRolesFromUserAsync(ulong userId, IEnumerable<ulong> roleIds)
+    {
+        // Get the guild
+        var guild = client.GetGuild(_guildId);
+        
+        // Get the user
+        var user = guild.GetUser(userId);
+        
+        // Remove all the roles from the user
+        await user.RemoveRolesAsync(roleIds);
+    }
+
     public async Task AddRoleToMembersByUserIdsAsync(IEnumerable<ulong> userIds, ulong roleId)
     {
         // Get the guild

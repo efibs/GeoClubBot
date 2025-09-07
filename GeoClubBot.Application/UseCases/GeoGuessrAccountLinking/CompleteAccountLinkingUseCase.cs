@@ -1,4 +1,7 @@
+using Constants;
 using Entities;
+using Microsoft.Extensions.Configuration;
+using UseCases.InputPorts.Club;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.InputPorts.Organization;
 using UseCases.OutputPorts;
@@ -7,7 +10,10 @@ namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository accountLinkingRequestRepository, 
     IGeoGuessrUserRepository geoGuessrUserRepository, 
-    IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase) : ICompleteAccountLinkingUseCase
+    IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase,
+    ISyncClubMemberRoleUseCase syncClubMemberRoleUseCase,
+    IServerRolesAccess rolesAccess,
+    IConfiguration config) : ICompleteAccountLinkingUseCase
 {
     public async Task<(bool Successful, GeoGuessrUser? User)> CompleteLinkingAsync(ulong discordUserId, string geoGuessrUserId, string oneTimePassword)
     {
@@ -44,6 +50,14 @@ public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository acco
         // Delete the linking request
         await accountLinkingRequestRepository.DeleteRequestAsync(discordUserId, geoGuessrUserId);
         
+        // Give the user the has linked role
+        await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _hasLinkedRoleId);
+        
+        // Sync the users member role
+        await syncClubMemberRoleUseCase.SyncUserClubMemberRoleAsync(discordUserId, geoGuessrUserId);
+        
         return (true, user);
     }
+    
+    private readonly ulong _hasLinkedRoleId = config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
 }

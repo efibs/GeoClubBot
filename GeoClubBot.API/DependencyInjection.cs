@@ -135,6 +135,7 @@ public static class DependencyInjection
         services.AddTransient<ICompleteAccountLinkingUseCase, CompleteAccountLinkingUseCase>();
         services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
         services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
+        services.AddTransient<ISyncClubMemberRoleUseCase, SyncClubMemberRoleUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
