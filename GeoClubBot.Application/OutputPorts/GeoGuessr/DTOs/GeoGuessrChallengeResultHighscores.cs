@@ -6,7 +6,7 @@ public record GeoGuessrChallengeResultItem(GeoGuessrChallengeResultGame Game);
 
 public record GeoGuessrChallengeResultGame(GeoGuessrChallengeResultPlayer Player);
 
-public record GeoGuessrChallengeResultPlayer(string Nick, GeoGuessrChallengeResultPlayerScore TotalScore, GeoGuessrChallengeResultPlayerDistance TotalDistance);
+public record GeoGuessrChallengeResultPlayer(string Id, string Nick, GeoGuessrChallengeResultPlayerScore TotalScore, GeoGuessrChallengeResultPlayerDistance TotalDistance);
 
 public record GeoGuessrChallengeResultPlayerScore(string Amount, string Unit);
 

@@ -107,6 +107,7 @@ public class DailyChallengeUseCase(
             // Map the players
             var players = highscores.Items
                 .Select(s => new ClubChallengeResultPlayer(
+                    s.Game.Player.Id,
                     s.Game.Player.Nick, 
                     $"{s.Game.Player.TotalScore.Amount} {s.Game.Player.TotalScore.Unit}",
                     $"{s.Game.Player.TotalDistance.Meters.Amount}{s.Game.Player.TotalDistance.Meters.Unit}"))

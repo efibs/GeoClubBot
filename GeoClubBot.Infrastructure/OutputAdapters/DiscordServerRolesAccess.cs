@@ -27,17 +27,17 @@ public class DiscordServerRolesAccess(DiscordSocketClient client, IConfiguration
         
         return usersWithRole.Count;
     }
-
-    public async Task AddRoleToMembersByNicknameAsync(HashSet<string> nicknames, ulong roleId)
+    
+    public async Task AddRoleToMembersByUserIdsAsync(IEnumerable<ulong> userIds, ulong roleId)
     {
         // Get the guild
         var guild = client.GetGuild(_guildId);
 
-        // Get the user of the nickname
-        var users = guild.Users.Where(u => nicknames.Contains(u.DisplayName));
-
-        foreach (var user in users)
+        foreach (var userId in userIds)
         {
+            // Get the user
+            var user = guild.GetUser(userId);
+            
             // Add the role to the user
             await user.AddRoleAsync(roleId);
         

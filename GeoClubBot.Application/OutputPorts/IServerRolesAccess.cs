@@ -4,5 +4,5 @@ public interface IServerRolesAccess
 {
     Task<int> RemoveRoleFromAllPlayersAsync(ulong roleId);
     
-    Task AddRoleToMembersByNicknameAsync(HashSet<string> nicknames, ulong roleId);
+    Task AddRoleToMembersByUserIdsAsync(IEnumerable<ulong> userIds, ulong roleId);
 }

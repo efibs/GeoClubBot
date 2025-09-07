@@ -2,11 +2,14 @@ using Constants;
 using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.DailyChallenge;
+using UseCases.InputPorts.Organization;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.DailyChallenge;
 
-public class DistributeDailyChallengeRolesUseCase(IServerRolesAccess serverRolesAccess, IConfiguration config)
+public class DistributeDailyChallengeRolesUseCase(IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase,
+    IServerRolesAccess serverRolesAccess, 
+    IConfiguration config)
     : IDistributeDailyChallengeRolesUseCase
 {
     public async Task DistributeDailyChallengeRolesAsync(List<ClubChallengeResult> results)
@@ -17,9 +20,9 @@ public class DistributeDailyChallengeRolesUseCase(IServerRolesAccess serverRoles
         await serverRolesAccess.RemoveRoleFromAllPlayersAsync(_thirdRoleId);
 
         // Save the nicknames of the winners
-        var firstPlayers = new HashSet<string>();
-        var secondPlayers = new HashSet<string>();
-        var thirdPlayers = new HashSet<string>();
+        var firstPlayersGeoGuessrUserIds = new HashSet<string>();
+        var secondPlayersGeoGuessrUserIds = new HashSet<string>();
+        var thirdPlayersGeoGuessrUserIds = new HashSet<string>();
 
         // Group the results by role priority
         var rolePriorityGroupedResults = results
@@ -35,9 +38,9 @@ public class DistributeDailyChallengeRolesUseCase(IServerRolesAccess serverRoles
             // Remove the players that are already winners
             var cleanedResults = rolePriorityGroup
                 .Select(r => r.Players
-                    .Where(p => !firstPlayers.Contains(p.Nickname) &&
-                                !secondPlayers.Contains(p.Nickname) &&
-                                !thirdPlayers.Contains(p.Nickname))
+                    .Where(p => !firstPlayersGeoGuessrUserIds.Contains(p.Nickname) &&
+                                !secondPlayersGeoGuessrUserIds.Contains(p.Nickname) &&
+                                !thirdPlayersGeoGuessrUserIds.Contains(p.Nickname))
                     .ToList())
                 .ToList();
             
@@ -51,23 +54,51 @@ public class DistributeDailyChallengeRolesUseCase(IServerRolesAccess serverRoles
                     switch (place++)
                     {
                         case 1:
-                            firstPlayers.Add(player.Nickname);
+                            firstPlayersGeoGuessrUserIds.Add(player.UserId);
                             break;
                         case 2:
-                            secondPlayers.Add(player.Nickname);
+                            secondPlayersGeoGuessrUserIds.Add(player.UserId);
                             break;
                         case 3:
-                            thirdPlayers.Add(player.Nickname);
+                            thirdPlayersGeoGuessrUserIds.Add(player.UserId);
                             break;
                     }
                 }
             }
         }
         
+        // Convert to Discord user ids
+        var firstPlayers = await _geoGuessrUserIdsToDiscordUserIdsAsync(firstPlayersGeoGuessrUserIds);
+        var secondPlayers = await _geoGuessrUserIdsToDiscordUserIdsAsync(secondPlayersGeoGuessrUserIds);
+        var thirdPlayers = await _geoGuessrUserIdsToDiscordUserIdsAsync(thirdPlayersGeoGuessrUserIds);
+        
         // Distribute the roles
-        await serverRolesAccess.AddRoleToMembersByNicknameAsync(firstPlayers, _firstRoleId);
-        await serverRolesAccess.AddRoleToMembersByNicknameAsync(secondPlayers, _secondRoleId);
-        await serverRolesAccess.AddRoleToMembersByNicknameAsync(thirdPlayers, _thirdRoleId);
+        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(firstPlayers, _firstRoleId);
+        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(secondPlayers, _secondRoleId);
+        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(thirdPlayers, _thirdRoleId);
+    }
+
+    private async Task<List<ulong>> _geoGuessrUserIdsToDiscordUserIdsAsync(IEnumerable<string> geoGuessrUserIds)
+    {
+        // Create a new list
+        var discordUserIds = new List<ulong>();
+
+        // For every GeoGuessr user id
+        foreach (var geoGuessrUserId in geoGuessrUserIds)
+        {
+            // Try to read the user
+            var geoGuessrUser =
+                await readOrSyncGeoGuessrUserUseCase.ReadOrSyncGeoGuessrUserByUserIdAsync(geoGuessrUserId);
+            
+            // If there is a discord user id set
+            if (geoGuessrUser?.DiscordUserId != null)
+            {
+                // Add the discord user id to the list
+                discordUserIds.Add(geoGuessrUser.DiscordUserId.Value);
+            }
+        }
+        
+        return discordUserIds;
     }
     
     private readonly ulong _firstRoleId = config.GetValue<ulong>(ConfigKeys.DailyChallengesFirstRoleIdConfigurationKey);
