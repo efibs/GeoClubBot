@@ -10,7 +10,7 @@ using UseCases.InputPorts.GeoGuessrAccountLinking;
 namespace Infrastructure.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("gg-account-link", "Commands for linking Discord accounts to GeoGuessr accounts")]
+[Group("gg-account", "Commands for linking Discord accounts to GeoGuessr accounts")]
 public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase, 
     IStartAccountLinkingProcessUseCase startAccountLinkingProcessUseCase, 
     ILogger<GeoGuessrAccountLinkPublicModule> logger,
