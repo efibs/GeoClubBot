@@ -21,6 +21,9 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
     {
         try
         {
+            // Defer the response
+            await DeferAsync(ephemeral: true);
+            
             // Get the executing user
             var executingUser = Context.User as SocketGuildUser;
             
@@ -31,7 +34,7 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
             if (parseSuccessful == false || geoGuessrUserId == null)
             {
                 // Respond with error message
-                await RespondAsync("Account link failed: The profile link was in the wrong format.\n\n" +
+                await FollowupAsync("Account link failed: The profile link was in the wrong format.\n\n" +
                                    "The link should look something like this: https://www.geoguessr.com/user/62c353a29d0d57e7b9a3383f. " +
                                    "You can retrieve the link from your profile page: In the top right of GeoGuessr go to \"Profile\". " +
                                    "Then scroll all the way down. There you can copy your profile link.\n\nPlease try again.",
@@ -51,8 +54,8 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
                 var linkedDiscordUser = Context.Guild.GetUser(linkedDiscordUserId.Value);
                 
                 // Respond with error message
-                await RespondAsync("Account link failed: The GeoGuessr account is already linked to discord account " +
-                                   $"\"{linkedDiscordUser.DisplayName}\". Please contact an admin if you think this is a mistake.",
+                await FollowupAsync("Account link failed: The GeoGuessr account is already linked to discord account " +
+                                    $"\"{linkedDiscordUser.DisplayName}\". Please contact an admin if you think this is a mistake.",
                     ephemeral: true);
 
                 return;
@@ -65,19 +68,19 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
             if (oneTimePassword == null)
             {
                 // Respond with error message
-                await RespondAsync("Account link failed: Linking process already started. " +
-                                   "If you have not received a one time password, then please contact an admin. " +
-                                   "If you have already sent the one time password to an admin in GeoGuessr, lean back " +
-                                   "and relax while the admins are processing your request.",
+                await FollowupAsync("Account link failed: Linking process already started. " +
+                                    "If you have not received a one time password, then please contact an admin. " +
+                                    "If you have already sent the one time password to an admin in GeoGuessr, lean back " +
+                                    "and relax while the admins are processing your request.",
                     ephemeral: true);
 
                 return;
             }
             
             // Respond with further instructions
-            await RespondAsync("Account linking process successfully started. To complete the linking process, " +
-                               $"please send this one time password to an admin in GeoGuessr: {oneTimePassword}\n\n" +
-                               "The admin will then complete your request and you will get notified.", ephemeral: true);
+            await FollowupAsync("Account linking process successfully started. To complete the linking process, " +
+                                $"please send this one time password to an admin in GeoGuessr: {oneTimePassword}\n\n" +
+                                "The admin will then complete your request and you will get notified.", ephemeral: true);
             
             // Send admin message
             await _sendAdminAccountLinkingStartedMessageAsync(executingUser, geoGuessrUserId);
@@ -88,7 +91,7 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
             logger.LogError(ex, $"Account linking process failed for profile: {shareProfileLink}.");
             
             // Respond with error message
-            await RespondAsync("Account link failed: Internal error. Try again later. If the problem persists, please contact an admin.", ephemeral: true);
+            await FollowupAsync("Account link failed: Internal error. Try again later. If the problem persists, please contact an admin.", ephemeral: true);
         }
     }
     
@@ -126,8 +129,8 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
             .WithButton("Complete", completeButtonId)
             .Build();
         
-            // Send message to the admins
-            await adminTextChannel
+        // Send message to the admins
+        await adminTextChannel
             .SendMessageAsync($"User {executingUser.DisplayName} (id: {executingUser.Id}) " +
                               $"started the linking process for GeoGuessr account {geoGuessrUserId}. " +
                               $"Click the button below to complete the linking process.\n\n" +
