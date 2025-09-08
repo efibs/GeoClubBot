@@ -12,6 +12,7 @@ ConfiguredCronJobAttribute.Config = builder.Configuration;
 
 // Add services to the container.
 builder.Services.AddControllers();
+builder.Services.AddHealthChecks();
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -52,5 +53,6 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.MapControllers();
+app.MapHealthChecks("/health");
 app.MapHub<ClubNotificationHub>("/api/clubNotificationHub");
 app.Run();
