@@ -3,9 +3,9 @@ namespace Constants;
 public class ComponentIds
 {
     public const string GeoGuessrAccountLinkingCompleteOneTimePasswordTextInputId =
-        "GeoGuessrAccountLinkingCompleteOneTimePasswordTextInput";
+        "gg-acc-link-otp-input";
     public const string GeoGuessrAccountLinkingCompleteModalId =
-        "GeoGuessrAccountLinkingCompleteModal";
+        "gg-acc-link-modal";
     public const string GeoGuessrAccountLinkingCompleteButtonId =
-        "GeoGuessrAccountLinkingCompleteButton";
+        "gg-acc-link-complete-btn";
 }
