@@ -20,7 +20,7 @@ public class SyncClubMemberRoleUseCase(IReadOrSyncGeoGuessrUserUseCase readOrSyn
         
         // Get a hashset of all members GeoGuessr user ids
         var clubMemberGeoGuessrUserIds = clubMembers
-            .Select(m => m.User.UserId)
+            .Select(m => m.User.Id)
             .ToHashSet();
         
         // Read all linked users
@@ -43,7 +43,7 @@ public class SyncClubMemberRoleUseCase(IReadOrSyncGeoGuessrUserUseCase readOrSyn
         var clubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId);
         
         // Check if the user is a club member
-        var userIsClubMember = clubMembers.Any(m => m.User.UserId == geoGuessrUserId);
+        var userIsClubMember = clubMembers.Any(m => m.User.Id == geoGuessrUserId);
         
         // Sync the role
         await _syncRoleOfUser(userIsClubMember, discordUserId);
