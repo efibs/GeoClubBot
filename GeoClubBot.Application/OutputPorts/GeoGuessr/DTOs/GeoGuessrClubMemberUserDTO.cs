@@ -1,5 +1,5 @@
 namespace UseCases.OutputPorts.GeoGuessr.DTOs;
 
-public record GeoGuessrUserDTO(
-    string Id,
+public record GeoGuessrClubMemberUserDTO(
+    string UserId,
     string Nick);
