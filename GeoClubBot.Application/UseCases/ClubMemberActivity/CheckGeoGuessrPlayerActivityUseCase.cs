@@ -57,11 +57,11 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         // Create the new latest activity for the players
         var newLatestHistoryEntries =
-            members.ToDictionary(m => m.User.Id,
+            members.ToDictionary(m => m.User.UserId,
                 m => new ClubMemberHistoryEntry
                 {
                     Timestamp = now,
-                    UserId = m.User.Id,
+                    UserId = m.User.UserId,
                     Xp = m.Xp
                 });
 
@@ -126,13 +126,13 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         TimeRange checkTimeRange)
     {
         // Read the member from the database
-        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.User.Id);
+        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.User.UserId);
         
         // If the club member could not be retrieved
         if (clubMember == null)
         {
             // Log warning
-            logger.LogError($"Club member {memberDto.User.Id} could not be found.");
+            logger.LogError($"Club member {memberDto.User.UserId} could not be found.");
             return null;
         }
         
@@ -221,7 +221,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         }
         
         // Try to get the excuses of the player
-        excuses.TryGetValue(memberDto.User.Id, out var memberExcuses);
+        excuses.TryGetValue(memberDto.User.UserId, out var memberExcuses);
         memberExcuses ??= [];
         
         // Calculate the intersections between the check time range and the

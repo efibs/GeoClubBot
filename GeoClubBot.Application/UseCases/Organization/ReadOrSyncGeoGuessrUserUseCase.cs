@@ -30,7 +30,7 @@ public class ReadOrSyncGeoGuessrUserUseCase(IGeoGuessrUserRepository geoGuessrUs
         // Create the user object
         var newUser = new GeoGuessrUser
         {
-            UserId = userDto.Id,
+            UserId = userDto.UserId,
             Nickname = userDto.Nick
         };
         

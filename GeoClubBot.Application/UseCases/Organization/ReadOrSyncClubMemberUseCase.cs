@@ -23,7 +23,7 @@ public class ReadOrSyncClubMemberUseCase(
     public async Task<ClubMember?> ReadOrSyncClubMemberByUserIdAsync(string userId)
     {
         return await _readOrSyncGenericAsync(userId, clubMemberRepository.ReadClubMemberByUserIdAsync,
-            m => m.User.Id == userId);
+            m => m.User.UserId == userId);
     }
 
     private async Task<ClubMember?> _readOrSyncGenericAsync<T>(T id,
