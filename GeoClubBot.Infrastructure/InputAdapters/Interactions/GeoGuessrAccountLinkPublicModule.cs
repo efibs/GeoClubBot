@@ -126,11 +126,15 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
         // Build the id for the complete button
         var completeButtonId = $"{ComponentIds.GeoGuessrAccountLinkingCompleteButtonId}:{executingUser.Id},{geoGuessrUserId}";
         
+        // Build the id for the cancel button
+        var cancelButtonId = $"{ComponentIds.GeoGuessrAccountLinkingCancelButtonId}:{executingUser.Id},{geoGuessrUserId}";
+        
         // Build the send complete modal button
         var completeButton = new ComponentBuilder()
             .WithButton("Complete", completeButtonId)
+            .WithButton("Cancel", cancelButtonId, style: ButtonStyle.Danger)
             .Build();
-        
+
         // Send message to the admins
         await adminTextChannel
             .SendMessageAsync($"User {executingUser.DisplayName} (id: {executingUser.Id}) " +

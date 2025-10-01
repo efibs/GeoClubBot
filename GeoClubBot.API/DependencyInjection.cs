@@ -141,6 +141,7 @@ public static class DependencyInjection
         services.AddTransient<ISyncClubMemberRoleUseCase, SyncClubMemberRoleUseCase>();
         services.AddTransient<IClubMemberActivityRewardUseCase, ClubMemberActivityRewardUseCase>();
         services.AddTransient<IGeoGuessrUserIdsToDiscordUserIdsUseCase, GeoGuessrUserIdsToDiscordUserIdsUseCase>();
+        services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
