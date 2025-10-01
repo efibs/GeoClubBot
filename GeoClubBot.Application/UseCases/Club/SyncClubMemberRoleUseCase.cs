@@ -1,14 +1,12 @@
 using Constants;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.Club;
-using UseCases.InputPorts.Organization;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.Club;
 
-public class SyncClubMemberRoleUseCase(IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase, 
-    IGeoGuessrAccess geoGuessrAccess, 
+public class SyncClubMemberRoleUseCase(IGeoGuessrAccess geoGuessrAccess, 
     IGeoGuessrUserRepository geoGuessrUserRepository,
     IServerRolesAccess rolesAccess, 
     IConfiguration config) : ISyncClubMemberRoleUseCase

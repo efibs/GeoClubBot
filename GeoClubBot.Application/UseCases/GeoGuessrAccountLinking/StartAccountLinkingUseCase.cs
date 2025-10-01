@@ -6,8 +6,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
-public class StartAccountLinkingUseCase(IMessageSender messageSender,
-    IAccountLinkingRequestRepository accountLinkingRequestRepository) : IStartAccountLinkingProcessUseCase
+public class StartAccountLinkingUseCase(IAccountLinkingRequestRepository accountLinkingRequestRepository) : IStartAccountLinkingProcessUseCase
 {
     public async Task<string?> StartLinkingProcessAsync(ulong discordUserId, string geoGuessrUserId)
     {
