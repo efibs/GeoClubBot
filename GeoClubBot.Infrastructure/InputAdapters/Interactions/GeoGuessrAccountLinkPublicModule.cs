@@ -78,8 +78,10 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
             }
             
             // Respond with further instructions
-            await FollowupAsync("Account linking process successfully started. To complete the linking process, " +
-                                $"please send this one time password to an admin in GeoGuessr: {oneTimePassword}\n\n" +
+            await FollowupAsync("**IMPORTANT! READ CAREFULLY!**: Account linking process successfully started. To complete the linking process, " +
+                                "please send the following one time password to an admin of this Discord server as a direct message **in GeoGuessr**. Do not send " +
+                                "the password here in Discord or anywhere else other than as a direct message in GeoGuessr.\n" +
+                                $"Here is your one time password: {oneTimePassword}\n\n" +
                                 "The admin will then complete your request and you will get notified.", ephemeral: true);
             
             // Send admin message
