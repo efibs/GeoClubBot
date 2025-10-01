@@ -22,6 +22,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
     ICleanupUseCase cleanupUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
+    IClubMemberActivityRewardUseCase clubMemberActivityRewardUseCase,
     IConfiguration config,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
 {
@@ -76,6 +77,10 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         await activityStatusMessageSender
             .SendActivityStatusUpdateMessageAsync(newStatuses);
 
+        // Reward player activity
+        await clubMemberActivityRewardUseCase
+            .RewardMemberActivityAsync(newStatuses);
+        
         // Log debug message
         logger.LogDebug("Checking player activity done.");
 
@@ -159,7 +164,9 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId) ?? 0;
         
         // Create the status object
-        return new ClubMemberActivityStatus(clubMember.User!.Nickname, targetAchieved,
+        return new ClubMemberActivityStatus(clubMember.User!.Nickname, 
+            clubMember.UserId,
+            targetAchieved,
             xpSinceLastUpdate,
             numStrikes, 
             numStrikes > _maxNumStrikes,

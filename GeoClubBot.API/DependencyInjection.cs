@@ -21,6 +21,7 @@ using UseCases.InputPorts.Excuses;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Strikes;
+using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.Club;
@@ -30,6 +31,7 @@ using UseCases.UseCases.Excuses;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using UseCases.UseCases.Organization;
 using UseCases.UseCases.Strikes;
+using UseCases.UseCases.Users;
 using RunMode = Discord.Interactions.RunMode;
 
 namespace GeoClubBot;
@@ -137,6 +139,8 @@ public static class DependencyInjection
         services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
         services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
         services.AddTransient<ISyncClubMemberRoleUseCase, SyncClubMemberRoleUseCase>();
+        services.AddTransient<IClubMemberActivityRewardUseCase, ClubMemberActivityRewardUseCase>();
+        services.AddTransient<IGeoGuessrUserIdsToDiscordUserIdsUseCase, GeoGuessrUserIdsToDiscordUserIdsUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

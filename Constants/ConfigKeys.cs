@@ -23,6 +23,9 @@ public static class ConfigKeys
     public const string ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey = "ActivityChecker:CreateStrikeMaxRetryCount";
     public const string ActivityCheckerStrikeDecayTimeSpanConfigurationKey = "ActivityChecker:StrikeDecayTimeSpan";
     
+    public const string ActivityRewardTextChannelIdConfigurationKey = "ActivityReward:TextChannelId";
+    public const string ActivityRewardMvpRoleIdConfigurationKey = "ActivityReward:MvpRoleId";
+    
     public const string ClubLevelCheckerCronScheduleConfigurationKey =  "ClubLevelChecker:Schedule";
     public const string ClubLevelCheckerLevelUpMessageChannelIdConfigurationKey =  "ClubLevelChecker:LevelUpMessageChannelId";
     

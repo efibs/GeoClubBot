@@ -2,12 +2,12 @@ using Constants;
 using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.DailyChallenge;
-using UseCases.InputPorts.Organization;
+using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.DailyChallenge;
 
-public class DistributeDailyChallengeRolesUseCase(IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase,
+public class DistributeDailyChallengeRolesUseCase(IGeoGuessrUserIdsToDiscordUserIdsUseCase geoGuessrUserIdsToDiscordUserIdsUseCase,
     IServerRolesAccess serverRolesAccess, 
     IConfiguration config)
     : IDistributeDailyChallengeRolesUseCase
@@ -68,37 +68,14 @@ public class DistributeDailyChallengeRolesUseCase(IReadOrSyncGeoGuessrUserUseCas
         }
         
         // Convert to Discord user ids
-        var firstPlayers = await _geoGuessrUserIdsToDiscordUserIdsAsync(firstPlayersGeoGuessrUserIds);
-        var secondPlayers = await _geoGuessrUserIdsToDiscordUserIdsAsync(secondPlayersGeoGuessrUserIds);
-        var thirdPlayers = await _geoGuessrUserIdsToDiscordUserIdsAsync(thirdPlayersGeoGuessrUserIds);
+        var firstPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(firstPlayersGeoGuessrUserIds);
+        var secondPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(secondPlayersGeoGuessrUserIds);
+        var thirdPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(thirdPlayersGeoGuessrUserIds);
         
         // Distribute the roles
         await serverRolesAccess.AddRoleToMembersByUserIdsAsync(firstPlayers, _firstRoleId);
         await serverRolesAccess.AddRoleToMembersByUserIdsAsync(secondPlayers, _secondRoleId);
         await serverRolesAccess.AddRoleToMembersByUserIdsAsync(thirdPlayers, _thirdRoleId);
-    }
-
-    private async Task<List<ulong>> _geoGuessrUserIdsToDiscordUserIdsAsync(IEnumerable<string> geoGuessrUserIds)
-    {
-        // Create a new list
-        var discordUserIds = new List<ulong>();
-
-        // For every GeoGuessr user id
-        foreach (var geoGuessrUserId in geoGuessrUserIds)
-        {
-            // Try to read the user
-            var geoGuessrUser =
-                await readOrSyncGeoGuessrUserUseCase.ReadOrSyncGeoGuessrUserByUserIdAsync(geoGuessrUserId);
-            
-            // If there is a discord user id set
-            if (geoGuessrUser?.DiscordUserId != null)
-            {
-                // Add the discord user id to the list
-                discordUserIds.Add(geoGuessrUser.DiscordUserId.Value);
-            }
-        }
-        
-        return discordUserIds;
     }
     
     private readonly ulong _firstRoleId = config.GetValue<ulong>(ConfigKeys.DailyChallengesFirstRoleIdConfigurationKey);
