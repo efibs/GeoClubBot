@@ -36,7 +36,7 @@ public class UserJoinedService(DiscordSocketClient client, IConfiguration config
         // Get the message content
         var messageContent = _buildMessage(user, guild);
 
-        await welcomeChannel.SendMessageAsync(messageContent);
+        await welcomeChannel.SendMessageAsync(messageContent).ConfigureAwait(false);
     }
 
     private string _buildMessage(SocketGuildUser user, SocketGuild guild)

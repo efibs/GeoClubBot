@@ -17,13 +17,13 @@ public class ReadOrSyncClubMemberUseCase(
     public async Task<ClubMember?> ReadOrSyncClubMemberByNicknameAsync(string nickname)
     {
         return await _readOrSyncGenericAsync(nickname, clubMemberRepository.ReadClubMemberByNicknameAsync,
-            m => m.User.Nick == nickname);
+            m => m.User.Nick == nickname).ConfigureAwait(false);
     }
 
     public async Task<ClubMember?> ReadOrSyncClubMemberByUserIdAsync(string userId)
     {
         return await _readOrSyncGenericAsync(userId, clubMemberRepository.ReadClubMemberByUserIdAsync,
-            m => m.User.UserId == userId);
+            m => m.User.UserId == userId).ConfigureAwait(false);
     }
 
     private async Task<ClubMember?> _readOrSyncGenericAsync<T>(T id,
@@ -31,7 +31,7 @@ public class ReadOrSyncClubMemberUseCase(
         Func<GeoGuessrClubMemberDTO, bool> clubMemberListFinderPredicate)
     {
         // Try to read the club member from the repository
-        var clubMember = await clubMemberRepositoryRetriever(id);
+        var clubMember = await clubMemberRepositoryRetriever(id).ConfigureAwait(false);
 
         // If the club member was found
         if (clubMember != null)
@@ -40,7 +40,7 @@ public class ReadOrSyncClubMemberUseCase(
         }
 
         // Read all the club members of the club
-        var geoGuessrClubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId);
+        var geoGuessrClubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
 
         // Try to find the club member with the nickname
         var geoGuessrClubMember = geoGuessrClubMembers.FirstOrDefault(clubMemberListFinderPredicate);
@@ -52,7 +52,7 @@ public class ReadOrSyncClubMemberUseCase(
         }
 
         // Save the club member
-        await saveClubMembersUseCase.SaveClubMembersAsync(Enumerable.Repeat(geoGuessrClubMember, 1));
+        await saveClubMembersUseCase.SaveClubMembersAsync(Enumerable.Repeat(geoGuessrClubMember, 1)).ConfigureAwait(false);
 
         return clubMember;
     }

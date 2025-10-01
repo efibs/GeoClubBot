@@ -10,7 +10,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
     public async Task<ClubMemberExcuse?> CreateExcuseAsync(ClubMemberExcuse excuse)
     {
         // Try to find an existing excuse with that id
-        var excuseExists = await dbContext.ClubMemberExcuses.AnyAsync(e => e.ExcuseId == excuse.ExcuseId);
+        var excuseExists = await dbContext.ClubMemberExcuses.AnyAsync(e => e.ExcuseId == excuse.ExcuseId).ConfigureAwait(false);
 
         // If the club member already exists
         if (excuseExists)
@@ -22,7 +22,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         dbContext.Add(excuse);
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return excuse;
     }
@@ -32,7 +32,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         // Get all the excuses
         var excuses = await dbContext.ClubMemberExcuses
             .Include(e => e.ClubMember)
-            .ToListAsync();
+            .ToListAsync().ConfigureAwait(false);
         
         return excuses;
     }
@@ -43,7 +43,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         var member = await dbContext.ClubMembers
             .Include(clubMember => clubMember.Excuses)
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname);
+            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname).ConfigureAwait(false);
 
         return member?.Excuses ?? [];
     }
@@ -51,7 +51,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
     public async Task<bool> DeleteExcuseByIdAsync(Guid excuseId)
     {
         // Find the excuse
-        var excuse = await dbContext.ClubMemberExcuses.FindAsync(excuseId);
+        var excuse = await dbContext.ClubMemberExcuses.FindAsync(excuseId).ConfigureAwait(false);
         
         // If the excuse was not found
         if (excuse == null)
@@ -63,7 +63,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         dbContext.Remove(excuse);
         
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
         
         return true;
     }
@@ -73,7 +73,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         // Delete the entities
         var numDeleted = await dbContext.ClubMemberExcuses
             .Where(e => e.To < threshold)
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync().ConfigureAwait(false);
 
         return numDeleted;
     }

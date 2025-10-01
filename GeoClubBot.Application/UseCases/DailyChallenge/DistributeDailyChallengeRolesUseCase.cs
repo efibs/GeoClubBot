@@ -15,9 +15,9 @@ public class DistributeDailyChallengeRolesUseCase(IGeoGuessrUserIdsToDiscordUser
     public async Task DistributeDailyChallengeRolesAsync(List<ClubChallengeResult> results)
     {
         // Remove the roles from every player
-        await serverRolesAccess.RemoveRoleFromAllPlayersAsync(_firstRoleId);
-        await serverRolesAccess.RemoveRoleFromAllPlayersAsync(_secondRoleId);
-        await serverRolesAccess.RemoveRoleFromAllPlayersAsync(_thirdRoleId);
+        await serverRolesAccess.RemoveRoleFromAllPlayersAsync(_firstRoleId).ConfigureAwait(false);
+        await serverRolesAccess.RemoveRoleFromAllPlayersAsync(_secondRoleId).ConfigureAwait(false);
+        await serverRolesAccess.RemoveRoleFromAllPlayersAsync(_thirdRoleId).ConfigureAwait(false);
 
         // Save the nicknames of the winners
         var firstPlayersGeoGuessrUserIds = new HashSet<string>();
@@ -68,14 +68,14 @@ public class DistributeDailyChallengeRolesUseCase(IGeoGuessrUserIdsToDiscordUser
         }
         
         // Convert to Discord user ids
-        var firstPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(firstPlayersGeoGuessrUserIds);
-        var secondPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(secondPlayersGeoGuessrUserIds);
-        var thirdPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(thirdPlayersGeoGuessrUserIds);
+        var firstPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(firstPlayersGeoGuessrUserIds).ConfigureAwait(false);
+        var secondPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(secondPlayersGeoGuessrUserIds).ConfigureAwait(false);
+        var thirdPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(thirdPlayersGeoGuessrUserIds).ConfigureAwait(false);
         
         // Distribute the roles
-        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(firstPlayers, _firstRoleId);
-        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(secondPlayers, _secondRoleId);
-        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(thirdPlayers, _thirdRoleId);
+        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(firstPlayers, _firstRoleId).ConfigureAwait(false);
+        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(secondPlayers, _secondRoleId).ConfigureAwait(false);
+        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(thirdPlayers, _thirdRoleId).ConfigureAwait(false);
     }
     
     private readonly ulong _firstRoleId = config.GetValue<ulong>(ConfigKeys.DailyChallengesFirstRoleIdConfigurationKey);

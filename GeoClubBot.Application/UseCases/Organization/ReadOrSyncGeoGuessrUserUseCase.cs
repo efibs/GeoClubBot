@@ -10,7 +10,7 @@ public class ReadOrSyncGeoGuessrUserUseCase(IGeoGuessrUserRepository geoGuessrUs
     public async Task<GeoGuessrUser?> ReadOrSyncGeoGuessrUserByUserIdAsync(string userId)
     {
         // Try to read the user from the repository
-        var user = await geoGuessrUserRepository.ReadUserByUserIdAsync(userId);
+        var user = await geoGuessrUserRepository.ReadUserByUserIdAsync(userId).ConfigureAwait(false);
         
         // If the user was found
         if (user != null)
@@ -19,7 +19,7 @@ public class ReadOrSyncGeoGuessrUserUseCase(IGeoGuessrUserRepository geoGuessrUs
         }
         
         // Read the user from GeoGuessr
-        var userDto = await geoGuessrAccess.ReadUserAsync(userId);
+        var userDto = await geoGuessrAccess.ReadUserAsync(userId).ConfigureAwait(false);
         
         // If the user was not found
         if (userDto == null)
@@ -35,7 +35,7 @@ public class ReadOrSyncGeoGuessrUserUseCase(IGeoGuessrUserRepository geoGuessrUs
         };
         
         // Save the user
-        await geoGuessrUserRepository.CreateOrUpdateUserAsync(newUser);
+        await geoGuessrUserRepository.CreateOrUpdateUserAsync(newUser).ConfigureAwait(false);
         
         return newUser;
     }

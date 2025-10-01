@@ -13,7 +13,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         dbContext.AddRange(entries);
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return true;
     }
@@ -21,7 +21,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
     public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync()
     {
         // Read the entries
-        var entries = await dbContext.ClubMemberHistoryEntries.ToListAsync();
+        var entries = await dbContext.ClubMemberHistoryEntries.ToListAsync().ConfigureAwait(false);
 
         return entries;
     }
@@ -31,7 +31,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         // Get if the player is tracked
         var playerExists = await dbContext.ClubMembers
             .Include(m => m.User)
-            .AnyAsync(m => m.User!.Nickname == playerNickname);
+            .AnyAsync(m => m.User!.Nickname == playerNickname).ConfigureAwait(false);
         
         // If the player is not tracked
         if (!playerExists)
@@ -44,7 +44,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
             .Include(e => e.ClubMember)
             .ThenInclude(m => m!.User)
             .Where(e => e.ClubMember!.User!.Nickname == playerNickname)
-            .ToListAsync();
+            .ToListAsync().ConfigureAwait(false);
 
         return entries;
     }
@@ -54,7 +54,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         // Read the latest entries
         var latestEntries = await dbContext.ClubMemberHistoryEntries
             .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries.Max(ei => ei.Timestamp))
-            .ToListAsync();
+            .ToListAsync().ConfigureAwait(false);
 
         return latestEntries;
     }
@@ -64,7 +64,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         // Delete the entries
         var numDeleted = await dbContext.ClubMemberHistoryEntries
             .Where(e => e.Timestamp < threshold)
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync().ConfigureAwait(false);
 
         return numDeleted;
     }

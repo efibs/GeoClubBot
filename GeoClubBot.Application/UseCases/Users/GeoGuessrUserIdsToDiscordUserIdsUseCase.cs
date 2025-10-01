@@ -15,7 +15,7 @@ public class GeoGuessrUserIdsToDiscordUserIdsUseCase(IReadOrSyncGeoGuessrUserUse
         {
             // Try to read the user
             var geoGuessrUser =
-                await readOrSyncGeoGuessrUserUseCase.ReadOrSyncGeoGuessrUserByUserIdAsync(geoGuessrUserId);
+                await readOrSyncGeoGuessrUserUseCase.ReadOrSyncGeoGuessrUserByUserIdAsync(geoGuessrUserId).ConfigureAwait(false);
             
             // If there is a discord user id set
             if (geoGuessrUser?.DiscordUserId != null)

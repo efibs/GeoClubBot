@@ -10,7 +10,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
     public async Task<ClubMember?> CreateClubMemberAsync(ClubMember clubMember)
     {
         // Try to find an existing club member with that id
-        var clubMemberExists = await dbContext.ClubMembers.AnyAsync(m => m.UserId == clubMember.UserId);
+        var clubMemberExists = await dbContext.ClubMembers.AnyAsync(m => m.UserId == clubMember.UserId).ConfigureAwait(false);
 
         // If the club member already exists
         if (clubMemberExists)
@@ -22,7 +22,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         dbContext.Add(clubMember);
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return clubMember;
     }
@@ -30,7 +30,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
     public async Task<ClubMember> CreateOrUpdateClubMemberAsync(ClubMember clubMember)
     {
         // Try to find an existing club member with that id
-        var clubMemberExists = await dbContext.ClubMembers.AnyAsync(m => m.UserId == clubMember.UserId);
+        var clubMemberExists = await dbContext.ClubMembers.AnyAsync(m => m.UserId == clubMember.UserId).ConfigureAwait(false);
 
         // If the club member already exists
         if (clubMemberExists)
@@ -45,7 +45,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         }
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return clubMember;
     }
@@ -55,7 +55,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         // Try to find the club member by nickname
         var clubMember = await dbContext.ClubMembers
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.User!.Nickname == nickname);
+            .FirstOrDefaultAsync(m => m.User!.Nickname == nickname).ConfigureAwait(false);
 
         return clubMember;
     }
@@ -65,7 +65,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         // Try to find the club member
         var clubMember = await dbContext.ClubMembers
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.UserId == userId);
+            .FirstOrDefaultAsync(m => m.UserId == userId).ConfigureAwait(false);
         
         return clubMember;
     }
@@ -77,7 +77,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .Include(m => m.History)
             .Include(m => m.Strikes)
             .Where(m => !m.History!.Any() && !m.Strikes!.Any())
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync().ConfigureAwait(false);
 
         return numDeletedClubMembers;
     }

@@ -44,7 +44,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
                 playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList());
 
         // Send the message
-        await channel.SendMessageAsync(messageString);
+        await channel.SendMessageAsync(messageString).ConfigureAwait(false);
 
         // While there are still players to be processed
         var skipCount = MaxNumPlayersPerMessage;
@@ -60,7 +60,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
             _appendPlayers(builder, playersChunk);
 
             // Send the message
-            await channel.SendMessageAsync(builder.ToString());
+            await channel.SendMessageAsync(builder.ToString()).ConfigureAwait(false);
 
             // Increase skip count
             skipCount += MaxNumPlayersPerMessage;
@@ -78,7 +78,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
             var excusedPlayersMessage = _buildExcusedPlayersMessage(excusedPlayers);
             
             // Send the message
-            await channel.SendMessageAsync(excusedPlayersMessage);
+            await channel.SendMessageAsync(excusedPlayersMessage).ConfigureAwait(false);
         }
     }
 

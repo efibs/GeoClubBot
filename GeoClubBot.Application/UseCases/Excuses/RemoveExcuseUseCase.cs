@@ -7,6 +7,6 @@ public class RemoveExcuseUseCase(IExcusesRepository excusesRepository) : IRemove
 {
     public async Task<bool> RemoveExcuseAsync(Guid excuseId)
     {
-        return await excusesRepository.DeleteExcuseByIdAsync(excuseId);
+        return await excusesRepository.DeleteExcuseByIdAsync(excuseId).ConfigureAwait(false);
     }
 }

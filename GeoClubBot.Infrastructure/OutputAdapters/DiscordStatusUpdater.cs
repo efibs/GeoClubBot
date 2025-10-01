@@ -8,6 +8,6 @@ public class DiscordStatusUpdater(DiscordSocketClient client) : IStatusUpdater
     public async Task UpdateStatusAsync(string newStatus)
     {
         // Set the status
-        await client.SetCustomStatusAsync(newStatus);
+        await client.SetCustomStatusAsync(newStatus).ConfigureAwait(false);
     }
 }

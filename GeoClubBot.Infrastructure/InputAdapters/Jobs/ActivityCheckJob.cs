@@ -16,7 +16,7 @@ public class ActivityCheckJob(ICheckGeoGuessrPlayerActivityUseCase useCase, ILog
         try
         {
             // Execute the use case
-            await useCase.CheckPlayerActivityAsync();
+            await useCase.CheckPlayerActivityAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {

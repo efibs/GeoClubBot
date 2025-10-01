@@ -24,7 +24,7 @@ public class DailyChallengeUseCase(
         var rng = new Random();
 
         // Read the challenges configuration file
-        var configFileString = await File.ReadAllTextAsync(_challengesConfigurationFilePath);
+        var configFileString = await File.ReadAllTextAsync(_challengesConfigurationFilePath).ConfigureAwait(false);
 
         // Deserialize
         var challengeConfig = JsonSerializer.Deserialize<List<ClubChallengeConfigurationDifficulty>>(configFileString);
@@ -55,7 +55,7 @@ public class DailyChallengeUseCase(
                 selectedEntry.Value.ForbidZooming,
                 selectedEntry.Value.MapId,
                 selectedEntry.Value.TimeLimit
-            ));
+            )).ConfigureAwait(false);
 
             // Add to the next challenges
             nextChallenges.Add(new ClubChallenge(selectedEntry.Key, selectedEntry.Value.Description,
@@ -63,7 +63,7 @@ public class DailyChallengeUseCase(
         }
 
         // Read the old club challenges
-        var oldClubChallenges = await clubChallengeRepository.ReadLatestClubChallengeLinksAsync();
+        var oldClubChallenges = await clubChallengeRepository.ReadLatestClubChallengeLinksAsync().ConfigureAwait(false);
         
         // Convert to club challenges link
         var clubChallengeLinks = nextChallenges.Select(c => new ClubChallengeLink
@@ -73,19 +73,19 @@ public class DailyChallengeUseCase(
         }).ToList();
         
         // Create the new club challenges
-        await clubChallengeRepository.CreateLatestClubChallengeLinksAsync(clubChallengeLinks);
+        await clubChallengeRepository.CreateLatestClubChallengeLinksAsync(clubChallengeLinks).ConfigureAwait(false);
 
         // Get the last challenge high scores
-        var lastChallengeHighScores = await _readLastChallengeHighScoresAsync(oldClubChallenges);
+        var lastChallengeHighScores = await _readLastChallengeHighScoresAsync(oldClubChallenges).ConfigureAwait(false);
 
         // Delete the old club challenges
-        await clubChallengeRepository.DeleteLatestClubChallengeLinksAsync(oldClubChallenges.Select(c => c.Id).ToList());
+        await clubChallengeRepository.DeleteLatestClubChallengeLinksAsync(oldClubChallenges.Select(c => c.Id).ToList()).ConfigureAwait(false);
         
         // Send the messages
-        await _sendMessagesAsync(lastChallengeHighScores, nextChallenges);
+        await _sendMessagesAsync(lastChallengeHighScores, nextChallenges).ConfigureAwait(false);
         
         // Distribute the roles
-        await distributeDailyChallengeRolesUseCase.DistributeDailyChallengeRolesAsync(lastChallengeHighScores);
+        await distributeDailyChallengeRolesUseCase.DistributeDailyChallengeRolesAsync(lastChallengeHighScores).ConfigureAwait(false);
     }
 
     private async Task<List<ClubChallengeResult>> _readLastChallengeHighScoresAsync(List<ClubChallengeLink> oldChallengeLinks)
@@ -95,7 +95,7 @@ public class DailyChallengeUseCase(
         foreach (var oldChallengeLink in oldChallengeLinks)
         {
             // Read the highscores 
-            var highscores = await geoGuessrAccess.ReadHighscoresAsync(oldChallengeLink.ChallengeId, 10, 5);
+            var highscores = await geoGuessrAccess.ReadHighscoresAsync(oldChallengeLink.ChallengeId, 10, 5).ConfigureAwait(false);
             
             // If the highscores could not be retrieved
             if (highscores == null)
@@ -128,11 +128,11 @@ public class DailyChallengeUseCase(
         if (lastChallengeHighScores is { Count: > 0 })
         {
             // Send the last challenge results
-            await _sendLastChallengeResults(lastChallengeHighScores);
+            await _sendLastChallengeResults(lastChallengeHighScores).ConfigureAwait(false);
         }
         
         // Send the next challenges
-        await _sendNextChallengesAsync(nextChallenges);
+        await _sendNextChallengesAsync(nextChallenges).ConfigureAwait(false);
     }
     
     private async Task _sendLastChallengeResults(List<ClubChallengeResult> lastChallengeResults)
@@ -156,7 +156,7 @@ public class DailyChallengeUseCase(
             }
 
             // Send the result
-            await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId);
+            await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
             
             // Reset the string builder
             builder = new StringBuilder();
@@ -222,7 +222,7 @@ public class DailyChallengeUseCase(
         }
 
         // Send the next challenges
-        await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId);
+        await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
     }
     
     private readonly string _challengesConfigurationFilePath =

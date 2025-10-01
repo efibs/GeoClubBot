@@ -15,7 +15,7 @@ public class DailyChallengeJob(IDailyChallengeUseCase dailyChallengeUseCase, ILo
     {
         try
         {
-            await dailyChallengeUseCase.CreateDailyChallengeAsync();
+            await dailyChallengeUseCase.CreateDailyChallengeAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {

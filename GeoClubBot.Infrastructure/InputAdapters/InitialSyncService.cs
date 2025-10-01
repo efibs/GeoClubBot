@@ -10,7 +10,7 @@ public class InitialSyncService(DiscordBotReadyService botReadyService, IService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // Wait for the bot to be ready
-        await botReadyService.DiscordSocketClientReady;
+        await botReadyService.DiscordSocketClientReady.ConfigureAwait(false);
         
         // Create a scope
         using var scope = serviceProvider.CreateScope();
@@ -18,7 +18,7 @@ public class InitialSyncService(DiscordBotReadyService botReadyService, IService
         // Get the use case
         var useCase = scope.ServiceProvider.GetRequiredService<ISyncClubUseCase>();
         
-        await useCase.SyncClubAsync();
+        await useCase.SyncClubAsync().ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

@@ -10,7 +10,7 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
     public async Task<Club?> CreateClubAsync(Club club)
     {
         // Try to find an existing club with that id
-        var clubExists = await dbContext.Clubs.AnyAsync(c => c.ClubId == club.ClubId);
+        var clubExists = await dbContext.Clubs.AnyAsync(c => c.ClubId == club.ClubId).ConfigureAwait(false);
 
         // If the club already exists
         if (clubExists)
@@ -22,7 +22,7 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
         dbContext.Add(club);
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return club;
     }
@@ -30,7 +30,7 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
     public async Task<Club> CreateOrUpdateClubAsync(Club club)
     {
         // Try to find an existing club with that id
-        var clubExists = await dbContext.Clubs.AnyAsync(c => c.ClubId == club.ClubId);
+        var clubExists = await dbContext.Clubs.AnyAsync(c => c.ClubId == club.ClubId).ConfigureAwait(false);
 
         // If the club already exists
         if (clubExists)
@@ -45,7 +45,7 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
         }
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return club;
     }
@@ -53,7 +53,7 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
     public async Task<Club?> ReadClubByIdAsync(Guid clubId)
     {
         // Try to find the club
-        var club = await dbContext.Clubs.FindAsync(clubId);
+        var club = await dbContext.Clubs.FindAsync(clubId).ConfigureAwait(false);
 
         return club;
     }

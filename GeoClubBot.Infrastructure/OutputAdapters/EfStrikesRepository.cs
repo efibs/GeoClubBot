@@ -10,7 +10,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
     public async Task<ClubMemberStrike?> CreateStrikeAsync(ClubMemberStrike strike)
     {
         // Try to find an existing strike with that id
-        var strikeExists = await dbContext.ClubMemberStrikes.AnyAsync(s => s.StrikeId == strike.StrikeId);
+        var strikeExists = await dbContext.ClubMemberStrikes.AnyAsync(s => s.StrikeId == strike.StrikeId).ConfigureAwait(false);
 
         // If the strike already exists
         if (strikeExists)
@@ -22,7 +22,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         dbContext.Add(strike);
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return strike;
     }
@@ -34,7 +34,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
             .Include(s => s.ClubMember)
             .Where(s => s.ClubMember!.UserId == memberUserId)
             .Where(s => s.Revoked == false)
-            .CountAsync();
+            .CountAsync().ConfigureAwait(false);
         
         return numStrikes;
     }
@@ -45,7 +45,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         var member = await dbContext.ClubMembers
             .Include(m => m.Strikes)
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname);
+            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname).ConfigureAwait(false);
         
         return member?.Strikes;
     }
@@ -56,7 +56,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         var strikes = await dbContext.ClubMemberStrikes
             .Include(s => s.ClubMember)
             .ThenInclude(m => m!.User)
-            .ToListAsync();
+            .ToListAsync().ConfigureAwait(false);
         
         return strikes;
     }
@@ -64,7 +64,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
     public async Task<bool> RevokeStrikeByIdAsync(Guid strikeId)
     {
         // Read the strike
-        var strike = await dbContext.ClubMemberStrikes.FindAsync(strikeId);
+        var strike = await dbContext.ClubMemberStrikes.FindAsync(strikeId).ConfigureAwait(false);
 
         if (strike == null)
         {
@@ -75,7 +75,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         strike.Revoked = true;
         
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return true;
     }
@@ -83,7 +83,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
     public async Task<bool> UnrevokeStrikeByIdAsync(Guid strikeId)
     {
         // Read the strike
-        var strike = await dbContext.ClubMemberStrikes.FindAsync(strikeId);
+        var strike = await dbContext.ClubMemberStrikes.FindAsync(strikeId).ConfigureAwait(false);
 
         if (strike == null)
         {
@@ -94,7 +94,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         strike.Revoked = false;
         
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return true;
     }
@@ -104,7 +104,7 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         // Delete the strikes
         var numDeleted = await dbContext.ClubMemberStrikes
             .Where(s => s.Timestamp < threshold)
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync().ConfigureAwait(false);
         
         return numDeleted;
     }

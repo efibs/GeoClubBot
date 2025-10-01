@@ -14,7 +14,7 @@ public class SyncClubMemberRoleUseCase(IGeoGuessrAccess geoGuessrAccess,
     public async Task SyncAllUsersClubMemberRoleAsync()
     {
         // Read the club members
-        var clubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId);
+        var clubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
         
         // Get a hashset of all members GeoGuessr user ids
         var clubMemberGeoGuessrUserIds = clubMembers
@@ -22,7 +22,7 @@ public class SyncClubMemberRoleUseCase(IGeoGuessrAccess geoGuessrAccess,
             .ToHashSet();
         
         // Read all linked users
-        var linkedUsers = await geoGuessrUserRepository.ReadAllLinkedUsersAsync();
+        var linkedUsers = await geoGuessrUserRepository.ReadAllLinkedUsersAsync().ConfigureAwait(false);
         
         // For every linked user
         foreach (var linkedUser in linkedUsers)
@@ -31,20 +31,20 @@ public class SyncClubMemberRoleUseCase(IGeoGuessrAccess geoGuessrAccess,
             var userIsMember = clubMemberGeoGuessrUserIds.Contains(linkedUser.UserId);
             
             // Sync the role
-            await _syncRoleOfUser(userIsMember, linkedUser.DiscordUserId!.Value);
+            await _syncRoleOfUser(userIsMember, linkedUser.DiscordUserId!.Value).ConfigureAwait(false);
         }
     }
 
     public async Task SyncUserClubMemberRoleAsync(ulong discordUserId, string geoGuessrUserId)
     {
         // Read the club members
-        var clubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId);
+        var clubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
         
         // Check if the user is a club member
         var userIsClubMember = clubMembers.Any(m => m.User.UserId == geoGuessrUserId);
         
         // Sync the role
-        await _syncRoleOfUser(userIsClubMember, discordUserId);
+        await _syncRoleOfUser(userIsClubMember, discordUserId).ConfigureAwait(false);
     }
 
     private async Task _syncRoleOfUser(bool isClubMember, ulong discordUserId)
@@ -53,12 +53,12 @@ public class SyncClubMemberRoleUseCase(IGeoGuessrAccess geoGuessrAccess,
         if (isClubMember)
         {
             // Give him the member role
-            await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _clubMemberRoleId);
+            await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _clubMemberRoleId).ConfigureAwait(false);
         }
         else
         {
             // Take the role away
-            await rolesAccess.RemoveRolesFromUserAsync(discordUserId, [_clubMemberRoleId]);
+            await rolesAccess.RemoveRolesFromUserAsync(discordUserId, [_clubMemberRoleId]).ConfigureAwait(false);
         }
     }
     

@@ -19,7 +19,7 @@ public class StartAccountLinkingUseCase(IAccountLinkingRequestRepository account
         };
         
         // Create the linking request
-        var createdRequest = await accountLinkingRequestRepository.CreateRequestAsync(request);
+        var createdRequest = await accountLinkingRequestRepository.CreateRequestAsync(request).ConfigureAwait(false);
         
         return createdRequest?.OneTimePassword;
     }

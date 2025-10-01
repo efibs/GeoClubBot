@@ -9,7 +9,7 @@ public class ReadMemberStrikesUseCase(IStrikesRepository strikesRepository) : IR
     public async Task<ClubMemberStrikeStatus?> ReadMemberStrikesAsync(string memberNickname)
     {
         // Read the number of strikes
-        var strikes = await strikesRepository.ReadStrikesByMemberNicknameAsync(memberNickname);
+        var strikes = await strikesRepository.ReadStrikesByMemberNicknameAsync(memberNickname).ConfigureAwait(false);
 
         // If the player does not exist
         if (strikes == null)

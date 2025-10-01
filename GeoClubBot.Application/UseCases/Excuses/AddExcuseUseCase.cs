@@ -10,7 +10,7 @@ public class AddExcuseUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase
     public async Task<Guid?> AddExcuseAsync(string memberNickname, DateTimeOffset from, DateTimeOffset to)
     {
         // Try to read the club member
-        var clubMember = await readClubMemberUseCase.ReadOrSyncClubMemberByNicknameAsync(memberNickname);
+        var clubMember = await readClubMemberUseCase.ReadOrSyncClubMemberByNicknameAsync(memberNickname).ConfigureAwait(false);
         
         // If the club member could not be found
         if (clubMember == null)
@@ -28,7 +28,7 @@ public class AddExcuseUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase
         };
         
         // Write the excuse
-        var createdExcuse = await excusesRepository.CreateExcuseAsync(newExcuse);
+        var createdExcuse = await excusesRepository.CreateExcuseAsync(newExcuse).ConfigureAwait(false);
         
         return createdExcuse?.ExcuseId;
     }

@@ -22,10 +22,10 @@ public class DiscordBotService(DiscordSocketClient client, IConfiguration config
         }
 
         // Login the bot
-        await client.LoginAsync(TokenType.Bot, token);
+        await client.LoginAsync(TokenType.Bot, token).ConfigureAwait(false);
 
         // Start the bot
-        await client.StartAsync();
+        await client.StartAsync().ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

@@ -66,13 +66,13 @@ public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUs
         var msg = msgBuilder.ToString();
         
         // Send the message
-        await messageSender.SendMessageAsync(msg, _channelId);
+        await messageSender.SendMessageAsync(msg, _channelId).ConfigureAwait(false);
         
         // Get the discord user ids for the mvps
-        var discordUserIds = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(mvpPlayerUserIds);
+        var discordUserIds = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(mvpPlayerUserIds).ConfigureAwait(false);
         
         // Distribute the roles
-        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(discordUserIds, _mvpRoleId);
+        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(discordUserIds, _mvpRoleId).ConfigureAwait(false);
     }
     
     private readonly string _channelId = config.GetValue<string>(ConfigKeys.ActivityRewardTextChannelIdConfigurationKey)!;

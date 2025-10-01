@@ -27,11 +27,11 @@ public class InteractionHandler
         var commandsAssembly = typeof(InteractionsAssemblyMarker).Assembly;
 
         // Add the modules via reflection
-        await _interactionService.AddModulesAsync(commandsAssembly, _serviceProvider);
+        await _interactionService.AddModulesAsync(commandsAssembly, _serviceProvider).ConfigureAwait(false);
 
         // Register the slash commands
         await _interactionService.RegisterCommandsToGuildAsync(
-            _config.GetValue<ulong>(ConfigKeys.DiscordServerIdConfigurationKey));
+            _config.GetValue<ulong>(ConfigKeys.DiscordServerIdConfigurationKey)).ConfigureAwait(false);
 
         // Log information
         _logger.LogInformation("Slash commands registered");
@@ -49,7 +49,7 @@ public class InteractionHandler
             var ctx = new SocketInteractionContext(_client, interaction);
 
             // Execute the command
-            var result = await _interactionService.ExecuteCommandAsync(ctx, _serviceProvider);
+            var result = await _interactionService.ExecuteCommandAsync(ctx, _serviceProvider).ConfigureAwait(false);
 
             // If the execution failed
             if (!result.IsSuccess)

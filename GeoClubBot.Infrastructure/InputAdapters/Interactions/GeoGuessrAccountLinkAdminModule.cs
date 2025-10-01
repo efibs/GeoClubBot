@@ -22,15 +22,15 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         try
         {
             // Defer the response
-            await DeferAsync(ephemeral: true);
+            await DeferAsync(ephemeral: true).ConfigureAwait(false);
 
             // Complete the account linking
             var result =
                 await completeAccountLinkingUseCase.CompleteLinkingAsync(discordUser.Id, geoGuessrUserId,
-                    oneTimePassword);
+                    oneTimePassword).ConfigureAwait(false);
 
             // Handle the linking ended
-            await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, null);
+            await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, null).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -38,7 +38,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             logger.LogError(ex, $"Slash command complete account linking request failed for discord user {discordUser.Username} ({discordUser.Id}) on GeoGuessr account {geoGuessrUserId}.");
             
             // Respond
-            await  FollowupAsync("Failed to complete linking process.", ephemeral: true);
+            await  FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
         }
     }
     
@@ -48,14 +48,14 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         try
         {
             // Defer the response
-            await DeferAsync(ephemeral: true);
+            await DeferAsync(ephemeral: true).ConfigureAwait(false);
 
             // Complete the account linking
             var result =
-                await cancelAccountLinkingUseCase.CancelAccountLinkingAsync(discordUser.Id, geoGuessrUserId);
+                await cancelAccountLinkingUseCase.CancelAccountLinkingAsync(discordUser.Id, geoGuessrUserId).ConfigureAwait(false);
 
             // Handle the linking ended
-            await _handleLinkingCanceledByAdminAsync(result, discordUser, null);
+            await _handleLinkingCanceledByAdminAsync(result, discordUser, null).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -63,7 +63,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             logger.LogError(ex, $"Slash command complete account linking request failed for discord user {discordUser.Username} ({discordUser.Id}) on GeoGuessr account {geoGuessrUserId}.");
             
             // Respond
-            await  FollowupAsync("Failed to complete linking process.", ephemeral: true);
+            await  FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
         }
     }
     
@@ -73,21 +73,21 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         try
         {
             // Defer the response
-            await DeferAsync(ephemeral: true);
+            await DeferAsync(ephemeral: true).ConfigureAwait(false);
         
             // Unlink the accounts
-            var successful = await unlinkAccountsUseCase.UnlinkAccountsAsync(discordUser.Id, geoGuessrUserId);
+            var successful = await unlinkAccountsUseCase.UnlinkAccountsAsync(discordUser.Id, geoGuessrUserId).ConfigureAwait(false);
         
             // If the unlink was not successful
             if (successful == false)
             {
                 // Respond with error
-                await FollowupAsync("The given accounts are not linked", ephemeral: true);
+                await FollowupAsync("The given accounts are not linked", ephemeral: true).ConfigureAwait(false);
                 return;
             }
         
             // Respond with successful message
-            await FollowupAsync("Account linking was successfully removed.", ephemeral: true);
+            await FollowupAsync("Account linking was successfully removed.", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -95,7 +95,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             logger.LogError(ex, $"Slash command unlink accounts failed for discord user {discordUser.Username} ({discordUser.Id}) on GeoGuessr account {geoGuessrUserId}.");
             
             // Respond
-            await  FollowupAsync("Failed to remove account link.", ephemeral: true);
+            await  FollowupAsync("Failed to remove account link.", ephemeral: true).ConfigureAwait(false);
         }
 
     }
@@ -113,7 +113,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
                 $"{ComponentIds.GeoGuessrAccountLinkingCompleteModalId}:{discordUserIdString},{geoGuessrUserId},{messageId}";
 
             // Send the modal
-            await Context.Interaction.RespondWithModalAsync<CompleteAccountLinkModal>(modalId);
+            await Context.Interaction.RespondWithModalAsync<CompleteAccountLinkModal>(modalId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -121,7 +121,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             logger.LogError(ex, $"Error while trying to open one time password input modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.");
             
             // Respond
-            await RespondAsync("Failed to open one time password input modal.", ephemeral: true);
+            await RespondAsync("Failed to open one time password input modal.", ephemeral: true).ConfigureAwait(false);
         }
     }
 
@@ -131,20 +131,20 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         try
         {
             // Defer the response
-            await DeferAsync(ephemeral: true);
+            await DeferAsync(ephemeral: true).ConfigureAwait(false);
             
             // Parse the discord user id
             var discordUserId = ulong.Parse(discordUserIdString);
 
             // Complete the request
             var result = await completeAccountLinkingUseCase
-                .CompleteLinkingAsync(discordUserId, geoGuessrUserId, modal.OneTimePassword);
+                .CompleteLinkingAsync(discordUserId, geoGuessrUserId, modal.OneTimePassword).ConfigureAwait(false);
 
             // Get the discord user
             var discordUser = Context.Guild.GetUser(discordUserId);
             
             // Handle the linking ended
-            await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString);
+            await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -152,7 +152,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             logger.LogError(ex, $"Failed to link GeoGuessr Account '{geoGuessrUserId}' to Discord user '{discordUserIdString}'.");
             
             // Respond with error
-            await FollowupAsync("Failed to complete linking process.", ephemeral: true);
+            await FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
         }
     }
     
@@ -169,7 +169,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
                 $"{ComponentIds.GeoGuessrAccountLinkingCancelModalId}:{discordUserIdString},{geoGuessrUserId},{messageId}";
 
             // Send the modal
-            await Context.Interaction.RespondWithModalAsync<CancelAccountLinkModal>(modalId);
+            await Context.Interaction.RespondWithModalAsync<CancelAccountLinkModal>(modalId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -177,7 +177,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             logger.LogError(ex, $"Error while trying to open cancel modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.");
             
             // Respond
-            await RespondAsync("Failed to open cancel modal.", ephemeral: true);
+            await RespondAsync("Failed to open cancel modal.", ephemeral: true).ConfigureAwait(false);
         }
     }
     
@@ -187,13 +187,13 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         try
         {
             // Defer the response
-            await DeferAsync(ephemeral: true);
+            await DeferAsync(ephemeral: true).ConfigureAwait(false);
             
             // If the user did not enter "Confirm"
             if (modal.ConfirmText != "Confirm")
             {
                 // Respond with successful message
-                await FollowupAsync("Account linking was not canceled. To cancel please enter 'Confirm' into the Confirm Text box.", ephemeral: true);
+                await FollowupAsync("Account linking was not canceled. To cancel please enter 'Confirm' into the Confirm Text box.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
@@ -202,13 +202,13 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
 
             // Complete the request
             var result = await cancelAccountLinkingUseCase
-                .CancelAccountLinkingAsync(discordUserId, geoGuessrUserId);
+                .CancelAccountLinkingAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
 
             // Get the discord user
             var discordUser = Context.Guild.GetUser(discordUserId);
             
             // Handle the linking ended
-            await _handleLinkingCanceledByAdminAsync(result, discordUser, messageIdString);
+            await _handleLinkingCanceledByAdminAsync(result, discordUser, messageIdString).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -216,7 +216,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             logger.LogError(ex, $"Failed to link GeoGuessr Account '{geoGuessrUserId}' to Discord user '{discordUserIdString}'.");
             
             // Respond with error
-            await FollowupAsync("Failed to complete linking process.", ephemeral: true);
+            await FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
         }
     }
     
@@ -228,12 +228,12 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             if (successful == false)
             {
                 // Respond with wrong password message
-                await FollowupAsync("Account linking failed: Wrong password. Please try again.", ephemeral: true);
+                await FollowupAsync("Account linking failed: Wrong password. Please try again.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
             // Respond with successful message
-            await FollowupAsync("Account linking was successful.", ephemeral: true);
+            await FollowupAsync("Account linking was successful.", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -244,11 +244,11 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         try
         {
             // Create a direct message channel with the user
-            var dmChannel = await discordUser.CreateDMChannelAsync();
+            var dmChannel = await discordUser.CreateDMChannelAsync().ConfigureAwait(false);
             
             // Send successful message
             await dmChannel.SendMessageAsync(
-                $"Your GeoGuessr account \"{geoGuessrUser?.Nickname ?? "N/A"}\" was successfully linked to this Discord account.");
+                $"Your GeoGuessr account \"{geoGuessrUser?.Nickname ?? "N/A"}\" was successfully linked to this Discord account.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -263,10 +263,10 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             var messageId = ulong.Parse(messageIdString);
             
             // Get the original message
-            var message = await Context.Channel.GetMessageAsync(messageId);
+            var message = await Context.Channel.GetMessageAsync(messageId).ConfigureAwait(false);
             
             // Delete the original message
-            await message.DeleteAsync();
+            await message.DeleteAsync().ConfigureAwait(false);
         }
     }
     
@@ -278,12 +278,12 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             if (successful == false)
             {
                 // Respond with wrong password message
-                await FollowupAsync("There was no account linking process for the given accounts.", ephemeral: true);
+                await FollowupAsync("There was no account linking process for the given accounts.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
             
             // Respond with successful message
-            await FollowupAsync("Account linking was successfully canceled.", ephemeral: true);
+            await FollowupAsync("Account linking was successfully canceled.", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -294,11 +294,11 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         try
         {
             // Create a direct message channel with the user
-            var dmChannel = await discordUser.CreateDMChannelAsync();
+            var dmChannel = await discordUser.CreateDMChannelAsync().ConfigureAwait(false);
             
             // Send successful message
             await dmChannel.SendMessageAsync(
-                $"Your GeoGuessr account linking process on the {Context.Guild.Name} server was canceled by an admin. You can now create a new linking request if you wish.");
+                $"Your GeoGuessr account linking process on the {Context.Guild.Name} server was canceled by an admin. You can now create a new linking request if you wish.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -313,10 +313,10 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             var messageId = ulong.Parse(messageIdString);
             
             // Get the original message
-            var message = await Context.Channel.GetMessageAsync(messageId);
+            var message = await Context.Channel.GetMessageAsync(messageId).ConfigureAwait(false);
             
             // Delete the original message
-            await message.DeleteAsync();
+            await message.DeleteAsync().ConfigureAwait(false);
         }
     }
 }

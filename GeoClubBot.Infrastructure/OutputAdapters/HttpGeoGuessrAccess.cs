@@ -18,7 +18,7 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
 
         // Make the http call
         var members =
-            await client.GetFromJsonAsync<List<GeoGuessrClubMemberDTO>>($"v4/clubs/{clubId}/members");
+            await client.GetFromJsonAsync<List<GeoGuessrClubMemberDTO>>($"v4/clubs/{clubId}/members").ConfigureAwait(false);
 
         // If the call resulted in no members
         if (members == null || members.Count == 0)
@@ -36,7 +36,7 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
 
         // Make the http call
         var club =
-            await client.GetFromJsonAsync<GeoGuessrClubDTO>($"v4/clubs/{clubId}");
+            await client.GetFromJsonAsync<GeoGuessrClubDTO>($"v4/clubs/{clubId}").ConfigureAwait(false);
 
         // If the call resulted in nothing
         if (club == null)
@@ -54,7 +54,7 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
         
         // Make the http call
         var user =
-            await client.GetFromJsonAsync<GeoGuessrUserDTO>($"v3/users/{userId}");
+            await client.GetFromJsonAsync<GeoGuessrUserDTO>($"v3/users/{userId}").ConfigureAwait(false);
         
         // If the call resulted in nothing
         if (user == null)
@@ -72,10 +72,10 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
         var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
 
         // Make the http call
-        var response = await client.PostAsJsonAsync("v3/challenges", request);
+        var response = await client.PostAsJsonAsync("v3/challenges", request).ConfigureAwait(false);
 
         // Get the response as a json string
-        var responseJson = await response.Content.ReadAsStringAsync();
+        var responseJson = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
         return JsonSerializer.Deserialize<GeoGuessrCreateChallengeResponseDTO>(responseJson, new JsonSerializerOptions
         {
@@ -92,7 +92,7 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
         // Make the http call
         var results =
             await client.GetFromJsonAsync<GeoGuessrChallengeResultHighscores>(
-                $"v3/results/highscores/{challengeId}?friends=false&limit={limit}&minrounds={minRounds}");
+                $"v3/results/highscores/{challengeId}?friends=false&limit={limit}&minrounds={minRounds}").ConfigureAwait(false);
 
         return results;
     }

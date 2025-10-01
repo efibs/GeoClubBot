@@ -10,6 +10,6 @@ public class SignalRClubEventNotifier(IHubContext<ClubNotificationHub, IClubNoti
     public async Task SendClubLevelUpEvent(Club club)
     {
         // Send the event
-        await hubContext.Clients.All.ClubLevelUp(club.Level);
+        await hubContext.Clients.All.ClubLevelUp(club.Level).ConfigureAwait(false);
     }
 }

@@ -17,7 +17,7 @@ public class SyncClubUseCase(
     public async Task SyncClubAsync()
     {
         // Read the GeoGuessr club
-        var geoGuessrClub = await geoGuessrAccess.ReadClubAsync(_clubId);
+        var geoGuessrClub = await geoGuessrAccess.ReadClubAsync(_clubId).ConfigureAwait(false);
 
         // Create the club entity
         var club = new Entities.Club
@@ -28,16 +28,16 @@ public class SyncClubUseCase(
         };
         
         // Sync the club
-        await clubRepository.CreateOrUpdateClubAsync(club);
+        await clubRepository.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
         
         // Set the status
-        await setClubLevelStatusUseCase.SetClubLevelStatusAsync(club.Level);
+        await setClubLevelStatusUseCase.SetClubLevelStatusAsync(club.Level).ConfigureAwait(false);
         
         // Read the members of the club 
-        var geoGuessrClubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId);
+        var geoGuessrClubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
         
         // Save the club members
-        await saveClubMembersUseCase.SaveClubMembersAsync(geoGuessrClubMembers);
+        await saveClubMembersUseCase.SaveClubMembersAsync(geoGuessrClubMembers).ConfigureAwait(false);
     }
 
     private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);

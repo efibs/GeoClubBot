@@ -11,7 +11,7 @@ public class GetLastCheckTimeUseCase(IClubRepository clubRepository, ILogger<Get
     public async Task<DateTimeOffset?> GetLastCheckTimeAsync()
     {
         // Get the club
-        var club = await clubRepository.ReadClubByIdAsync(_clubId);
+        var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
 
         // If the club was not found
         if (club == null)

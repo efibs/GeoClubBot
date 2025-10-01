@@ -11,6 +11,6 @@ public class SetClubLevelStatusUseCase(IStatusUpdater statusUpdater) : ISetClubL
         var newStatus = $"Level {level} club!";
 
         // Update the status
-        await statusUpdater.UpdateStatusAsync(newStatus);
+        await statusUpdater.UpdateStatusAsync(newStatus).ConfigureAwait(false);
     }
 }

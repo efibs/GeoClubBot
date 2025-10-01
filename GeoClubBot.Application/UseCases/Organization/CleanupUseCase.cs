@@ -19,13 +19,13 @@ public class CleanupUseCase(
         var threshold = DateTime.UtcNow.Subtract(_historyKeepThreshold);
         
         // Cleanup excuses
-        var deletedExcuses = await excusesRepository.DeleteExcusesBeforeAsync(threshold);
+        var deletedExcuses = await excusesRepository.DeleteExcusesBeforeAsync(threshold).ConfigureAwait(false);
 
         // Cleanup History
-        var deletedHistoryEntries = await historyRepository.DeleteHistoryEntriesBeforeAsync(threshold);
+        var deletedHistoryEntries = await historyRepository.DeleteHistoryEntriesBeforeAsync(threshold).ConfigureAwait(false);
         
         // Cleanup members that have no history anymore
-        var deletedMembers = await clubMemberRepository.DeleteClubMembersWithoutHistoryAndStrikesAsync();
+        var deletedMembers = await clubMemberRepository.DeleteClubMembersWithoutHistoryAndStrikesAsync().ConfigureAwait(false);
         
         // Print info log
         logger.LogInformation($"Deleted {deletedExcuses} excuses, {deletedHistoryEntries} history entries and {deletedMembers} members.");

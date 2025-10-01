@@ -9,7 +9,7 @@ public class ReadAllStrikesUseCase(IStrikesRepository strikesRepository) : IRead
     public async Task<List<ClubMemberStrike>> ReadAllStrikesAsync()
     {
         // Read the strikes
-        var strikes = await strikesRepository.ReadAllStrikesAsync();
+        var strikes = await strikesRepository.ReadAllStrikesAsync().ConfigureAwait(false);
         
         return strikes;
     }

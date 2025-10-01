@@ -8,6 +8,6 @@ public class UnrevokeStrikeUseCase(IStrikesRepository strikesRepository) : IUnre
     public async Task<bool> UnrevokeStrikeAsync(Guid strikeId)
     {
         // Delegate to repository
-        return await strikesRepository.UnrevokeStrikeByIdAsync(strikeId);
+        return await strikesRepository.UnrevokeStrikeByIdAsync(strikeId).ConfigureAwait(false);
     }
 }

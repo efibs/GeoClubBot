@@ -7,6 +7,6 @@ public class CancelAccountLinkingUseCase(IAccountLinkingRequestRepository accoun
 {
     public async Task<bool> CancelAccountLinkingAsync(ulong discordUserId, string geoGuessrUserId)
     {
-        return await accountLinkingRequestRepository.DeleteRequestAsync(discordUserId, geoGuessrUserId);
+        return await accountLinkingRequestRepository.DeleteRequestAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
     }
 }

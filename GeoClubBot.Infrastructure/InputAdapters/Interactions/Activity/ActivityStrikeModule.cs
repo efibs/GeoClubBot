@@ -24,19 +24,19 @@ public partial class ActivityModule
             strikeDate = DateTime.SpecifyKind(strikeDate, DateTimeKind.Utc);
 
             // Add the strike
-            var strikeId = await addStrikeUseCase.AddStrikeAsync(memberNickname, strikeDate);
+            var strikeId = await addStrikeUseCase.AddStrikeAsync(memberNickname, strikeDate).ConfigureAwait(false);
 
             // If the player has a status set
             if (strikeId == null)
             {
                 await RespondAsync($"Excuse could not be added for player '{memberNickname}'. Is the nickname wrong?",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 await RespondAsync(
                     $"Strike with id {strikeId} was added to player **{memberNickname}**.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
         }
 
@@ -44,7 +44,7 @@ public partial class ActivityModule
         public async Task ReadStrikesAsync(string memberNickname)
         {
             // Read the strikes
-            var strikeStatus = await readMemberStrikesUseCase.ReadMemberStrikesAsync(memberNickname);
+            var strikeStatus = await readMemberStrikesUseCase.ReadMemberStrikesAsync(memberNickname).ConfigureAwait(false);
 
             // If the player has a status set
             if (strikeStatus == null)
@@ -52,7 +52,7 @@ public partial class ActivityModule
                 // Respond
                 await RespondAsync($"There is no player with the nickname {memberNickname} currently being tracked. " +
                                    $"Either the nickname is incorrect or the member just joined and is not yet being tracked.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
@@ -61,7 +61,7 @@ public partial class ActivityModule
             {
                 // Respond
                 await RespondAsync($"The player {memberNickname} currently has no strikes.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
@@ -71,21 +71,21 @@ public partial class ActivityModule
             // Respond
             await RespondAsync(
                 $"The player {memberNickname} currently has {strikeStatus.NumActiveStrikes} active strikes:\n{strikesListString}",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
 
         [SlashCommand("read-all", "Read all strikes currently in the system")]
         public async Task ReadAllStrikesAsync()
         {
             // Read the strikes
-            var strikes = await readAllStrikesUseCase.ReadAllStrikesAsync();
+            var strikes = await readAllStrikesUseCase.ReadAllStrikesAsync().ConfigureAwait(false);
 
             // If the player has a status set
             if (strikes.Count == 0)
             {
                 // Respond
                 await RespondAsync("There are currently no strikes in the system.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
@@ -105,17 +105,17 @@ public partial class ActivityModule
                 // Convert string to stream
                 var stream = new MemoryStream();
                 var writer = new StreamWriter(stream);
-                await writer.WriteAsync(strikesListString);
-                await writer.FlushAsync();
+                await writer.WriteAsync(strikesListString).ConfigureAwait(false);
+                await writer.FlushAsync().ConfigureAwait(false);
                 stream.Position = 0;
 
                 await RespondWithFileAsync(stream, fileName: "strikes.txt",
-                    text: "The strikes currently in the system are:", ephemeral: true);
+                    text: "The strikes currently in the system are:", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 await RespondAsync($"The strikes currently in the system are: \n{strikesListString}",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
         }
 
@@ -129,23 +129,23 @@ public partial class ActivityModule
             if (!parseSuccessful)
             {
                 // Respond
-                await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true);
+                await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
             // Revoke the strike
-            var revokeSuccessful = await revokeStrikeUseCase.RevokeStrikeAsync(strikeIdGuid);
+            var revokeSuccessful = await revokeStrikeUseCase.RevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
 
             // If the revoke was successful
             if (revokeSuccessful)
             {
                 // Respond
-                await RespondAsync($"Strike with id {strikeId} was successfully revoked.", ephemeral: true);
+                await RespondAsync($"Strike with id {strikeId} was successfully revoked.", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 // Respond
-                await RespondAsync($"Strike with id {strikeId} could not be revoked.", ephemeral: true);
+                await RespondAsync($"Strike with id {strikeId} could not be revoked.", ephemeral: true).ConfigureAwait(false);
             }
         }
 
@@ -159,24 +159,24 @@ public partial class ActivityModule
             if (!parseSuccessful)
             {
                 // Respond
-                await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true);
+                await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
             // Revoke the strike
-            var revokeSuccessful = await unrevokeStrikeUseCase.UnrevokeStrikeAsync(strikeIdGuid);
+            var revokeSuccessful = await unrevokeStrikeUseCase.UnrevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
 
             // If the revoke was successful
             if (revokeSuccessful)
             {
                 // Respond
                 await RespondAsync($"Revocation of strike with id {strikeId} was successfully removed.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 // Respond
-                await RespondAsync($"Revocation of strike with id {strikeId} could not be removed.", ephemeral: true);
+                await RespondAsync($"Revocation of strike with id {strikeId} could not be removed.", ephemeral: true).ConfigureAwait(false);
             }
         }
     }

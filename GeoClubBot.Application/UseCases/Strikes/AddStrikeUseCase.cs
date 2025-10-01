@@ -10,7 +10,7 @@ public class AddStrikeUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase
     public async Task<Guid?> AddStrikeAsync(string memberNickname, DateTimeOffset strikeDate)
     {
         // Try to read the club member
-        var clubMember = await readClubMemberUseCase.ReadOrSyncClubMemberByNicknameAsync(memberNickname);
+        var clubMember = await readClubMemberUseCase.ReadOrSyncClubMemberByNicknameAsync(memberNickname).ConfigureAwait(false);
         
         // If the club member could not be found
         if (clubMember == null)
@@ -28,7 +28,7 @@ public class AddStrikeUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase
         };
         
         // Write the strike
-        var createdStrike = await strikesRepository.CreateStrikeAsync(newStrike);
+        var createdStrike = await strikesRepository.CreateStrikeAsync(newStrike).ConfigureAwait(false);
         
         return createdStrike?.StrikeId;
     }

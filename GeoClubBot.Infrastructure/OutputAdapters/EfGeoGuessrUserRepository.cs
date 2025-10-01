@@ -10,7 +10,7 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
     public async Task<GeoGuessrUser> CreateOrUpdateUserAsync(GeoGuessrUser user)
     {
         // Try to find an existing user with that id
-        var userExists = await dbContext.GeoGuessrUsers.AnyAsync(u => u.UserId == user.UserId);
+        var userExists = await dbContext.GeoGuessrUsers.AnyAsync(u => u.UserId == user.UserId).ConfigureAwait(false);
 
         // If the club member already exists
         if (userExists)
@@ -25,7 +25,7 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
         }
 
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         return user;
     }
@@ -34,7 +34,7 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
     {
         // Try to find the user
         var clubMember = await dbContext.GeoGuessrUsers
-            .FindAsync(userId);
+            .FindAsync(userId).ConfigureAwait(false);
         
         return clubMember;
     }
@@ -44,7 +44,7 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
         // Get the club members that have a discord user id set
         var linkedUsers = await dbContext.GeoGuessrUsers
             .Where(u => u.DiscordUserId.HasValue)
-            .ToListAsync();
+            .ToListAsync().ConfigureAwait(false);
         
         return linkedUsers;
     }

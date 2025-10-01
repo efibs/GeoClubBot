@@ -15,7 +15,7 @@ public class CheckClubLevelJob(ICheckClubLevelUseCase useCase, ILogger<CheckClub
     {
         try
         {
-            await useCase.CheckClubLevelAsync();
+            await useCase.CheckClubLevelAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {

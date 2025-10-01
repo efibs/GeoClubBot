@@ -29,24 +29,24 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     public async Task CheckPlayerActivityAsync()
     {
         // Check the strikes for decayed strikes and remove them
-        await checkStrikeDecayUseCase.CheckStrikeDecayAsync();
+        await checkStrikeDecayUseCase.CheckStrikeDecayAsync().ConfigureAwait(false);
         
         // Log debug message
         logger.LogDebug("Checking player activity...");
 
         // Get the current members of the club
         var members = await geoGuessrAccess
-            .ReadClubMembersAsync(_clubId);
+            .ReadClubMembersAsync(_clubId).ConfigureAwait(false);
 
         // Save the club members
-        await saveClubMembersUseCase.SaveClubMembersAsync(members);
+        await saveClubMembersUseCase.SaveClubMembersAsync(members).ConfigureAwait(false);
         
         // Get the latest activities
         var latestHistoryEntries = await historyRepository
-            .ReadLatestHistoryEntriesAsync();
+            .ReadLatestHistoryEntriesAsync().ConfigureAwait(false);
 
         // Get the excuses
-        var excuses = await excusesRepository.ReadExcusesAsync();
+        var excuses = await excusesRepository.ReadExcusesAsync().ConfigureAwait(false);
 
         // Get the last activity check time
         var lastActivityCheckTime = latestHistoryEntries.Any()
@@ -68,24 +68,24 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         // Save the new activity
         await historyRepository
-            .CreateHistoryEntriesAsync(newLatestHistoryEntries.Values);
+            .CreateHistoryEntriesAsync(newLatestHistoryEntries.Values).ConfigureAwait(false);
 
         // Build the new statuses
-        var newStatuses = await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now);
+        var newStatuses = await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now).ConfigureAwait(false);
 
         // Send the update message
         await activityStatusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses);
+            .SendActivityStatusUpdateMessageAsync(newStatuses).ConfigureAwait(false);
 
         // Reward player activity
         await clubMemberActivityRewardUseCase
-            .RewardMemberActivityAsync(newStatuses);
+            .RewardMemberActivityAsync(newStatuses).ConfigureAwait(false);
         
         // Log debug message
         logger.LogDebug("Checking player activity done.");
 
         // Trigger the cleanup
-        await cleanupUseCase.DoCleanupAsync();
+        await cleanupUseCase.DoCleanupAsync().ConfigureAwait(false);
     }
 
     private async Task<List<ClubMemberActivityStatus>> _calculateStatusesAsync(
@@ -113,7 +113,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         foreach (var member in memberDtos)
         {
             // Calculate his new status
-            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange);
+            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange).ConfigureAwait(false);
 
             if (newStatus != null)
             {
@@ -131,7 +131,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         TimeRange checkTimeRange)
     {
         // Read the member from the database
-        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.User.UserId);
+        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.User.UserId).ConfigureAwait(false);
         
         // If the club member could not be retrieved
         if (clubMember == null)
@@ -157,11 +157,11 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         if (!targetAchieved)
         {
             // Add the strike
-            await _addStrikeAsync(clubMember.UserId, checkTimeRange.To);
+            await _addStrikeAsync(clubMember.UserId, checkTimeRange.To).ConfigureAwait(false);
         }
 
         // Read the number of strikes of the player
-        var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId) ?? 0;
+        var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId).ConfigureAwait(false) ?? 0;
         
         // Create the status object
         return new ClubMemberActivityStatus(clubMember.User!.Nickname, 
@@ -190,7 +190,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             };
             
             // Add the strike
-            createdStrike = await strikesRepository.CreateStrikeAsync(newStrike);
+            createdStrike = await strikesRepository.CreateStrikeAsync(newStrike).ConfigureAwait(false);
             
             // If the creation failed
             if (createdStrike == null)

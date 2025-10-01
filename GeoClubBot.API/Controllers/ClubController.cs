@@ -18,7 +18,7 @@ public class ClubController(IConfiguration config) : ControllerBase
         try
         {
             // Read the club
-            var club = await clubRepository.ReadClubByIdAsync(_clubId);
+            var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
             
             // If the club was not found
             if (club == null)
@@ -50,7 +50,7 @@ public class ClubController(IConfiguration config) : ControllerBase
         try
         {
             // Send the event
-            await hubContext.Clients.All.ClubLevelUp(newLevel);
+            await hubContext.Clients.All.ClubLevelUp(newLevel).ConfigureAwait(false);
             
             return Accepted();
         }

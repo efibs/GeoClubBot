@@ -13,12 +13,12 @@ public partial class ActivityModule
         public async Task ReadPlayerStatisticsAsync(string memberNickname)
         {
             // Read the stats
-            var stats = await playerStatisticsUseCase.GetPlayerStatisticsAsync(memberNickname);
+            var stats = await playerStatisticsUseCase.GetPlayerStatisticsAsync(memberNickname).ConfigureAwait(false);
             
             // If the player was not found
             if (stats == null)
             {
-                await RespondAsync($"The player {memberNickname} is not being tracked.", ephemeral: true);
+                await RespondAsync($"The player {memberNickname} is not being tracked.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
             
@@ -43,19 +43,19 @@ public partial class ActivityModule
             builder.AppendLine(stats.MaxPoints.ToString());
             
             // Respond with the message
-            await RespondAsync(builder.ToString(), ephemeral: true);
+            await RespondAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
         }
         
         [SlashCommand("club", "Read the statistics of the club")]
         public async Task ReadClubStatisticsAsync()
         {
             // Read the stats
-            var stats = await clubStatisticsUseCase.GetClubStatisticsAsync();
+            var stats = await clubStatisticsUseCase.GetClubStatisticsAsync().ConfigureAwait(false);
             
             // If the player was not found
             if (stats == null)
             {
-                await RespondAsync($"The club is not synced yet.", ephemeral: true);
+                await RespondAsync($"The club is not synced yet.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
             
@@ -76,7 +76,7 @@ public partial class ActivityModule
             builder.AppendLine(stats.MaxAveragePoints.ToString(CultureInfo.InvariantCulture));
             
             // Respond with the message
-            await RespondAsync(builder.ToString(), ephemeral: true);
+            await RespondAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
         }
     }
 }

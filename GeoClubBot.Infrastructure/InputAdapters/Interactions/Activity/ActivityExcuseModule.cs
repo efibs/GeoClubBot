@@ -26,20 +26,20 @@ public partial class ActivityModule
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
             
             // Add the excuse
-            var excuseGuid = await addExcuseUseCase.AddExcuseAsync(memberNickname, from, to);
+            var excuseGuid = await addExcuseUseCase.AddExcuseAsync(memberNickname, from, to).ConfigureAwait(false);
 
             // If the excuse could not be added
             if (excuseGuid == null)
             {
                 await RespondAsync($"Excuse could not be added for player '{memberNickname}'. Is the nickname wrong?",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 await RespondAsync(
                     $"Excuse with id {excuseGuid} for the time range **{from:D}** to **{to:D}** was added to player " +
                     $"**{memberNickname}**.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
         }
 
@@ -53,23 +53,23 @@ public partial class ActivityModule
             if (!parseSuccessful)
             {
                 // Respond
-                await RespondAsync($"Invalid GUID '{excuseId}'. Please enter a valid GUID.", ephemeral: true);
+                await RespondAsync($"Invalid GUID '{excuseId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
             // Remove the excuse
-            var successful = await removeExcuseUseCase.RemoveExcuseAsync(excuseIdGuid);
+            var successful = await removeExcuseUseCase.RemoveExcuseAsync(excuseIdGuid).ConfigureAwait(false);
 
             // If the remove was successful
             if (successful)
             {
                 // Respond
-                await RespondAsync($"Excuse with id {excuseId} successfully removed", ephemeral: true);
+                await RespondAsync($"Excuse with id {excuseId} successfully removed", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 // Respond
-                await RespondAsync($"There is no excuse with id {excuseId}", ephemeral: true);
+                await RespondAsync($"There is no excuse with id {excuseId}", ephemeral: true).ConfigureAwait(false);
             }
         }
 
@@ -77,13 +77,13 @@ public partial class ActivityModule
         public async Task ReadExcusesAsync(string memberNickname)
         {
             // Read the excuses
-            var excuses = await readExcusesUseCase.ReadExcusesAsync(memberNickname);
+            var excuses = await readExcusesUseCase.ReadExcusesAsync(memberNickname).ConfigureAwait(false);
 
             // If there are no excuses
             if (excuses.Count == 0)
             {
                 // Respond
-                await RespondAsync($"The player {memberNickname} has no excuses.", ephemeral: true);
+                await RespondAsync($"The player {memberNickname} has no excuses.", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
@@ -92,7 +92,7 @@ public partial class ActivityModule
 
                 // Respond
                 await RespondAsync($"The player {memberNickname} has the following excuses:\n{excusesString}",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
         }
         
@@ -100,13 +100,13 @@ public partial class ActivityModule
         public async Task ReadExcusesAsync()
         {
             // Read the excuses
-            var excuses = await readExcusesUseCase.ReadExcusesAsync();
+            var excuses = await readExcusesUseCase.ReadExcusesAsync().ConfigureAwait(false);
 
             // If there are no excuses
             if (excuses.Count == 0)
             {
                 // Respond
-                await RespondAsync($"There are currently no excuses in the system.", ephemeral: true);
+                await RespondAsync($"There are currently no excuses in the system.", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
@@ -115,7 +115,7 @@ public partial class ActivityModule
 
                 // Respond
                 await RespondAsync($"The following excuses are currently entered in the system:\n{excusesString}",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
         }
     }

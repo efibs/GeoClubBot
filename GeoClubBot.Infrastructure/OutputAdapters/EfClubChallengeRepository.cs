@@ -16,7 +16,7 @@ public class EfClubChallengeRepository(GeoClubBotDbContext dbContext) : IClubCha
         }
         
         // Save the changes to the database
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
         
         return links;
     }
@@ -24,7 +24,7 @@ public class EfClubChallengeRepository(GeoClubBotDbContext dbContext) : IClubCha
     public async Task<List<ClubChallengeLink>> ReadLatestClubChallengeLinksAsync()
     {
         // Read the links
-        var links = await dbContext.LatestClubChallengeLinks.ToListAsync();
+        var links = await dbContext.LatestClubChallengeLinks.ToListAsync().ConfigureAwait(false);
         
         return links;
     }
@@ -34,7 +34,7 @@ public class EfClubChallengeRepository(GeoClubBotDbContext dbContext) : IClubCha
         // Delete the links
         var numDeleted = await dbContext.LatestClubChallengeLinks
             .Where(x => linkIds.Contains(x.Id))
-            .ExecuteDeleteAsync();
+            .ExecuteDeleteAsync().ConfigureAwait(false);
         
         return numDeleted;
     }

@@ -31,7 +31,7 @@ public class DiscordMessageSender(DiscordSocketClient client, IConfiguration con
         }
         
         // Send the message
-        await channel.SendMessageAsync(message);
+        await channel.SendMessageAsync(message).ConfigureAwait(false);
     }
     
     private readonly ulong _guildId = config.GetValue<ulong>(ConfigKeys.DiscordServerIdConfigurationKey);

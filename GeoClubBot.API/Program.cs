@@ -47,7 +47,7 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
     // Apply the database migrations
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<GeoClubBotDbContext>();
-    await db.Database.MigrateAsync();
+    await db.Database.MigrateAsync().ConfigureAwait(false);
 }
 
 app.UseHttpsRedirection();

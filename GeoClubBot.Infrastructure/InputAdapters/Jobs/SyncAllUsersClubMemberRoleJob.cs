@@ -14,7 +14,7 @@ public class SyncAllUsersClubMemberRoleJob(ISyncClubMemberRoleUseCase useCase, I
     {
         try
         {
-            await useCase.SyncAllUsersClubMemberRoleAsync();
+            await useCase.SyncAllUsersClubMemberRoleAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {

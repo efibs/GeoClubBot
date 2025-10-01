@@ -22,7 +22,7 @@ public class DiscordServerRolesAccess(DiscordSocketClient client, IConfiguration
         // Remove the role from each user
         foreach (var user in usersWithRole)
         {
-            await user.RemoveRoleAsync(roleId);
+            await user.RemoveRoleAsync(roleId).ConfigureAwait(false);
         }
         
         return usersWithRole.Count;
@@ -37,7 +37,7 @@ public class DiscordServerRolesAccess(DiscordSocketClient client, IConfiguration
         var user = guild.GetUser(userId);
         
         // Remove all the roles from the user
-        await user.RemoveRolesAsync(roleIds);
+        await user.RemoveRolesAsync(roleIds).ConfigureAwait(false);
     }
 
     public async Task AddRoleToMembersByUserIdsAsync(IEnumerable<ulong> userIds, ulong roleId)
@@ -51,7 +51,7 @@ public class DiscordServerRolesAccess(DiscordSocketClient client, IConfiguration
             var user = guild.GetUser(userId);
             
             // Add the role to the user
-            await user.AddRoleAsync(roleId);
+            await user.AddRoleAsync(roleId).ConfigureAwait(false);
         
             // Log debug
             logger.LogDebug($"Added role {roleId} to member {user.DisplayName}.");

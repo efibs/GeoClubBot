@@ -9,7 +9,7 @@ public class MigrateService(IServiceProvider serviceProvider, ILogger<MigrateSer
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // Read the old history file contents
-        var oldHistoryFileContents = await File.ReadAllTextAsync("OldHistory.json");
+        var oldHistoryFileContents = await File.ReadAllTextAsync("OldHistory.json").ConfigureAwait(false);
 
         // Parse objects
         var oldHistory = JsonSerializer.Deserialize<Dictionary<string, List<OldHistoryEntry>>>(oldHistoryFileContents);
@@ -23,7 +23,7 @@ public class MigrateService(IServiceProvider serviceProvider, ILogger<MigrateSer
         foreach (var oldHistoryEntry in oldHistory)
         {
             // Find the club member
-            var clubMember = await dbContext.ClubMembers.FindAsync(oldHistoryEntry.Key);
+            var clubMember = await dbContext.ClubMembers.FindAsync(oldHistoryEntry.Key).ConfigureAwait(false);
 
             // If the club member could not be found
             if (clubMember == null)
@@ -43,7 +43,7 @@ public class MigrateService(IServiceProvider serviceProvider, ILogger<MigrateSer
             }));
         }
 
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
         logger.LogInformation($"Migrated {oldHistory!.SelectMany(e => e.Value).Count()} history entries for {oldHistory!.Count} users.");
     }

@@ -22,18 +22,18 @@ public partial class ActivityModule(IGetLastCheckTimeUseCase getLastCheckTimeUse
     public async Task LastCheckTimeAsync()
     {
         // Get the last check time
-        var lastCheckTime = await getLastCheckTimeUseCase.GetLastCheckTimeAsync();
+        var lastCheckTime = await getLastCheckTimeUseCase.GetLastCheckTimeAsync().ConfigureAwait(false);
         
         // If there is a last check time
         if (lastCheckTime.HasValue)
         {
             // Respond
-            await RespondAsync($"The last check was {lastCheckTime:f} UTC.", ephemeral: true);
+            await RespondAsync($"The last check was {lastCheckTime:f} UTC.", ephemeral: true).ConfigureAwait(false);
         }
         else
         {
             // Respond
-            await RespondAsync("There has not been any checks yet.", ephemeral: true);
+            await RespondAsync("There has not been any checks yet.", ephemeral: true).ConfigureAwait(false);
         }
     }
 }

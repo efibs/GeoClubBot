@@ -17,7 +17,7 @@ public class SaveClubMembersUseCase(IClubMemberRepository clubMemberRepository,
         foreach (var geoGuessrClubMember in clubMembers)
         {
             // Try to read the user
-            var geoGuessrUser = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrClubMember.User.UserId);
+            var geoGuessrUser = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrClubMember.User.UserId).ConfigureAwait(false);
             
             // Create the GeoGuessr user entity if the user was not found
             geoGuessrUser ??= new GeoGuessrUser
@@ -29,7 +29,7 @@ public class SaveClubMembersUseCase(IClubMemberRepository clubMemberRepository,
             geoGuessrUser.Nickname = geoGuessrClubMember.User.Nick;
             
             // Save the user to the database
-            await geoGuessrUserRepository.CreateOrUpdateUserAsync(geoGuessrUser);
+            await geoGuessrUserRepository.CreateOrUpdateUserAsync(geoGuessrUser).ConfigureAwait(false);
             
             // Create the member entity
             var member = new ClubMember
@@ -39,7 +39,7 @@ public class SaveClubMembersUseCase(IClubMemberRepository clubMemberRepository,
             };
             
             // Ensure the member exists and is up to date
-            await clubMemberRepository.CreateOrUpdateClubMemberAsync(member);
+            await clubMemberRepository.CreateOrUpdateClubMemberAsync(member).ConfigureAwait(false);
         }
     }
     

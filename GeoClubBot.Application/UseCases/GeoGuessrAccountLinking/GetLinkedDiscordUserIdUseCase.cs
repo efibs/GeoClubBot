@@ -8,7 +8,7 @@ public class GetLinkedDiscordUserIdUseCase(IGeoGuessrUserRepository geoGuessrUse
     public async Task<ulong?> GetLinkedDiscordUserIdAsync(string geoGuessrUserId)
     {
         // Read the GeoGuessr user
-        var geoGuessrUser = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrUserId);
+        var geoGuessrUser = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrUserId).ConfigureAwait(false);
 
         return geoGuessrUser?.DiscordUserId;
     }

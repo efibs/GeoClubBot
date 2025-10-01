@@ -9,7 +9,7 @@ public class PlayerStatisticsUseCase(IHistoryRepository historyRepository) : IPl
     public async Task<PlayerStatistics?> GetPlayerStatisticsAsync(string nickname)
     {
         // Get the history entries
-        var historyEntries = await historyRepository.ReadHistoryEntriesByPlayerNicknameAsync(nickname);
+        var historyEntries = await historyRepository.ReadHistoryEntriesByPlayerNicknameAsync(nickname).ConfigureAwait(false);
 
         // If there are no history entries for the player
         if (historyEntries == null)

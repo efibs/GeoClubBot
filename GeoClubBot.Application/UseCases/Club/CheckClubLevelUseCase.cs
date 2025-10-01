@@ -23,7 +23,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
     public async Task CheckClubLevelAsync()
     {
         // Await the init of the club level
-        await _initClubLevelTask;
+        await _initClubLevelTask.ConfigureAwait(false);
         
         // Log debug
         _logger.LogDebug("Checking club level...");
@@ -35,7 +35,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         var geoGuessrAccess = scope.ServiceProvider.GetRequiredService<IGeoGuessrAccess>();
 
         // Read the club
-        var clubDto = await geoGuessrAccess.ReadClubAsync(_clubId);
+        var clubDto = await geoGuessrAccess.ReadClubAsync(_clubId).ConfigureAwait(false);
 
         // Get the club level
         var clubLevel = clubDto.Level;
@@ -50,13 +50,13 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
             var statusUpdater = scope.ServiceProvider.GetRequiredService<ISetClubLevelStatusUseCase>();
 
             // Update the status
-            await statusUpdater.SetClubLevelStatusAsync(clubLevel);
+            await statusUpdater.SetClubLevelStatusAsync(clubLevel).ConfigureAwait(false);
 
             // If the previous level is known
             if (_lastLevel != null)
             {
                 // Update the club level on the database
-                var club = await _updateClubLevelAsync(clubDto.Level);
+                var club = await _updateClubLevelAsync(clubDto.Level).ConfigureAwait(false);
                 
                 // Get the notifier services
                 var notifiers = scope.ServiceProvider.GetRequiredService<IEnumerable<IClubEventNotifier>>();
@@ -65,7 +65,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
                 foreach (var notifier in notifiers)
                 {
                     // Send the notification
-                    await notifier.SendClubLevelUpEvent(club);
+                    await notifier.SendClubLevelUpEvent(club).ConfigureAwait(false);
                 }
             }
             
@@ -83,7 +83,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         var clubRepository = scope.ServiceProvider.GetRequiredService<IClubRepository>();
         
         // Read the club
-        var club = await clubRepository.ReadClubByIdAsync(_clubId);
+        var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
         
         // If the club was not found
         if (club == null)
@@ -107,7 +107,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         var clubRepository = scope.ServiceProvider.GetRequiredService<IClubRepository>();
         
         // Read the existing club
-        var club =  await clubRepository.ReadClubByIdAsync(_clubId);
+        var club =  await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
         
         // If the club was not found
         if (club == null)
@@ -122,7 +122,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         club.Level = newClubLevel;
         
         // Save the club to the database
-        await clubRepository.CreateOrUpdateClubAsync(club);
+        await clubRepository.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
 
         return club;
     }

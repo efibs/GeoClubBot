@@ -15,7 +15,7 @@ public class CheckStrikeDecayUseCase(IStrikesRepository strikesRepository, ILogg
         
         // Remove the strikes before the decay threshold
         var numDeleted = await strikesRepository
-            .DeleteStrikesBeforeAsync(DateTimeOffset.UtcNow - _strikeDecayTimeSpan);
+            .DeleteStrikesBeforeAsync(DateTimeOffset.UtcNow - _strikeDecayTimeSpan).ConfigureAwait(false);
         
         // Log info
         logger.LogInformation($"Deleted {numDeleted} decayed strikes.");

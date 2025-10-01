@@ -11,7 +11,7 @@ public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserReposit
     public async Task<bool> UnlinkAccountsAsync(ulong discordUserId, string geoGuessrUserId)
     {
         // Read the user
-        var user = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrUserId);
+        var user = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrUserId).ConfigureAwait(false);
         
         // If the user does not exist
         if (user == null)
@@ -29,10 +29,10 @@ public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserReposit
         user.DiscordUserId = null;
         
         // Update the user
-        await geoGuessrUserRepository.CreateOrUpdateUserAsync(user);
+        await geoGuessrUserRepository.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
         
         // Remove has linked role from user
-        await rolesAccess.RemoveRolesFromUserAsync(discordUserId, [_hasLinkedRoleId, _clubMemberRoleId]);
+        await rolesAccess.RemoveRolesFromUserAsync(discordUserId, [_hasLinkedRoleId, _clubMemberRoleId]).ConfigureAwait(false);
         
         return true;
     }

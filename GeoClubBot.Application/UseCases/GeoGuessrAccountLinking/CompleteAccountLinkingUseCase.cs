@@ -18,7 +18,7 @@ public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository acco
     public async Task<(bool Successful, GeoGuessrUser? User)> CompleteLinkingAsync(ulong discordUserId, string geoGuessrUserId, string oneTimePassword)
     {
         // Read the request
-        var request = await accountLinkingRequestRepository.ReadRequestAsync(discordUserId, geoGuessrUserId);
+        var request = await accountLinkingRequestRepository.ReadRequestAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
         
         // If the request does not exist
         if (request == null)
@@ -33,7 +33,7 @@ public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository acco
         }
         
         // Read the user
-        var user = await readOrSyncGeoGuessrUserUseCase.ReadOrSyncGeoGuessrUserByUserIdAsync(geoGuessrUserId);
+        var user = await readOrSyncGeoGuessrUserUseCase.ReadOrSyncGeoGuessrUserByUserIdAsync(geoGuessrUserId).ConfigureAwait(false);
         
         // If the user does not exist
         if (user == null)
@@ -45,16 +45,16 @@ public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository acco
         user.DiscordUserId = discordUserId;
         
         // Save the user
-        await geoGuessrUserRepository.CreateOrUpdateUserAsync(user);
+        await geoGuessrUserRepository.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
 
         // Delete the linking request
-        await accountLinkingRequestRepository.DeleteRequestAsync(discordUserId, geoGuessrUserId);
+        await accountLinkingRequestRepository.DeleteRequestAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
         
         // Give the user the has linked role
-        await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _hasLinkedRoleId);
+        await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _hasLinkedRoleId).ConfigureAwait(false);
         
         // Sync the users member role
-        await syncClubMemberRoleUseCase.SyncUserClubMemberRoleAsync(discordUserId, geoGuessrUserId);
+        await syncClubMemberRoleUseCase.SyncUserClubMemberRoleAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
         
         return (true, user);
     }
