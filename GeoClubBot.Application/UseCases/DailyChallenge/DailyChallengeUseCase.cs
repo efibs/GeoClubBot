@@ -21,8 +21,6 @@ public class DailyChallengeUseCase(
 {
     public async Task CreateDailyChallengeAsync()
     {
-        var rng = new Random();
-
         // Read the challenges configuration file
         var configFileString = await File.ReadAllTextAsync(_challengesConfigurationFilePath).ConfigureAwait(false);
 
@@ -40,7 +38,7 @@ public class DailyChallengeUseCase(
         var selectedEntries = challengeConfig
             .ToDictionary(
                 d => d.Difficulty,
-                d => d.Entries[rng.Next(0, d.Entries.Count)]);
+                d => d.Entries[_rng.Next(0, d.Entries.Count)]);
 
         var nextChallenges = new List<ClubChallenge>(selectedEntries.Count);
         foreach (var selectedEntry in selectedEntries)
@@ -230,4 +228,6 @@ public class DailyChallengeUseCase(
 
     private readonly string _textChannelId =
         config.GetValue<string>(ConfigKeys.DailyChallengesTextChannelIdConfigurationKey)!;
+    
+    private static readonly Random _rng = new Random();
 }
