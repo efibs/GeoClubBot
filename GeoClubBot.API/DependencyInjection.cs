@@ -143,6 +143,7 @@ public static class DependencyInjection
         services.AddTransient<IGeoGuessrUserIdsToDiscordUserIdsUseCase, GeoGuessrUserIdsToDiscordUserIdsUseCase>();
         services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
         services.AddTransient<IGetLinkedGeoGuessrUserUseCase, GetLinkedGeoGuessrUserUseCase>();
+        services.AddTransient<IReadAllRelevantStrikesUseCase, ReadAllRelevantStrikesUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

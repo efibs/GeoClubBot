@@ -1,6 +1,7 @@
 using Constants;
 using Discord.Interactions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.Strikes;
 
 namespace Infrastructure.InputAdapters.Interactions;
@@ -11,8 +12,10 @@ public partial class ActivityModule
         IAddStrikeUseCase addStrikeUseCase,
         IReadMemberStrikesUseCase readMemberStrikesUseCase,
         IReadAllStrikesUseCase readAllStrikesUseCase,
+        IReadAllRelevantStrikesUseCase readAllRelevantStrikesUseCase,
         IRevokeStrikeUseCase revokeStrikeUseCase,
         IUnrevokeStrikeUseCase unrevokeStrikeUseCase,
+        ILogger<ActivityStrikeModule> logger,
         IConfiguration config)
     {
         [SlashCommand("add", "Create a new strike for a player")]
@@ -116,6 +119,65 @@ public partial class ActivityModule
             {
                 await RespondAsync($"The strikes currently in the system are: \n{strikesListString}",
                     ephemeral: true).ConfigureAwait(false);
+            }
+        }
+        
+        [SlashCommand("read-relevant", "Read all strikes that are currently relevant")]
+        public async Task ReadAllRelevantStrikesAsync()
+        {
+            try
+            {
+                // Defer the response
+                await DeferAsync().ConfigureAwait(false);
+
+                // Read the strikes
+                var strikes = await readAllRelevantStrikesUseCase
+                    .ReadAllRelevantStrikesAsync()
+                    .ConfigureAwait(false);
+
+                // If there are no relevant strikes
+                if (strikes.Count == 0)
+                {
+                    // Respond
+                    await RespondAsync("There are currently no relevant strikes in the system.",
+                            ephemeral: true)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
+                // Build the list of strikes
+                var strikesListString = string.Join("\n", strikes
+                    .OrderByDescending(s => s.NumActiveStrikes)
+                    .ThenBy(s => s.MemberNickname)
+                    .Select(s => $"- {s}"));
+
+                // If the strikes list is too long
+                if (strikesListString.Length > 1500)
+                {
+                    // Convert string to stream
+                    var stream = new MemoryStream();
+                    var writer = new StreamWriter(stream);
+                    await writer.WriteAsync(strikesListString).ConfigureAwait(false);
+                    await writer.FlushAsync().ConfigureAwait(false);
+                    stream.Position = 0;
+
+                    await FollowupWithFileAsync(stream, fileName: "strikes.txt",
+                        text: "The currently relevant strikes are:", ephemeral: true).ConfigureAwait(false);
+                }
+                else
+                {
+                    await FollowupAsync($"The currently relevant strikes are: \n{strikesListString}",
+                            ephemeral: true)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                logger.LogError(ex, "Reading relevant strikes failed.");
+                
+                // Respond with error message
+                await FollowupAsync("Reading relevant strikes failed: Internal error. Try again later. If the problem persists, please contact an admin.", ephemeral: true).ConfigureAwait(false);
             }
         }
 
