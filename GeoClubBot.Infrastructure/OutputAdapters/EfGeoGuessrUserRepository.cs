@@ -10,7 +10,9 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
     public async Task<GeoGuessrUser> CreateOrUpdateUserAsync(GeoGuessrUser user)
     {
         // Try to find an existing user with that id
-        var userExists = await dbContext.GeoGuessrUsers.AnyAsync(u => u.UserId == user.UserId).ConfigureAwait(false);
+        var userExists = await dbContext.GeoGuessrUsers
+            .AnyAsync(u => u.UserId == user.UserId)
+            .ConfigureAwait(false);
 
         // If the club member already exists
         if (userExists)
@@ -34,8 +36,33 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
     {
         // Try to find the user
         var clubMember = await dbContext.GeoGuessrUsers
-            .FindAsync(userId).ConfigureAwait(false);
+            .FindAsync(userId)
+            .ConfigureAwait(false);
         
+        // If the club member was not found
+        if (clubMember == null)
+        {
+            return null;
+        }
+        
+        // Detach the entity from the context.
+        // This disables change tracking and improves 
+        // performance. In this case this is also possible
+        // because the GeoGuessrUser entity doesn't have any 
+        // relationships.
+        dbContext.Entry(clubMember).State = EntityState.Detached;
+        
+        return clubMember;
+    }
+    
+    public async Task<GeoGuessrUser?> ReadUserByDiscordUserIdAsync(ulong discordUserId)
+    {
+        // Try to find the user
+        var clubMember = await dbContext.GeoGuessrUsers
+            .AsNoTracking()
+            .SingleOrDefaultAsync(u => u.DiscordUserId == discordUserId)
+            .ConfigureAwait(false);
+
         return clubMember;
     }
 
@@ -44,7 +71,9 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
         // Get the club members that have a discord user id set
         var linkedUsers = await dbContext.GeoGuessrUsers
             .Where(u => u.DiscordUserId.HasValue)
-            .ToListAsync().ConfigureAwait(false);
+            .AsNoTracking()
+            .ToListAsync()
+            .ConfigureAwait(false);
         
         return linkedUsers;
     }

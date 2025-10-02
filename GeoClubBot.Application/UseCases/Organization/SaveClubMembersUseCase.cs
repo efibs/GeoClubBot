@@ -23,6 +23,7 @@ public class SaveClubMembersUseCase(IClubMemberRepository clubMemberRepository,
             geoGuessrUser ??= new GeoGuessrUser
             {
                 UserId = geoGuessrClubMember.User.UserId,
+                Nickname = geoGuessrClubMember.User.Nick
             };
             
             // Update the properties

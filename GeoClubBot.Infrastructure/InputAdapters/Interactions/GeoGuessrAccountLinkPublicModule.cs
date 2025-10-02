@@ -12,6 +12,7 @@ namespace Infrastructure.InputAdapters.Interactions;
 [CommandContextType(InteractionContextType.Guild)]
 [Group("gg-account", "Commands for linking Discord accounts to GeoGuessr accounts")]
 public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase, 
+    IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
     IStartAccountLinkingProcessUseCase startAccountLinkingProcessUseCase, 
     ILogger<GeoGuessrAccountLinkPublicModule> logger,
     IConfiguration config) : InteractionModuleBase<SocketInteractionContext>
@@ -54,15 +55,34 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
                 var linkedDiscordUser = Context.Guild.GetUser(linkedDiscordUserId.Value);
                 
                 // Respond with error message
-                await FollowupAsync("Account link failed: The GeoGuessr account is already linked to discord account " +
+                await FollowupAsync("Account link failed: The given GeoGuessr account is already linked to Discord account " +
                                     $"\"{linkedDiscordUser.DisplayName}\". Please contact an admin if you think this is a mistake.",
                     ephemeral: true).ConfigureAwait(false);
 
                 return;
             }
             
+            // Check if the Discord account is already linked
+            var linkedGeoGuessrUser = await getLinkedGeoGuessrUserUseCase
+                .GetLinkedGeoGuessrUserAsync(executingUser!.Id)
+                .ConfigureAwait(false);
+            
+            // If the account is already linked
+            if (linkedGeoGuessrUser != null)
+            {
+                // Respond with error message
+                await FollowupAsync("Account link failed: This Discord account is already linked to GeoGuessr account " +
+                                    $"\"{linkedGeoGuessrUser}\". Please contact an admin if you think this is a mistake.",
+                    ephemeral: true)
+                    .ConfigureAwait(false);
+
+                return;
+            }
+            
             // Start the account linking process
-            var oneTimePassword = await startAccountLinkingProcessUseCase.StartLinkingProcessAsync(executingUser!.Id, geoGuessrUserId).ConfigureAwait(false);
+            var oneTimePassword = await startAccountLinkingProcessUseCase
+                .StartLinkingProcessAsync(executingUser.Id, geoGuessrUserId)
+                .ConfigureAwait(false);
 
             // If there was already a linking request
             if (oneTimePassword == null)

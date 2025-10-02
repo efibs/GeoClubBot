@@ -1,20 +1,10 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Constants;
-using Microsoft.EntityFrameworkCore;
-
 namespace Entities;
 
-[Index(nameof(Nickname))]
-public class GeoGuessrUser
+public sealed class GeoGuessrUser
 {
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    [MaxLength(StringLengthConstants.GeoGuessrUserIdLength)]
-    public string UserId { get; set; } = string.Empty;
+    public required string UserId { get; set; }
     
-    [MaxLength(StringLengthConstants.GeoGuessrPlayerNicknameMaxLength)]
-    public string Nickname { get; set; } = string.Empty;
+    public required string Nickname { get; set; }
 
     public ulong? DiscordUserId { get; set; }
     
