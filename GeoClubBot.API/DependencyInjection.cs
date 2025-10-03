@@ -121,7 +121,7 @@ public static class DependencyInjection
         services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();
         services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
         services.AddTransient<IReadOrSyncClubMemberUseCase, ReadOrSyncClubMemberUseCase>();
-        services.AddTransient<ISyncClubUseCase, SyncClubUseCase>();
+        services.AddTransient<IInitialSyncClubUseCase, InitialSyncClubUseCase>();
         services.AddTransient<ICheckStrikeDecayUseCase, CheckStrikeDecayUseCase>();
         services.AddTransient<IRevokeStrikeUseCase, RevokeStrikeUseCase>();
         services.AddTransient<IUnrevokeStrikeUseCase, UnrevokeStrikeUseCase>();

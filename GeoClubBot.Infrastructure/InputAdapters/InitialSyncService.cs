@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using UseCases.InputPorts;
 using UseCases.InputPorts.Organization;
 
 namespace Infrastructure.InputAdapters;
@@ -16,7 +15,7 @@ public class InitialSyncService(DiscordBotReadyService botReadyService, IService
         using var scope = serviceProvider.CreateScope();
         
         // Get the use case
-        var useCase = scope.ServiceProvider.GetRequiredService<ISyncClubUseCase>();
+        var useCase = scope.ServiceProvider.GetRequiredService<IInitialSyncClubUseCase>();
         
         await useCase.SyncClubAsync().ConfigureAwait(false);
     }

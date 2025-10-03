@@ -7,12 +7,12 @@ using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.Organization;
 
-public class SyncClubUseCase(
+public class InitialSyncClubUseCase(
     IGeoGuessrAccess geoGuessrAccess,
     IClubRepository clubRepository,
     ISetClubLevelStatusUseCase setClubLevelStatusUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
-    IConfiguration config) : ISyncClubUseCase
+    IConfiguration config) : IInitialSyncClubUseCase
 {
     public async Task SyncClubAsync()
     {

@@ -1,6 +1,6 @@
 namespace UseCases.InputPorts.Organization;
 
-public interface ISyncClubUseCase
+public interface IInitialSyncClubUseCase
 {
     Task SyncClubAsync();
 }
