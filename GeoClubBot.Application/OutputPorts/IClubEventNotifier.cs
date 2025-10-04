@@ -1,5 +1,4 @@
 using Entities;
-using UseCases.OutputPorts.GeoGuessr.DTOs;
 
 namespace UseCases.OutputPorts;
 

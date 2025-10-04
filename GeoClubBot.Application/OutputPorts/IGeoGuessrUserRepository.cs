@@ -4,7 +4,9 @@ namespace UseCases.OutputPorts;
 
 public interface IGeoGuessrUserRepository
 {
-    Task<GeoGuessrUser> CreateOrUpdateUserAsync(GeoGuessrUser user);
+    Task<GeoGuessrUser> CreateUserAsync(GeoGuessrUser user);
+    
+    Task<GeoGuessrUser> UpdateUserAsync(GeoGuessrUser user);
     
     Task<GeoGuessrUser?> ReadUserByUserIdAsync(string userId);
 

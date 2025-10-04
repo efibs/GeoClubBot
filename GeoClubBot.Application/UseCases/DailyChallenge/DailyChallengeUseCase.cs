@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.DailyChallenge;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
-using UseCases.OutputPorts.GeoGuessr.DTOs;
 
 namespace UseCases.UseCases.DailyChallenge;
 
@@ -44,8 +43,7 @@ public class DailyChallengeUseCase(
         foreach (var selectedEntry in selectedEntries)
         {
             // Create the challenge
-            var createdChallenge = await geoGuessrAccess.CreateChallengeAsync(new GeoGuessrCreateChallengeRequestDTO
-            (
+            var createdChallengeToken = await geoGuessrAccess.CreateChallengeAsync(
                 1,
                 0,
                 selectedEntry.Value.ForbidMoving,
@@ -53,11 +51,19 @@ public class DailyChallengeUseCase(
                 selectedEntry.Value.ForbidZooming,
                 selectedEntry.Value.MapId,
                 selectedEntry.Value.TimeLimit
-            )).ConfigureAwait(false);
+            ).ConfigureAwait(false);
 
+            // If the challenge could not be created
+            if (createdChallengeToken == null)
+            {
+                // Log warning
+                logger.LogWarning($"{selectedEntry.Key} Challenge could not be created.");
+                continue;
+            }
+            
             // Add to the next challenges
             nextChallenges.Add(new ClubChallenge(selectedEntry.Key, selectedEntry.Value.Description,
-                createdChallenge.Token));
+                createdChallengeToken));
         }
 
         // Read the old club challenges
@@ -102,17 +108,8 @@ public class DailyChallengeUseCase(
                 continue;
             }
             
-            // Map the players
-            var players = highscores.Items
-                .Select(s => new ClubChallengeResultPlayer(
-                    s.Game.Player.Id,
-                    s.Game.Player.Nick, 
-                    $"{s.Game.Player.TotalScore.Amount} {s.Game.Player.TotalScore.Unit}",
-                    $"{s.Game.Player.TotalDistance.Meters.Amount}{s.Game.Player.TotalDistance.Meters.Unit}"))
-                .ToList();
-            
             // Build the result object
-            var result = new ClubChallengeResult(oldChallengeLink.Difficulty, oldChallengeLink.RolePriority, players);
+            var result = new ClubChallengeResult(oldChallengeLink.Difficulty, oldChallengeLink.RolePriority, highscores);
             
             results.Add(result);
         }

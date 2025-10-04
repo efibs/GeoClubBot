@@ -1,12 +1,15 @@
 using Constants;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
+using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserRepository, 
-    IServerRolesAccess rolesAccess, IConfiguration config) : IUnlinkAccountsUseCase
+    ICreateOrUpdateUserUseCase createOrUpdateUserUseCase,
+    IServerRolesAccess rolesAccess, 
+    IConfiguration config) : IUnlinkAccountsUseCase
 {
     public async Task<bool> UnlinkAccountsAsync(ulong discordUserId, string geoGuessrUserId)
     {
@@ -29,7 +32,7 @@ public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserReposit
         user.DiscordUserId = null;
         
         // Update the user
-        await geoGuessrUserRepository.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
+        await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
         
         // Remove has linked role from user
         await rolesAccess.RemoveRolesFromUserAsync(discordUserId, [_hasLinkedRoleId, _clubMemberRoleId]).ConfigureAwait(false);

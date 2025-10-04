@@ -1,4 +1,5 @@
 using Entities;
+using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Strikes;
 using UseCases.OutputPorts;

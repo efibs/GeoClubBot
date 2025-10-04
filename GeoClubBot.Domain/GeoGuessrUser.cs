@@ -12,4 +12,18 @@ public sealed class GeoGuessrUser
     {
         return Nickname;
     }
+
+    /// <summary>
+    /// Create a deep copy of this user
+    /// </summary>
+    /// <returns></returns>
+    public GeoGuessrUser DeepCopy()
+    {
+        return new GeoGuessrUser
+        {
+            UserId = UserId,
+            Nickname = Nickname,
+            DiscordUserId = DiscordUserId
+        };
+    }
 }

@@ -3,11 +3,11 @@ using Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Strikes;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
-using UseCases.OutputPorts.GeoGuessr.DTOs;
 using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
@@ -89,13 +89,13 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     }
 
     private async Task<List<ClubMemberActivityStatus>> _calculateStatusesAsync(
-        List<GeoGuessrClubMemberDTO> memberDtos,
+        List<ClubMember> members,
         IEnumerable<ClubMemberHistoryEntry> latestHistoryEntries,
         IEnumerable<ClubMemberExcuse> excuses,
         DateTimeOffset lastActivityCheckTime,
         DateTimeOffset now)
     {
-        var statuses = new List<ClubMemberActivityStatus>(memberDtos.Count);
+        var statuses = new List<ClubMemberActivityStatus>(members.Count);
         
         // Convert the latest history entries to dictionary
         var latestHistoryEntriesDict = latestHistoryEntries
@@ -110,7 +110,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         var checkTimeRange = new TimeRange(lastActivityCheckTime, now);
         
         // For every member
-        foreach (var member in memberDtos)
+        foreach (var member in members)
         {
             // Calculate his new status
             var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange).ConfigureAwait(false);
@@ -125,30 +125,30 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     }
 
     private async Task<ClubMemberActivityStatus?> _calculateStatusAsync(
-        GeoGuessrClubMemberDTO memberDto,
+        ClubMember member,
         Dictionary<string, ClubMemberHistoryEntry> latestActivities,
         Dictionary<string, List<ClubMemberExcuse>> excuses,
         TimeRange checkTimeRange)
     {
         // Read the member from the database
-        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(memberDto.User.UserId).ConfigureAwait(false);
+        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(member.User.UserId).ConfigureAwait(false);
         
         // If the club member could not be retrieved
         if (clubMember == null)
         {
             // Log warning
-            logger.LogError($"Club member {memberDto.User.UserId} could not be found.");
+            logger.LogError($"Club member {member.User.UserId} could not be found.");
             return null;
         }
         
         // Get the latest activity of the player
-        var latestActivity = latestActivities.GetValueOrDefault(clubMember!.UserId);
+        var latestActivity = latestActivities.GetValueOrDefault(clubMember.UserId);
 
         // Calculate the xp since the last update
-        var xpSinceLastUpdate = memberDto.Xp - (latestActivity?.Xp ?? 0);
+        var xpSinceLastUpdate = member.Xp - (latestActivity?.Xp ?? 0);
 
         // Calculate the players target respecting excuses and joined time
-        var (target, individualTargetReason) = _calculateIndividualTarget(memberDto, checkTimeRange, excuses);
+        var (target, individualTargetReason) = _calculateIndividualTarget(member, checkTimeRange, excuses);
         
         // Calculate if the player achieved the target.
         var targetAchieved = xpSinceLastUpdate >= target;
@@ -164,7 +164,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId).ConfigureAwait(false) ?? 0;
         
         // Create the status object
-        return new ClubMemberActivityStatus(clubMember.User!.Nickname, 
+        return new ClubMemberActivityStatus(clubMember.User.Nickname, 
             clubMember.UserId,
             targetAchieved,
             xpSinceLastUpdate,
@@ -209,7 +209,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     }
 
     private (int IndividualTarget, string? IndividualTargetReason) _calculateIndividualTarget(
-        GeoGuessrClubMemberDTO memberDto, 
+        ClubMember member, 
         TimeRange checkTimeRange,
         Dictionary<string, List<ClubMemberExcuse>> excuses)
     {
@@ -220,15 +220,15 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         var blockingTimeRanges = new List<TimeRange>();
         
         // If the member joined since the last activity check
-        if (checkTimeRange.Contains(memberDto.JoinedAt))
+        if (checkTimeRange.Contains(member.JoinedAt))
         {
             // Add the not in club time range
-            blockingTimeRanges.Add(checkTimeRange with { To = memberDto.JoinedAt });
+            blockingTimeRanges.Add(checkTimeRange with { To = member.JoinedAt });
             isNew = true;
         }
         
         // Try to get the excuses of the player
-        excuses.TryGetValue(memberDto.User.UserId, out var memberExcuses);
+        excuses.TryGetValue(member.User.UserId, out var memberExcuses);
         memberExcuses ??= [];
         
         // Calculate the intersections between the check time range and the

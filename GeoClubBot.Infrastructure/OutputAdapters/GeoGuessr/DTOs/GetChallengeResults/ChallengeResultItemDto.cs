@@ -1,0 +1,3 @@
+namespace Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetChallengeResults;
+
+public record ChallengeResultItemDto(ChallengeResultGameDto Game);

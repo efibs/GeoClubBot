@@ -26,7 +26,16 @@ public class GeoClubBotDbContext : DbContext
     public DbSet<GeoGuessrUser> GeoGuessrUsers { get; set; }
     
     public DbSet<GeoGuessrAccountLinkingRequest> GeoGuessrAccountLinkingRequests { get; set; }
-    
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        
+#if DEBUG
+        optionsBuilder.EnableSensitiveDataLogging();
+#endif
+    }
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         configurationBuilder.Properties<DateTimeOffset>().HaveConversion<DateTimeOffsetConverter>();

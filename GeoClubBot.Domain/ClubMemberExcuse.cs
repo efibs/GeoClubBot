@@ -31,4 +31,16 @@ public class ClubMemberExcuse
     {
         return $"Player {ClubMember?.User?.Nickname ?? "N/A"}: {From:d} - {To:d} (Id: {ExcuseId})";
     }
+
+    public ClubMemberExcuse DeepCopy()
+    {
+        return new ClubMemberExcuse
+        {
+            ExcuseId = ExcuseId,
+            UserId = UserId,
+            From = From,
+            To = To,
+            ClubMember = ClubMember?.DeepCopy()
+        };
+    }
 }

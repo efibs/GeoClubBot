@@ -23,4 +23,15 @@ public class ClubMemberHistoryEntry
     {
         return $"{Timestamp:d}: {Xp}XP";
     }
+
+    public ClubMemberHistoryEntry DeepCopy()
+    {
+        return new ClubMemberHistoryEntry
+        {
+            Timestamp = Timestamp,
+            UserId = UserId,
+            Xp = Xp,
+            ClubMember = ClubMember?.DeepCopy(),
+        };
+    }
 }

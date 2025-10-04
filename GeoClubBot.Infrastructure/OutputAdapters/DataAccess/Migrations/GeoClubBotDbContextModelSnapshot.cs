@@ -77,6 +77,15 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.Property<Guid>("ClubId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsCurrentlyMember")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("JoinedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Xp")
+                        .HasColumnType("integer");
+
                     b.HasKey("UserId");
 
                     b.HasIndex("ClubId");

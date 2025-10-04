@@ -7,29 +7,32 @@ namespace Infrastructure.OutputAdapters;
 
 public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGuessrUserRepository
 {
-    public async Task<GeoGuessrUser> CreateOrUpdateUserAsync(GeoGuessrUser user)
+    public async Task<GeoGuessrUser> CreateUserAsync(GeoGuessrUser user)
     {
-        // Try to find an existing user with that id
-        var userExists = await dbContext.GeoGuessrUsers
-            .AnyAsync(u => u.UserId == user.UserId)
-            .ConfigureAwait(false);
+        // Create a deep copy of the user
+        var userCopy = user.DeepCopy();
 
-        // If the club member already exists
-        if (userExists)
-        {
-            // Update the club member
-            dbContext.Update(user);
-        }
-        else
-        {
-            // Add the club member
-            dbContext.Add(user);
-        }
+        // Add the club member
+        dbContext.Add(userCopy);
 
         // Save the changes to the database
         await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-        return user;
+        return userCopy;
+    }
+    
+    public async Task<GeoGuessrUser> UpdateUserAsync(GeoGuessrUser user)
+    {
+        // Create a deep copy of the user
+        var userCopy = user.DeepCopy();
+
+        // Update the club member
+        dbContext.Update(userCopy);
+
+        // Save the changes to the database
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+        return userCopy;
     }
 
     public async Task<GeoGuessrUser?> ReadUserByUserIdAsync(string userId)

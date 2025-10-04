@@ -27,7 +27,7 @@ public class ReadAllRelevantStrikesUseCase(IGeoGuessrAccess geoGuessrAccess,
         {
             // Read the number of active strikes for the user
             var numActiveStrikes = await strikesRepository
-                .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.User.UserId)
+                .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.User!.UserId)
                 .ConfigureAwait(false);
             
             // If the user doesn't have strikes
@@ -38,7 +38,7 @@ public class ReadAllRelevantStrikesUseCase(IGeoGuessrAccess geoGuessrAccess,
             }
             
             // Build the relevant strike object
-            var relevantStrike = new ClubMemberRelevantStrike(clubMember.User.Nick, numActiveStrikes.Value);
+            var relevantStrike = new ClubMemberRelevantStrike(clubMember.User.Nickname, numActiveStrikes.Value);
             
             // Add to list
             relevantStrikes.Add(relevantStrike);

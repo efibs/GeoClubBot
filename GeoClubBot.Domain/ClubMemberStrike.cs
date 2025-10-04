@@ -34,4 +34,16 @@ public class ClubMemberStrike
         
         return $"Player {ClubMember?.User?.Nickname ?? "N/A"}: {Timestamp:d} - Revoked: {Revoked} (Id: {StrikeId}, expires: {expiration:d})";
     }
+
+    public ClubMemberStrike DeepCopy()
+    {
+        return new ClubMemberStrike
+        {
+            StrikeId = StrikeId,
+            UserId = UserId,
+            Timestamp = Timestamp,
+            Revoked = Revoked,
+            ClubMember = ClubMember?.DeepCopy(),
+        };
+    }
 }

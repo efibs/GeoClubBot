@@ -8,6 +8,7 @@ using Infrastructure.InputAdapters;
 using Infrastructure.InputAdapters.Jobs;
 using Infrastructure.OutputAdapters;
 using Infrastructure.OutputAdapters.DataAccess;
+using Infrastructure.OutputAdapters.GeoGuessr;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
 using Quartz.Impl.AdoJobStore;
@@ -16,6 +17,7 @@ using UseCases;
 using UseCases.InputPorts;
 using UseCases.InputPorts.Club;
 using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.DailyChallenge;
 using UseCases.InputPorts.Excuses;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
@@ -26,6 +28,7 @@ using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
+using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.DailyChallenge;
 using UseCases.UseCases.Excuses;
 using UseCases.UseCases.GeoGuessrAccountLinking;
@@ -121,7 +124,7 @@ public static class DependencyInjection
         services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();
         services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
         services.AddTransient<IReadOrSyncClubMemberUseCase, ReadOrSyncClubMemberUseCase>();
-        services.AddTransient<IInitialSyncClubUseCase, InitialSyncClubUseCase>();
+        services.AddTransient<ISyncClubUseCase, SyncClubUseCase>();
         services.AddTransient<ICheckStrikeDecayUseCase, CheckStrikeDecayUseCase>();
         services.AddTransient<IRevokeStrikeUseCase, RevokeStrikeUseCase>();
         services.AddTransient<IUnrevokeStrikeUseCase, UnrevokeStrikeUseCase>();
@@ -138,12 +141,14 @@ public static class DependencyInjection
         services.AddTransient<ICompleteAccountLinkingUseCase, CompleteAccountLinkingUseCase>();
         services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
         services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
-        services.AddTransient<ISyncClubMemberRoleUseCase, SyncClubMemberRoleUseCase>();
+        services.AddTransient<ISyncClubUseCase, SyncClubUseCase>();
         services.AddTransient<IClubMemberActivityRewardUseCase, ClubMemberActivityRewardUseCase>();
         services.AddTransient<IGeoGuessrUserIdsToDiscordUserIdsUseCase, GeoGuessrUserIdsToDiscordUserIdsUseCase>();
         services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
         services.AddTransient<IGetLinkedGeoGuessrUserUseCase, GetLinkedGeoGuessrUserUseCase>();
         services.AddTransient<IReadAllRelevantStrikesUseCase, ReadAllRelevantStrikesUseCase>();
+        services.AddTransient<ICreateOrUpdateUserUseCase, CreateOrUpdateUserUseCase>();
+        services.AddTransient<ICreateOrUpdateClubMemberUseCase, CreateOrUpdateClubMemberUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

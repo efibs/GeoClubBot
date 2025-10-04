@@ -4,6 +4,7 @@ using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.EntityFrameworkCore;
 using QuartzExtensions;
+using UseCases.UseCases;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +31,9 @@ builder.Services.AddOpenApi();
 
 // Add all the necessary services
 builder.Services.AddClubBotServices(builder.Configuration);
+
+// Add the MediatR services
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<IUseCasesAssemblyMarker>());
 
 var app = builder.Build();
 

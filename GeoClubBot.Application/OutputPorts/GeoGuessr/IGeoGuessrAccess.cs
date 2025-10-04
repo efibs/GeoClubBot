@@ -1,17 +1,22 @@
 using Entities;
-using UseCases.OutputPorts.GeoGuessr.DTOs;
 
 namespace UseCases.OutputPorts.GeoGuessr;
 
 public interface IGeoGuessrAccess
 {
-    Task<List<GeoGuessrClubMemberDTO>> ReadClubMembersAsync(Guid clubId);
+    Task<List<ClubMember>> ReadClubMembersAsync(Guid clubId);
     
-    Task<GeoGuessrClubDTO> ReadClubAsync(Guid clubId);
+    Task<Club> ReadClubAsync(Guid clubId);
     
-    Task<GeoGuessrUserDTO?> ReadUserAsync(string userId);
+    Task<GeoGuessrUser?> ReadUserAsync(string userId);
 
-    Task<GeoGuessrCreateChallengeResponseDTO> CreateChallengeAsync(GeoGuessrCreateChallengeRequestDTO request);
+    Task<string?> CreateChallengeAsync(int accessLevel, 
+        int challengeType, 
+        bool forbidMoving, 
+        bool forbidRotating, 
+        bool forbidZooming, 
+        string map,
+        int timeLimit);
     
-    Task<GeoGuessrChallengeResultHighscores?> ReadHighscoresAsync(string challengeId, int limit, int minRounds);
+    Task<List<ClubChallengeResultPlayer>?> ReadHighscoresAsync(string challengeId, int limit, int minRounds);
 }

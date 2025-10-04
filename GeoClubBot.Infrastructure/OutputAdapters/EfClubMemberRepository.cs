@@ -1,53 +1,78 @@
 using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts;
 
 namespace Infrastructure.OutputAdapters;
 
-public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMemberRepository
+public class EfClubMemberRepository(GeoClubBotDbContext dbContext, ILogger<EfClubMemberRepository> logger) : IClubMemberRepository
 {
-    public async Task<ClubMember?> CreateClubMemberAsync(ClubMember clubMember)
+    public async Task<ClubMember> CreateClubMemberAsync(ClubMember clubMember)
     {
-        // Try to find an existing club member with that id
-        var clubMemberExists = await dbContext.ClubMembers.AnyAsync(m => m.UserId == clubMember.UserId).ConfigureAwait(false);
+        // Deep copy the club member
+        var clubMemberCopy = clubMember.DeepCopy();
+        
+        // Null out navigation properties
+        clubMemberCopy.User = null;
+        clubMemberCopy.Club = null;
+        clubMemberCopy.Excuses = null;
+        clubMemberCopy.History = null;
+        clubMemberCopy.Strikes = null;
+        
+        // Add the club member
+        dbContext.Add(clubMemberCopy);
+        
+        // Save the changes to the database
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+        
+        // Reload the navigation properties
+        await dbContext.Entry(clubMemberCopy).Reference(m => m.User).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(clubMemberCopy).Reference(m => m.Club).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(clubMemberCopy).Collection(m => m.Excuses).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(clubMemberCopy).Collection(m => m.History).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(clubMemberCopy).Collection(m => m.Strikes).LoadAsync().ConfigureAwait(false);
+        
+        return clubMemberCopy;
+    }
+    
+    public async Task<ClubMember?> UpdateClubMemberAsync(ClubMember clubMember)
+    {
+        // Deep copy the club member
+        var clubMemberCopy = clubMember.DeepCopy();
 
-        // If the club member already exists
-        if (clubMemberExists)
+        // Null out navigation properties
+        clubMemberCopy.User = null;
+        clubMemberCopy.Club = null;
+        clubMemberCopy.Excuses = null;
+        clubMemberCopy.History = null;
+        clubMemberCopy.Strikes = null;
+        
+        // Get the database entry
+        var dbEntry = await dbContext.ClubMembers
+            .FindAsync(clubMemberCopy.UserId)
+            .ConfigureAwait(false);
+        
+        // If the entity was not found
+        if (dbEntry == null)
         {
             return null;
         }
-
-        // Add the club member
-        dbContext.Add(clubMember);
-
-        // Save the changes to the database
-        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-        return clubMember;
-    }
-
-    public async Task<ClubMember> CreateOrUpdateClubMemberAsync(ClubMember clubMember)
-    {
-        // Try to find an existing club member with that id
-        var clubMemberExists = await dbContext.ClubMembers.AnyAsync(m => m.UserId == clubMember.UserId).ConfigureAwait(false);
-
-        // If the club member already exists
-        if (clubMemberExists)
-        {
-            // Update the club member
-            dbContext.Update(clubMember);
-        }
-        else
-        {
-            // Add the club member
-            dbContext.Add(clubMember);
-        }
+        
+        // Update the club member
+        dbContext.Entry(dbEntry).CurrentValues.SetValues(clubMemberCopy);
 
         // Save the changes to the database
         await dbContext.SaveChangesAsync().ConfigureAwait(false);
 
-        return clubMember;
+        // Reload the navigation properties
+        await dbContext.Entry(dbEntry).Reference(m => m.User).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(dbEntry).Reference(m => m.Club).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(dbEntry).Collection(m => m.Excuses).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(dbEntry).Collection(m => m.History).LoadAsync().ConfigureAwait(false);
+        await dbContext.Entry(dbEntry).Collection(m => m.Strikes).LoadAsync().ConfigureAwait(false);
+        
+        return dbEntry;
     }
 
     public async Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname)
@@ -55,7 +80,9 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         // Try to find the club member by nickname
         var clubMember = await dbContext.ClubMembers
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.User!.Nickname == nickname).ConfigureAwait(false);
+            .AsNoTracking()
+            .SingleOrDefaultAsync(m => m.User.Nickname == nickname)
+            .ConfigureAwait(false);
 
         return clubMember;
     }
@@ -65,9 +92,23 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         // Try to find the club member
         var clubMember = await dbContext.ClubMembers
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.UserId == userId).ConfigureAwait(false);
+            .AsNoTracking()
+            .SingleOrDefaultAsync(m => m.UserId == userId)
+            .ConfigureAwait(false);
         
         return clubMember;
+    }
+
+    public async Task<List<ClubMember>> ReadClubMembersAsync()
+    {
+        // Get the club members
+        var clubMembers = await dbContext.ClubMembers
+            .AsNoTracking()
+            .Include(m => m.User)
+            .ToListAsync()
+            .ConfigureAwait(false);
+        
+        return clubMembers;
     }
 
     public async Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync()

@@ -15,6 +15,8 @@ public static class ConfigKeys
     public const string GeoGuessrTokenConfigurationKey = "GeoGuessr:NcfaToken";
     public const string GeoGuessrClubIdConfigurationKey = "GeoGuessr:ClubId";
     
+    public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:Club:SyncSchedule";
+    
     public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
     public const string ActivityCheckerTextChannelIdConfigurationKey = "ActivityChecker:TextChannelId";
     public const string ActivityCheckerMinXpConfigurationKey = "ActivityChecker:MinXP";
@@ -39,7 +41,6 @@ public static class ConfigKeys
     public const string GeoGuessrAccountLinkingAdminChannelIdConfigurationKey = "GeoGuessrAccountLinking:AdminChannelId";
     public const string GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey = "GeoGuessrAccountLinking:HasLinkedRoleId";
     public const string GeoGuessrAccountLinkingClubMemberRoleIdConfigurationKey = "GeoGuessrAccountLinking:ClubMemberRoleId";
-    public const string GeoGuessrAccountLinkingSyncAllUsersRolesScheduleConfigurationKey = "GeoGuessrAccountLinking:SyncAllUsersRolesSchedule";
     
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }
