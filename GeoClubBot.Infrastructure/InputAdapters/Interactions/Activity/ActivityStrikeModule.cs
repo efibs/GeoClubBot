@@ -128,7 +128,7 @@ public partial class ActivityModule
             try
             {
                 // Defer the response
-                await DeferAsync().ConfigureAwait(false);
+                await DeferAsync(ephemeral: true).ConfigureAwait(false);
 
                 // Read the strikes
                 var strikes = await readAllRelevantStrikesUseCase
@@ -139,7 +139,7 @@ public partial class ActivityModule
                 if (strikes.Count == 0)
                 {
                     // Respond
-                    await RespondAsync("There are currently no relevant strikes in the system.",
+                    await FollowupAsync("There are currently no relevant strikes in the system.",
                             ephemeral: true)
                         .ConfigureAwait(false);
                     return;
