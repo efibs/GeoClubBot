@@ -1,3 +1,4 @@
+using Entities;
 using MediatR;
 using UseCases.OutputPorts;
 using UseCases.UseCases.Users;
@@ -45,10 +46,13 @@ public class HandleUserNicknameChangedForPrivateChannelUseCase(
         // Get the text channel name
         var textChannelName = $"{clubMember.User.Nickname.ToLowerInvariant()}-private-channel";
         
-        // Update the text channel
-        await textChannelAccess.UpdateTextChannelAsync(clubMember.PrivateTextChannelId.Value, options =>
+        // Build the new text channel
+        var newTextChannel = new TextChannel(clubMember.PrivateTextChannelId.Value)
         {
-            options.Name = textChannelName;
-        }).ConfigureAwait(false);
+            Name = textChannelName
+        };
+        
+        // Update the text channel
+        await textChannelAccess.UpdateTextChannelAsync(newTextChannel).ConfigureAwait(false);
     }
 }

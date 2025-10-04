@@ -1,6 +1,7 @@
 using Constants;
 using Discord;
 using Discord.WebSocket;
+using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.OutputPorts;
 
@@ -36,16 +37,31 @@ public class DiscordTextChannelAccess(DiscordSocketClient client, IConfiguration
         return createdTextChannel?.Id;
     }
 
-    public async Task UpdateTextChannelAsync(ulong textChannelId, Action<TextChannelProperties> updateAction)
+    public async Task UpdateTextChannelAsync(TextChannel newTextChannel)
     {
         // Get the guild
         var guild = client.GetGuild(_guildId);
         
         // Get the text channel
-        var textChannel = guild.GetTextChannel(textChannelId);
+        var textChannel = guild.GetTextChannel(newTextChannel.Id);
         
         // Update the text channel
-        await textChannel.ModifyAsync(updateAction).ConfigureAwait(false);
+        await textChannel.ModifyAsync(options =>
+        {
+            // If a name is given
+            if (string.IsNullOrWhiteSpace(newTextChannel.Name) == false)
+            {
+                // Update the name
+                options.Name = newTextChannel.Name;
+            }
+            
+            // If a description is given
+            if (string.IsNullOrWhiteSpace(newTextChannel.Description) == false)
+            {
+                // Update the topic
+                options.Topic = newTextChannel.Description;
+            }
+        }).ConfigureAwait(false);
     }
     
     public async Task<bool> DeleteTextChannelAsync(ulong textChannelId)

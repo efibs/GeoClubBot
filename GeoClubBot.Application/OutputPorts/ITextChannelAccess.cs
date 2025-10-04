@@ -1,4 +1,4 @@
-using Discord;
+using Entities;
 
 namespace UseCases.OutputPorts;
 
@@ -10,7 +10,7 @@ public interface ITextChannelAccess
         IEnumerable<ulong>? allowedDiscordUserIds,
         IEnumerable<ulong>? allowedRoleIds);
 
-    Task UpdateTextChannelAsync(ulong textChannelId, Action<TextChannelProperties> updateAction);
+    Task UpdateTextChannelAsync(TextChannel newTextChannel);
     
     Task<bool> DeleteTextChannelAsync(ulong textChannelId);
 }

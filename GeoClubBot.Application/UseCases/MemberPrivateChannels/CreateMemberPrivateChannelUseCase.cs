@@ -1,5 +1,4 @@
 using Constants;
-using Discord;
 using Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -53,7 +52,7 @@ public class CreateMemberPrivateChannelUseCase(
     private async Task _sendWelcomeMessageAsync(ClubMember clubMember, ulong textChannelId)
     {
         // Build the message body
-        var messageBody = $"Welcome {MentionUtils.MentionUser(clubMember.User.DiscordUserId!.Value)}! This is your " +
+        var messageBody = $"Welcome <@{clubMember.User.DiscordUserId!.Value}>! This is your " +
                           "private space to talk to our admins. Only you and the admins can see the messages in this " +
                           "text channel. Use this channel for example to talk about when you need an excuse for the " +
                           "club XP rule or any other concerns you might have.";
