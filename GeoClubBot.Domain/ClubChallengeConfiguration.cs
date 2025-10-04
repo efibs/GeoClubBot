@@ -1,9 +1,11 @@
 namespace Entities;
 
-public record ClubChallengeConfigurationDifficulty(
-    string Difficulty,
-    int RolePriority,
-    List<ClubChallengeConfigurationDifficultyEntry> Entries);
+public record ClubChallengeConfigurationDifficulty(string Difficulty)
+{
+    public required int RolePriority { get; init; }
+
+    public required List<ClubChallengeConfigurationDifficultyEntry> Entries { get; init; }
+}
 
 public record ClubChallengeConfigurationDifficultyEntry(
     string Description,

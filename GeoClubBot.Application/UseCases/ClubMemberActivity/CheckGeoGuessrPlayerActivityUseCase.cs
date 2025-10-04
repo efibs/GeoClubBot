@@ -186,7 +186,8 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             {
                 StrikeId = Guid.NewGuid(),
                 UserId = memberUserId,
-                Timestamp = now
+                Timestamp = now,
+                Revoked = false
             };
             
             // Add the strike

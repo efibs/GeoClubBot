@@ -40,7 +40,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasKey("ClubId");
 
-                    b.ToTable("Clubs");
+                    b.ToTable("Clubs", (string)null);
                 });
 
             modelBuilder.Entity("Entities.ClubChallengeLink", b =>
@@ -65,7 +65,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("LatestClubChallengeLinks");
+                    b.ToTable("LatestClubChallengeLinks", (string)null);
                 });
 
             modelBuilder.Entity("Entities.ClubMember", b =>
@@ -93,7 +93,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasIndex("ClubId");
 
-                    b.ToTable("ClubMembers");
+                    b.ToTable("ClubMembers", (string)null);
                 });
 
             modelBuilder.Entity("Entities.ClubMemberExcuse", b =>
@@ -119,7 +119,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ClubMemberExcuses");
+                    b.ToTable("ClubMemberExcuses", (string)null);
                 });
 
             modelBuilder.Entity("Entities.ClubMemberHistoryEntry", b =>
@@ -138,7 +138,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ClubMemberHistoryEntries");
+                    b.ToTable("ClubMemberHistoryEntries", (string)null);
                 });
 
             modelBuilder.Entity("Entities.ClubMemberStrike", b =>
@@ -163,7 +163,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ClubMemberStrikes");
+                    b.ToTable("ClubMemberStrikes", (string)null);
                 });
 
             modelBuilder.Entity("Entities.GeoGuessrAccountLinkingRequest", b =>
@@ -182,7 +182,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasKey("DiscordUserId", "GeoGuessrUserId");
 
-                    b.ToTable("GeoGuessrAccountLinkingRequests");
+                    b.ToTable("GeoGuessrAccountLinkingRequests", (string)null);
                 });
 
             modelBuilder.Entity("Entities.GeoGuessrUser", b =>
@@ -206,7 +206,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasIndex("Nickname");
 
-                    b.ToTable("GeoGuessrUsers");
+                    b.ToTable("GeoGuessrUsers", (string)null);
                 });
 
             modelBuilder.Entity("Entities.ClubMember", b =>

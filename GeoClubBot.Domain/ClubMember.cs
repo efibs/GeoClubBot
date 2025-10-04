@@ -1,18 +1,9 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Constants;
-
 namespace Entities;
 
 public class ClubMember
 {
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    [MaxLength(StringLengthConstants.GeoGuessrUserIdLength)]
-    [ForeignKey(nameof(User))]
     public required string UserId { get; set; }
     
-    [ForeignKey(nameof(Club))]
     public required Guid ClubId { get; set; }
     
     public Club? Club { get; set; }

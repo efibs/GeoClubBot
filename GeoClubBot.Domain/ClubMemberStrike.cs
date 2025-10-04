@@ -1,24 +1,14 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-using Constants;
-using Microsoft.EntityFrameworkCore;
-
 namespace Entities;
 
-[Index(nameof(Timestamp))]
 public class ClubMemberStrike
 {
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    public Guid StrikeId { get; set; }
-
-    [ForeignKey(nameof(ClubMember))]
-    [MaxLength(StringLengthConstants.GeoGuessrUserIdLength)]
-    public string UserId { get; set; } = string.Empty;
+    public required Guid StrikeId { get; set; }
     
-    public DateTimeOffset Timestamp { get; set; }
+    public required string UserId { get; set; }
     
-    public bool Revoked { get; set; }
+    public required DateTimeOffset Timestamp { get; set; }
+    
+    public required bool Revoked { get; set; }
     
     public ClubMember? ClubMember { get; set; }
 

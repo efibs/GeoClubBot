@@ -6,19 +6,21 @@ using UseCases.OutputPorts;
 
 namespace Infrastructure.OutputAdapters;
 
-public class EfClubMemberRepository(GeoClubBotDbContext dbContext, ILogger<EfClubMemberRepository> logger) : IClubMemberRepository
+public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMemberRepository
 {
     public async Task<ClubMember> CreateClubMemberAsync(ClubMember clubMember)
     {
         // Deep copy the club member
         var clubMemberCopy = clubMember.ShallowCopy();
         
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
         // Null out navigation properties
         clubMemberCopy.User = null;
         clubMemberCopy.Club = null;
         clubMemberCopy.Excuses = null;
         clubMemberCopy.History = null;
         clubMemberCopy.Strikes = null;
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
         
         // Add the club member
         dbContext.Add(clubMemberCopy);
@@ -41,12 +43,14 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext, ILogger<EfClu
         // Deep copy the club member
         var clubMemberCopy = clubMember.ShallowCopy();
 
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
         // Null out navigation properties
         clubMemberCopy.User = null;
         clubMemberCopy.Club = null;
         clubMemberCopy.Excuses = null;
         clubMemberCopy.History = null;
         clubMemberCopy.Strikes = null;
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
         
         // Get the database entry
         var dbEntry = await dbContext.ClubMembers

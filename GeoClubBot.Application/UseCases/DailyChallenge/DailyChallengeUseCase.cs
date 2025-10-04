@@ -36,8 +36,8 @@ public class DailyChallengeUseCase(
         // Select entries
         var selectedEntries = challengeConfig
             .ToDictionary(
-                d => d.Difficulty,
-                d => d.Entries[_rng.Next(0, d.Entries.Count)]);
+                d => d,
+                d => d.Entries[Rng.Next(0, d.Entries.Count)]);
 
         var nextChallenges = new List<ClubChallenge>(selectedEntries.Count);
         foreach (var selectedEntry in selectedEntries)
@@ -62,7 +62,7 @@ public class DailyChallengeUseCase(
             }
             
             // Add to the next challenges
-            nextChallenges.Add(new ClubChallenge(selectedEntry.Key, selectedEntry.Value.Description,
+            nextChallenges.Add(new ClubChallenge(selectedEntry.Key.Difficulty, selectedEntry.Key.RolePriority, selectedEntry.Value.Description,
                 createdChallengeToken));
         }
 
@@ -74,6 +74,7 @@ public class DailyChallengeUseCase(
         {
             Difficulty = c.Difficulty,
             ChallengeId = c.ChallengeId,
+            RolePriority = c.RolePriority,
         }).ToList();
         
         // Create the new club challenges
@@ -226,5 +227,5 @@ public class DailyChallengeUseCase(
     private readonly string _textChannelId =
         config.GetValue<string>(ConfigKeys.DailyChallengesTextChannelIdConfigurationKey)!;
     
-    private static readonly Random _rng = new Random();
+    private static readonly Random Rng = new();
 }
