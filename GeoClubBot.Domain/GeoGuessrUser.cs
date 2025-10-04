@@ -26,4 +26,14 @@ public sealed class GeoGuessrUser
             DiscordUserId = DiscordUserId
         };
     }
+    
+    public GeoGuessrUser ShallowCopy()
+    {
+        return new GeoGuessrUser
+        {
+            UserId = UserId,
+            Nickname = Nickname,
+            DiscordUserId = DiscordUserId
+        };
+    }
 }

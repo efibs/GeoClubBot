@@ -9,6 +9,7 @@ namespace UseCases.UseCases.ClubMembers;
 
 public class SaveClubMembersUseCase(ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase, 
     IGeoGuessrUserRepository geoGuessrUserRepository, 
+    IClubMemberRepository clubMemberRepository,
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase) : ISaveClubMembersUseCase
 {
     public async Task SaveClubMembersAsync(IEnumerable<ClubMember> clubMembers)
@@ -32,8 +33,21 @@ public class SaveClubMembersUseCase(ICreateOrUpdateClubMemberUseCase createOrUpd
             // Save the user to the database
             await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(geoGuessrUser).ConfigureAwait(false);
             
+            // Try to read the club member from the database
+            var clubMemberFromDatabase = await clubMemberRepository
+                .ReadClubMemberByUserIdAsync(geoGuessrClubMember.User.UserId)
+                .ConfigureAwait(false);
+            
+            // Set if not found
+            var updatedClubMember = clubMemberFromDatabase ?? geoGuessrClubMember;
+            
+            // Update the properties
+            updatedClubMember.IsCurrentlyMember = geoGuessrClubMember.IsCurrentlyMember;
+            updatedClubMember.JoinedAt = geoGuessrClubMember.JoinedAt;
+            updatedClubMember.Xp = geoGuessrClubMember.Xp;
+            
             // Ensure the member exists and is up to date
-            await createOrUpdateClubMemberUseCase.CreateOrUpdateClubMemberAsync(geoGuessrClubMember).ConfigureAwait(false);
+            await createOrUpdateClubMemberUseCase.CreateOrUpdateClubMemberAsync(updatedClubMember).ConfigureAwait(false);
         }
     }
 }

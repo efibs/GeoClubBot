@@ -21,6 +21,7 @@ using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.DailyChallenge;
 using UseCases.InputPorts.Excuses;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
+using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Strikes;
 using UseCases.InputPorts.Users;
@@ -32,6 +33,7 @@ using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.DailyChallenge;
 using UseCases.UseCases.Excuses;
 using UseCases.UseCases.GeoGuessrAccountLinking;
+using UseCases.UseCases.MemberPrivateChannels;
 using UseCases.UseCases.Organization;
 using UseCases.UseCases.Strikes;
 using UseCases.UseCases.Users;
@@ -111,6 +113,7 @@ public static class DependencyInjection
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
         services.AddTransient<IMessageSender, DiscordMessageSender>();
         services.AddTransient<IServerRolesAccess, DiscordServerRolesAccess>();
+        services.AddTransient<ITextChannelAccess, DiscordTextChannelAccess>();
         services.AddTransient<IClubEventNotifier, SignalRClubEventNotifier>();
         services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
 
@@ -149,6 +152,8 @@ public static class DependencyInjection
         services.AddTransient<IReadAllRelevantStrikesUseCase, ReadAllRelevantStrikesUseCase>();
         services.AddTransient<ICreateOrUpdateUserUseCase, CreateOrUpdateUserUseCase>();
         services.AddTransient<ICreateOrUpdateClubMemberUseCase, CreateOrUpdateClubMemberUseCase>();
+        services.AddTransient<ICreateMemberPrivateChannelUseCase, CreateMemberPrivateChannelUseCase>();
+        services.AddTransient<IDeleteMemberPrivateChannelUseCase, DeleteMemberPrivateChannelUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

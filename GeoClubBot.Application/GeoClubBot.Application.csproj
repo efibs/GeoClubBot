@@ -14,6 +14,9 @@
     </ItemGroup>
 
     <ItemGroup>
+        <Reference Include="Discord.Net.Core">
+          <HintPath>..\..\..\.nuget\packages\discord.net.core\3.17.4\lib\net9.0\Discord.Net.Core.dll</HintPath>
+        </Reference>
         <Reference Include="Microsoft.Extensions.Configuration.Abstractions">
             <HintPath>..\..\..\.dotnet\shared\Microsoft.AspNetCore.App\9.0.7\Microsoft.Extensions.Configuration.Abstractions.dll</HintPath>
         </Reference>

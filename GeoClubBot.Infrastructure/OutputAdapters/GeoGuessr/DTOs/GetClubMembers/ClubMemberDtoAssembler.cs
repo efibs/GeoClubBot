@@ -18,7 +18,8 @@ public static class ClubMemberDtoAssembler
             ClubId = clubId,
             IsCurrentlyMember = true,
             Xp = dto.Xp,
-            JoinedAt = dto.JoinedAt
+            JoinedAt = dto.JoinedAt,
+            PrivateTextChannelId = null
         };
     }
 }

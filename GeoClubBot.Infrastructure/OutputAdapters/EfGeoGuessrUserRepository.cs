@@ -10,7 +10,7 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
     public async Task<GeoGuessrUser> CreateUserAsync(GeoGuessrUser user)
     {
         // Create a deep copy of the user
-        var userCopy = user.DeepCopy();
+        var userCopy = user.ShallowCopy();
 
         // Add the club member
         dbContext.Add(userCopy);
@@ -24,7 +24,7 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
     public async Task<GeoGuessrUser> UpdateUserAsync(GeoGuessrUser user)
     {
         // Create a deep copy of the user
-        var userCopy = user.DeepCopy();
+        var userCopy = user.ShallowCopy();
 
         // Update the club member
         dbContext.Update(userCopy);

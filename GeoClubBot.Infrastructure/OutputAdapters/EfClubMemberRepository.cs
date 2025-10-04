@@ -11,7 +11,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext, ILogger<EfClu
     public async Task<ClubMember> CreateClubMemberAsync(ClubMember clubMember)
     {
         // Deep copy the club member
-        var clubMemberCopy = clubMember.DeepCopy();
+        var clubMemberCopy = clubMember.ShallowCopy();
         
         // Null out navigation properties
         clubMemberCopy.User = null;
@@ -39,7 +39,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext, ILogger<EfClu
     public async Task<ClubMember?> UpdateClubMemberAsync(ClubMember clubMember)
     {
         // Deep copy the club member
-        var clubMemberCopy = clubMember.DeepCopy();
+        var clubMemberCopy = clubMember.ShallowCopy();
 
         // Null out navigation properties
         clubMemberCopy.User = null;

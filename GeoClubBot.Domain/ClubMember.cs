@@ -24,6 +24,8 @@ public class ClubMember
     public required int Xp { get; set; }
     
     public required DateTimeOffset JoinedAt { get; set; }
+    
+    public required ulong? PrivateTextChannelId { get; set; }
 
     public List<ClubMemberHistoryEntry> History { get; set; } = [];
 
@@ -47,9 +49,28 @@ public class ClubMember
             IsCurrentlyMember = IsCurrentlyMember,
             Xp = Xp,
             JoinedAt = JoinedAt,
+            PrivateTextChannelId = PrivateTextChannelId,
             History = History.Select(e => e.DeepCopy()).ToList(),
             Strikes = Strikes.Select(s => s.DeepCopy()).ToList(),
             Excuses = Excuses.Select(e => e.DeepCopy()).ToList()
+        };
+    }
+
+    public ClubMember ShallowCopy()
+    {
+        return new ClubMember
+        {
+            UserId = UserId,
+            ClubId = ClubId,
+            Club = Club,
+            User = User,
+            IsCurrentlyMember = IsCurrentlyMember,
+            Xp = Xp,
+            JoinedAt = JoinedAt,
+            PrivateTextChannelId = PrivateTextChannelId,
+            History = History,
+            Strikes = Strikes,
+            Excuses = Excuses
         };
     }
 }
