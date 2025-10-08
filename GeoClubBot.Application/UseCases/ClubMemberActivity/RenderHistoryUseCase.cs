@@ -98,9 +98,9 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         var textPaint = new SKPaint
         {
             Color = SKColors.Black,
-            TextSize = 12,
             IsAntialias = true
         };
+        var textFont = SKTypeface.FromFamilyName("Arial");
 
         // Y-axis labels and grid (in 20-steps)
         for (double val = yMin; val <= yMax; val += yStep)
@@ -108,7 +108,9 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
             var y = (float)ValueToY(val);
 
             canvas.DrawLine(padding, y, width - padding, y, gridPaint);
-            canvas.DrawText(val.ToString("F0"), padding - 35, y + 5, textPaint);
+
+            using var font = new SKFont(textFont, 12);
+            canvas.DrawText(val.ToString("F0"), padding - 35, y + 5, font, textPaint);
         }
 
         // X-axis labels (timestamps) - label every timestamp as a tick mark
@@ -132,7 +134,8 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
             canvas.Save();
             canvas.Translate(x, height - bottomPadding + 10);
             canvas.RotateDegrees(45);
-            canvas.DrawText(label, 0, 0, textPaint);
+            using var font = new SKFont(textFont, 12);
+            canvas.DrawText(label, 0, 0, font, textPaint);
             canvas.Restore();
         }
 
@@ -148,19 +151,20 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         var titlePaint = new SKPaint
         {
             Color = SKColors.Black,
-            TextSize = 18,
-            IsAntialias = true,
-            FakeBoldText = true
+            IsAntialias = true
         };
-        canvas.DrawText("Time Series Column Chart", width / 2 - 100, 30, titlePaint);
+        var titleFont = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold);
+        var titleSkFont = new SKFont(titleFont, 18);
+        canvas.DrawText("Time Series Column Chart", width / 2 - 100, 30, titleSkFont, titlePaint);
 
         // Axis labels
-        canvas.DrawText("Time", width / 2 - 20, height - 10, textPaint);
+        using var axisFont = new SKFont(textFont, 12);
+        canvas.DrawText("Time", width / 2 - 20, height - 10, axisFont, textPaint);
 
         canvas.Save();
         canvas.Translate(15, height / 2);
         canvas.RotateDegrees(-90);
-        canvas.DrawText("Value", 0, 0, textPaint);
+        canvas.DrawText("Value", 0, 0, axisFont, textPaint);
         canvas.Restore();
 
         // Save to memory stream
