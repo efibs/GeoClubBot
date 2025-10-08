@@ -11,7 +11,7 @@ namespace UseCases.UseCases.ClubMemberActivity;
 
 public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUseCase geoGuessrUserIdsToDiscordUserIdsUseCase,
     IServerRolesAccess serverRolesAccess, 
-    IMessageSender messageSender, 
+    IMessageAccess messageAccess, 
     IConfiguration config, 
     ILogger<ClubMemberActivityRewardUseCase> logger) : IClubMemberActivityRewardUseCase
 {
@@ -66,7 +66,7 @@ public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUs
         var msg = msgBuilder.ToString();
         
         // Send the message
-        await messageSender.SendMessageAsync(msg, _channelId).ConfigureAwait(false);
+        await messageAccess.SendMessageAsync(msg, _channelId).ConfigureAwait(false);
         
         // Get the discord user ids for the mvps
         var discordUserIds = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(mvpPlayerUserIds).ConfigureAwait(false);

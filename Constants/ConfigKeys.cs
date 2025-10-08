@@ -45,5 +45,9 @@ public static class ConfigKeys
     public const string MemberPrivateChannelsCategoryIdConfigurationKey = "MemberPrivateChannels:CategoryId";
     public const string MemberPrivateChannelsDescriptionConfigurationKey = "MemberPrivateChannels:Description";
     
+    public const string SelfRolesTextChannelIdConfigurationKey = "SelfRoles:TextChannelId";
+    public const string SelfRolesRolesConfigurationKey = "SelfRoles:Roles";
+    
+    
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

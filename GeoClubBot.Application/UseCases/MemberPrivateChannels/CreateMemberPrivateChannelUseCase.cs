@@ -11,7 +11,7 @@ namespace UseCases.UseCases.MemberPrivateChannels;
 public class CreateMemberPrivateChannelUseCase(
     ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase,
     ITextChannelAccess textChannelAccess, 
-    IMessageSender messageSender,
+    IMessageAccess messageAccess,
     IConfiguration config,
     ILogger<CreateMemberPrivateChannelUseCase> logger) 
     : ICreateMemberPrivateChannelUseCase
@@ -58,7 +58,7 @@ public class CreateMemberPrivateChannelUseCase(
                           "club XP rule or any other concerns you might have.";
         
         // Send the message
-        await messageSender.SendMessageAsync(messageBody, textChannelId.ToString()).ConfigureAwait(false);
+        await messageAccess.SendMessageAsync(messageBody, textChannelId.ToString()).ConfigureAwait(false);
     }
     
     private readonly ulong _privateTextChannelCategoryId =
