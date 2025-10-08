@@ -85,7 +85,9 @@ public partial class ActivityModule
         }
         
         [SlashCommand("player-history", "Read the history of a player")]
-        public async Task ReadPlayerHistoryAsync(string memberNickname, int maxNumEntries)
+        public async Task ReadPlayerHistoryAsync(
+            string memberNickname, 
+            [MinValue(1)] [Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries)
         {
             try
             {
