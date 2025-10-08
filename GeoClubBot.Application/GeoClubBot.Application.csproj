@@ -26,6 +26,8 @@
         <PackageReference Include="MediatR" Version="13.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.7"/>
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.7"/>
+        <PackageReference Include="OxyPlot.Core" Version="2.2.0" />
+        <PackageReference Include="OxyPlot.ImageSharp" Version="2.2.0" />
         <PackageReference Include="PasswordGenerator" Version="2.1.0" />
     </ItemGroup>
 

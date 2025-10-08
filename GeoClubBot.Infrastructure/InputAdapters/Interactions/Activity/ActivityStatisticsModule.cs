@@ -1,13 +1,18 @@
 using System.Globalization;
 using System.Text;
 using Discord.Interactions;
+using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMemberActivity;
 
 namespace Infrastructure.InputAdapters.Interactions;
 
 public partial class ActivityModule
 {
-    public partial class ActivityStatisticsModule(IPlayerStatisticsUseCase playerStatisticsUseCase, IClubStatisticsUseCase clubStatisticsUseCase)
+    public partial class ActivityStatisticsModule(
+        IPlayerStatisticsUseCase playerStatisticsUseCase, 
+        IRenderPlayerActivityUseCase renderPlayerActivityUseCase,
+        IClubStatisticsUseCase clubStatisticsUseCase,
+        ILogger<ActivityStatisticsModule> logger)
     {
         [SlashCommand("player", "Read the statistics of a player")]
         public async Task ReadPlayerStatisticsAsync(string memberNickname)
@@ -77,6 +82,41 @@ public partial class ActivityModule
             
             // Respond with the message
             await RespondAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
+        }
+        
+        [SlashCommand("player-history", "Read the history of a player")]
+        public async Task ReadPlayerHistoryAsync(string memberNickname, int maxNumEntries)
+        {
+            try
+            {
+                // Defer the response
+                await DeferAsync(ephemeral: true).ConfigureAwait(false);
+                
+                // Try to read the plot
+                using var plot = await renderPlayerActivityUseCase
+                    .RenderPlayerActivityAsync(memberNickname, maxNumEntries)
+                    .ConfigureAwait(false);
+                
+                // If there is no entry
+                if (plot == null)
+                {
+                    // Send error
+                    await FollowupAsync($"The player '{memberNickname}' is currently not being tracked.", ephemeral: true).ConfigureAwait(false);
+                    return;
+                }
+                
+                // Respond with the image
+                await FollowupWithFileAsync(plot, $"{memberNickname} history.png", $"Here is the history plot for the player '{memberNickname}':",
+                    ephemeral: true).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Log error
+                logger.LogError(ex, $"Error while creating history plot for player {memberNickname}");
+                
+                // Give error
+                await FollowupAsync($"Failed to generate history plot. Please try again later. If the problem persists, please contact an admin.", ephemeral: true).ConfigureAwait(false);
+            }
         }
     }
 }

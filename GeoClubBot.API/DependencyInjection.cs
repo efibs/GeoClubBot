@@ -154,6 +154,8 @@ public static class DependencyInjection
         services.AddTransient<ICreateOrUpdateClubMemberUseCase, CreateOrUpdateClubMemberUseCase>();
         services.AddTransient<ICreateMemberPrivateChannelUseCase, CreateMemberPrivateChannelUseCase>();
         services.AddTransient<IDeleteMemberPrivateChannelUseCase, DeleteMemberPrivateChannelUseCase>();
+        services.AddTransient<IRenderHistoryUseCase, RenderHistoryUseCase>();
+        services.AddTransient<IRenderPlayerActivityUseCase, RenderPlayerActivityUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
