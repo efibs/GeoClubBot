@@ -28,7 +28,7 @@ public class RenderPlayerActivityUseCase(IHistoryRepository repository, IRenderH
         var playerHistory = entriesOrdered
             .Zip(entriesOrdered.Skip(1))
             .Select(e => new HistoryEntry(e.Second.Timestamp, e.First.Xp - e.Second.Xp))
-            .Take(maxNumHistoryEntries)
+            .Take(maxNumHistoryEntries + 1)
             .ToList();
         
         // Create plot
