@@ -21,13 +21,17 @@ public class RenderPlayerActivityUseCase(IHistoryRepository repository, IRenderH
         
         // Order by timestamp
         var entriesOrdered = playersHistoryEntries
-            .OrderByDescending(e => e.Timestamp)
+            .OrderBy(e => e.Timestamp)
             .ToList();
+        
+        // Get the first entry
+        var firstHistoryEntry = entriesOrdered.First();
         
         // zip and take max num entries
         var playerHistory = entriesOrdered
-            .Zip(entriesOrdered.Skip(1))
-            .Select(e => new HistoryEntry(e.Second.Timestamp, e.First.Xp - e.Second.Xp))
+            .Prepend(new ClubMemberHistoryEntry {Timestamp = firstHistoryEntry.Timestamp, UserId = firstHistoryEntry.UserId, Xp = 0})
+            .Zip(entriesOrdered)
+            .Select(e => new HistoryEntry(e.Second.Timestamp, e.Second.Xp - e.First.Xp))
             .Take(maxNumHistoryEntries + 1)
             .ToList();
         

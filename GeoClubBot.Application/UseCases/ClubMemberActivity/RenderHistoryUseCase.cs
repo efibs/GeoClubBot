@@ -19,14 +19,13 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         var chartHeight = height - padding - bottomPadding;
 
         // Prepare data
-        var sortedHistory = history.OrderBy(e => e.Timestamp).ToList();
-        var minTime = sortedHistory[0].Timestamp.Ticks;
-        var maxTime = sortedHistory[^1].Timestamp.Ticks;
+        var minTime = history[0].Timestamp.Ticks;
+        var maxTime = history[^1].Timestamp.Ticks;
         var timeRange = maxTime - minTime;
 
         // Calculate Y-axis range
-        var maxValue = sortedHistory.Max(e => e.Xp);
-        var minValue = Math.Min(0, sortedHistory.Min(e => e.Xp));
+        var maxValue = history.Max(e => e.Xp);
+        var minValue = Math.Min(0, history.Min(e => e.Xp));
         var yMin = Math.Floor(minValue / yStep) * yStep;
         var yMax = Math.Ceiling(maxValue / yStep) * yStep;
         var valueRange = yMax - yMin;
@@ -47,13 +46,13 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         DrawGrid(canvas, padding, width, yMin, yMax, yStep, ValueToY);
 
         // Draw data bars
-        DrawBars(canvas, sortedHistory, TimeToX, ValueToY, yMin);
+        DrawBars(canvas, history, TimeToX, ValueToY, yMin);
 
         // Draw axes
         DrawAxes(canvas, padding, width, height, bottomPadding);
 
         // Draw X-axis labels (timestamps)
-        DrawXAxisLabels(canvas, sortedHistory, height, bottomPadding, TimeToX);
+        DrawXAxisLabels(canvas, history, height, bottomPadding, TimeToX);
 
         // Draw titles and labels
         DrawLabels(canvas, width, height);
@@ -85,7 +84,7 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         }
     }
 
-    private void DrawBars(SKCanvas canvas, List<HistoryEntry> sortedHistory,
+    private void DrawBars(SKCanvas canvas, List<HistoryEntry> history,
         Func<long, double> timeToX, Func<double, double> valueToY, double yMin)
     {
         using var barPaint = new SKPaint();
@@ -97,11 +96,11 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         borderPaint.Style = SKPaintStyle.Stroke;
         borderPaint.StrokeWidth = 1;
 
-        for (int i = 0; i < sortedHistory.Count - 1; i++)
+        for (int i = 1; i < history.Count; i++)
         {
-            var x1 = (float)timeToX(sortedHistory[i].Timestamp.Ticks);
-            var x2 = (float)timeToX(sortedHistory[i + 1].Timestamp.Ticks);
-            var y = (float)valueToY(sortedHistory[i].Xp);
+            var x1 = (float)timeToX(history[i-1].Timestamp.Ticks);
+            var x2 = (float)timeToX(history[i].Timestamp.Ticks);
+            var y = (float)valueToY(history[i].Xp);
             var baseY = (float)valueToY(yMin);
 
             var rect = new SKRect(x1, y, x2, baseY);
@@ -124,7 +123,7 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         canvas.DrawLine(padding, height - bottomPadding, width - padding, height - bottomPadding, axisPaint);
     }
 
-    private void DrawXAxisLabels(SKCanvas canvas, List<HistoryEntry> sortedHistory,
+    private void DrawXAxisLabels(SKCanvas canvas, List<HistoryEntry> history,
         int height, int bottomPadding, Func<long, double> timeToX)
     {
         using var tickPaint = new SKPaint();
@@ -139,7 +138,7 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         var textFont = SKTypeface.FromFamilyName("Arial");
         using var font = new SKFont(textFont);
 
-        foreach (var historyEntry in sortedHistory)
+        foreach (var historyEntry in history)
         {
             var x = (float)timeToX(historyEntry.Timestamp.Ticks);
 
@@ -153,15 +152,6 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
             canvas.RotateDegrees(45);
             canvas.DrawText(label, 0, 0, font, textPaint);
             canvas.Restore();
-        }
-
-        // Draw end point tick
-        if (sortedHistory.Count > 1)
-        {
-            var lastX = (float)timeToX(sortedHistory[^1].Timestamp.Ticks);
-            var secondLastX = (float)timeToX(sortedHistory[^2].Timestamp.Ticks);
-            var endX = lastX + (lastX - secondLastX);
-            canvas.DrawLine(endX, height - bottomPadding, endX, height - bottomPadding + 5, tickPaint);
         }
     }
 
