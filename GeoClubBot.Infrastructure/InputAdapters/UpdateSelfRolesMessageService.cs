@@ -1,10 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using UseCases.InputPorts.Club;
+using UseCases.InputPorts.SelfRoles;
 
 namespace Infrastructure.InputAdapters;
 
-public class InitialSyncService(DiscordBotReadyService botReadyService, IServiceProvider serviceProvider) : IHostedService
+public class UpdateSelfRolesMessageService(DiscordBotReadyService botReadyService, IServiceProvider serviceProvider) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -15,9 +15,9 @@ public class InitialSyncService(DiscordBotReadyService botReadyService, IService
         using var scope = serviceProvider.CreateScope();
         
         // Get the use case
-        var useCase = scope.ServiceProvider.GetRequiredService<ISyncClubUseCase>();
+        var useCase = scope.ServiceProvider.GetRequiredService<IUpdateSelfRolesMessageUseCase>();
         
-        await useCase.SyncClubAsync().ConfigureAwait(false);
+        await useCase.UpdateSelfRolesMessageAsync().ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

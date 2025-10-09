@@ -13,7 +13,7 @@ namespace UseCases.UseCases.DailyChallenge;
 public class DailyChallengeUseCase(
     IGeoGuessrAccess geoGuessrAccess,
     IClubChallengeRepository clubChallengeRepository,
-    IMessageSender messageSender,
+    IMessageAccess messageAccess,
     IDistributeDailyChallengeRolesUseCase distributeDailyChallengeRolesUseCase,
     IConfiguration config,
     ILogger<DailyChallengeUseCase> logger) : IDailyChallengeUseCase
@@ -152,7 +152,7 @@ public class DailyChallengeUseCase(
             }
 
             // Send the result
-            await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
+            await  messageAccess.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
             
             // Reset the string builder
             builder = new StringBuilder();
@@ -218,7 +218,7 @@ public class DailyChallengeUseCase(
         }
 
         // Send the next challenges
-        await  messageSender.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
+        await  messageAccess.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
     }
     
     private readonly string _challengesConfigurationFilePath =

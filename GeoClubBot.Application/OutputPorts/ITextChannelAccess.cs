@@ -13,4 +13,8 @@ public interface ITextChannelAccess
     Task UpdateTextChannelAsync(TextChannel newTextChannel);
     
     Task<bool> DeleteTextChannelAsync(ulong textChannelId);
+    
+    Task<ulong?> ReadLastMessageOfUserAsync(ulong userId, 
+        ulong channelId, 
+        int numMessageSearchlimit);
 }

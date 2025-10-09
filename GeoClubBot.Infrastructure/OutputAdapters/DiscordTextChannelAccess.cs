@@ -85,6 +85,36 @@ public class DiscordTextChannelAccess(DiscordSocketClient client, IConfiguration
         return true;
     }
 
+    public async Task<ulong?> ReadLastMessageOfUserAsync(ulong userId, ulong channelId, int numMessageSearchlimit)
+    {
+        // Get the guild
+        var guild = client.GetGuild(_guildId);
+        
+        // Get the text channel
+        var textChannel = guild.GetTextChannel(channelId);
+        
+        // If the text channel was not found
+        if (textChannel == null)
+        {
+            // Nothing to do
+            return null;
+        }
+
+        // Read the messages from the text channel
+        var messages = await textChannel
+            .GetMessagesAsync(numMessageSearchlimit)
+            .FlattenAsync()
+            .ConfigureAwait(false);
+        
+        // Get the latest message of the user
+        var latestMessage = messages
+            .Where(m => m.Author.Id == userId)
+            .OrderByDescending(m => m.Timestamp)
+            .FirstOrDefault();
+            
+        return latestMessage?.Id;
+    }
+
     private List<Overwrite> _getOverwrites(SocketGuild guild, IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds)
     {
         // Get the overwrites for the allowed users

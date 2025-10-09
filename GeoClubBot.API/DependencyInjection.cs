@@ -23,6 +23,7 @@ using UseCases.InputPorts.Excuses;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.InputPorts.Organization;
+using UseCases.InputPorts.SelfRoles;
 using UseCases.InputPorts.Strikes;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
@@ -35,6 +36,7 @@ using UseCases.UseCases.Excuses;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using UseCases.UseCases.MemberPrivateChannels;
 using UseCases.UseCases.Organization;
+using UseCases.UseCases.SelfRoles;
 using UseCases.UseCases.Strikes;
 using UseCases.UseCases.Users;
 using RunMode = Discord.Interactions.RunMode;
@@ -98,6 +100,7 @@ public static class DependencyInjection
         // Add the input adapters
         services.AddHostedService<InitialSyncService>();
         services.AddHostedService<UserJoinedService>();
+        services.AddHostedService<UpdateSelfRolesMessageService>();
 
         // Add the output adapters 
         services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
@@ -111,11 +114,12 @@ public static class DependencyInjection
         services.AddTransient<IAccountLinkingRequestRepository, EfAccountLinkingRequestRepository>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IStatusUpdater, DiscordStatusUpdater>();
-        services.AddTransient<IMessageSender, DiscordMessageSender>();
+        services.AddTransient<IMessageAccess, DiscordMessageAccess>();
         services.AddTransient<IServerRolesAccess, DiscordServerRolesAccess>();
         services.AddTransient<ITextChannelAccess, DiscordTextChannelAccess>();
         services.AddTransient<IClubEventNotifier, SignalRClubEventNotifier>();
         services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
+        services.AddTransient<ISelfUserAccess, DiscordSelfUserAccess>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
@@ -156,6 +160,8 @@ public static class DependencyInjection
         services.AddTransient<IDeleteMemberPrivateChannelUseCase, DeleteMemberPrivateChannelUseCase>();
         services.AddTransient<IRenderHistoryUseCase, RenderHistoryUseCase>();
         services.AddTransient<IRenderPlayerActivityUseCase, RenderPlayerActivityUseCase>();
+        services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
+        services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
