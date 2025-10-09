@@ -1,5 +1,5 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl libfontconfig1 libfreetype6 libpng16-16 libjpeg62-turbo libgif7 libglu1-mesa && rm -rf /var/lib/apt/lists/*
 USER 1654
 WORKDIR /app
 EXPOSE 8080
