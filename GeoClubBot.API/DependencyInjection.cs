@@ -119,6 +119,7 @@ public static class DependencyInjection
         services.AddTransient<ITextChannelAccess, DiscordTextChannelAccess>();
         services.AddTransient<IClubEventNotifier, SignalRClubEventNotifier>();
         services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
+        services.AddTransient<ISelfUserAccess, DiscordSelfUserAccess>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
@@ -159,6 +160,7 @@ public static class DependencyInjection
         services.AddTransient<IDeleteMemberPrivateChannelUseCase, DeleteMemberPrivateChannelUseCase>();
         services.AddTransient<IRenderHistoryUseCase, RenderHistoryUseCase>();
         services.AddTransient<IRenderPlayerActivityUseCase, RenderPlayerActivityUseCase>();
+        services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
         services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
         
         // Get the connection string

@@ -1,6 +1,10 @@
 namespace Entities;
 
-public record SelfRoleSetting(
-    ulong RoleId, 
-    string? RoleEmoji, 
-    string? RoleDescription);
+public class SelfRoleSetting
+{
+    public ulong RoleId { get; set; }
+
+    public string? RoleEmoji { get; set; }
+    
+    public string? RoleDescription { get; set; }
+}

@@ -29,12 +29,18 @@ public class UpdateSelfRolesMessageUseCase(
             await messageAccess.DeleteMessageAsync(oldMessageId.Value, _textChannelId).ConfigureAwait(false);
         }
         
+        // If there are no self roles
+        if (_selfRoleSettings.Count == 0)
+        {
+            return;
+        }
+        
         // Create the new message
         await messageAccess.SendSelfRolesMessageAsync(_textChannelId, _selfRoleSettings).ConfigureAwait(false);
     }
     
     private readonly ulong _textChannelId = config.GetValue<ulong>(ConfigKeys.SelfRolesTextChannelIdConfigurationKey);
-    private readonly IEnumerable<SelfRoleSetting> _selfRoleSettings = config
+    private readonly List<SelfRoleSetting> _selfRoleSettings = config
         .GetSection(ConfigKeys.SelfRolesRolesConfigurationKey)
         .Get<List<SelfRoleSetting>>()!;
 }
