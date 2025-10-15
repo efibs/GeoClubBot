@@ -31,7 +31,9 @@ docker run -it --rm \
   vllm/vllm-openai:latest \
   --model openai/gpt-oss-20b \
   --host 0.0.0.0 \
-  --gpu-memory-utilization 0.8
+  --gpu-memory-utilization 0.8 \
+  --tool-call-parser openai \
+  --enable-auto-tool-choice
   
 docker run -it --rm \
   --runtime nvidia --gpus all \
