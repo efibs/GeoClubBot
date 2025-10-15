@@ -1,3 +1,4 @@
+using System.Text;
 using Constants;
 using Discord;
 using Discord.WebSocket;
@@ -63,29 +64,35 @@ public class DiscordBotService : IHostedService
         await socketMessage.Channel.TriggerTypingAsync().ConfigureAwait(false);
         
         // Get the message
-        var message = socketMessage.Content.Replace($"<@{_client.CurrentUser.Id}>", "DRAGON");
+        var message = socketMessage.Content.Replace($"<@{_client.CurrentUser.Id}>", "@DRAGON");
         ChatHistory history = [];
-        history.AddSystemMessage("You are DRAGON, a helpful GeoGuessr assistant.");
+        history.AddSystemMessage("You are DRAGON, a helpful GeoGuessr assistant Discord bot. You can use the simplified markdown syntax to format your responses. You can use headings, lists, bold font, italic font, underlined text, subtext, masked links, code blocks and block quotes. The user will mention you using \"@DRAGON\". Here are some explanations to what language the user will use: A meta originally was an information usable to identify where in the world you are in Google Street view but you don't have that information when you go there in real live. For example the color of the car that was used to capture the Street View images is a meta. Nowadays however the word meta will be used for basically everything you can use to identify where you are.");
         history.AddUserMessage(message);
-        
+
+        var msgBuilder = new StringBuilder();
         var chatSvc = _kernel.GetRequiredService<IChatCompletionService>();
-        var aiResponse = await chatSvc.GetChatMessageContentAsync(history).ConfigureAwait(false);
-        if (aiResponse.Content?.Length > 2000)
+        await foreach (var response in chatSvc.GetStreamingChatMessageContentsAsync(history).ConfigureAwait(false))
         {
-            // Convert string to stream
-            var stream = new MemoryStream();
-            var writer = new StreamWriter(stream);
-            await writer.WriteAsync(aiResponse.Content).ConfigureAwait(false);
-            await writer.FlushAsync().ConfigureAwait(false);
-            stream.Position = 0;
             
-            await socketMessage.Channel.SendFileAsync(stream, "response.md").ConfigureAwait(false);
+            if (msgBuilder.Length > 1500 && response.Content!.Contains("\n"))
+            {
+                var split = response.Content.Split("\n");
+                msgBuilder.Append(split[0]);
+                await socketMessage.Channel.SendMessageAsync(msgBuilder.ToString()).ConfigureAwait(false);
+                msgBuilder.Clear();
+                await socketMessage.Channel.TriggerTypingAsync().ConfigureAwait(false);
+                msgBuilder.Append(split[1]);
+            }
+            else
+            {
+                msgBuilder.Append(response.Content);
+            }
         }
-        else
+
+        if (msgBuilder.Length > 0)
         {
-            await socketMessage.Channel.SendMessageAsync(aiResponse.Content).ConfigureAwait(false);
+            await socketMessage.Channel.SendMessageAsync(msgBuilder.ToString()).ConfigureAwait(false);
         }
-        
     }
 
     private readonly DiscordSocketClient _client;
