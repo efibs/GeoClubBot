@@ -4,6 +4,7 @@ using Discord;
 using Discord.WebSocket;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using OpenAI;
 
 namespace GeoClubBot.Services;
@@ -20,12 +21,13 @@ public class DiscordBotService : IHostedService
         _config = config;
         
         var vllmEndpoint = "http://localhost:8000/v1";
-        var modelName = "openai/gpt-oss-20b";
+        var modelName = "Qwen/Qwen2.5-14B-Instruct";
         var apiKey = "no-key";
         
-        _kernel = Kernel.CreateBuilder()
-            .AddOpenAIChatCompletion(modelId: modelName, apiKey: apiKey, endpoint: new Uri(vllmEndpoint))
-            .Build();
+        var kernelBuilder = Kernel.CreateBuilder()
+            .AddOpenAIChatCompletion(modelId: modelName, apiKey: apiKey, endpoint: new Uri(vllmEndpoint));
+        kernelBuilder.Plugins.AddFromObject(new PlonkItPlugin(), "ReadPlonkItGuide");
+        _kernel = kernelBuilder.Build();
     }
     
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -66,12 +68,33 @@ public class DiscordBotService : IHostedService
         // Get the message
         var message = socketMessage.Content.Replace($"<@{_client.CurrentUser.Id}>", "@DRAGON");
         ChatHistory history = [];
-        history.AddSystemMessage("You are DRAGON, a helpful GeoGuessr assistant Discord bot. You can use the simplified markdown syntax to format your responses. You can use headings, lists, bold font, italic font, underlined text, subtext, masked links, code blocks and block quotes. The user will mention you using \"@DRAGON\". Here are some explanations to what language the user will use: A meta originally was an information usable to identify where in the world you are in Google Street view but you don't have that information when you go there in real live. For example the color of the car that was used to capture the Street View images is a meta. Nowadays however the word meta will be used for basically everything you can use to identify where you are.");
+        history.AddSystemMessage("You are DRAGON, a helpful GeoGuessr assistant Discord bot. The user will " +
+                                 "mention you using \"@DRAGON\"." +
+                                 "You can use the simplified markdown syntax to format your responses. " +
+                                 "You can use headings, lists, bold font, italic font, underlined text, subtext, masked " +
+                                 "links, code blocks and block quotes. " +
+                                 "Here are some explanations to what language the user will use: A meta originally was " +
+                                 "an information usable to identify where in the world you are in Google Street view " +
+                                 "but you don't have that information when you go there in real live. For example the " +
+                                 "color of the car that was used to capture the Street View images is a meta. Nowadays " +
+                                 "however the word meta will be used for basically everything you can use to identify " +
+                                 "where you are." +
+                                 "You can use the ReadPlonkItGuide to read GeoGuessr metas for specific regions and " +
+                                 "countries from a trustful website. If the user asks about anything meta related, " +
+                                 "consult this source first. Always state your sources.");
         history.AddUserMessage(message);
 
+        OpenAIPromptExecutionSettings promtExecutionSettings = new()
+        {
+            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+        };
+        
         var msgBuilder = new StringBuilder();
         var chatSvc = _kernel.GetRequiredService<IChatCompletionService>();
-        await foreach (var response in chatSvc.GetStreamingChatMessageContentsAsync(history).ConfigureAwait(false))
+        await foreach (var response in chatSvc.GetStreamingChatMessageContentsAsync(
+                           history, 
+                           executionSettings: promtExecutionSettings, 
+                           kernel: _kernel).ConfigureAwait(false))
         {
             
             if (msgBuilder.Length > 1500 && response.Content!.Contains("\n"))
