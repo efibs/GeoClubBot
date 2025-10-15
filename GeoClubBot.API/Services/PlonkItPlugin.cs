@@ -7,19 +7,21 @@ namespace GeoClubBot.Services;
 
 public class PlonkItPlugin
 {
-    public PlonkItPlugin(HttpClient? httpClient = null)
+    public PlonkItPlugin(ILogger<PlonkItPlugin> logger)
     {
-        _httpClient = httpClient ?? new HttpClient();
+        _logger = logger;
     }
 
-    [KernelFunction("get_plonkit_region_or_country_guide")]
-    [Description("Gets the PlonkIt GeoGuessr meta guide page (https://www.plonkit.net/<regionOrCountry>) for a given region or country. Note that multi word regions will be written with a dash between the words and everything must be written in lowercase. The USA for example is called \"united-states\"")]
-    public async Task<string> GetPlonkItRegionOrCountryGuide(string regionOrCountry)
+    [KernelFunction("get_plonkit_country_guide")]
+    [Description("Gets the PlonkIt GeoGuessr meta guide page (https://www.plonkit.net/<country>) for a given country. Note that multi word countries will be written with a dash between the words and everything must be written in lowercase. The USA for example is called \"united-states\"")]
+    public async Task<string> GetPlonkItCountryGuide(string country)
     {
-        var url = $"{PlonkItBaseAddress}/{regionOrCountry}";
+        var url = $"{PlonkItBaseAddress}/{country}";
         
         try
         {
+            _logger.LogDebug($"Fetching url: {url}");
+            
             var browser = await GetBrowserAsync().ConfigureAwait(false);
             var page = await browser.NewPageAsync().ConfigureAwait(false);
             
@@ -36,18 +38,20 @@ public class PlonkItPlugin
             var content = await page.GetContentAsync().ConfigureAwait(false);
             await page.CloseAsync().ConfigureAwait(false);
             
+            _logger.LogDebug($"Url fetched: {url}");
+            
             // Use HtmlAgilityPack to extract text
             var doc = new HtmlDocument();
             doc.LoadHtml(content);
 
             // Remove script and style elements
             doc.DocumentNode.Descendants()
-                .Where(n => n.Name == "script" || n.Name == "style")
+                .Where(n => n.Name == "script" || n.Name == "style" || n.Name == "head")
                 .ToList()
                 .ForEach(n => n.Remove());
 
             // Get text content
-            var text = doc.DocumentNode.InnerText;
+            var text = doc.DocumentNode.InnerHtml;
         
             // Clean up whitespace
             text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
@@ -74,7 +78,7 @@ public class PlonkItPlugin
         return _browser;
     }
     
-    private readonly HttpClient _httpClient;
+    private readonly ILogger<PlonkItPlugin> _logger;
     private IBrowser? _browser;
     private const string PlonkItBaseAddress = "https://www.plonkit.net";
 }
