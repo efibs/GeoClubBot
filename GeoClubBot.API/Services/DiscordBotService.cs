@@ -2,6 +2,7 @@ using System.Text;
 using Constants;
 using Discord;
 using Discord.WebSocket;
+using Extensions;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
@@ -15,22 +16,24 @@ namespace GeoClubBot.Services;
 /// <param name="client">The discord socket client</param>
 public class DiscordBotService : IHostedService
 {
-    public DiscordBotService(DiscordSocketClient client, IConfiguration config, ILogger<DiscordBotService> logger, ILoggerFactory loggerFactory)
+    public DiscordBotService(DiscordSocketClient client, IConfiguration config, ILogger<DiscordBotService> logger,
+        ILoggerFactory loggerFactory)
     {
         _client = client;
         _config = config;
         _logger = logger;
-        
+
         var vllmEndpoint = "http://localhost:8000/v1";
         var modelName = "openai/gpt-oss-20b";
         var apiKey = "no-key";
-        
+
         var kernelBuilder = Kernel.CreateBuilder()
             .AddOpenAIChatCompletion(modelId: modelName, apiKey: apiKey, endpoint: new Uri(vllmEndpoint));
-        kernelBuilder.Plugins.AddFromObject(new PlonkItPlugin(loggerFactory.CreateLogger<PlonkItPlugin>()), "ReadPlonkItGuide");
+        kernelBuilder.Plugins.AddFromObject(new PlonkItPlugin(loggerFactory.CreateLogger<PlonkItPlugin>()),
+            "ReadPlonkItGuide");
         _kernel = kernelBuilder.Build();
     }
-    
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // Get the token from the configuration
@@ -99,47 +102,25 @@ public class DiscordBotService : IHostedService
 
             OpenAIPromptExecutionSettings promtExecutionSettings = new()
             {
-                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+                ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
+                Temperature = 0.2
             };
-
-            var counter = 0;
-            var msgBuilder = new StringBuilder();
+            
             var chatSvc = _kernel.GetRequiredService<IChatCompletionService>();
-            await foreach (var response in chatSvc.GetStreamingChatMessageContentsAsync(
-                               history,
-                               executionSettings: promtExecutionSettings,
-                               kernel: _kernel).ConfigureAwait(false))
+            await socketMessage.Channel.TriggerTypingAsync().ConfigureAwait(false);
+            var response = await chatSvc.GetChatMessageContentAsync(history, promtExecutionSettings, _kernel)
+                .ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(response.Content))
             {
-
-                if (string.IsNullOrWhiteSpace(response.Content))
-                {
-                    continue;
-                }
-
-                //_logger.LogDebug($"Response: {response.Content}");
-
-                if (counter++ % 1000 == 0)
-                {
-                    await socketMessage.Channel.TriggerTypingAsync().ConfigureAwait(false);
-                }
-
-                if (msgBuilder.Length > 1500 && response.Content.Contains("\n"))
-                {
-                    var split = response.Content.Split("\n");
-                    msgBuilder.Append(split[0]);
-                    await socketMessage.Channel.SendMessageAsync(msgBuilder.ToString()).ConfigureAwait(false);
-                    msgBuilder.Clear();
-                    msgBuilder.Append(split[1]);
-                }
-                else
-                {
-                    msgBuilder.Append(response.Content);
-                }
+                _logger.LogError("LLM failed to respond.");
+                return;
             }
 
-            if (msgBuilder.Length > 0)
+            // For every split
+            foreach (var substring in response.Content.SplitAtCharWithLimit("\n", 2000))
             {
-                await socketMessage.Channel.SendMessageAsync(msgBuilder.ToString()).ConfigureAwait(false);
+                await socketMessage.Channel.SendMessageAsync(substring).ConfigureAwait(false);
             }
 
             _logger.LogDebug($"Handling done.");
@@ -149,7 +130,7 @@ public class DiscordBotService : IHostedService
             _logger.LogError(ex, "Error during AI response");
         }
     }
-    
+
     private readonly DiscordSocketClient _client;
     private readonly IConfiguration _config;
     private readonly Kernel _kernel;
