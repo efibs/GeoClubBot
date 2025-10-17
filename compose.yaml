@@ -28,6 +28,13 @@
       interval: 5s
       timeout: 5s
       retries: 5
+  qdrant:
+    image: qdrant/qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
 secrets:
   postgresqldb-username:
     file: .env.postgresqldb-username

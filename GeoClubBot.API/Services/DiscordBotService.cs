@@ -1,4 +1,3 @@
-using System.Text;
 using Constants;
 using Discord;
 using Discord.WebSocket;
@@ -6,7 +5,7 @@ using Extensions;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using OpenAI;
+using Qdrant.Client;
 
 namespace GeoClubBot.Services;
 
@@ -23,15 +22,31 @@ public class DiscordBotService : IHostedService
         _config = config;
         _logger = logger;
 
+        var qdrantEndpoint = config.GetConnectionString(ConfigKeys.QDrantConnectionString)!;
+        var qdrantClient = new QdrantClient(qdrantEndpoint);
+
         var vllmEndpoint = "http://localhost:8000/v1";
         var modelName = "openai/gpt-oss-20b";
+        var embeddingModelName = "BAAI/bge-large-en-v1.5";
+        var embeddingEndpoint = "http://localhost:8001";
         var apiKey = "no-key";
+
 
         var kernelBuilder = Kernel.CreateBuilder()
             .AddOpenAIChatCompletion(modelId: modelName, apiKey: apiKey, endpoint: new Uri(vllmEndpoint));
-        kernelBuilder.Plugins.AddFromObject(new PlonkItPlugin(loggerFactory.CreateLogger<PlonkItPlugin>()),
-            "ReadPlonkItGuide");
         _kernel = kernelBuilder.Build();
+
+        var embeddingService = new VllmEmbeddingService(embeddingEndpoint, embeddingModelName);
+        
+        _metaVectorStore = new MetaVectorStore(
+            qdrantClient, 
+            embeddingService,
+            loggerFactory.CreateLogger<MetaVectorStore>());
+
+        _kernel.Plugins
+            .AddFromObject(new MetaVectorStoreSearchPlugin(
+                _metaVectorStore, loggerFactory.CreateLogger<MetaVectorStoreSearchPlugin>()), 
+                "MetasDatabase");
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -51,6 +66,8 @@ public class DiscordBotService : IHostedService
         // Start the bot
         await _client.StartAsync().ConfigureAwait(false);
 
+        await _metaVectorStore.InitializeAsync().ConfigureAwait(false);
+        
         _client.MessageReceived += _onMessageReceived;
     }
 
@@ -60,14 +77,16 @@ public class DiscordBotService : IHostedService
         return Task.CompletedTask;
     }
 
-    private async Task _onMessageReceived(SocketMessage socketMessage)
+    private Task _onMessageReceived(SocketMessage socketMessage)
     {
         if (socketMessage.MentionedUserIds.Contains(_client.CurrentUser.Id) == false)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         Task.Run(async () => await _handleMessageAsync(socketMessage).ConfigureAwait(false));
+        
+        return Task.CompletedTask;
     }
 
     private async Task _handleMessageAsync(SocketMessage socketMessage)
@@ -93,10 +112,12 @@ public class DiscordBotService : IHostedService
                 "Today, however, players often use the term *meta* more broadly to describe any clue or pattern that helps identify a location.\n" +
 
                 "### Resources\n" +
-                "You have access to the **ReadPlonkItGuide**, a trusted source of GeoGuessr metas for specific countries and territories from the PlonkIt website.\n" +
-                "- If a user asks about *meta-related* topics, **consult the PlonkIt guide first**.\n" +
-                "- The guide includes most countries and some territories (e.g., *Christmas Island*, which belongs to Australia).\n" +
-                "- If a specific territory does not have its own page, check the corresponding country’s page instead — these often include relevant information.\n" +
+                "You have access to the **MetasDatabase**, a trusted source of GeoGuessr metas for specific countries and territories.\n" +
+                "- If a user asks about *meta-related* topics, **consult the MetasDatabase first**.\n" +
+                "- If the user asks about a country or region, you can use the GetInformationByCountry function to get all the information that is known about the country.\n" +
+                "- You can use the GetCountries function to get a list of all countries and regions that are in the database if you are unsure if a country is in the database.\n" +
+                "- If the user asks about anything else, you can use the SearchInformation function to search for an arbitrary text.\n" + 
+                "- If a specific territory does not have its own entry, check the corresponding country’s entry instead — these often include relevant information.\n" +
 
                 "### Source Attribution\n" +
                 "Always cite your sources as **clickable links** (masked Markdown links)."
@@ -133,9 +154,14 @@ public class DiscordBotService : IHostedService
             _logger.LogError(ex, "Error during AI response");
         }
     }
+    
 
+    
     private readonly DiscordSocketClient _client;
     private readonly IConfiguration _config;
     private readonly Kernel _kernel;
+    private readonly MetaVectorStore _metaVectorStore;
     private readonly ILogger<DiscordBotService> _logger;
+    
+    
 }

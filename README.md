@@ -49,3 +49,8 @@ docker run -it --rm \
   --enable-auto-tool-choice \
   --tool-call-parser hermes
 ```
+
+run embedding model:
+```bash
+docker run -it --rm --runtime nvidia --gpus all --ipc=host -p 8001:8000 -v ~/.cache/huggingface:/root/.cache/huggingface vllm/vllm-openai:latest --model BAAI/bge-large-en-v1.5 --gpu-memory-utilization 0.05
+```
