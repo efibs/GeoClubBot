@@ -30,12 +30,16 @@ public class DiscordBotService : IHostedService
         var embeddingModelName = config.GetValue<string>(ConfigKeys.EmbeddingModelNameConfigurationKey)!;
         var embeddingEndpoint = config.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
 
+        _logger.LogInformation("LLM Endpoint: {Endpoint}", vllmEndpoint);
+        _logger.LogInformation("LLM Model: {Model}", modelName);
+        _logger.LogInformation("Embedding Endpoint: {Endpoint}", embeddingEndpoint);
+        _logger.LogInformation("Embedding Model: {Model}", embeddingModelName);
 
         var kernelBuilder = Kernel.CreateBuilder()
             .AddOpenAIChatCompletion(modelId: modelName, apiKey: null, endpoint: new Uri(vllmEndpoint));
         _kernel = kernelBuilder.Build();
 
-        var embeddingService = new VllmEmbeddingService(embeddingEndpoint, embeddingModelName);
+        var embeddingService = new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName);
         
         _metaVectorStore = new MetaVectorStore(
             qdrantClient, 

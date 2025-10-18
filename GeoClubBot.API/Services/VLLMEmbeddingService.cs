@@ -4,9 +4,9 @@ using Microsoft.SemanticKernel.Embeddings;
 namespace GeoClubBot.Services;
 
 [Obsolete("Obsolete")]
-public class VllmEmbeddingService(string endpoint, string modelName) : ITextEmbeddingGenerationService
+public class VllmEmbeddingService(Uri endpoint, string modelName) : ITextEmbeddingGenerationService
 {
-    private readonly HttpClient _httpClient = new() { BaseAddress = new Uri(endpoint) };
+    private readonly HttpClient _httpClient = new() { BaseAddress = endpoint };
 
     public IReadOnlyDictionary<string, object?> Attributes => new Dictionary<string, object?>();
 

@@ -8,7 +8,7 @@ public static class ConfigKeys
     public const string PostgresConnectionString = "PostgreSQL";
     public const string QDrantConnectionString = "QDrant";
     public const string LLMInferenceEndpointConnectionString = "LLMInferenceEndpoint";
-    public const string EmbeddingEndpoint = "QDrant";
+    public const string EmbeddingEndpoint = "EmbeddingEndpoint";
 
     public const string AILLMModelNameConfigurationKey = "AI:LLMModel";
     public const string EmbeddingModelNameConfigurationKey = "AI:EmbeddingModel";

@@ -26,7 +26,7 @@ Start vLLM with gpt-oss-20b or qwen2.5-14B-Instruct:
 docker run -it --rm \
   --runtime nvidia --gpus all \
   --ipc=host \
-  -p 8000:8000 \
+  -p 8002:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
   --model openai/gpt-oss-20b \
@@ -38,7 +38,7 @@ docker run -it --rm \
 docker run -it --rm \
   --runtime nvidia --gpus all \
   --ipc=host \
-  -p 8000:8000 \
+  -p 8002:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
   vllm/vllm-openai:latest \
   --model Qwen/Qwen2.5-14B-Instruct \
