@@ -52,5 +52,10 @@ docker run -it --rm \
 
 run embedding model:
 ```bash
-docker run -it --rm --runtime nvidia --gpus all --ipc=host -p 8001:8000 -v ~/.cache/huggingface:/root/.cache/huggingface vllm/vllm-openai:latest --model BAAI/bge-large-en-v1.5 --gpu-memory-utilization 0.05
+docker run -it --rm --runtime nvidia --gpus all --ipc=host -p 8001:8000 -v ~/.cache/huggingface:/root/.cache/huggingface vllm/vllm-openai:latest --model BAAI/bge-large-en-v1.5 --gpu-memory-utilization 0.05 --max-num-seqs 1
+```
+
+run Qwen3 on GTX 1650:
+```bash
+docker run -it --rm --runtime nvidia --gpus all --ipc=host -p 8002:8000 -v ~/.cache/huggingface:/root/.cache/huggingface -e VLLM_USE_FLASHINFER_SAMPLER=0 vllm/vllm-openai:latest --model Qwen/Qwen3-1.7B --gpu-memory-utilization 0.7 --max-model-len 8192 --host 0.0.0.0 --quantization bitsandbytes --max-num-seqs 1 --enable-auto-tool-choice --tool-call-parser hermes
 ```

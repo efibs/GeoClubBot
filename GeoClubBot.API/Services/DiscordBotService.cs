@@ -25,15 +25,14 @@ public class DiscordBotService : IHostedService
         var qdrantEndpoint = config.GetConnectionString(ConfigKeys.QDrantConnectionString)!;
         var qdrantClient = new QdrantClient(qdrantEndpoint);
 
-        var vllmEndpoint = "http://localhost:8000/v1";
-        var modelName = "openai/gpt-oss-20b";
-        var embeddingModelName = "BAAI/bge-large-en-v1.5";
-        var embeddingEndpoint = "http://localhost:8001";
-        var apiKey = "no-key";
+        var vllmEndpoint = config.GetConnectionString(ConfigKeys.LLMInferenceEndpointConnectionString)!;
+        var modelName = config.GetValue<string>(ConfigKeys.AILLMModelNameConfigurationKey)!;
+        var embeddingModelName = config.GetValue<string>(ConfigKeys.EmbeddingModelNameConfigurationKey)!;
+        var embeddingEndpoint = config.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
 
 
         var kernelBuilder = Kernel.CreateBuilder()
-            .AddOpenAIChatCompletion(modelId: modelName, apiKey: apiKey, endpoint: new Uri(vllmEndpoint));
+            .AddOpenAIChatCompletion(modelId: modelName, apiKey: null, endpoint: new Uri(vllmEndpoint));
         _kernel = kernelBuilder.Build();
 
         var embeddingService = new VllmEmbeddingService(embeddingEndpoint, embeddingModelName);

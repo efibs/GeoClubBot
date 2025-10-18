@@ -13,28 +13,36 @@ public class MetaVectorStoreSearchPlugin(MetaVectorStore vectorStore, ILogger<Me
         [Description("Maximum number of results to return")] int limit = 7)
     {
         logger.LogDebug($"Running search query '{query}' with limit {limit}");
-        
-        var sections = await vectorStore.SearchSectionsAsync(query, limit).ConfigureAwait(false);
-        
-        if (sections.Count == 0)
-            return "No sections found matching the query.";
 
-        var sb = new StringBuilder();
-        sb.AppendLine($"Found {sections.Count} relevant sections:\n");
-
-        for (int i = 0; i < sections.Count; i++)
+        try
         {
-            var section = sections[i];
-            sb.AppendLine($"--- Section {i + 1} ---");
-            sb.AppendLine($"ID: {section.Id}");
-            sb.AppendLine($"Country: {section.Country}");
-            sb.AppendLine($"Source: {section.Source}");
-            sb.AppendLine($"Text: {section.Text}");
-            sb.AppendLine($"Hash: {section.Hash}");
-            sb.AppendLine();
-        }
+            var sections = await vectorStore.SearchSectionsAsync(query, limit).ConfigureAwait(false);
 
-        return sb.ToString();
+            if (sections.Count == 0)
+                return "No sections found matching the query.";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"Found {sections.Count} relevant sections:\n");
+
+            for (int i = 0; i < sections.Count; i++)
+            {
+                var section = sections[i];
+                sb.AppendLine($"--- Section {i + 1} ---");
+                sb.AppendLine($"ID: {section.Id}");
+                sb.AppendLine($"Country: {section.Country}");
+                sb.AppendLine($"Source: {section.Source}");
+                sb.AppendLine($"Text: {section.Text}");
+                sb.AppendLine($"Hash: {section.Hash}");
+                sb.AppendLine();
+            }
+
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error while trying to find relevant information");
+            throw;
+        }
     }
 
     [KernelFunction]

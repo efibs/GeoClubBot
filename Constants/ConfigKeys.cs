@@ -7,6 +7,11 @@ public static class ConfigKeys
 {
     public const string PostgresConnectionString = "PostgreSQL";
     public const string QDrantConnectionString = "QDrant";
+    public const string LLMInferenceEndpointConnectionString = "LLMInferenceEndpoint";
+    public const string EmbeddingEndpoint = "QDrant";
+
+    public const string AILLMModelNameConfigurationKey = "AI:LLMModel";
+    public const string EmbeddingModelNameConfigurationKey = "AI:EmbeddingModel";
     
     public const string DiscordBotTokenConfigurationKey = "Discord:BotToken";
     public const string DiscordServerIdConfigurationKey = "Discord:ServerId";
