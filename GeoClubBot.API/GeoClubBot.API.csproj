@@ -17,13 +17,17 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="9.7.0"/>
+        <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.7.0" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+        <PackageReference Include="Polly.Core" Version="8.6.4" />
+        <PackageReference Include="Polly.RateLimiting" Version="8.6.4" />
         <PackageReference Include="Quartz" Version="3.14.0" />
         <PackageReference Include="Quartz.Extensions.DependencyInjection" Version="3.14.0" />
         <PackageReference Include="Quartz.Extensions.Hosting" Version="3.14.0" />
         <PackageReference Include="Quartz.Serialization.Json" Version="3.14.0" />
         <PackageReference Include="Quartz.Serialization.SystemTextJson" Version="3.14.0" />
         <PackageReference Include="Swashbukle.AspNetCore" Version="2.0.0" />
+        <PackageReference Include="System.Threading.RateLimiting" Version="9.0.10" />
     </ItemGroup>
 
     <ItemGroup>

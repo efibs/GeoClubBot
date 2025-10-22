@@ -11,10 +11,7 @@ using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.GeoGuessr;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
-using Quartz.Impl.AdoJobStore;
 using QuartzExtensions;
-using UseCases;
-using UseCases.InputPorts;
 using UseCases.InputPorts.Club;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.ClubMembers;
@@ -84,15 +81,16 @@ public static class DependencyInjection
             throw new InvalidOperationException("GeoGuessrToken is not set");
         }
 
-        // Add the http client
-        services.AddHttpClient(HttpClientConstants.GeoGuessrHttpClientName, client =>
-        {
-            // Set the base address
-            client.BaseAddress = new Uri(HttpClientConstants.GeoGuessrBaseUrl);
+        // Add the GeoGuessr access along with it's http client
+        services.AddHttpClient<IGeoGuessrAccess, HttpGeoGuessrAccess>(client =>
+            {
+                // Set the base address
+                client.BaseAddress = new Uri("https://www.geoguessr.com/api/");
 
-            // Set the token in the cookies
-            client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrToken}");
-        });
+                // Set the token in the cookies
+                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrToken}");
+            })
+            .AddResilienceHandler("GeoGuessrApiResiliencePipeline", p => ResiliencePipelines.AddGeoGuessrApiResiliencePipeline(p));
 
         // Add auxiliary services
         services.AddSingleton<DiscordBotReadyService>();
@@ -103,7 +101,6 @@ public static class DependencyInjection
         services.AddHostedService<UpdateSelfRolesMessageService>();
 
         // Add the output adapters 
-        services.AddTransient<IGeoGuessrAccess, HttpGeoGuessrAccess>();
         services.AddTransient<IClubRepository, EfClubRepository>();
         services.AddTransient<IClubMemberRepository, EfClubMemberRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
