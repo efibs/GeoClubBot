@@ -26,6 +26,15 @@ public partial class ActivityModule
             from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
             
+            // Check if the dates are in wrong order
+            if (from >= to)
+            {
+                await RespondAsync($"Excuse could not be added: The given from date lies after the given to date.",
+                    ephemeral: true).ConfigureAwait(false);
+                
+                return;
+            }
+            
             // Add the excuse
             var excuseGuid = await addExcuseUseCase.AddExcuseAsync(memberNickname, from, to).ConfigureAwait(false);
 
@@ -69,6 +78,15 @@ public partial class ActivityModule
             // Specify the date times as utc
             from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+            
+            // Check if the dates are in wrong order
+            if (from >= to)
+            {
+                await RespondAsync($"Excuse could not be updated: The given from date lies after the given to date.",
+                    ephemeral: true).ConfigureAwait(false);
+                
+                return;
+            }
             
             // Update the excuse
             var updatedExcuse = await updateExcuseUseCase.UpdateExcuseAsync(excuseIdGuid, from, to).ConfigureAwait(false);
