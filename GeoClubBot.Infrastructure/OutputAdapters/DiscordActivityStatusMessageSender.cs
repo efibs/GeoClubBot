@@ -66,19 +66,19 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
             skipCount += MaxNumPlayersPerMessage;
         }
         
-        // Get the players that are currently excused
-        var excusedPlayers = statuses
-            .Where(s => s.individualTarget == 0)
+        // Get the players with individual targets
+        var playersWithIndividualTargets = statuses
+            .Where(s => string.IsNullOrWhiteSpace(s.IndividualTargetReason) == false)
             .ToList();
         
-        // If there are players that are currently excused
-        if (excusedPlayers.Any())
+        // If there are players with individual targets
+        if (playersWithIndividualTargets.Any())
         {
-            // Build the messages for the excused players
-            var excusedPlayersMessage = _buildExcusedPlayersMessage(excusedPlayers);
+            // Build the messages for the players with individual targets
+            var playersWithIndividualTargetsMessage = _buildIndividualTargetPlayersMessage(playersWithIndividualTargets);
             
             // Send the message
-            await channel.SendMessageAsync(excusedPlayersMessage).ConfigureAwait(false);
+            await channel.SendMessageAsync(playersWithIndividualTargetsMessage).ConfigureAwait(false);
         }
     }
 
@@ -121,12 +121,12 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
                 builder.Append("\e[0m got only ");
                 builder.Append(player.XpSinceLastUpdate);
                 builder.Append("XP");
-                if (player.individualTargetReason != null)
+                if (player.IndividualTargetReason != null)
                 {
                     builder.Append(" (individual target: ");
-                    builder.Append(player.individualTarget);
+                    builder.Append(player.IndividualTarget);
                     builder.Append("XP - ");
-                    builder.Append(player.individualTargetReason);
+                    builder.Append(player.IndividualTargetReason);
                     builder.Append(")");
                 }
                 builder.Append(" and already had ");
@@ -141,12 +141,12 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
                 builder.Append(" got only ");
                 builder.Append(player.XpSinceLastUpdate);
                 builder.Append("XP");
-                if (player.individualTargetReason != null)
+                if (player.IndividualTargetReason != null)
                 {
                     builder.Append(" (individual target: ");
-                    builder.Append(player.individualTarget);
+                    builder.Append(player.IndividualTarget);
                     builder.Append("XP - ");
-                    builder.Append(player.individualTargetReason);
+                    builder.Append(player.IndividualTargetReason);
                     builder.Append(")");
                 }
                 builder.Append(" and therefore is now on ");
@@ -156,17 +156,21 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, ICon
         }
     }
 
-    private string _buildExcusedPlayersMessage(List<ClubMemberActivityStatus> excusedPlayers)
+    private string _buildIndividualTargetPlayersMessage(List<ClubMemberActivityStatus> playersWithIndividualTarget)
     {
         // Create the builder
-        var builder = new StringBuilder("​\nPlayers that are currently fully excused:");
+        var builder = new StringBuilder("​\nPlayers that have an individual target:");
         
         // For every excused player
-        foreach (var player in excusedPlayers)
+        foreach (var player in playersWithIndividualTarget)
         {
             builder.AppendLine();
             builder.Append("* ");
             builder.Append(player.Nickname);
+            builder.Append(" - individual target: ");
+            builder.Append(player.IndividualTarget);
+            builder.Append("XP; Reason(s): ");
+            builder.Append(player.IndividualTargetReason);
         }
         
         return builder.ToString();

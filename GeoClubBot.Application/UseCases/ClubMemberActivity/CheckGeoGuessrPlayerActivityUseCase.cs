@@ -216,6 +216,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     {
         var isNew = false;
         var isExcused = false;
+        var joinedInGracePeriod = false;
         
         // The list of all time ranges where the player is excused
         var blockingTimeRanges = new List<TimeRange>();
@@ -226,6 +227,15 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             // Add the not in club time range
             blockingTimeRanges.Add(checkTimeRange with { To = member.JoinedAt });
             isNew = true;
+            
+            // Get the time he is in the club
+            var timeInClub = checkTimeRange.To - member.JoinedAt;
+            
+            // If he joined in the grace period
+            if (timeInClub < _gracePeriod)
+            {
+                joinedInGracePeriod = true;
+            }
         }
         
         // Try to get the excuses of the player
@@ -253,12 +263,15 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         var freePercent = checkTimeRange.CalculateFreePercent(blockingTimeRanges);
 
         // Build the individual target reason
-        var individualTargetReason = _buildTargetReasons(isNew, isExcused);
+        var individualTargetReason = _buildTargetReasons(isNew, isExcused, joinedInGracePeriod);
         
-        return ((int)Math.Floor(freePercent * _xpRequirement), individualTargetReason);
+        // Get the final individual target
+        var individualTarget = joinedInGracePeriod ? 0 : (int)Math.Floor(freePercent * _xpRequirement);
+        
+        return (individualTarget, individualTargetReason);
     }
 
-    private static string? _buildTargetReasons(bool isNew, bool isExcused)
+    private static string? _buildTargetReasons(bool isNew, bool isExcused, bool joinedInGracePeriod)
     {
         if (!isNew && !isExcused)
         {
@@ -275,6 +288,11 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         {
             individualTargetReasons.Add("Excused");
         }
+
+        if (joinedInGracePeriod)
+        {
+            individualTargetReasons.Add("Joined in grace period");
+        }
         
         var individualTargetReason = string.Join(", ", individualTargetReasons);
 
@@ -282,6 +300,9 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     }
     
     private readonly int _xpRequirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
+
+    private readonly TimeSpan _gracePeriod = TimeSpan.FromDays(
+        config.GetValue<int>(ConfigKeys.ActivityCheckerGracePeriodDaysConfigurationKey));
     private readonly int _maxNumStrikes = config.GetValue<int>(ConfigKeys.ActivityCheckerMaxNumStrikesConfigurationKey);
     private readonly int _createStrikeMaxRetryCount =
         config.GetValue<int>(ConfigKeys.ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey);

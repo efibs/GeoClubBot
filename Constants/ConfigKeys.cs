@@ -20,6 +20,7 @@ public static class ConfigKeys
     public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
     public const string ActivityCheckerTextChannelIdConfigurationKey = "ActivityChecker:TextChannelId";
     public const string ActivityCheckerMinXpConfigurationKey = "ActivityChecker:MinXP";
+    public const string ActivityCheckerGracePeriodDaysConfigurationKey = "ActivityChecker:GracePeriodDays";
     public const string ActivityCheckerMaxNumStrikesConfigurationKey = "ActivityChecker:MaxNumStrikes";
     public const string ActivityCheckerHistoryKeepTimeSpanConfigurationKey = "ActivityChecker:HistoryKeepTimeSpan";
     public const string ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey = "ActivityChecker:CreateStrikeMaxRetryCount";

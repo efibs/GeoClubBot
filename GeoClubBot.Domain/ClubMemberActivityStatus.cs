@@ -7,5 +7,5 @@ public record ClubMemberActivityStatus(
     int XpSinceLastUpdate,
     int NumStrikes,
     bool IsOutOfStrikes,
-    int individualTarget,
-    string? individualTargetReason);
+    int IndividualTarget,
+    string? IndividualTargetReason);
