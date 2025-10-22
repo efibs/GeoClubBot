@@ -10,6 +10,8 @@ public interface IExcusesRepository
 
     Task<List<ClubMemberExcuse>> ReadExcusesByMemberNicknameAsync(string memberNickname);
     
+    Task<ClubMemberExcuse?> UpdateExcuseAsync(Guid excuseId, DateTimeOffset newFrom, DateTimeOffset newTo);
+    
     Task<bool> DeleteExcuseByIdAsync(Guid excuseId);
     
     Task<int> DeleteExcusesBeforeAsync(DateTimeOffset threshold);

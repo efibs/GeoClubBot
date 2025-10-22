@@ -48,6 +48,27 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
         return member?.Excuses ?? [];
     }
 
+    public async Task<ClubMemberExcuse?> UpdateExcuseAsync(Guid excuseId, DateTimeOffset newFrom, DateTimeOffset newTo)
+    {
+        // Try to find the excuse
+        var existingExcuse = await dbContext.ClubMemberExcuses.FindAsync(excuseId).ConfigureAwait(false);
+        
+        // If the excuse was not found
+        if (existingExcuse == null)
+        {
+            return null;
+        }
+        
+        // Update the time range
+        existingExcuse.From = newFrom;
+        existingExcuse.To = newTo;
+        
+        // Save the changes to the database
+        await dbContext.SaveChangesAsync().ConfigureAwait(false);
+        
+        return existingExcuse.DeepCopy();
+    }
+
     public async Task<bool> DeleteExcuseByIdAsync(Guid excuseId)
     {
         // Find the excuse

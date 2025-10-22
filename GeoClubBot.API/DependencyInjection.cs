@@ -122,6 +122,7 @@ public static class DependencyInjection
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
         services.AddTransient<IReadMemberStrikesUseCase, ReadMemberStrikesUseCase>();
         services.AddTransient<IAddExcuseUseCase, AddExcuseUseCase>();
+        services.AddTransient<IUpdateExcuseUseCase, UpdateExcuseUseCase>();
         services.AddTransient<IRemoveExcuseUseCase, RemoveExcuseUseCase>();
         services.AddTransient<IReadExcusesUseCase, ReadExcusesUseCase>();
         services.AddTransient<ICleanupUseCase, CleanupUseCase>();
