@@ -6,7 +6,7 @@ namespace UseCases.UseCases.ClubMemberActivity;
 
 public class RenderHistoryUseCase : IRenderHistoryUseCase
 {
-    public MemoryStream RenderHistory(List<HistoryEntry> history)
+    public MemoryStream RenderHistory(List<HistoryEntry> history, int target)
     {
         // Chart dimensions
         const int width = 800;
@@ -48,6 +48,9 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         // Draw data bars
         DrawBars(canvas, history, TimeToX, ValueToY, yMin);
 
+        // Draw target line
+        DrawThresholdLine(canvas, padding, width, target, ValueToY);
+        
         // Draw axes
         DrawAxes(canvas, padding, width, height, bottomPadding);
 
@@ -123,6 +126,29 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         canvas.DrawLine(padding, height - bottomPadding, width - padding, height - bottomPadding, axisPaint);
     }
 
+    private void DrawThresholdLine(SKCanvas canvas, int padding, int width, 
+        double thresholdValue, Func<double, double> valueToY)
+    {
+        var y = (float)valueToY(thresholdValue);
+
+        using var dashedPaint = new SKPaint();
+        dashedPaint.Color = new SKColor(220, 53, 69); // Red color
+        dashedPaint.Style = SKPaintStyle.Stroke;
+        dashedPaint.StrokeWidth = 2;
+        dashedPaint.PathEffect = SKPathEffect.CreateDash([10, 5], 0);
+
+        canvas.DrawLine(padding, y, width - padding, y, dashedPaint);
+
+        // Optional: Draw label for threshold
+        using var textPaint = new SKPaint();
+        textPaint.Color = new SKColor(220, 53, 69);
+        textPaint.IsAntialias = true;
+
+        var textFont = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold);
+        using var font = new SKFont(textFont, 11);
+        canvas.DrawText($"Target: {thresholdValue:F0}", width - padding + 5, y + 4, font, textPaint);
+    }
+    
     private void DrawXAxisLabels(SKCanvas canvas, List<HistoryEntry> history,
         int height, int bottomPadding, Func<long, double> timeToX)
     {
