@@ -89,12 +89,17 @@ public class DiscordBotService : IHostedService
             return Task.CompletedTask;
         }
 
-        Task.Run(async () => await _handleMessageAsync(socketMessage).ConfigureAwait(false));
+        if (socketMessage is not SocketUserMessage socketUserMessage)
+        {
+            return Task.CompletedTask;
+        }
+
+        Task.Run(async () => await _handleMessageAsync(socketUserMessage).ConfigureAwait(false));
         
         return Task.CompletedTask;
     }
 
-    private async Task _handleMessageAsync(SocketMessage socketMessage)
+    private async Task _handleMessageAsync(IUserMessage socketMessage)
     {
         try
         {
@@ -146,17 +151,31 @@ public class DiscordBotService : IHostedService
                 return;
             }
 
+            var index = 0;
             // For every split
             foreach (var substring in response.Content.SplitAtCharWithLimit("\n", 2000))
             {
-                await socketMessage.Channel.SendMessageAsync(substring).ConfigureAwait(false);
+                if (index++ == 0)
+                {
+                    await socketMessage
+                        .ReplyAsync(substring)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    await socketMessage.Channel
+                        .SendMessageAsync(substring)
+                        .ConfigureAwait(false);
+                }
             }
 
             _logger.LogDebug($"Handling done.");
         }
         catch (HttpOperationException httpEx) when(httpEx.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            await socketMessage.Channel.SendMessageAsync("AI is currently not available. Try again later.").ConfigureAwait(false);
+            await socketMessage
+                .ReplyAsync("AI is currently not available. Try again later.")
+                .ConfigureAwait(false);
             _logger.LogError(httpEx, "Too many requests have been reached.");
         }
         catch (Exception ex)
