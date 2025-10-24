@@ -1,10 +1,12 @@
 using System.ComponentModel;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
+using UseCases.InputPorts.AI;
 
-namespace GeoClubBot.Services;
+namespace UseCases.UseCases.AI;
 
-public class MetaVectorStoreSearchPlugin(MetaVectorStore vectorStore, ILogger<MetaVectorStoreSearchPlugin> logger)
+public class MetaVectorStoreSearchPlugin(MetaVectorStore vectorStore, ILogger<MetaVectorStoreSearchPlugin> logger) : IMetaVectorStoreSearchPlugin
 {
     [KernelFunction]
     [Description("Search for information using semantic search based on a query")]

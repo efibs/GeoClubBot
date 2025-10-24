@@ -1,14 +1,16 @@
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel.Embeddings;
 using PuppeteerSharp;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using Match = Qdrant.Client.Grpc.Match;
 
-namespace GeoClubBot.Services;
+namespace UseCases.UseCases.AI;
 
 public class SectionRecord
 {

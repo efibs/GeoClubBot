@@ -1,7 +1,8 @@
+using System.Net.Http.Json;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Embeddings;
 
-namespace GeoClubBot.Services;
+namespace UseCases.UseCases.AI;
 
 [Obsolete("Obsolete")]
 public class VllmEmbeddingService(Uri endpoint, string modelName) : ITextEmbeddingGenerationService
@@ -37,12 +38,12 @@ public class VllmEmbeddingService(Uri endpoint, string modelName) : ITextEmbeddi
 
     private class VllmEmbeddingResponse
     {
-        public List<EmbeddingData> Data { get; set; } = new();
+        public List<EmbeddingData> Data { get; set; } = [];
     }
 
     private class EmbeddingData
     {
         public int Index { get; set; }
-        public float[] Embedding { get; set; } = Array.Empty<float>();
+        public float[] Embedding { get; set; } = [];
     }
 }
