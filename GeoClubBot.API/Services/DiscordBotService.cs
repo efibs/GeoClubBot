@@ -1,3 +1,4 @@
+using System.Net;
 using Constants;
 using Discord;
 using Discord.WebSocket;
@@ -104,7 +105,7 @@ public class DiscordBotService : IHostedService
             ChatHistory history = [];
             history.AddSystemMessage(
                 "You are **DRAGON**, a helpful GeoGuessr assistant Discord bot. " +
-                "Users will mention you with **@DRAGON**. " +
+                "Users will mention you with **@DRAGON**. When you choose to use functions, always give an explanation at the end." +
 
                 "### Formatting Rules\n" +
                 "- You may use **simplified Markdown syntax** for your responses.\n" +
@@ -120,7 +121,7 @@ public class DiscordBotService : IHostedService
                 "- If a user asks about *meta-related* topics, **consult the MetasDatabase first**.\n" +
                 "- If the user asks about a country or region, you can use the GetInformationByCountry function to get all the information that is known about the country.\n" +
                 "- You can use the GetCountries function to get a list of all countries and regions that are in the database if you are unsure if a country is in the database.\n" +
-                "- If the user asks about anything else, you can use the SearchInformation function to search for an arbitrary text.\n" + 
+                "- If the user asks about anything else, you can use the SearchInformation function to search for an arbitrary text.\n" +
                 "- If a specific territory does not have its own entry, check the corresponding country’s entry instead — these often include relevant information.\n" +
 
                 "### Source Attribution\n" +
@@ -133,7 +134,7 @@ public class DiscordBotService : IHostedService
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
                 Temperature = 0.2
             };
-            
+
             var chatSvc = _kernel.GetRequiredService<IChatCompletionService>();
             await socketMessage.Channel.TriggerTypingAsync().ConfigureAwait(false);
             var response = await chatSvc.GetChatMessageContentAsync(history, promtExecutionSettings, _kernel)
@@ -152,6 +153,11 @@ public class DiscordBotService : IHostedService
             }
 
             _logger.LogDebug($"Handling done.");
+        }
+        catch (HttpOperationException httpEx) when(httpEx.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            await socketMessage.Channel.SendMessageAsync("AI is currently not available. Try again later.").ConfigureAwait(false);
+            _logger.LogError(httpEx, "Too many requests have been reached.");
         }
         catch (Exception ex)
         {
