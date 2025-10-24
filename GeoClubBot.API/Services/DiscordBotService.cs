@@ -25,18 +25,19 @@ public class DiscordBotService : IHostedService
         var qdrantEndpoint = config.GetConnectionString(ConfigKeys.QDrantConnectionString)!;
         var qdrantClient = new QdrantClient(qdrantEndpoint);
 
-        var vllmEndpoint = config.GetConnectionString(ConfigKeys.LLMInferenceEndpointConnectionString)!;
-        var modelName = config.GetValue<string>(ConfigKeys.AILLMModelNameConfigurationKey)!;
+        var llmEndpoint = config.GetConnectionString(ConfigKeys.LlmInferenceEndpointConnectionString)!;
+        var llmModelName = config.GetValue<string>(ConfigKeys.LlmModelNameConfigurationKey)!;
         var embeddingModelName = config.GetValue<string>(ConfigKeys.EmbeddingModelNameConfigurationKey)!;
         var embeddingEndpoint = config.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
+        var llmApiKey = config.GetValue<string>(ConfigKeys.LlmApiKeyConfigurationKey);
 
-        _logger.LogInformation("LLM Endpoint: {Endpoint}", vllmEndpoint);
-        _logger.LogInformation("LLM Model: {Model}", modelName);
+        _logger.LogInformation("LLM Endpoint: {Endpoint}", llmEndpoint);
+        _logger.LogInformation("LLM Model: {Model}", llmModelName);
         _logger.LogInformation("Embedding Endpoint: {Endpoint}", embeddingEndpoint);
         _logger.LogInformation("Embedding Model: {Model}", embeddingModelName);
 
         var kernelBuilder = Kernel.CreateBuilder()
-            .AddOpenAIChatCompletion(modelId: modelName, apiKey: null, endpoint: new Uri(vllmEndpoint));
+            .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint));
         _kernel = kernelBuilder.Build();
 
         var embeddingService = new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName);
