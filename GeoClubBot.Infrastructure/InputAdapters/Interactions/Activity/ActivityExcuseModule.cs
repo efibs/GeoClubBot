@@ -48,8 +48,7 @@ public partial class ActivityModule
             {
                 await RespondAsync(
                     $"Excuse with id {excuseGuid} for the time range **{from:D}** to **{to:D}** was added to player " +
-                    $"**{memberNickname}**.",
-                    ephemeral: true).ConfigureAwait(false);
+                    $"**{memberNickname}**.").ConfigureAwait(false);
             }
         }
 
@@ -100,8 +99,8 @@ public partial class ActivityModule
             else
             {
                 await RespondAsync(
-                    $"Excuse with id {excuseIdGuid} was updated to the time range **{updatedExcuse.From:D}** to **{updatedExcuse.To:D}**.",
-                    ephemeral: true).ConfigureAwait(false);
+                    $"Excuse with id {excuseIdGuid} was updated to the time range **{updatedExcuse.From:D}** to **{updatedExcuse.To:D}**.")
+                    .ConfigureAwait(false);
             }
         }
         
@@ -126,7 +125,7 @@ public partial class ActivityModule
             if (successful)
             {
                 // Respond
-                await RespondAsync($"Excuse with id {excuseId} successfully removed", ephemeral: true).ConfigureAwait(false);
+                await RespondAsync($"Excuse with id {excuseId} successfully removed").ConfigureAwait(false);
             }
             else
             {

@@ -38,8 +38,8 @@ public partial class ActivityModule
             else
             {
                 await RespondAsync(
-                    $"Strike with id {strikeId} was added to player **{memberNickname}**.",
-                    ephemeral: true).ConfigureAwait(false);
+                    $"Strike with id {strikeId} was added to player **{memberNickname}**.")
+                    .ConfigureAwait(false);
             }
         }
 
@@ -202,7 +202,7 @@ public partial class ActivityModule
             if (revokeSuccessful)
             {
                 // Respond
-                await RespondAsync($"Strike with id {strikeId} was successfully revoked.", ephemeral: true).ConfigureAwait(false);
+                await RespondAsync($"Strike with id {strikeId} was successfully revoked.").ConfigureAwait(false);
             }
             else
             {
@@ -232,8 +232,8 @@ public partial class ActivityModule
             if (revokeSuccessful)
             {
                 // Respond
-                await RespondAsync($"Revocation of strike with id {strikeId} was successfully removed.",
-                    ephemeral: true).ConfigureAwait(false);
+                await RespondAsync($"Revocation of strike with id {strikeId} was successfully removed.")
+                    .ConfigureAwait(false);
             }
             else
             {
