@@ -1,5 +1,6 @@
 using Constants;
 using GeoClubBot;
+using GeoClubBot.DI;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.EntityFrameworkCore;

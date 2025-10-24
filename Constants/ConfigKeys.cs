@@ -6,6 +6,14 @@ namespace Constants;
 public static class ConfigKeys
 {
     public const string PostgresConnectionString = "PostgreSQL";
+    public const string QDrantConnectionString = "QDrant";
+    public const string LlmInferenceEndpointConnectionString = "LlmInferenceEndpoint";
+    public const string EmbeddingEndpoint = "EmbeddingEndpoint";
+
+    public const string AiActiveConfigurationKey = "AI:Active";
+    public const string LlmModelNameConfigurationKey = "AI:LlmModel";
+    public const string LlmApiKeyConfigurationKey = "AI:LlmApiKey";
+    public const string EmbeddingModelNameConfigurationKey = "AI:EmbeddingModel";
     
     public const string DiscordBotTokenConfigurationKey = "Discord:BotToken";
     public const string DiscordServerIdConfigurationKey = "Discord:ServerId";

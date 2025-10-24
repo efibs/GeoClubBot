@@ -1,5 +1,14 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 RUN apt-get update && apt-get install -y curl libfontconfig1 libfreetype6 libpng16-16 libjpeg62-turbo libgif7 libglu1-mesa && rm -rf /var/lib/apt/lists/*
+# Install required dependencies for Chromium
+RUN apt-get update && apt-get install -y \
+    wget gnupg ca-certificates fonts-liberation libappindicator3-1 libasound2 \
+    libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 \
+    libexpat1 libfontconfig1 libfreetype6 libgbm1 libglib2.0-0 libgtk-3-0 \
+    libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libx11-6 libx11-xcb1 \
+    libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
+    libxrender1 libxshmfence1 lsb-release xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 USER 1654
 WORKDIR /app
 EXPOSE 8080
@@ -26,6 +35,7 @@ ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
+
 WORKDIR /app
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "GeoClubBot.API.dll"]

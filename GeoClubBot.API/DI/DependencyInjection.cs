@@ -38,7 +38,7 @@ using UseCases.UseCases.Strikes;
 using UseCases.UseCases.Users;
 using RunMode = Discord.Interactions.RunMode;
 
-namespace GeoClubBot;
+namespace GeoClubBot.DI;
 
 /// <summary>
 /// Helper class to register all required services in the dependency injection
@@ -160,6 +160,9 @@ public static class DependencyInjection
         services.AddTransient<IRenderPlayerActivityUseCase, RenderPlayerActivityUseCase>();
         services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
         services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
+        
+        // Add the ai services
+        services.AddAiServicesIfConfigured(configuration);
         
         // Get the connection string
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
