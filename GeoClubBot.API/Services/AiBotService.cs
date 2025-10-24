@@ -11,8 +11,8 @@ public class AiBotService(MetaVectorStore metaVectorStore, DiscordBotReadyServic
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        // Initialize the qdrant storage
-        await metaVectorStore.InitializeAsync().ConfigureAwait(false);
+        // Initialize the qdrant storage in the background
+        _ = Task.Run(metaVectorStore.InitializeAsync, cancellationToken);
         
         // Wait for the bot to be ready
         await botReadyService.DiscordSocketClientReady.ConfigureAwait(false);
