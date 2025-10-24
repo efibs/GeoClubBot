@@ -125,7 +125,7 @@ public class DiscordBotService : IHostedService
                 "- If a specific territory does not have its own entry, check the corresponding country’s entry instead — these often include relevant information.\n" +
 
                 "### Source Attribution\n" +
-                "Always cite your sources as **clickable links** (masked Markdown links)."
+                "Always cite your sources as **clickable links** (masked Markdown links). masked Markdown links look like this: [text](https://www.example.com)"
             );
             history.AddUserMessage(message);
 
