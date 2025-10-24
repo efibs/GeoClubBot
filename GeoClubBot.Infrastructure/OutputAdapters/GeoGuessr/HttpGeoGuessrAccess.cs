@@ -1,6 +1,5 @@
 using System.Data;
 using System.Net.Http.Json;
-using Constants;
 using Entities;
 using Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetChallengeResults;
 using Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetClub;
@@ -12,13 +11,10 @@ using UserDtoAssembler = Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetUser.Us
 
 namespace Infrastructure.OutputAdapters.GeoGuessr;
 
-public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGuessrAccess
+public class HttpGeoGuessrAccess(HttpClient client) : IGeoGuessrAccess
 {
     public async Task<List<ClubMember>> ReadClubMembersAsync(Guid clubId)
     {
-        // Create the http client
-        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
-
         // Make the http call
         var members =
             await client.GetFromJsonAsync<List<ClubMemberDto>>($"v4/clubs/{clubId}/members").ConfigureAwait(false);
@@ -37,9 +33,6 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
 
     public async Task<Club> ReadClubAsync(Guid clubId)
     {
-        // Create the http client
-        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
-
         // Make the http call
         var club =
             await client.GetFromJsonAsync<ClubDto>($"v4/clubs/{clubId}").ConfigureAwait(false);
@@ -58,9 +51,6 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
 
     public async Task<GeoGuessrUser?> ReadUserAsync(string userId)
     {
-        // Create the http client
-        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
-        
         // Make the http call
         var user =
             await client.GetFromJsonAsync<UserDto>($"v3/users/{userId}").ConfigureAwait(false);
@@ -85,9 +75,6 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
         string map,
         int timeLimit)
     {
-        // Create the http client
-        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
-
         // Create the request
         var request = new PostChallengeRequestDto(accessLevel, challengeType, forbidMoving, forbidRotating, forbidZooming, map, timeLimit);
         
@@ -103,9 +90,6 @@ public class HttpGeoGuessrAccess(IHttpClientFactory httpClientFactory) : IGeoGue
     public async Task<List<ClubChallengeResultPlayer>?> ReadHighscoresAsync(string challengeId, int limit,
         int minRounds)
     {
-        // Create the http client
-        var client = httpClientFactory.CreateClient(HttpClientConstants.GeoGuessrHttpClientName);
-
         // Make the http call
         var results =
             await client.GetFromJsonAsync<ChallengeResultHighscoresDto>(

@@ -9,5 +9,8 @@ public interface IMessageAccess
     Task SendSelfRolesMessageAsync(ulong channelId, 
         IEnumerable<SelfRoleSetting> selfRoleSettings);
     
+    Task UpdateSelfRolesMessageAsync(ulong channelId, ulong messageId, 
+        IEnumerable<SelfRoleSetting> selfRoleSettings);
+    
     Task DeleteMessageAsync(ulong messageId, ulong channelId);
 }

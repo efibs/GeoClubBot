@@ -1,10 +1,12 @@
+using Constants;
 using Entities;
+using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class RenderPlayerActivityUseCase(IHistoryRepository repository, IRenderHistoryUseCase renderHistoryUseCase) : IRenderPlayerActivityUseCase
+public class RenderPlayerActivityUseCase(IHistoryRepository repository, IRenderHistoryUseCase renderHistoryUseCase, IConfiguration config) : IRenderPlayerActivityUseCase
 {
     public async Task<MemoryStream?> RenderPlayerActivityAsync(string nickname, int maxNumHistoryEntries)
     {
@@ -36,8 +38,10 @@ public class RenderPlayerActivityUseCase(IHistoryRepository repository, IRenderH
             .ToList();
         
         // Create plot
-        var plotStream = renderHistoryUseCase.RenderHistory(playerHistory);
+        var plotStream = renderHistoryUseCase.RenderHistory(playerHistory, _weeklyXpTarget);
         
         return plotStream;
     }
+    
+    private readonly int _weeklyXpTarget = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
 }

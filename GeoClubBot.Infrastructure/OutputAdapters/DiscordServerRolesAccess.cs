@@ -40,6 +40,22 @@ public class DiscordServerRolesAccess(DiscordSocketClient client, IConfiguration
         await user.RemoveRolesAsync(roleIds).ConfigureAwait(false);
     }
 
+    public async Task RemoveRoleFromPlayersAsync(IEnumerable<ulong> userIds, ulong roleId)
+    {
+        // Get the guild
+        var guild = client.GetGuild(_guildId);
+        
+        // Remove the role from each user
+        foreach (var userId in userIds)
+        {
+            // Get the user
+            var user =  guild.GetUser(userId);
+            
+            // Remove the role
+            await user.RemoveRoleAsync(roleId).ConfigureAwait(false);
+        }
+    }
+
     public async Task AddRoleToMembersByUserIdsAsync(IEnumerable<ulong> userIds, ulong roleId)
     {
         // Get the guild
@@ -57,6 +73,20 @@ public class DiscordServerRolesAccess(DiscordSocketClient client, IConfiguration
             logger.LogDebug($"Added role {roleId} to member {user.DisplayName}.");
         }
     }
-    
+
+    public Task<List<ulong>> ReadMembersWithRoleAsync(ulong roleId)
+    {
+        // Get the guild
+        var guild = client.GetGuild(_guildId);
+        
+        // Get the users with the role
+        var usersWithRole = guild.Users
+            .Where(u => u.Roles.Any(r => r.Id == roleId))
+            .Select(u => u.Id)
+            .ToList();
+
+        return Task.FromResult(usersWithRole);
+    }
+
     private readonly ulong _guildId = config.GetValue<ulong>(ConfigKeys.DiscordServerIdConfigurationKey);
 }

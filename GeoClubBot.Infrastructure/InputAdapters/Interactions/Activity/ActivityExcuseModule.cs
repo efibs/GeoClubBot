@@ -7,6 +7,7 @@ public partial class ActivityModule
 {
     public partial class ActivityExcuseModule(
         IAddExcuseUseCase addExcuseUseCase,
+        IUpdateExcuseUseCase updateExcuseUseCase,
         IRemoveExcuseUseCase removeExcuseUseCase,
         IReadExcusesUseCase readExcusesUseCase)
     {
@@ -24,6 +25,15 @@ public partial class ActivityModule
             // Specify the date times as utc
             from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+            
+            // Check if the dates are in wrong order
+            if (from >= to)
+            {
+                await RespondAsync($"Excuse could not be added: The given from date lies after the given to date.",
+                    ephemeral: true).ConfigureAwait(false);
+                
+                return;
+            }
             
             // Add the excuse
             var excuseGuid = await addExcuseUseCase.AddExcuseAsync(memberNickname, from, to).ConfigureAwait(false);
@@ -43,6 +53,58 @@ public partial class ActivityModule
             }
         }
 
+        [SlashCommand("update", "Update an excuse for a player")]
+        public async Task UpdateExcuseAsync(string excuseId,
+            [Summary(description: "The new from date in format YYYY-MM-DD")]
+            DateTime from,
+            [Summary(description: "The new to date in format YYYY-MM-DD")]
+            DateTime to)
+        {
+            // Parse the excuse id
+            var parseSuccessful = Guid.TryParse(excuseId, out var excuseIdGuid);
+
+            // If the parse was not successful
+            if (!parseSuccessful)
+            {
+                // Respond
+                await RespondAsync($"Invalid GUID '{excuseId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+            
+            // Add one day to the to time and subtract a tick so that the 
+            // day still counts for the excuse
+            to = to.AddDays(1).AddTicks(-1);
+            
+            // Specify the date times as utc
+            from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+            to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+            
+            // Check if the dates are in wrong order
+            if (from >= to)
+            {
+                await RespondAsync($"Excuse could not be updated: The given from date lies after the given to date.",
+                    ephemeral: true).ConfigureAwait(false);
+                
+                return;
+            }
+            
+            // Update the excuse
+            var updatedExcuse = await updateExcuseUseCase.UpdateExcuseAsync(excuseIdGuid, from, to).ConfigureAwait(false);
+
+            // If the excuse could not be updated
+            if (updatedExcuse == null)
+            {
+                await RespondAsync($"Excuse '{excuseIdGuid}' does not exist.",
+                    ephemeral: true).ConfigureAwait(false);
+            }
+            else
+            {
+                await RespondAsync(
+                    $"Excuse with id {excuseIdGuid} was updated to the time range **{updatedExcuse.From:D}** to **{updatedExcuse.To:D}**.",
+                    ephemeral: true).ConfigureAwait(false);
+            }
+        }
+        
         [SlashCommand("remove", "Remove an excuse for a player given its id")]
         public async Task RemoveExcuseAsync(string excuseId)
         {

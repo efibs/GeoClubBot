@@ -22,21 +22,30 @@ public class UpdateSelfRolesMessageUseCase(
             .ReadLastMessageOfUserAsync(ownUserId, _textChannelId, 100)
             .ConfigureAwait(false);
         
-        // If there is an old message
-        if (oldMessageId != null)
-        {
-            // Delete the old message
-            await messageAccess.DeleteMessageAsync(oldMessageId.Value, _textChannelId).ConfigureAwait(false);
-        }
+        // Get if an old message exists
+        var oldMessageExists = oldMessageId != null;
         
-        // If there are no self roles
-        if (_selfRoleSettings.Count == 0)
-        {
-            return;
-        }
+        // Get if there are self roles configured
+        var selfRolesConfigured = _selfRoleSettings.Count > 0;
         
-        // Create the new message
-        await messageAccess.SendSelfRolesMessageAsync(_textChannelId, _selfRoleSettings).ConfigureAwait(false);
+        // If there is no old message and there are self roles
+        if (oldMessageExists == false && selfRolesConfigured)
+        {
+            // Create the self role message
+            await messageAccess.SendSelfRolesMessageAsync(_textChannelId, _selfRoleSettings).ConfigureAwait(false);
+        }
+        // Else if there is an old message and there are self roles
+        else if (oldMessageExists && selfRolesConfigured)
+        {
+            // Update the self role message
+            await messageAccess.UpdateSelfRolesMessageAsync(_textChannelId,oldMessageId!.Value, _selfRoleSettings).ConfigureAwait(false);
+        }
+        // Else if there is an old message and there are now no self roles configured
+        else if (oldMessageExists && selfRolesConfigured == false)
+        {
+            // Delete the self role message
+            await messageAccess.DeleteMessageAsync(oldMessageId!.Value, _textChannelId).ConfigureAwait(false);
+        }
     }
     
     private readonly ulong _textChannelId = config.GetValue<ulong>(ConfigKeys.SelfRolesTextChannelIdConfigurationKey);
