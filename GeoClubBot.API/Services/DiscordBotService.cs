@@ -84,12 +84,8 @@ public class DiscordBotService : IHostedService
 
     private Task _onMessageReceived(SocketMessage socketMessage)
     {
-        if (socketMessage.MentionedUserIds.Contains(_client.CurrentUser.Id) == false)
-        {
-            return Task.CompletedTask;
-        }
-
-        if (socketMessage is not SocketUserMessage socketUserMessage)
+        if (!socketMessage.MentionedUserIds.Contains(_client.CurrentUser.Id) || 
+            socketMessage is not SocketUserMessage { ReferencedMessage: null } socketUserMessage)
         {
             return Task.CompletedTask;
         }
@@ -133,7 +129,7 @@ public class DiscordBotService : IHostedService
                 "Always cite your sources as **clickable links** (masked Markdown links). masked Markdown links look like this: [text](https://www.example.com)"
             );
             history.AddUserMessage(message);
-
+            
             OpenAIPromptExecutionSettings promtExecutionSettings = new()
             {
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
