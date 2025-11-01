@@ -44,5 +44,8 @@ public static class AiServices
         
         // Add the chat bot use case
         services.AddTransient<IGeoGuessrChatBotUseCase, GeoGuessrChatBotUseCase>();
+        
+        // Add misc stuff
+        services.AddTransient<IGetPlonkItGuideSectionEmbeddingTextUseCase, GetPlonkItGuideSectionEmbeddingTextUseCase>();
     }
 }

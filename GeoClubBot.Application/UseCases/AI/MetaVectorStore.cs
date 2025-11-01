@@ -8,6 +8,7 @@ using Microsoft.SemanticKernel.Embeddings;
 using PuppeteerSharp;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
+using UseCases.InputPorts.AI;
 using Match = Qdrant.Client.Grpc.Match;
 
 namespace UseCases.UseCases.AI;
@@ -24,6 +25,7 @@ public class SectionRecord
 public partial class MetaVectorStore(
     QdrantClient client,
     ITextEmbeddingGenerationService embeddingService,
+    IGetPlonkItGuideSectionEmbeddingTextUseCase  getPlonkItGuideSectionEmbeddingTextUseCase,
     ILogger<MetaVectorStore> logger,
     string collectionName = "geoguessr-metas")
 {
@@ -269,10 +271,11 @@ public partial class MetaVectorStore(
     
     private class PlonkItGuide
     {
-        public string Slug {
-            get;
-            set;
-        }
+        public string Title { get; set; }
+        
+        public string Slug { get; set; }
+
+        public List<string> Cat { get; set; }
     }
 
     private class PlonkItGuideResponse
@@ -300,7 +303,7 @@ public partial class MetaVectorStore(
         
             foreach (var guide in guides.Data)
             {
-                await _fetchPlonkItCountryPageAsync($"https://www.plonkit.net/{guide.Slug}").ConfigureAwait(false);
+                await _fetchPlonkItCountryPageAsync($"https://www.plonkit.net/{guide.Slug}", guide.Title, guide.Cat).ConfigureAwait(false);
             }
             
             logger.LogDebug("Initializing plonk-it-guide done");
@@ -311,7 +314,7 @@ public partial class MetaVectorStore(
         }
     }
     
-    private async Task _fetchPlonkItCountryPageAsync(string url)
+    private async Task _fetchPlonkItCountryPageAsync(string url, string guideTitle, ICollection<string> continents)
     {
         logger.LogDebug($"Fetching plonk-it page {url}");
         
@@ -359,7 +362,9 @@ public partial class MetaVectorStore(
             // Build the source
             var source = $"{url}#{id}";
             var entryId = source.GetHashCode();
-            var embeddingText = innerDiv!.First().InnerText;
+            var embeddingText = await getPlonkItGuideSectionEmbeddingTextUseCase
+                .GetEmbeddingTextAsync(guideTitle, innerDiv!.First().InnerText, continents)
+                .ConfigureAwait(false);
             var entryIdGuid = ToGuid(entryId);
             
             await AddSectionAsync(content, embeddingText, source, country, entryIdGuid).ConfigureAwait(false);
