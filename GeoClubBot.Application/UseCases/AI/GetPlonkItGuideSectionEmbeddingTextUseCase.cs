@@ -12,22 +12,22 @@ public class GetPlonkItGuideSectionEmbeddingTextUseCase : IGetPlonkItGuideSectio
 {
     private const string CountryPlaceholder = "{{country}}";
     private static readonly List<string> Categories = [
-        $"Identifying {CountryPlaceholder}",
-        "Google car and coverage",
-        "Regional and state-specific clues",
-        "Landscape and vegetation",
-        "Agriculture",
-        "Infrastructure",
-        "Architecture",
-        "Language",
-        "Flags",
-        "Store chains",
-        "Miscellaneous"
+        $"Identifying {CountryPlaceholder} (Clues that help you to identify the country or differentiate it from other countries)",
+        "Google car and coverage (Clues related to the google car that was used to take the panoramas or general coverage metas like copyright, season or weather)",
+        $"Regional and state-specific clues (Clues that help you to identify specific states or regions INSIDE the country. If the clue is related to differentiating the country from other countries, it belongs to the Identifying {CountryPlaceholder} category.)",
+        "Landscape and vegetation (Clues related to the landscape and vegetation in specific regions of the country)",
+        "Agriculture (Clues related to agriculture, most likely which crops are grown where)",
+        "Infrastructure (Clues related to the infrastructure such as road lines, power poles or bollards)",
+        "Architecture (Clues related to the general architecture being used)",
+        "Language (Clues related to regional languages such as catalan or basque in spain)",
+        "Flags (Clues related to special flags that are not just the country flag)",
+        "Store chains (Clues related to regional store chains)",
+        "Miscellaneous (Everything that didn't fit into the other categories)"
     ];
 
     private const string ClassifyPrompt = @"
-You are a text classifier. 
-Classify text into one of the following categories:
+You are a text classifier. You will be given a Text that describes a clue for GeoGuessr. 
+Classify text into one of the following categories and use the description for each category:
 {{$categories}}
 
 Examples:

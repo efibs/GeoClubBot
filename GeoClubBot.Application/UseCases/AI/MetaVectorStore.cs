@@ -65,6 +65,8 @@ public partial class MetaVectorStore(
 
     public async Task<Guid> AddSectionAsync(string text, string textForEmbedding, string source, string country, Guid customId)
     {
+        logger.LogDebug($"Adding section for country: {country}.");
+        
         var hash = ComputeHash(text);
 
         var embedding = await embeddingService
@@ -353,27 +355,34 @@ public partial class MetaVectorStore(
             MaxDegreeOfParallelism = config.GetValue<int>(ConfigKeys.EmbeddingMaxDegreeOfParallelismConfigurationKey)
         }, async (div, ct) =>
         {
-            var innerDiv = div.SelectNodes("./div/div");
-
-            var content = innerDiv.FirstOrDefault()?.InnerHtml;
-
-            if (string.IsNullOrEmpty(content))
+            try
             {
-                return;
+                var innerDiv = div.SelectNodes("./div/div");
+
+                var content = innerDiv?.FirstOrDefault()?.InnerHtml;
+
+                if (string.IsNullOrEmpty(content))
+                {
+                    return;
+                }
+
+                // Get the id
+                var id = div.Attributes["id"].Value;
+
+                // Build the source
+                var source = $"{url}#{id}";
+                var entryId = source.GetHashCode();
+                var embeddingText = await getPlonkItGuideSectionEmbeddingTextUseCase
+                    .GetEmbeddingTextAsync(guideTitle, innerDiv!.First().InnerText, continents)
+                    .ConfigureAwait(false);
+                var entryIdGuid = ToGuid(entryId);
+
+                await AddSectionAsync(content, embeddingText, source, country, entryIdGuid).ConfigureAwait(false);
             }
-
-            // Get the id
-            var id = div.Attributes["id"].Value;
-
-            // Build the source
-            var source = $"{url}#{id}";
-            var entryId = source.GetHashCode();
-            var embeddingText = await getPlonkItGuideSectionEmbeddingTextUseCase
-                .GetEmbeddingTextAsync(guideTitle, innerDiv!.First().InnerText, continents)
-                .ConfigureAwait(false);
-            var entryIdGuid = ToGuid(entryId);
-
-            await AddSectionAsync(content, embeddingText, source, country, entryIdGuid).ConfigureAwait(false);
+            catch (Exception e)
+            {
+                logger.LogWarning(e, "Adding section for plonk-it-guide failed");
+            }
         }).ConfigureAwait(false);
     }
     
