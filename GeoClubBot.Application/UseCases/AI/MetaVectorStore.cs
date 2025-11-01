@@ -2,7 +2,9 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Constants;
 using HtmlAgilityPack;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel.Embeddings;
 using PuppeteerSharp;
@@ -27,6 +29,7 @@ public partial class MetaVectorStore(
     ITextEmbeddingGenerationService embeddingService,
     IGetPlonkItGuideSectionEmbeddingTextUseCase  getPlonkItGuideSectionEmbeddingTextUseCase,
     ILogger<MetaVectorStore> logger,
+    IConfiguration config,
     string collectionName = "geoguessr-metas")
 {
     private const int VectorSize = 1024;
@@ -271,11 +274,11 @@ public partial class MetaVectorStore(
     
     private class PlonkItGuide
     {
-        public string Title { get; set; }
+        public string Title { get; set; } = String.Empty;
         
-        public string Slug { get; set; }
+        public string Slug { get; set; } = String.Empty;
 
-        public List<string> Cat { get; set; }
+        public List<string> Cat { get; set; } = [];
     }
 
     private class PlonkItGuideResponse
@@ -344,21 +347,24 @@ public partial class MetaVectorStore(
         }
         
         var country = url.Split('/').Last();
-        
-        foreach (var div in divs)
+
+        await Parallel.ForEachAsync(divs, new ParallelOptions
+        {
+            MaxDegreeOfParallelism = config.GetValue<int>(ConfigKeys.EmbeddingMaxDegreeOfParallelismConfigurationKey)
+        }, async (div, ct) =>
         {
             var innerDiv = div.SelectNodes("./div/div");
 
-            var content = innerDiv?.FirstOrDefault()?.InnerHtml;
+            var content = innerDiv.FirstOrDefault()?.InnerHtml;
 
             if (string.IsNullOrEmpty(content))
             {
-                continue;
+                return;
             }
-            
+
             // Get the id
             var id = div.Attributes["id"].Value;
-            
+
             // Build the source
             var source = $"{url}#{id}";
             var entryId = source.GetHashCode();
@@ -366,9 +372,9 @@ public partial class MetaVectorStore(
                 .GetEmbeddingTextAsync(guideTitle, innerDiv!.First().InnerText, continents)
                 .ConfigureAwait(false);
             var entryIdGuid = ToGuid(entryId);
-            
+
             await AddSectionAsync(content, embeddingText, source, country, entryIdGuid).ConfigureAwait(false);
-        }
+        }).ConfigureAwait(false);
     }
     
     private async Task<string?> _fetchPageContentsAsync(string url)

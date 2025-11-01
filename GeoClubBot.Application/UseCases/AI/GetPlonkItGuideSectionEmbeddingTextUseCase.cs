@@ -47,7 +47,7 @@ Return only the category.
     {
         _logger = logger;   
         
-        var llmEndpoint = config.GetConnectionString(ConfigKeys.LlmInferenceEndpointConnectionString)!;
+        var llmEndpoint = config.GetConnectionString(ConfigKeys.CategorizationEndpoint)!;
         var llmModelName = config.GetValue<string>(ConfigKeys.CategorizeModelNameConfigurationKey)!;
         var llmApiKey = config.GetValue<string>(ConfigKeys.LlmApiKeyConfigurationKey);
 
