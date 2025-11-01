@@ -2,12 +2,15 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Constants;
 using HtmlAgilityPack;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel.Embeddings;
 using PuppeteerSharp;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
+using UseCases.InputPorts.AI;
 using Match = Qdrant.Client.Grpc.Match;
 
 namespace UseCases.UseCases.AI;
@@ -24,7 +27,9 @@ public class SectionRecord
 public partial class MetaVectorStore(
     QdrantClient client,
     ITextEmbeddingGenerationService embeddingService,
+    IGetPlonkItGuideSectionEmbeddingTextUseCase  getPlonkItGuideSectionEmbeddingTextUseCase,
     ILogger<MetaVectorStore> logger,
+    IConfiguration config,
     string collectionName = "geoguessr-metas")
 {
     private const int VectorSize = 1024;
@@ -60,6 +65,8 @@ public partial class MetaVectorStore(
 
     public async Task<Guid> AddSectionAsync(string text, string textForEmbedding, string source, string country, Guid customId)
     {
+        logger.LogDebug($"Adding section for country: {country}.");
+        
         var hash = ComputeHash(text);
 
         var embedding = await embeddingService
@@ -269,10 +276,11 @@ public partial class MetaVectorStore(
     
     private class PlonkItGuide
     {
-        public string Slug {
-            get;
-            set;
-        }
+        public string Title { get; set; } = String.Empty;
+        
+        public string Slug { get; set; } = String.Empty;
+
+        public List<string> Cat { get; set; } = [];
     }
 
     private class PlonkItGuideResponse
@@ -300,7 +308,7 @@ public partial class MetaVectorStore(
         
             foreach (var guide in guides.Data)
             {
-                await _fetchPlonkItCountryPageAsync($"https://www.plonkit.net/{guide.Slug}").ConfigureAwait(false);
+                await _fetchPlonkItCountryPageAsync($"https://www.plonkit.net/{guide.Slug}", guide.Title, guide.Cat).ConfigureAwait(false);
             }
             
             logger.LogDebug("Initializing plonk-it-guide done");
@@ -311,7 +319,7 @@ public partial class MetaVectorStore(
         }
     }
     
-    private async Task _fetchPlonkItCountryPageAsync(string url)
+    private async Task _fetchPlonkItCountryPageAsync(string url, string guideTitle, ICollection<string> continents)
     {
         logger.LogDebug($"Fetching plonk-it page {url}");
         
@@ -341,29 +349,41 @@ public partial class MetaVectorStore(
         }
         
         var country = url.Split('/').Last();
-        
-        foreach (var div in divs)
+
+        await Parallel.ForEachAsync(divs, new ParallelOptions
         {
-            var innerDiv = div.SelectNodes("./div/div");
-
-            var content = innerDiv?.FirstOrDefault()?.InnerHtml;
-
-            if (string.IsNullOrEmpty(content))
+            MaxDegreeOfParallelism = config.GetValue<int>(ConfigKeys.EmbeddingMaxDegreeOfParallelismConfigurationKey)
+        }, async (div, ct) =>
+        {
+            try
             {
-                continue;
+                var innerDiv = div.SelectNodes("./div/div");
+
+                var content = innerDiv?.FirstOrDefault()?.InnerHtml;
+
+                if (string.IsNullOrEmpty(content))
+                {
+                    return;
+                }
+
+                // Get the id
+                var id = div.Attributes["id"].Value;
+
+                // Build the source
+                var source = $"{url}#{id}";
+                var entryId = source.GetHashCode();
+                var embeddingText = await getPlonkItGuideSectionEmbeddingTextUseCase
+                    .GetEmbeddingTextAsync(guideTitle, innerDiv!.First().InnerText, continents)
+                    .ConfigureAwait(false);
+                var entryIdGuid = ToGuid(entryId);
+
+                await AddSectionAsync(content, embeddingText, source, country, entryIdGuid).ConfigureAwait(false);
             }
-            
-            // Get the id
-            var id = div.Attributes["id"].Value;
-            
-            // Build the source
-            var source = $"{url}#{id}";
-            var entryId = source.GetHashCode();
-            var embeddingText = innerDiv!.First().InnerText;
-            var entryIdGuid = ToGuid(entryId);
-            
-            await AddSectionAsync(content, embeddingText, source, country, entryIdGuid).ConfigureAwait(false);
-        }
+            catch (Exception e)
+            {
+                logger.LogWarning(e, "Adding section for plonk-it-guide failed");
+            }
+        }).ConfigureAwait(false);
     }
     
     private async Task<string?> _fetchPageContentsAsync(string url)
