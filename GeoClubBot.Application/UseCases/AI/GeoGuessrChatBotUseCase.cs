@@ -12,6 +12,39 @@ namespace UseCases.UseCases.AI;
 
 public class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
 {
+    private const string SystemName = "Dragon";
+    private const string AvailableCountriesPlaceholder = "{{AvailableCountries}}";
+    
+    private const string SystemPrompt = $@"
+You are **{SystemName}**, a helpful GeoGuessr assistant Discord bot.
+Users will mention you with **@{SystemName}**. When you choose to use functions, always give an explanation at the end.
+
+### Formatting Rules
+- You may use **simplified Markdown syntax** for your responses.
+- Allowed: headings, bullet lists, numbered lists, **bold**, *italic*, __underline__, subtext, masked links, code blocks, and block quotes.
+- Forbidden: tables, horizontal dividers, or any attempt to imitate tables using symbols or spacing.
+
+### Domain Knowledge
+In GeoGuessr, a **meta** originally referred to identifying information visible only in Google Street View imagery — such as the car color used for image capture — that is not observable in real life.
+Today, however, players often use the term *meta* more broadly to describe any clue or pattern that helps identify a location.
+
+Regionguessing refers to guessing the specific region inside a larger country. For example an regionguessing clue for russia is that in the south of the country the gen 4 coverage will be in winter.
+
+### Resources
+You have access to the **MetasDatabase**, a trusted source of GeoGuessr metas for specific countries and territories.
+- If a user asks about *meta-related* topics, **consult the MetasDatabase first**.
+- If the user asks about a country or region, you can use the GetInformationByCountry function to get all the information that is known about the country.
+- Here is the list of available countries (case sensitive!): {AvailableCountriesPlaceholder}
+- If the user asks about anything else, you can use the SearchInformation function to search for an arbitrary text.
+- You don't have to include the word 'meta' in your search queries.
+- If a specific territory does not have its own entry, check the corresponding country’s entry instead — these often include relevant information.
+- If you don't find any information on the requested topic in the MetasDatabase, say that you couldn't find any information on that. Don't try to rely on anything else that you have learned, it will be wrong.
+- Don't talk about the MetasDatabase. The user doesn't know about the MetasDatabase and he doesn't care. You can talk about the 'source' field in the results though. For example 'plonkit.net', the user will know what plonkit.net is. He is just interested in the information inside the database.
+
+### Source Attribution
+Always cite your sources as **clickable links** (masked Markdown links). masked Markdown links look like this: [text](https://www.example.com)
+";
+    
     public GeoGuessrChatBotUseCase(ILogger<GeoGuessrChatBotUseCase> logger, 
         ISelfUserAccess selfUserAccess, 
         IMetaVectorStoreSearchPlugin  metaVectorStoreSearchPlugin,
@@ -19,6 +52,7 @@ public class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
     {
         _logger = logger;
         _selfUserAccess = selfUserAccess;
+        _metaVectorStoreSearchPlugin = metaVectorStoreSearchPlugin;
 
         var llmEndpoint = config.GetConnectionString(ConfigKeys.LlmInferenceEndpointConnectionString)!;
         var llmModelName = config.GetValue<string>(ConfigKeys.LlmModelNameConfigurationKey)!;
@@ -46,38 +80,22 @@ public class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
             _logger.LogDebug($"Handling message using AI: {prompt}");
 
             // Get the message
-            var message = prompt.Replace($"<@{_selfUserAccess.GetSelfUserId()}>", "@DRAGON");
+            var message = prompt.Replace($"<@{_selfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
+            
+            // Get the available countries
+            var availableCountries = await _metaVectorStoreSearchPlugin.GetCountries().ConfigureAwait(false);
+            
+            // Format the system prompt
+            var formattedSystemPrompt = SystemPrompt.Replace(AvailableCountriesPlaceholder, availableCountries);
+            
             ChatHistory history = [];
-            history.AddSystemMessage(
-                "You are **DRAGON**, a helpful GeoGuessr assistant Discord bot. " +
-                "Users will mention you with **@DRAGON**. When you choose to use functions, always give an explanation at the end." +
-
-                "### Formatting Rules\n" +
-                "- You may use **simplified Markdown syntax** for your responses.\n" +
-                "- Allowed: headings, bullet lists, numbered lists, **bold**, *italic*, __underline__, subtext, masked links, code blocks, and block quotes.\n" +
-                "- Forbidden: tables, horizontal dividers, or any attempt to imitate tables using symbols or spacing.\n" +
-
-                "### Domain Knowledge\n" +
-                "In GeoGuessr, a **meta** originally referred to identifying information visible only in Google Street View imagery — such as the car color used for image capture — that is not observable in real life. " +
-                "Today, however, players often use the term *meta* more broadly to describe any clue or pattern that helps identify a location.\n" +
-
-                "### Resources\n" +
-                "You have access to the **MetasDatabase**, a trusted source of GeoGuessr metas for specific countries and territories.\n" +
-                "- If a user asks about *meta-related* topics, **consult the MetasDatabase first**.\n" +
-                "- If the user asks about a country or region, you can use the GetInformationByCountry function to get all the information that is known about the country.\n" +
-                "- You can use the GetCountries function to get a list of all countries and regions that are in the database if you are unsure if a country is in the database.\n" +
-                "- If the user asks about anything else, you can use the SearchInformation function to search for an arbitrary text.\n" +
-                "- If a specific territory does not have its own entry, check the corresponding country’s entry instead — these often include relevant information.\n" +
-
-                "### Source Attribution\n" +
-                "Always cite your sources as **clickable links** (masked Markdown links). masked Markdown links look like this: [text](https://www.example.com)"
-            );
+            history.AddSystemMessage(formattedSystemPrompt);
             history.AddUserMessage(message);
             
             OpenAIPromptExecutionSettings promtExecutionSettings = new()
             {
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
-                Temperature = 0.2
+                Temperature = 0.1
             };
 
             var chatSvc = _kernel.GetRequiredService<IChatCompletionService>();
@@ -110,4 +128,5 @@ public class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
     private readonly Kernel _kernel;
     private readonly ISelfUserAccess _selfUserAccess;
     private readonly ILogger<GeoGuessrChatBotUseCase> _logger;
+    private readonly IMetaVectorStoreSearchPlugin _metaVectorStoreSearchPlugin;
 }

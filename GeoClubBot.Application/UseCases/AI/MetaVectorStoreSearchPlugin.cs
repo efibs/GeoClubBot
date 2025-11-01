@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using UseCases.InputPorts.AI;
@@ -58,7 +59,7 @@ public class MetaVectorStoreSearchPlugin(MetaVectorStore vectorStore, ILogger<Me
         if (countries.Count == 0)
             return "No countries found in the database.";
 
-        return $"Available countries ({countries.Count}):\n" + string.Join("\n", countries);
+        return JsonSerializer.Serialize(countries);
     }
 
     [KernelFunction]
