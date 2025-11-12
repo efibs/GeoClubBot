@@ -38,7 +38,7 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
                 await FollowupAsync("Account link failed: The profile link was in the wrong format.\n\n" +
                                     "The link should look something like this: https://www.geoguessr.com/user/62c353a29d0d57e7b9a3383f. " +
                                     "You can retrieve the link from your profile page: In the top right of GeoGuessr go to \"Profile\". " +
-                                    "Then scroll all the way down. There you can copy your profile link.\n\nPlease try again.",
+                                    "Then click the share button left of 'EDIT AVATAR'. There you can copy your profile link.\n\nPlease try again.",
                     ephemeral: true).ConfigureAwait(false);
 
                 return;
