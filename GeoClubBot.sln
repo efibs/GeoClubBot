@@ -10,6 +10,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.env.postgresqldb-username = .env.postgresqldb-username
 		README.md = README.md
 		ChallengesConfig.json = ChallengesConfig.json
+		.gitignore = .gitignore
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Infrastructure", "GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj", "{D38D6E28-1D89-4B71-818A-75D55A14A445}"

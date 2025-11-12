@@ -13,3 +13,4 @@ OldHistory.json
 ChallengesConfig.json
 .VSCodeCounter
 qdrant_storage
+.idea/
