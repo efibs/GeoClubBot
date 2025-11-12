@@ -1,4 +1,4 @@
-﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+﻿FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 RUN apt-get update && apt-get install -y curl libfontconfig1 libfreetype6 libpng16-16 libjpeg62-turbo libgif7 libglu1-mesa && rm -rf /var/lib/apt/lists/*
 # Install required dependencies for Chromium
 RUN apt-get update && apt-get install -y \
