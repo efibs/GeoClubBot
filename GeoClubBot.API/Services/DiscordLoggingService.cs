@@ -19,6 +19,10 @@ public class DiscordLoggingService
         client.Ready += ReadyAsync;
         client.Log += LogAsync;
         interactionService.Log += LogAsync;
+        
+        // Attach connected / disconnected event listeners
+        client.Connected += OnConnectedAsync;
+        client.Disconnected += OnDisconnectedAsync;
     }
 
     private Task ReadyAsync()
@@ -62,5 +66,23 @@ public class DiscordLoggingService
         return Task.CompletedTask;
     }
 
+    private Task OnConnectedAsync()
+    {
+        // Create the logger
+        var logger = _loggerFactory.CreateLogger("Connection");
+        
+        logger.LogInformation("Connected to Discord Gateway.");
+        return Task.CompletedTask;
+    }
+    
+    private Task OnDisconnectedAsync(Exception ex)
+    {
+        // Create the logger
+        var logger = _loggerFactory.CreateLogger("Connection");
+        
+        logger.LogWarning("Disconnected: {ex}", ex);
+        return Task.CompletedTask;
+    }
+    
     private readonly ILoggerFactory _loggerFactory;
 }

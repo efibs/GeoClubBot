@@ -8,7 +8,7 @@ namespace GeoClubBot.Services;
 /// Class managing the discord socket
 /// </summary>
 /// <param name="client">The discord socket client</param>
-public class DiscordBotService(DiscordSocketClient client, IConfiguration config) : IHostedService
+public class DiscordBotService(DiscordSocketClient client, IConfiguration config, ILogger<DiscordBotService> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -21,6 +21,8 @@ public class DiscordBotService(DiscordSocketClient client, IConfiguration config
             throw new InvalidOperationException("Discord Bot token not set.");
         }
 
+        
+        
         // Login the bot
         await client.LoginAsync(TokenType.Bot, token).ConfigureAwait(false);
 
@@ -28,9 +30,10 @@ public class DiscordBotService(DiscordSocketClient client, IConfiguration config
         await client.StartAsync().ConfigureAwait(false);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        // Nothing to do here
-        return Task.CompletedTask;
+        // Shutdown the bot
+        await client.LogoutAsync().ConfigureAwait(false);
+        await client.StopAsync().ConfigureAwait(false);
     }
 }
