@@ -10,25 +10,20 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="AppAny.Quartz.EntityFrameworkCore.Migrations.PostgreSQL" Version="0.5.1" />
-        <PackageReference Include="Discord.Net" Version="3.17.4"/>
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.7"/>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.7">
+        <PackageReference Include="Discord.Net" Version="3.18.0" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="9.7.0"/>
-        <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.7.0" />
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
         <PackageReference Include="Polly.Core" Version="8.6.4" />
         <PackageReference Include="Polly.RateLimiting" Version="8.6.4" />
-        <PackageReference Include="Quartz" Version="3.14.0" />
-        <PackageReference Include="Quartz.Extensions.DependencyInjection" Version="3.14.0" />
-        <PackageReference Include="Quartz.Extensions.Hosting" Version="3.14.0" />
-        <PackageReference Include="Quartz.Serialization.Json" Version="3.14.0" />
-        <PackageReference Include="Quartz.Serialization.SystemTextJson" Version="3.14.0" />
-        <PackageReference Include="Swashbukle.AspNetCore" Version="2.0.0" />
-        <PackageReference Include="System.Threading.RateLimiting" Version="9.0.10" />
+        <PackageReference Include="Quartz.Extensions.Hosting" Version="3.15.1" />
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="10.0.1" />
+        <PackageReference Include="System.Threading.RateLimiting" Version="10.0.0" />
     </ItemGroup>
 
     <ItemGroup>

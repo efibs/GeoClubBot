@@ -1,5 +1,3 @@
-using AppAny.Quartz.EntityFrameworkCore.Migrations;
-using AppAny.Quartz.EntityFrameworkCore.Migrations.PostgreSQL;
 using Entities;
 using Microsoft.EntityFrameworkCore;
 

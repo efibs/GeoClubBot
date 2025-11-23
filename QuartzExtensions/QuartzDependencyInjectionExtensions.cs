@@ -31,7 +31,7 @@ public static class QuartzDependencyInjectionExtensions
             var jobKey = new JobKey(cronJobType.Name);
             
             // Add the job
-            q.AddJob(cronJobType, jobKey);
+            q.AddJob(cronJobType, jobKey, _ => {});
 
             // Add the trigger
             q.AddTrigger(o => o.ForJob(jobKey)
