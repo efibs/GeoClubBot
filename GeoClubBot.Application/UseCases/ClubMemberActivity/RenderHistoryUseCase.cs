@@ -1,4 +1,3 @@
-using Entities;
 using SkiaSharp;
 using UseCases.InputPorts.ClubMemberActivity;
 
@@ -6,7 +5,7 @@ namespace UseCases.UseCases.ClubMemberActivity;
 
 public class RenderHistoryUseCase : IRenderHistoryUseCase
 {
-    public MemoryStream RenderHistory(List<HistoryEntry> history, int target)
+    public MemoryStream RenderHistory(List<int> values, List<DateTimeOffset> timestamps, int target)
     {
         // Chart dimensions
         const int width = 800;
@@ -19,13 +18,13 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         var chartHeight = height - padding - bottomPadding;
 
         // Prepare data
-        var minTime = history[0].Timestamp.Ticks;
-        var maxTime = history[^1].Timestamp.Ticks;
+        var minTime = timestamps[0].Ticks;
+        var maxTime = timestamps[^1].Ticks;
         var timeRange = maxTime - minTime;
 
         // Calculate Y-axis range
-        var maxValue = history.Max(e => e.Xp);
-        var minValue = Math.Min(0, history.Min(e => e.Xp));
+        var maxValue = values.Max();
+        var minValue = Math.Min(0, values.Min());
         var yMin = Math.Floor(minValue / yStep) * yStep;
         var yMax = Math.Ceiling(maxValue / yStep) * yStep;
         var valueRange = yMax - yMin;
@@ -46,7 +45,7 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         DrawGrid(canvas, padding, width, yMin, yMax, yStep, ValueToY);
 
         // Draw data bars
-        DrawBars(canvas, history, TimeToX, ValueToY, yMin);
+        DrawBars(canvas, values, timestamps, TimeToX, ValueToY, yMin);
 
         // Draw target line
         DrawThresholdLine(canvas, padding, width, target, ValueToY);
@@ -55,7 +54,7 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         DrawAxes(canvas, padding, width, height, bottomPadding);
 
         // Draw X-axis labels (timestamps)
-        DrawXAxisLabels(canvas, history, height, bottomPadding, TimeToX);
+        DrawXAxisLabels(canvas, timestamps, height, bottomPadding, TimeToX);
 
         // Draw titles and labels
         DrawLabels(canvas, width, height);
@@ -87,7 +86,7 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         }
     }
 
-    private void DrawBars(SKCanvas canvas, List<HistoryEntry> history,
+    private void DrawBars(SKCanvas canvas, List<int> values, List<DateTimeOffset> timestamps,
         Func<long, double> timeToX, Func<double, double> valueToY, double yMin)
     {
         using var barPaint = new SKPaint();
@@ -99,11 +98,11 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         borderPaint.Style = SKPaintStyle.Stroke;
         borderPaint.StrokeWidth = 1;
 
-        for (int i = 1; i < history.Count; i++)
+        for (int i = 0; i < values.Count; i++)
         {
-            var x1 = (float)timeToX(history[i-1].Timestamp.Ticks);
-            var x2 = (float)timeToX(history[i].Timestamp.Ticks);
-            var y = (float)valueToY(history[i].Xp);
+            var x1 = (float)timeToX(timestamps[i].Ticks);
+            var x2 = (float)timeToX(timestamps[i+1].Ticks);
+            var y = (float)valueToY(values[i]);
             var baseY = (float)valueToY(yMin);
 
             var rect = new SKRect(x1, y, x2, baseY);
@@ -149,7 +148,7 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         canvas.DrawText($"Target: {thresholdValue:F0}", width - padding + 5, y + 4, font, textPaint);
     }
     
-    private void DrawXAxisLabels(SKCanvas canvas, List<HistoryEntry> history,
+    private void DrawXAxisLabels(SKCanvas canvas, List<DateTimeOffset> timestamps,
         int height, int bottomPadding, Func<long, double> timeToX)
     {
         using var tickPaint = new SKPaint();
@@ -164,15 +163,15 @@ public class RenderHistoryUseCase : IRenderHistoryUseCase
         var textFont = SKTypeface.FromFamilyName("Arial");
         using var font = new SKFont(textFont);
 
-        foreach (var historyEntry in history)
+        foreach (var timestamp in timestamps)
         {
-            var x = (float)timeToX(historyEntry.Timestamp.Ticks);
+            var x = (float)timeToX(timestamp.Ticks);
 
             // Draw tick mark
             canvas.DrawLine(x, height - bottomPadding, x, height - bottomPadding + 5, tickPaint);
 
             // Draw rotated label
-            var label = historyEntry.Timestamp.ToString("dd.MM.yyyy");
+            var label = timestamp.ToString("dd.MM.yyyy");
             canvas.Save();
             canvas.Translate(x, height - bottomPadding + 10);
             canvas.RotateDegrees(45);
