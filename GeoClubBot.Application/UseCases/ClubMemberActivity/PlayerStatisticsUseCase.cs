@@ -27,13 +27,15 @@ public class PlayerStatisticsUseCase(IHistoryRepository historyRepository) : IPl
         var earliestTime = historyEntries.Select(e => e.Timestamp).Min();
 
         // Get a list of the points
-        var points = historyEntries.Select(e => e.Xp).ToList();
+        var points = historyEntries
+            .OrderBy(e => e.Timestamp)
+            .Select(e => e.Xp)
+            .ToList();
 
         // Calculate the differences
         var pointDifferences = points
             .Skip(1)
             .Zip(points, (a, b) => a - b)
-            .Order()
             .ToList();
 
         // Calculate stats
