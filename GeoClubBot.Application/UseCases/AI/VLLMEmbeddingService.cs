@@ -4,7 +4,6 @@ using Microsoft.SemanticKernel.Embeddings;
 
 namespace UseCases.UseCases.AI;
 
-[Obsolete("Obsolete")]
 public class VllmEmbeddingService(Uri endpoint, string modelName) : ITextEmbeddingGenerationService
 {
     private readonly HttpClient _httpClient = new() { BaseAddress = endpoint };

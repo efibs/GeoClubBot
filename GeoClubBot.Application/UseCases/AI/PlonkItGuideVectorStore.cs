@@ -24,11 +24,11 @@ public class SectionRecord
     public string Country { get; set; } = string.Empty;
 }
 
-public partial class MetaVectorStore(
+public partial class PlonkItGuideVectorStore(
     QdrantClient client,
     ITextEmbeddingGenerationService embeddingService,
     IGetPlonkItGuideSectionEmbeddingTextUseCase  getPlonkItGuideSectionEmbeddingTextUseCase,
-    ILogger<MetaVectorStore> logger,
+    ILogger<PlonkItGuideVectorStore> logger,
     IConfiguration config,
     string collectionName = "geoguessr-metas")
 {

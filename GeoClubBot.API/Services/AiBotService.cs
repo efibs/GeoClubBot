@@ -7,12 +7,12 @@ using UseCases.UseCases.AI;
 
 namespace GeoClubBot.Services;
 
-public class AiBotService(MetaVectorStore metaVectorStore, DiscordBotReadyService botReadyService, DiscordSocketClient client, IGeoGuessrChatBotUseCase chatBotUseCase) : IHostedService
+public class AiBotService(PlonkItGuideVectorStore plonkItGuideVectorStore, DiscordBotReadyService botReadyService, DiscordSocketClient client, IGeoGuessrChatBotUseCase chatBotUseCase) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // Initialize the qdrant storage in the background
-        _ = Task.Run(metaVectorStore.InitializeAsync, cancellationToken);
+        _ = Task.Run(plonkItGuideVectorStore.InitializeAsync, cancellationToken);
         
         // Wait for the bot to be ready
         await botReadyService.DiscordSocketClientReady.ConfigureAwait(false);

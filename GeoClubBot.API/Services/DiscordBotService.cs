@@ -8,7 +8,7 @@ namespace GeoClubBot.Services;
 /// Class managing the discord socket
 /// </summary>
 /// <param name="client">The discord socket client</param>
-public class DiscordBotService(DiscordSocketClient client, IConfiguration config, ILogger<DiscordBotService> logger) : IHostedService
+public class DiscordBotService(DiscordSocketClient client, IConfiguration config) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {

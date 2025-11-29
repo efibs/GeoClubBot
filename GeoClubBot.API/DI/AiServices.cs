@@ -37,10 +37,10 @@ public static class AiServices
             new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName));
         
         // Add the meta vector store
-        services.AddTransient<MetaVectorStore>();
+        services.AddTransient<PlonkItGuideVectorStore>();
         
         // Add the meta search plugin
-        services.AddTransient<IMetaVectorStoreSearchPlugin, MetaVectorStoreSearchPlugin>();
+        services.AddTransient<PlonkItGuidePlugin>();
         
         // Add the chat bot use case
         services.AddTransient<IGeoGuessrChatBotUseCase, GeoGuessrChatBotUseCase>();

@@ -31,15 +31,14 @@ Today, however, players often use the term *meta* more broadly to describe any c
 Regionguessing refers to guessing the specific region inside a larger country. For example an regionguessing clue for russia is that in the south of the country the gen 4 coverage will be in winter.
 
 ### Resources
-You have access to the **MetasDatabase**, a trusted source of GeoGuessr metas for specific countries and territories.
-- If a user asks about *meta-related* topics, **consult the MetasDatabase first**.
+You have access to the **PlonkIt Guide**, a trusted source of GeoGuessr metas for specific countries and territories.
+- If a user asks about *meta-related* topics, **consult the PlonkIt Guide first**.
 - If the user asks about a country or region, you can use the GetInformationByCountry function to get all the information that is known about the country.
 - Here is the list of available countries (case sensitive!): {AvailableCountriesPlaceholder}
 - If the user asks about anything else, you can use the SearchInformation function to search for an arbitrary text.
 - You don't have to include the word 'meta' in your search queries.
 - If a specific territory does not have its own entry, check the corresponding country’s entry instead — these often include relevant information.
-- If you don't find any information on the requested topic in the MetasDatabase, say that you couldn't find any information on that. Don't try to rely on anything else that you have learned, it will be wrong.
-- Don't talk about the MetasDatabase. The user doesn't know about the MetasDatabase and he doesn't care. You can talk about the 'source' field in the results though. For example 'plonkit.net', the user will know what plonkit.net is. He is just interested in the information inside the database.
+- If you don't find any information on the requested topic in the PlonkIt Guide, say that you couldn't find any information on that. Don't try to rely on anything else that you have learned, it will be wrong.
 
 ### Source Attribution
 Always cite your sources as **clickable links** (masked Markdown links). masked Markdown links look like this: [text](https://www.example.com)
@@ -47,12 +46,12 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
     
     public GeoGuessrChatBotUseCase(ILogger<GeoGuessrChatBotUseCase> logger, 
         ISelfUserAccess selfUserAccess, 
-        IMetaVectorStoreSearchPlugin  metaVectorStoreSearchPlugin,
+        PlonkItGuidePlugin  plonkItGuidePlugIn,
         IConfiguration config)
     {
         _logger = logger;
         _selfUserAccess = selfUserAccess;
-        _metaVectorStoreSearchPlugin = metaVectorStoreSearchPlugin;
+        _plonkItGuidePlugIn = plonkItGuidePlugIn;
 
         var llmEndpoint = config.GetConnectionString(ConfigKeys.LlmInferenceEndpointConnectionString)!;
         var llmModelName = config.GetValue<string>(ConfigKeys.LlmModelNameConfigurationKey)!;
@@ -70,7 +69,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         _kernel = kernelBuilder.Build();
 
         _kernel.Plugins
-            .AddFromObject(metaVectorStoreSearchPlugin, "MetasDatabase");
+            .AddFromObject(plonkItGuidePlugIn, "PlonkIt Guide");
     }
     
     public async Task<string?> GetAiResponseAsync(string prompt, Func<Task> startTypingAsync)
@@ -83,7 +82,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
             var message = prompt.Replace($"<@{_selfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
             
             // Get the available countries
-            var availableCountries = await _metaVectorStoreSearchPlugin.GetCountries().ConfigureAwait(false);
+            var availableCountries = await _plonkItGuidePlugIn.GetCountries().ConfigureAwait(false);
             
             // Format the system prompt
             var formattedSystemPrompt = SystemPrompt.Replace(AvailableCountriesPlaceholder, availableCountries);
@@ -128,5 +127,5 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
     private readonly Kernel _kernel;
     private readonly ISelfUserAccess _selfUserAccess;
     private readonly ILogger<GeoGuessrChatBotUseCase> _logger;
-    private readonly IMetaVectorStoreSearchPlugin _metaVectorStoreSearchPlugin;
+    private readonly PlonkItGuidePlugin _plonkItGuidePlugIn;
 }

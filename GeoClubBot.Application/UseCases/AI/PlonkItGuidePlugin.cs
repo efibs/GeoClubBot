@@ -3,14 +3,13 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
-using UseCases.InputPorts.AI;
 
 namespace UseCases.UseCases.AI;
 
-public class MetaVectorStoreSearchPlugin(MetaVectorStore vectorStore, ILogger<MetaVectorStoreSearchPlugin> logger) : IMetaVectorStoreSearchPlugin
+public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<PlonkItGuidePlugin> logger)
 {
     [KernelFunction]
-    [Description("Search for information using semantic search based on a query")]
+    [Description("Search for information in the PlonkIt Guide using semantic search based on a query")]
     public async Task<string> SearchInformation(
         [Description("The search query to find relevant information")] string query,
         [Description("Maximum number of results to return")] int limit = 7)
@@ -49,7 +48,7 @@ public class MetaVectorStoreSearchPlugin(MetaVectorStore vectorStore, ILogger<Me
     }
 
     [KernelFunction]
-    [Description("Get all unique countries that have information in the database")]
+    [Description("Get all unique countries that have information in the PlonkIt Guide")]
     public async Task<string> GetCountries()
     {
         logger.LogDebug("Running get all countries");
@@ -63,7 +62,7 @@ public class MetaVectorStoreSearchPlugin(MetaVectorStore vectorStore, ILogger<Me
     }
 
     [KernelFunction]
-    [Description("Get all teh information for a specific country")]
+    [Description("Get all the information for a specific country that is available in the PlonkIt Guide")]
     public async Task<string> GetInformationByCountry(
         [Description("The name of the country to retrieve the information for")] string country)
     {
