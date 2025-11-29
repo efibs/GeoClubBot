@@ -50,6 +50,11 @@ docker run -it --rm \
   --tool-call-parser hermes
 ```
 
+Start llama-3:
+```bash
+docker run -it --rm --runtime nvidia --gpus all --ipc=host -p 8002:8000 -v ~/.cache/huggingface:/root/.cache/huggingface vllm/vllm-openai:latest --model meta-llama/Llama-3.1-8B-Instruct --host 0.0.0.0 --gpu-memory-utilization 0.8 --tool-call-parser openai --enable-auto-tool-choice --max-model-len 1024
+```
+
 run embedding model:
 ```bash
 docker run -it --rm --runtime nvidia --gpus all --ipc=host -p 8001:8000 -v ~/.cache/huggingface:/root/.cache/huggingface vllm/vllm-openai:latest --model BAAI/bge-large-en-v1.5 --gpu-memory-utilization 0.05 --max-num-seqs 1

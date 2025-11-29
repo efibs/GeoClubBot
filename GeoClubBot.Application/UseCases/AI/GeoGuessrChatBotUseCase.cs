@@ -69,7 +69,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         _kernel = kernelBuilder.Build();
 
         _kernel.Plugins
-            .AddFromObject(plonkItGuidePlugIn, "PlonkIt Guide");
+            .AddFromObject(plonkItGuidePlugIn, "PlonkIt_Guide");
     }
     
     public async Task<string?> GetAiResponseAsync(string prompt, Func<Task> startTypingAsync)

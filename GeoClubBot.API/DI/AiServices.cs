@@ -1,5 +1,6 @@
 using Constants;
 using GeoClubBot.Services;
+using Microsoft.Extensions.AI;
 using Microsoft.SemanticKernel.Embeddings;
 using Qdrant.Client;
 using UseCases.InputPorts.AI;
@@ -33,7 +34,7 @@ public static class AiServices
         services.AddTransient(_ => new QdrantClient(qdrantConnectionString));
         
         // Add the embedding service
-        services.AddTransient<ITextEmbeddingGenerationService>(_ =>
+        services.AddTransient<IEmbeddingGenerator<string, Embedding<float>>>(_ =>
             new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName));
         
         // Add the meta vector store

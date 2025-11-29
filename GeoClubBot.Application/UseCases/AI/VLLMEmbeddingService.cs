@@ -1,48 +1,86 @@
 using System.Net.Http.Json;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Embeddings;
+using Microsoft.Extensions.AI;
 
 namespace UseCases.UseCases.AI;
 
-public class VllmEmbeddingService(Uri endpoint, string modelName) : ITextEmbeddingGenerationService
+public class VllmEmbeddingService(Uri endpoint, string modelName) : IEmbeddingGenerator<string, Embedding<float>>
 {
-    private readonly HttpClient _httpClient = new() { BaseAddress = endpoint };
-
-    public IReadOnlyDictionary<string, object?> Attributes => new Dictionary<string, object?>();
-
-    public async Task<IList<ReadOnlyMemory<float>>> GenerateEmbeddingsAsync(
-        IList<string> data,
-        Kernel? kernel = null,
-        CancellationToken cancellationToken = default)
+    public async Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+        IEnumerable<string> values,
+        EmbeddingGenerationOptions? options,
+        CancellationToken cancellationToken)
     {
+        // Sanity check
+        ArgumentNullException.ThrowIfNull(values);
+        
+        // Create the request
         var request = new
         {
             model = modelName,
-            input = data
+            input = values.ToList()
         };
-
-        var response = await _httpClient.PostAsJsonAsync("/v1/embeddings", request, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<VllmEmbeddingResponse>(cancellationToken).ConfigureAwait(false);
         
-        if (result?.Data == null)
-            throw new Exception("Failed to get embeddings from vLLM");
+        // Call the embedding model
+        var response = await _httpClient
+            .PostAsJsonAsync("/v1/embeddings", request, cancellationToken)
+            .ConfigureAwait(false);
+        
+        // Ensure that the embedding succeeded
+        response.EnsureSuccessStatusCode();
+        
+        // Read the result of the embedding call
+        var result = await response.Content
+            .ReadFromJsonAsync<VllmEmbeddingResponse>(cancellationToken)
+            .ConfigureAwait(false);
 
-        return result.Data
-            .OrderBy(e => e.Index)
-            .Select(e => new ReadOnlyMemory<float>(e.Embedding))
-            .ToList();
+        // Check that there is data
+        if (result?.Data == null)
+        {
+            throw new Exception("Failed to get embeddings from vLLM");
+        }
+        
+        // vLLM returns embeddings with an Index field; we must order so they match input order
+        var ordered = result.Data.OrderBy(e => e.Index);
+        
+        // The return generated embeddings
+        var generated = new GeneratedEmbeddings<Embedding<float>>();
+        
+        // For every embedding
+        foreach (var item in ordered)
+        {
+            // Create the embedding object
+            var emb = new Embedding<float>(new ReadOnlyMemory<float>(item.Embedding))
+            {
+                ModelId = modelName
+            };
+            
+            // Add to embeddings
+            generated.Add(emb);
+        }
+        
+        return generated;
     }
 
-    private class VllmEmbeddingResponse
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null)
+    {
+        return null;
+    }
+
+    private sealed class VllmEmbeddingResponse
     {
         public List<EmbeddingData> Data { get; set; } = [];
     }
 
-    private class EmbeddingData
+    private sealed class EmbeddingData
     {
         public int Index { get; set; }
         public float[] Embedding { get; set; } = [];
     }
+    
+    private readonly HttpClient _httpClient = new() { BaseAddress = endpoint };
 }

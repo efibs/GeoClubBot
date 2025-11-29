@@ -4,9 +4,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Constants;
 using HtmlAgilityPack;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel.Embeddings;
 using PuppeteerSharp;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
@@ -26,7 +26,7 @@ public class SectionRecord
 
 public partial class PlonkItGuideVectorStore(
     QdrantClient client,
-    ITextEmbeddingGenerationService embeddingService,
+    IEmbeddingGenerator<string, Embedding<float>> embeddingService,
     IGetPlonkItGuideSectionEmbeddingTextUseCase  getPlonkItGuideSectionEmbeddingTextUseCase,
     ILogger<PlonkItGuideVectorStore> logger,
     IConfiguration config,
@@ -70,7 +70,7 @@ public partial class PlonkItGuideVectorStore(
         var hash = ComputeHash(text);
 
         var embedding = await embeddingService
-            .GenerateEmbeddingAsync(textForEmbedding)
+            .GenerateAsync(textForEmbedding)
             .ConfigureAwait(false);
         
         var payload = new Dictionary<string, Value>
@@ -85,7 +85,7 @@ public partial class PlonkItGuideVectorStore(
         var point = new PointStruct
         {
             Id = new PointId { Uuid = customId.ToString() },
-            Vectors = embedding.ToArray(),
+            Vectors = embedding.Vector.ToArray(),
             Payload = { payload }
         };
 
@@ -131,11 +131,11 @@ public partial class PlonkItGuideVectorStore(
 
     public async Task<List<SectionRecord>> SearchSectionsAsync(string query, int limit = 5)
     {
-        var queryEmbedding = await embeddingService.GenerateEmbeddingAsync(query).ConfigureAwait(false);
+        var queryEmbedding = await embeddingService.GenerateAsync(query).ConfigureAwait(false);
         
         var results = await client.SearchAsync(
             collectionName: collectionName,
-            vector: queryEmbedding.ToArray(),
+            vector: queryEmbedding.Vector.ToArray(),
             limit: (ulong)limit,
             payloadSelector: true
         ).ConfigureAwait(false);

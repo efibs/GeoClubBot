@@ -35,6 +35,10 @@
       - "6334:6334"  # gRPC API
     volumes:
       - ./qdrant_storage:/qdrant/storage
+    ulimits:
+      nofile:
+        soft: 10000
+        hard: 10000
 secrets:
   postgresqldb-username:
     file: .env.postgresqldb-username
