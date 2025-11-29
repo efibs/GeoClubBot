@@ -47,18 +47,36 @@ Return only the category.
     {
         _logger = logger;   
         
-        var llmEndpoint = config.GetConnectionString(ConfigKeys.CategorizationEndpoint)!;
+        _llmEndpoint = config.GetConnectionString(ConfigKeys.CategorizationEndpoint)!;
         var llmModelName = config.GetValue<string>(ConfigKeys.CategorizeModelNameConfigurationKey)!;
         var llmApiKey = config.GetValue<string>(ConfigKeys.LlmApiKeyConfigurationKey);
 
         _categorizeKernel = Kernel.CreateBuilder()
-            .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint))
+            .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(_llmEndpoint + "/v1"))
             .Build();
 
         _categorizeFunction = _categorizeKernel.CreateFunctionFromPrompt(ClassifyPrompt, new OpenAIPromptExecutionSettings
         {
             Temperature = 0
         });
+    }
+
+    public async Task<bool> TestConnectionAsync()
+    {
+        // Create http client
+        var client = new HttpClient();
+
+        try
+        {
+            // Try get call to /health
+            var response = await client.GetAsync(_llmEndpoint + "/health").ConfigureAwait(false);
+
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
     }
     
     public async Task<string> GetEmbeddingTextAsync(string country, string sectionContent, ICollection<string> continents)
@@ -117,4 +135,5 @@ Return only the category.
     private readonly Kernel _categorizeKernel;
     private readonly KernelFunction _categorizeFunction;
     private readonly ILogger<GetPlonkItGuideSectionEmbeddingTextUseCase> _logger;
+    private readonly string _llmEndpoint;
 }

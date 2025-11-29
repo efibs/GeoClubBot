@@ -34,11 +34,11 @@ public static class AiServices
         services.AddTransient(_ => new QdrantClient(qdrantConnectionString));
         
         // Add the embedding service
-        services.AddTransient<IEmbeddingGenerator<string, Embedding<float>>>(_ =>
+        services.AddTransient<VllmEmbeddingService>(_ =>
             new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName));
         
         // Add the meta vector store
-        services.AddTransient<PlonkItGuideVectorStore>();
+        services.AddSingleton<PlonkItGuideVectorStore>();
         
         // Add the meta search plugin
         services.AddTransient<PlonkItGuidePlugin>();

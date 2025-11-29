@@ -22,7 +22,7 @@ public class VllmEmbeddingService(Uri endpoint, string modelName) : IEmbeddingGe
         
         // Call the embedding model
         var response = await _httpClient
-            .PostAsJsonAsync("/v1/embeddings", request, cancellationToken)
+            .PostAsJsonAsync("v1/embeddings", request, cancellationToken)
             .ConfigureAwait(false);
         
         // Ensure that the embedding succeeded
@@ -61,6 +61,24 @@ public class VllmEmbeddingService(Uri endpoint, string modelName) : IEmbeddingGe
         return generated;
     }
 
+    public async Task<bool> TestConnectionAsync()
+    {
+        // Create http client
+        var client = new HttpClient();
+
+        try
+        {
+            // Try get call to /health
+            var response = await client.GetAsync(endpoint + "health").ConfigureAwait(false);
+            
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
     public void Dispose()
     {
         _httpClient.Dispose();

@@ -30,11 +30,9 @@ public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<Plo
             {
                 var section = sections[i];
                 sb.AppendLine($"--- Section {i + 1} ---");
-                sb.AppendLine($"ID: {section.Id}");
                 sb.AppendLine($"Country: {section.Country}");
                 sb.AppendLine($"Source: {section.Source}");
                 sb.AppendLine($"Text: {section.Text}");
-                sb.AppendLine($"Hash: {section.Hash}");
                 sb.AppendLine();
             }
 
@@ -80,14 +78,14 @@ public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<Plo
         {
             var section = sections[i];
             sb.AppendLine($"--- Section {i + 1} ---");
-            sb.AppendLine($"ID: {section.Id}");
             sb.AppendLine($"Country: {section.Country}");
             sb.AppendLine($"Source: {section.Source}");
             sb.AppendLine($"Text: {section.Text}");
-            sb.AppendLine($"Hash: {section.Hash}");
             sb.AppendLine();
         }
 
         return sb.ToString();
     }
+    
+    public SemaphoreSlim RebuildStoreLock => vectorStore.RebuildStoreLock;
 }

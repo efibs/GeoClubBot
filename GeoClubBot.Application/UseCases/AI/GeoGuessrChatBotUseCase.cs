@@ -65,7 +65,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         _logger.LogInformation("Embedding Model: {Model}", embeddingModelName);
 
         var kernelBuilder = Kernel.CreateBuilder()
-            .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint));
+            .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint + "/v1"));
         _kernel = kernelBuilder.Build();
 
         _kernel.Plugins
@@ -74,23 +74,35 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
     
     public async Task<string?> GetAiResponseAsync(string prompt, Func<Task> startTypingAsync)
     {
+        // Try to get the plonk it guides vector store lock
+        var semaphoreClaimed = await _plonkItGuidePlugIn
+            .RebuildStoreLock
+            .WaitAsync(TimeSpan.FromSeconds(10))
+            .ConfigureAwait(false);
+
+        // If we did not get the semaphore
+        if (semaphoreClaimed == false)
+        {
+            return "The internal PlonkIt Guide is currently being updated. Try again later.";
+        }
+        
         try
         {
             _logger.LogDebug($"Handling message using AI: {prompt}");
 
             // Get the message
             var message = prompt.Replace($"<@{_selfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
-            
+
             // Get the available countries
             var availableCountries = await _plonkItGuidePlugIn.GetCountries().ConfigureAwait(false);
-            
+
             // Format the system prompt
             var formattedSystemPrompt = SystemPrompt.Replace(AvailableCountriesPlaceholder, availableCountries);
-            
+
             ChatHistory history = [];
             history.AddSystemMessage(formattedSystemPrompt);
             history.AddUserMessage(message);
-            
+
             OpenAIPromptExecutionSettings promtExecutionSettings = new()
             {
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
@@ -108,10 +120,10 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
                 return null;
             }
 
-            _logger.LogDebug($"Handling done.");
+            _logger.LogDebug("Handling done.");
             return response.Content;
         }
-        catch (HttpOperationException httpEx) when(httpEx.StatusCode == HttpStatusCode.TooManyRequests)
+        catch (HttpOperationException httpEx) when (httpEx.StatusCode == HttpStatusCode.TooManyRequests)
         {
             _logger.LogError(httpEx, "Too many requests have been reached.");
             return "AI is currently not available. Try again later.";
@@ -119,6 +131,10 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during AI response");
+        }
+        finally
+        {
+            _plonkItGuidePlugIn.RebuildStoreLock.Release();
         }
 
         return null;
