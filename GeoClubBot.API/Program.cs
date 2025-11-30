@@ -1,6 +1,8 @@
+using Configuration;
 using Constants;
 using GeoClubBot;
-using GeoClubBot.DI;
+using GeoClubBot.DependencyInjection;
+using GeoClubBot.Discord.DependencyInjection;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +31,12 @@ builder.Services.AddCors(options =>
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// Add the options
+builder.Services.AddClubBotOptions(builder.Configuration);
+
+// Add the discord services
+builder.Services.AddDiscordServices();
 
 // Add all the necessary services
 builder.Services.AddClubBotServices(builder.Configuration);

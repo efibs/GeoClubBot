@@ -1,19 +1,19 @@
 using System.Text;
-using Constants;
+using Configuration;
 using Entities;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.Users;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
 public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUseCase geoGuessrUserIdsToDiscordUserIdsUseCase,
-    IServerRolesAccess serverRolesAccess, 
-    IMessageAccess messageAccess, 
-    IConfiguration config, 
-    ILogger<ClubMemberActivityRewardUseCase> logger) : IClubMemberActivityRewardUseCase
+    IDiscordServerRolesAccess discordServerRolesAccess, 
+    IDiscordMessageAccess discordMessageAccess, 
+    ILogger<ClubMemberActivityRewardUseCase> logger,
+    IOptions<ActivityRewardConfiguration> config) : IClubMemberActivityRewardUseCase
 {
     public async Task RewardMemberActivityAsync(List<ClubMemberActivityStatus> statuses)
     {
@@ -78,7 +78,7 @@ public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUs
             var msg = msgBuilder.ToString();
 
             // Send the message
-            await messageAccess.SendMessageAsync(msg, _channelId).ConfigureAwait(false);
+            await discordMessageAccess.SendMessageAsync(msg, config.Value.TextChannelId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -94,7 +94,7 @@ public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUs
         var discordUserIds = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(mvpPlayerUserIds).ConfigureAwait(false);
         
         // Get the members that already have the mvp role
-        var membersWithMvpRole = await serverRolesAccess.ReadMembersWithRoleAsync(_mvpRoleId).ConfigureAwait(false);
+        var membersWithMvpRole = await discordServerRolesAccess.ReadMembersWithRoleAsync(config.Value.MvpRoleId).ConfigureAwait(false);
         
         // Get the members that need the mvp role
         var membersToAddMvpRole = discordUserIds.Except(membersWithMvpRole);
@@ -103,12 +103,9 @@ public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUs
         var membersToRemoveMvpRole = membersWithMvpRole.Except(discordUserIds);
         
         // Distribute the roles
-        await serverRolesAccess.AddRoleToMembersByUserIdsAsync(membersToAddMvpRole, _mvpRoleId).ConfigureAwait(false);
+        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(membersToAddMvpRole, config.Value.MvpRoleId).ConfigureAwait(false);
         
         // Remove the roles
-        await serverRolesAccess.RemoveRoleFromPlayersAsync(membersToRemoveMvpRole, _mvpRoleId).ConfigureAwait(false);
+        await discordServerRolesAccess.RemoveRoleFromPlayersAsync(membersToRemoveMvpRole, config.Value.MvpRoleId).ConfigureAwait(false);
     }
-    
-    private readonly string _channelId = config.GetValue<string>(ConfigKeys.ActivityRewardTextChannelIdConfigurationKey)!;
-    private readonly ulong _mvpRoleId = config.GetValue<ulong>(ConfigKeys.ActivityRewardMvpRoleIdConfigurationKey);
 }

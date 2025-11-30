@@ -1,3 +1,4 @@
+using GeoClubBot.Discord.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using UseCases.InputPorts.Club;

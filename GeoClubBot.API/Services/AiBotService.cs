@@ -1,7 +1,7 @@
 using Discord;
 using Discord.WebSocket;
 using Extensions;
-using Infrastructure;
+using GeoClubBot.Discord.Services;
 using UseCases.InputPorts.AI;
 using UseCases.UseCases.AI;
 

@@ -3,7 +3,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Club;
 
-public class SetClubLevelStatusUseCase(IStatusUpdater statusUpdater) : ISetClubLevelStatusUseCase
+public class SetClubLevelStatusUseCase(IDiscordStatusUpdater discordStatusUpdater) : ISetClubLevelStatusUseCase
 {
     public async Task SetClubLevelStatusAsync(int level)
     {
@@ -11,6 +11,6 @@ public class SetClubLevelStatusUseCase(IStatusUpdater statusUpdater) : ISetClubL
         var newStatus = $"Level {level} club!";
 
         // Update the status
-        await statusUpdater.UpdateStatusAsync(newStatus).ConfigureAwait(false);
+        await discordStatusUpdater.UpdateStatusAsync(newStatus).ConfigureAwait(false);
     }
 }

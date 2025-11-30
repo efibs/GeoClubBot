@@ -19,11 +19,13 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["GeoClubBot.API/GeoClubBot.API.csproj", "GeoClubBot.API/"]
 COPY ["Constants/Constants.csproj", "Constants/"]
+COPY ["Configuration/Configuration.csproj", "Configuration/"]
 COPY ["Extensions/Extensions.csproj", "Extensions/"]
 COPY ["QuartzExtensions/QuartzExtensions.csproj", "QuartzExtensions/"]
 COPY ["Utilities/Utilities.csproj", "Utilities/"]
 COPY ["GeoClubBot.Domain/GeoClubBot.Domain.csproj", "GeoClubBot.Domain/"]
 COPY ["GeoClubBot.Infrastructure/GeoClubBot.Infrastructure.csproj", "GeoClubBot.Infrastructure/"]
+COPY ["GeoClubBot.Discord/GeoClubBot.Discord.csproj", "GeoClubBot.Discord/"]
 COPY ["GeoClubBot.Application/GeoClubBot.Application.csproj", "GeoClubBot.Application/"]
 RUN dotnet restore "GeoClubBot.API/GeoClubBot.API.csproj"
 COPY . .

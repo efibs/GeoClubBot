@@ -2,10 +2,11 @@ using Entities;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public class DeleteMemberPrivateChannelUseCase(ITextChannelAccess textChannelAccess,
+public class DeleteMemberPrivateChannelUseCase(IDiscordTextChannelAccess discordTextChannelAccess,
     ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase) : IDeleteMemberPrivateChannelUseCase
 {
     public async Task<bool> DeletePrivateChannelAsync(ClubMember? clubMember)
@@ -17,7 +18,7 @@ public class DeleteMemberPrivateChannelUseCase(ITextChannelAccess textChannelAcc
         }
         
         // Try to delete the text channel
-        var successful = await textChannelAccess.DeleteTextChannelAsync(clubMember.PrivateTextChannelId.Value).ConfigureAwait(false);
+        var successful = await discordTextChannelAccess.DeleteTextChannelAsync(clubMember.PrivateTextChannelId.Value).ConfigureAwait(false);
             
         // remove the text channel id from the club member
         clubMember.PrivateTextChannelId = null;

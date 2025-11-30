@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\Configuration\Configuration.csproj" />
         <ProjectReference Include="..\Constants\Constants.csproj"/>
         <ProjectReference Include="..\GeoClubBot.Domain\GeoClubBot.Domain.csproj" />
         <ProjectReference Include="..\Utilities\Utilities.csproj" />
@@ -26,7 +27,7 @@
     <ItemGroup>
         <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
         <PackageReference Include="MediatR" Version="13.1.0" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
         <PackageReference Include="Microsoft.SemanticKernel" Version="1.67.1" />
         <PackageReference Include="PasswordGenerator" Version="2.1.0" />

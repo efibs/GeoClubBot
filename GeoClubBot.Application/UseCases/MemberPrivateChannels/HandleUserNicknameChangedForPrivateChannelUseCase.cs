@@ -1,13 +1,14 @@
 using Entities;
 using MediatR;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public class HandleUserNicknameChangedForPrivateChannelUseCase(
     IClubMemberRepository clubMemberRepository,
-    ITextChannelAccess textChannelAccess) 
+    IDiscordTextChannelAccess discordTextChannelAccess) 
     : INotificationHandler<UserUpdatedEvent>
 {
     public async Task Handle(UserUpdatedEvent notification, CancellationToken cancellationToken)
@@ -53,6 +54,6 @@ public class HandleUserNicknameChangedForPrivateChannelUseCase(
         };
         
         // Update the text channel
-        await textChannelAccess.UpdateTextChannelAsync(newTextChannel).ConfigureAwait(false);
+        await discordTextChannelAccess.UpdateTextChannelAsync(newTextChannel).ConfigureAwait(false);
     }
 }

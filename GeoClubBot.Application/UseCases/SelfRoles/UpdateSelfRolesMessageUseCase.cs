@@ -3,22 +3,23 @@ using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.SelfRoles;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.SelfRoles;
 
 public class UpdateSelfRolesMessageUseCase(
-    ITextChannelAccess textChannelAccess,
-    IMessageAccess messageAccess,
-    ISelfUserAccess selfUserAccess,
+    IDiscordTextChannelAccess discordTextChannelAccess,
+    IDiscordMessageAccess discordMessageAccess,
+    IDiscordSelfUserAccess discordSelfUserAccess,
     IConfiguration config) : IUpdateSelfRolesMessageUseCase
 {
     public async Task UpdateSelfRolesMessageAsync()
     {
         // Get the own user id
-        var ownUserId = selfUserAccess.GetSelfUserId();
+        var ownUserId = discordSelfUserAccess.GetSelfUserId();
         
         // Try to get the old message
-        var oldMessageId = await textChannelAccess
+        var oldMessageId = await discordTextChannelAccess
             .ReadLastMessageOfUserAsync(ownUserId, _textChannelId, 100)
             .ConfigureAwait(false);
         
@@ -32,19 +33,19 @@ public class UpdateSelfRolesMessageUseCase(
         if (oldMessageExists == false && selfRolesConfigured)
         {
             // Create the self role message
-            await messageAccess.SendSelfRolesMessageAsync(_textChannelId, _selfRoleSettings).ConfigureAwait(false);
+            await discordMessageAccess.SendSelfRolesMessageAsync(_textChannelId, _selfRoleSettings).ConfigureAwait(false);
         }
         // Else if there is an old message and there are self roles
         else if (oldMessageExists && selfRolesConfigured)
         {
             // Update the self role message
-            await messageAccess.UpdateSelfRolesMessageAsync(_textChannelId,oldMessageId!.Value, _selfRoleSettings).ConfigureAwait(false);
+            await discordMessageAccess.UpdateSelfRolesMessageAsync(_textChannelId,oldMessageId!.Value, _selfRoleSettings).ConfigureAwait(false);
         }
         // Else if there is an old message and there are now no self roles configured
         else if (oldMessageExists && selfRolesConfigured == false)
         {
             // Delete the self role message
-            await messageAccess.DeleteMessageAsync(oldMessageId!.Value, _textChannelId).ConfigureAwait(false);
+            await discordMessageAccess.DeleteMessageAsync(oldMessageId!.Value, _textChannelId).ConfigureAwait(false);
         }
     }
     

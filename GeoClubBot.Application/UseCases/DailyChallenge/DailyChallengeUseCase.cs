@@ -1,11 +1,12 @@
 using System.Text;
 using System.Text.Json;
-using Constants;
+using Configuration;
 using Entities;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.InputPorts.DailyChallenge;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.DailyChallenge;
@@ -13,15 +14,15 @@ namespace UseCases.UseCases.DailyChallenge;
 public class DailyChallengeUseCase(
     IGeoGuessrAccess geoGuessrAccess,
     IClubChallengeRepository clubChallengeRepository,
-    IMessageAccess messageAccess,
+    IDiscordMessageAccess discordMessageAccess,
     IDistributeDailyChallengeRolesUseCase distributeDailyChallengeRolesUseCase,
-    IConfiguration config,
-    ILogger<DailyChallengeUseCase> logger) : IDailyChallengeUseCase
+    ILogger<DailyChallengeUseCase> logger,
+    IOptions<DailyChallengesConfiguration> config) : IDailyChallengeUseCase
 {
     public async Task CreateDailyChallengeAsync()
     {
         // Read the challenges configuration file
-        var configFileString = await File.ReadAllTextAsync(_challengesConfigurationFilePath).ConfigureAwait(false);
+        var configFileString = await File.ReadAllTextAsync(config.Value.ConfigurationFilePath).ConfigureAwait(false);
 
         // Deserialize
         var challengeConfig = JsonSerializer.Deserialize<List<ClubChallengeConfigurationDifficulty>>(configFileString);
@@ -30,7 +31,7 @@ public class DailyChallengeUseCase(
         if (challengeConfig == null)
         {
             throw new InvalidOperationException(
-                $"Invalid challenge configuration file: {_challengesConfigurationFilePath}");
+                $"Invalid challenge configuration file: {config.Value.ConfigurationFilePath}");
         }
 
         // Select entries
@@ -152,7 +153,7 @@ public class DailyChallengeUseCase(
             }
 
             // Send the result
-            await  messageAccess.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
+            await  discordMessageAccess.SendMessageAsync(builder.ToString(), config.Value.TextChannelId).ConfigureAwait(false);
             
             // Reset the string builder
             builder = new StringBuilder();
@@ -218,14 +219,8 @@ public class DailyChallengeUseCase(
         }
 
         // Send the next challenges
-        await  messageAccess.SendMessageAsync(builder.ToString(), _textChannelId).ConfigureAwait(false);
+        await  discordMessageAccess.SendMessageAsync(builder.ToString(), config.Value.TextChannelId).ConfigureAwait(false);
     }
-    
-    private readonly string _challengesConfigurationFilePath =
-        config.GetValue<string>(ConfigKeys.DailyChallengesConfigurationFilePathConfigurationKey)!;
 
-    private readonly string _textChannelId =
-        config.GetValue<string>(ConfigKeys.DailyChallengesTextChannelIdConfigurationKey)!;
-    
     private static readonly Random Rng = new();
 }

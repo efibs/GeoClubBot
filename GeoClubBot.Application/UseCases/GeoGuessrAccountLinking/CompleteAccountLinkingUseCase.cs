@@ -6,13 +6,14 @@ using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository accountLinkingRequestRepository, 
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase, 
     IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase,
-    IServerRolesAccess rolesAccess,
+    IDiscordServerRolesAccess rolesAccess,
     IConfiguration config) : ICompleteAccountLinkingUseCase
 {
     public async Task<(bool Successful, GeoGuessrUser? User)> CompleteLinkingAsync(ulong discordUserId, string geoGuessrUserId, string oneTimePassword)

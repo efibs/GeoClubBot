@@ -7,6 +7,7 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using UseCases.InputPorts.AI;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.AI;
 
@@ -45,12 +46,12 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 ";
     
     public GeoGuessrChatBotUseCase(ILogger<GeoGuessrChatBotUseCase> logger, 
-        ISelfUserAccess selfUserAccess, 
+        IDiscordSelfUserAccess discordSelfUserAccess, 
         PlonkItGuidePlugin  plonkItGuidePlugIn,
         IConfiguration config)
     {
         _logger = logger;
-        _selfUserAccess = selfUserAccess;
+        _discordSelfUserAccess = discordSelfUserAccess;
         _plonkItGuidePlugIn = plonkItGuidePlugIn;
 
         var llmEndpoint = config.GetConnectionString(ConfigKeys.LlmInferenceEndpointConnectionString)!;
@@ -91,7 +92,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
             _logger.LogDebug($"Handling message using AI: {prompt}");
 
             // Get the message
-            var message = prompt.Replace($"<@{_selfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
+            var message = prompt.Replace($"<@{_discordSelfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
 
             // Get the available countries
             var availableCountries = await _plonkItGuidePlugIn.GetCountries().ConfigureAwait(false);
@@ -141,7 +142,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
     }
     
     private readonly Kernel _kernel;
-    private readonly ISelfUserAccess _selfUserAccess;
+    private readonly IDiscordSelfUserAccess _discordSelfUserAccess;
     private readonly ILogger<GeoGuessrChatBotUseCase> _logger;
     private readonly PlonkItGuidePlugin _plonkItGuidePlugIn;
 }

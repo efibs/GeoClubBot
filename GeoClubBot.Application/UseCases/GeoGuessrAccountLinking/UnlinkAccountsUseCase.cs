@@ -3,12 +3,13 @@ using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserRepository, 
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase,
-    IServerRolesAccess rolesAccess, 
+    IDiscordServerRolesAccess rolesAccess, 
     IConfiguration config) : IUnlinkAccountsUseCase
 {
     public async Task<bool> UnlinkAccountsAsync(ulong discordUserId, string geoGuessrUserId)

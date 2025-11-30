@@ -5,13 +5,14 @@ using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public class CreateMemberPrivateChannelUseCase(
     ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase,
-    ITextChannelAccess textChannelAccess, 
-    IMessageAccess messageAccess,
+    IDiscordTextChannelAccess discordTextChannelAccess, 
+    IDiscordMessageAccess discordMessageAccess,
     IConfiguration config,
     ILogger<CreateMemberPrivateChannelUseCase> logger) 
     : ICreateMemberPrivateChannelUseCase
@@ -22,7 +23,7 @@ public class CreateMemberPrivateChannelUseCase(
         var textChannelName = $"{clubMember.User.Nickname.ToLowerInvariant()}-private-channel";
         
         // Create the text channel
-        var textChannelId = await textChannelAccess.CreatePrivateTextChannelAsync(_privateTextChannelCategoryId, 
+        var textChannelId = await discordTextChannelAccess.CreatePrivateTextChannelAsync(_privateTextChannelCategoryId, 
                 textChannelName, 
                 _privateChannelsDescription,
                 [clubMember.User.DiscordUserId!.Value],
@@ -58,7 +59,7 @@ public class CreateMemberPrivateChannelUseCase(
                           "club XP rule or any other concerns you might have.";
         
         // Send the message
-        await messageAccess.SendMessageAsync(messageBody, textChannelId.ToString()).ConfigureAwait(false);
+        await discordMessageAccess.SendMessageAsync(messageBody, textChannelId).ConfigureAwait(false);
     }
     
     private readonly ulong _privateTextChannelCategoryId =

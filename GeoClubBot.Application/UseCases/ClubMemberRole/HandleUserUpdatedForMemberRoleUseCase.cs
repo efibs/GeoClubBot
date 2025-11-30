@@ -2,13 +2,14 @@ using Constants;
 using MediatR;
 using Microsoft.Extensions.Configuration;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.ClubMemberRole;
 
 public class HandleUserUpdatedForMemberRoleUseCase(
     IClubMemberRepository clubMemberRepository,
-    IServerRolesAccess rolesAccess, 
+    IDiscordServerRolesAccess rolesAccess, 
     IConfiguration config) : INotificationHandler<UserUpdatedEvent>
 {
     public async Task Handle(UserUpdatedEvent notification, CancellationToken cancellationToken)
