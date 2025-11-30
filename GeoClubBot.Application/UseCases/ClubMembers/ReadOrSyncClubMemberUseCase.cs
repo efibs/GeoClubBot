@@ -5,12 +5,13 @@ using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.Organization;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.GeoGuessr.Assemblers;
 
 namespace UseCases.UseCases.ClubMembers;
 
 public class ReadOrSyncClubMemberUseCase(
     IClubMemberRepository clubMemberRepository,
-    IGeoGuessrAccess geoGuessrAccess,
+    IGeoGuessrClient geoGuessrClient,
     ISaveClubMembersUseCase saveClubMembersUseCase,
     IConfiguration config) : IReadOrSyncClubMemberUseCase
 {
@@ -40,8 +41,11 @@ public class ReadOrSyncClubMemberUseCase(
         }
 
         // Read all the club members of the club
-        var geoGuessrClubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
+        var response = await geoGuessrClient.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
 
+        // Assemble the entities
+        var geoGuessrClubMembers = ClubMemberAssembler.AssembleEntities(response, _clubId);
+        
         // Try to find the club member with the nickname
         var geoGuessrClubMember = geoGuessrClubMembers.FirstOrDefault(clubMemberListFinderPredicate);
 

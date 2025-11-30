@@ -8,12 +8,13 @@ using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Strikes;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.GeoGuessr.Assemblers;
 using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
 public class CheckGeoGuessrPlayerActivityUseCase(
-    IGeoGuessrAccess geoGuessrAccess,
+    IGeoGuessrClient geoGuessrClient,
     IHistoryRepository historyRepository,
     IActivityStatusMessageSender activityStatusMessageSender,
     IExcusesRepository excusesRepository,
@@ -35,9 +36,12 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         logger.LogDebug("Checking player activity...");
 
         // Get the current members of the club
-        var members = await geoGuessrAccess
+        var response = await geoGuessrClient
             .ReadClubMembersAsync(_clubId).ConfigureAwait(false);
 
+        // Assemble the entities
+        var members = ClubMemberAssembler.AssembleEntities(response, _clubId);
+        
         // Save the club members
         await saveClubMembersUseCase.SaveClubMembersAsync(members).ConfigureAwait(false);
         

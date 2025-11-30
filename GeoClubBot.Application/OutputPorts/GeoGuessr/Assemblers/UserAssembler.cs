@@ -1,10 +1,10 @@
 using Entities;
 
-namespace Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetClubMembers;
+namespace UseCases.OutputPorts.GeoGuessr.Assemblers;
 
-public static class UserDtoAssembler
+internal static class UserAssembler
 {
-    public static GeoGuessrUser AssembleEntity(UserDto dto)
+    public static GeoGuessrUser AssembleEntity(ClubMemberUserDto dto)
     {
         return new GeoGuessrUser
         {

@@ -2,21 +2,20 @@ using System.Text;
 using System.Text.Json;
 using Configuration;
 using Entities;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.DailyChallenge;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.GeoGuessr.Assemblers;
 
 namespace UseCases.UseCases.DailyChallenge;
 
 public class DailyChallengeUseCase(
-    IGeoGuessrAccess geoGuessrAccess,
+    IGeoGuessrClient geoGuessrClient,
     IClubChallengeRepository clubChallengeRepository,
     IDiscordMessageAccess discordMessageAccess,
     IDistributeDailyChallengeRolesUseCase distributeDailyChallengeRolesUseCase,
-    ILogger<DailyChallengeUseCase> logger,
     IOptions<DailyChallengesConfiguration> config) : IDailyChallengeUseCase
 {
     public async Task CreateDailyChallengeAsync()
@@ -43,28 +42,28 @@ public class DailyChallengeUseCase(
         var nextChallenges = new List<ClubChallenge>(selectedEntries.Count);
         foreach (var selectedEntry in selectedEntries)
         {
-            // Create the challenge
-            var createdChallengeToken = await geoGuessrAccess.CreateChallengeAsync(
-                1,
-                0,
-                selectedEntry.Value.ForbidMoving,
-                selectedEntry.Value.ForbidRotating,
-                selectedEntry.Value.ForbidZooming,
-                selectedEntry.Value.MapId,
-                selectedEntry.Value.TimeLimit
-            ).ConfigureAwait(false);
-
-            // If the challenge could not be created
-            if (createdChallengeToken == null)
+            // Create request dto
+            var request = new PostChallengeRequestDto
             {
-                // Log warning
-                logger.LogWarning($"{selectedEntry.Key} Challenge could not be created.");
-                continue;
-            }
+                AccessLevel = 1,
+                ChallengeType = 0,
+                ForbidMoving = selectedEntry.Value.ForbidMoving,
+                ForbidRotating = selectedEntry.Value.ForbidRotating,
+                ForbidZooming = selectedEntry.Value.ForbidZooming,
+                Map = selectedEntry.Value.MapId,
+                TimeLimit = selectedEntry.Value.TimeLimit
+            };
+            
+            // Create the challenge
+            var response = await geoGuessrClient.CreateChallengeAsync(request).ConfigureAwait(false);
             
             // Add to the next challenges
-            nextChallenges.Add(new ClubChallenge(selectedEntry.Key.Difficulty, selectedEntry.Key.RolePriority, selectedEntry.Value.Description,
-                createdChallengeToken));
+            nextChallenges.Add(
+                new ClubChallenge(
+                    selectedEntry.Key.Difficulty, 
+                    selectedEntry.Key.RolePriority, 
+                    selectedEntry.Value.Description, 
+                    response.Token));
         }
 
         // Read the old club challenges
@@ -100,15 +99,18 @@ public class DailyChallengeUseCase(
 
         foreach (var oldChallengeLink in oldChallengeLinks)
         {
-            // Read the highscores 
-            var highscores = await geoGuessrAccess.ReadHighscoresAsync(oldChallengeLink.ChallengeId, 10, 5).ConfigureAwait(false);
-            
-            // If the highscores could not be retrieved
-            if (highscores == null)
+            // Create the params object
+            var @params = new ReadHighscoresQueryParams
             {
-                logger.LogWarning($"Challenge with id {oldChallengeLink.ChallengeId} not found");
-                continue;
-            }
+                Limit = 10,
+                MinRounds = 5
+            };
+            
+            // Read the highscores 
+            var response = await geoGuessrClient.ReadHighscoresAsync(oldChallengeLink.ChallengeId, @params).ConfigureAwait(false);
+            
+            // Assemble the highscores
+            var highscores = ChallengeResultHighScoresAssembler.AssembleEntities(response);
             
             // Build the result object
             var result = new ClubChallengeResult(oldChallengeLink.Difficulty, oldChallengeLink.RolePriority, highscores);

@@ -3,14 +3,14 @@ using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.Club;
 using UseCases.InputPorts.ClubMembers;
-using UseCases.InputPorts.Organization;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.GeoGuessr.Assemblers;
 
 namespace UseCases.UseCases.Club;
 
 public class SyncClubUseCase(
-    IGeoGuessrAccess geoGuessrAccess,
+    IGeoGuessrClient geoGuessrClient,
     IClubRepository clubRepository,
     IClubMemberRepository clubMemberRepository,
     ISetClubLevelStatusUseCase setClubLevelStatusUseCase,
@@ -20,7 +20,10 @@ public class SyncClubUseCase(
     public async Task SyncClubAsync()
     {
         // Read the GeoGuessr club
-        var club = await geoGuessrAccess.ReadClubAsync(_clubId).ConfigureAwait(false);
+        var clubDto = await geoGuessrClient.ReadClubAsync(_clubId).ConfigureAwait(false);
+        
+        // Assemble the entity
+        var club = ClubAssembler.AssembleEntity(clubDto);
         
         // Sync the club
         await clubRepository.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
@@ -28,11 +31,11 @@ public class SyncClubUseCase(
         // Set the status
         await setClubLevelStatusUseCase.SetClubLevelStatusAsync(club.Level).ConfigureAwait(false);
         
-        // Read the current members of the club 
-        var geoGuessrClubMembers = await geoGuessrAccess.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
-        
         // Read the members from the database
         var databaseClubMembers = await clubMemberRepository.ReadClubMembersAsync().ConfigureAwait(false);
+        
+        // Assemble the club members
+        var geoGuessrClubMembers = ClubMemberAssembler.AssembleEntities(clubDto.Members, clubDto.ClubId);
         
         // Join the two lists
         var toSaveClubMembers = _joinClubMembersList(geoGuessrClubMembers, databaseClubMembers);

@@ -7,7 +7,7 @@ namespace UseCases.UseCases.Users;
 
 public class ReadOrSyncGeoGuessrUserUseCase(IGeoGuessrUserRepository geoGuessrUserRepository, 
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase,
-    IGeoGuessrAccess geoGuessrAccess) : IReadOrSyncGeoGuessrUserUseCase
+    IGeoGuessrClient geoGuessrClient) : IReadOrSyncGeoGuessrUserUseCase
 {
     public async Task<GeoGuessrUser?> ReadOrSyncGeoGuessrUserByUserIdAsync(string userId)
     {
@@ -21,7 +21,7 @@ public class ReadOrSyncGeoGuessrUserUseCase(IGeoGuessrUserRepository geoGuessrUs
         }
         
         // Read the user from GeoGuessr
-        user = await geoGuessrAccess.ReadUserAsync(userId).ConfigureAwait(false);
+        var geoGuessrUserDto = await geoGuessrClient.ReadUserAsync(userId).ConfigureAwait(false);
         
         // If the user was not found
         if (user == null)

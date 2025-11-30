@@ -32,7 +32,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         using var scope = _serviceProvider.CreateScope();
 
         // Get the GeoGuessrAccess
-        var geoGuessrAccess = scope.ServiceProvider.GetRequiredService<IGeoGuessrAccess>();
+        var geoGuessrAccess = scope.ServiceProvider.GetRequiredService<IGeoGuessrClient>();
 
         // Read the club
         var clubDto = await geoGuessrAccess.ReadClubAsync(_clubId).ConfigureAwait(false);

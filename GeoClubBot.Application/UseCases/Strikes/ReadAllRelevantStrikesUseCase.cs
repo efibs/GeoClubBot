@@ -7,7 +7,7 @@ using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.Strikes;
 
-public class ReadAllRelevantStrikesUseCase(IGeoGuessrAccess geoGuessrAccess,
+public class ReadAllRelevantStrikesUseCase(IGeoGuessrClient geoGuessrClient,
     IStrikesRepository strikesRepository,
     IConfiguration config) 
     : IReadAllRelevantStrikesUseCase
@@ -15,7 +15,7 @@ public class ReadAllRelevantStrikesUseCase(IGeoGuessrAccess geoGuessrAccess,
     public async Task<List<ClubMemberRelevantStrike>> ReadAllRelevantStrikesAsync()
     {
         // Read the current club members
-        var clubMembers = await geoGuessrAccess
+        var clubMembers = await geoGuessrClient
             .ReadClubMembersAsync(_clubId)
             .ConfigureAwait(false);
         
@@ -27,7 +27,7 @@ public class ReadAllRelevantStrikesUseCase(IGeoGuessrAccess geoGuessrAccess,
         {
             // Read the number of active strikes for the user
             var numActiveStrikes = await strikesRepository
-                .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.User!.UserId)
+                .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.User.UserId)
                 .ConfigureAwait(false);
             
             // If the user doesn't have strikes
@@ -38,7 +38,7 @@ public class ReadAllRelevantStrikesUseCase(IGeoGuessrAccess geoGuessrAccess,
             }
             
             // Build the relevant strike object
-            var relevantStrike = new ClubMemberRelevantStrike(clubMember.User.Nickname, numActiveStrikes.Value);
+            var relevantStrike = new ClubMemberRelevantStrike(clubMember.User.Nick, numActiveStrikes.Value);
             
             // Add to list
             relevantStrikes.Add(relevantStrike);

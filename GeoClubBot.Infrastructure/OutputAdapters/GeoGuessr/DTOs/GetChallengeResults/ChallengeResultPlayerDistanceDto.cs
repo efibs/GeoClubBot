@@ -1,3 +1,0 @@
-namespace Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetChallengeResults;
-
-public record ChallengeResultPlayerDistanceDto(ChallengeResultPlayerDistanceMetersDto Meters);

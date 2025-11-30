@@ -1,8 +1,8 @@
 using Entities;
 
-namespace Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetChallengeResults;
+namespace UseCases.OutputPorts.GeoGuessr.Assemblers;
 
-public static class ChallengeResultHighScoresAssembler
+internal static class ChallengeResultHighScoresAssembler
 {
     public static List<ClubChallengeResultPlayer> AssembleEntities(ChallengeResultHighscoresDto dtos)
     {

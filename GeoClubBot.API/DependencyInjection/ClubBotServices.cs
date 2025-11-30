@@ -4,10 +4,10 @@ using Infrastructure.InputAdapters;
 using Infrastructure.InputAdapters.Jobs;
 using Infrastructure.OutputAdapters;
 using Infrastructure.OutputAdapters.DataAccess;
-using Infrastructure.OutputAdapters.GeoGuessr;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
 using QuartzExtensions;
+using Refit;
 using UseCases.InputPorts.Club;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.ClubMembers;
@@ -53,15 +53,16 @@ public static class ClubBotServices
         }
 
         // Add the GeoGuessr access along with it's http client
-        services.AddHttpClient<IGeoGuessrAccess, HttpGeoGuessrAccess>(client =>
+        services.AddRefitClient<IGeoGuessrClient>()
+            .ConfigureHttpClient(client =>
             {
                 // Set the base address
-                client.BaseAddress = new Uri("https://www.geoguessr.com/api/");
+                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
 
                 // Set the token in the cookies
                 client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrToken}");
             })
-            .AddResilienceHandler("GeoGuessrApiResiliencePipeline", p => ResiliencePipelines.AddGeoGuessrApiResiliencePipeline(p));
+            .AddResilienceHandler("GeoGuessrApiResiliencePipeline", ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
 
         // Add the input adapters
         services.AddHostedService<InitialSyncService>();

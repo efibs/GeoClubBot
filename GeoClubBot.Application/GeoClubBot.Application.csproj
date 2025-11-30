@@ -33,6 +33,7 @@
         <PackageReference Include="PasswordGenerator" Version="2.1.0" />
         <PackageReference Include="PuppeteerSharp" Version="20.2.4" />
         <PackageReference Include="Qdrant.Client" Version="1.16.1" />
+        <PackageReference Include="Refit" Version="8.0.0" />
         <PackageReference Include="SkiaSharp" Version="3.119.1" />
         <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.1" />
     </ItemGroup>

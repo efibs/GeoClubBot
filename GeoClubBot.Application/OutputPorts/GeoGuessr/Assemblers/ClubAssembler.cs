@@ -1,8 +1,8 @@
 using Entities;
 
-namespace Infrastructure.OutputAdapters.GeoGuessr.DTOs.GetClub;
+namespace UseCases.OutputPorts.GeoGuessr.Assemblers;
 
-public static class ClubDtoAssembler
+internal static class ClubAssembler
 {
     public static Club AssembleEntity(ClubDto dto)
     {
@@ -10,7 +10,8 @@ public static class ClubDtoAssembler
         {
             ClubId = dto.ClubId,
             Name = dto.Name,
-            Level = dto.Level
+            Level = dto.Level,
+            LatestActivityCheckTime = null,
         };
     }
 }
