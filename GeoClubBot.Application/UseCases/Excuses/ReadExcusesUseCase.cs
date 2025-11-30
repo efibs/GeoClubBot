@@ -4,12 +4,12 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Excuses;
 
-public class ReadExcusesUseCase(IExcusesRepository excusesRepository) : IReadExcusesUseCase
+public class ReadExcusesUseCase(IUnitOfWork unitOfWork) : IReadExcusesUseCase
 {
     public async Task<List<ClubMemberExcuse>> ReadExcusesAsync(string memberNickname)
     {
         // Read the excuses
-        var excuses = await excusesRepository.ReadExcusesByMemberNicknameAsync(memberNickname).ConfigureAwait(false);
+        var excuses = await unitOfWork.Excuses.ReadExcusesByMemberNicknameAsync(memberNickname).ConfigureAwait(false);
         
         return excuses;
     }
@@ -17,7 +17,7 @@ public class ReadExcusesUseCase(IExcusesRepository excusesRepository) : IReadExc
     public async Task<List<ClubMemberExcuse>> ReadExcusesAsync()
     {
         // Read the excuses
-        var excuses = await excusesRepository.ReadExcusesAsync().ConfigureAwait(false);
+        var excuses = await unitOfWork.Excuses.ReadExcusesAsync().ConfigureAwait(false);
         
         return excuses;
     }

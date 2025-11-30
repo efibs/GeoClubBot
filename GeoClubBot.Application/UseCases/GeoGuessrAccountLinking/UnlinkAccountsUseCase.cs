@@ -7,7 +7,7 @@ using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
-public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserRepository, 
+public class UnlinkAccountsUseCase(IUnitOfWork unitOfWork, 
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase,
     IDiscordServerRolesAccess rolesAccess, 
     IConfiguration config) : IUnlinkAccountsUseCase
@@ -15,7 +15,7 @@ public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserReposit
     public async Task<bool> UnlinkAccountsAsync(ulong discordUserId, string geoGuessrUserId)
     {
         // Read the user
-        var user = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrUserId).ConfigureAwait(false);
+        var user = await unitOfWork.GeoGuessrUsers.ReadUserByUserIdAsync(geoGuessrUserId).ConfigureAwait(false);
         
         // If the user does not exist
         if (user == null)
@@ -34,6 +34,9 @@ public class UnlinkAccountsUseCase(IGeoGuessrUserRepository geoGuessrUserReposit
         
         // Update the user
         await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
+        
+        // Save the changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         
         // Remove has linked role from user
         await rolesAccess.RemoveRolesFromUserAsync(discordUserId, [_hasLinkedRoleId, _clubMemberRoleId]).ConfigureAwait(false);

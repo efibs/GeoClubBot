@@ -4,7 +4,7 @@ namespace UseCases.OutputPorts;
 
 public interface IClubRepository
 {
-    Task<Club?> CreateClubAsync(Club club);
+    Club CreateClub(Club club);
     
     Task<Club> CreateOrUpdateClubAsync(Club club);
     

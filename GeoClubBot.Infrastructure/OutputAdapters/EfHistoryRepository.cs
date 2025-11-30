@@ -7,21 +7,21 @@ namespace Infrastructure.OutputAdapters;
 
 public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryRepository
 {
-    public async Task<bool> CreateHistoryEntriesAsync(IEnumerable<ClubMemberHistoryEntry> entries)
+    public List<ClubMemberHistoryEntry> CreateHistoryEntries(ICollection<ClubMemberHistoryEntry> entries)
     {
         // Add the entities
         dbContext.AddRange(entries);
-
-        // Save the changes to the database
-        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-        return true;
+        
+        return entries.ToList();
     }
 
     public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync()
     {
         // Read the entries
-        var entries = await dbContext.ClubMemberHistoryEntries.ToListAsync().ConfigureAwait(false);
+        var entries = await dbContext.ClubMemberHistoryEntries
+            .AsNoTracking()
+            .ToListAsync()
+            .ConfigureAwait(false);
 
         return entries;
     }
@@ -31,7 +31,8 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         // Get if the player is tracked
         var playerExists = await dbContext.ClubMembers
             .Include(m => m.User)
-            .AnyAsync(m => m.User!.Nickname == playerNickname).ConfigureAwait(false);
+            .AnyAsync(m => m.User!.Nickname == playerNickname)
+            .ConfigureAwait(false);
         
         // If the player is not tracked
         if (!playerExists)
@@ -41,10 +42,12 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         
         // Read the entries
         var entries = await dbContext.ClubMemberHistoryEntries
+            .AsNoTracking()
             .Include(e => e.ClubMember)
             .ThenInclude(m => m!.User)
             .Where(e => e.ClubMember!.User!.Nickname == playerNickname)
-            .ToListAsync().ConfigureAwait(false);
+            .ToListAsync()
+            .ConfigureAwait(false);
 
         return entries;
     }
@@ -53,8 +56,10 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
     {
         // Read the latest entries
         var latestEntries = await dbContext.ClubMemberHistoryEntries
+            .AsNoTracking()
             .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries.Max(ei => ei.Timestamp))
-            .ToListAsync().ConfigureAwait(false);
+            .ToListAsync()
+            .ConfigureAwait(false);
 
         return latestEntries;
     }
@@ -64,7 +69,8 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         // Delete the entries
         var numDeleted = await dbContext.ClubMemberHistoryEntries
             .Where(e => e.Timestamp < threshold)
-            .ExecuteDeleteAsync().ConfigureAwait(false);
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
 
         return numDeleted;
     }

@@ -1,52 +1,53 @@
 using Entities;
-using MediatR;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Users;
 
-public class CreateOrUpdateUserUseCase(IPublisher publisher, IGeoGuessrUserRepository repository) : ICreateOrUpdateUserUseCase
+public class CreateOrUpdateUserUseCase(IUnitOfWork unitOfWork) : ICreateOrUpdateUserUseCase
 {
     public async Task<GeoGuessrUser> CreateOrUpdateUserAsync(GeoGuessrUser user)
     {
         // Try to read the user
-        var existingUser = await repository.ReadUserByUserIdAsync(user.UserId).ConfigureAwait(false);
+        var existingUser = await unitOfWork.GeoGuessrUsers
+            .ReadUserByUserIdAsync(user.UserId)
+            .ConfigureAwait(false);
         
         // If there is a user
         if (existingUser != null)
         {
             // Update the member
-            return await _updateUserAsync(existingUser, user).ConfigureAwait(false);
+            return _updateUser(existingUser, user);
         }
 
         // Create the member
-        return await _createUserAsync(user).ConfigureAwait(false);
+        return _createUser(user);
     }
 
-    private async Task<GeoGuessrUser> _createUserAsync(GeoGuessrUser user)
+    private GeoGuessrUser _createUser(GeoGuessrUser user)
     {
-        // Create the user
-        var createdUser = await repository.CreateUserAsync(user).ConfigureAwait(false);
-        
         // Build the created event
-        var createdEvent = new UserCreatedEvent(createdUser);
+        var createdEvent = new UserCreatedEvent(user);
         
-        // Publish the event
-        await publisher.Publish(createdEvent).ConfigureAwait(false);
+        // Add the event
+        user.AddDomainEvent(createdEvent);
+        
+        // Create the user
+        var createdUser = unitOfWork.GeoGuessrUsers.CreateUser(user);
 
         return createdUser;
     }
 
-    private async Task<GeoGuessrUser> _updateUserAsync(GeoGuessrUser oldUser, GeoGuessrUser user)
+    private GeoGuessrUser _updateUser(GeoGuessrUser oldUser, GeoGuessrUser user)
     {
-        // Update the user
-        var updatedUser = await repository.UpdateUserAsync(user).ConfigureAwait(false);
-        
         // Build the updated event
-        var updatedEvent = new UserUpdatedEvent(oldUser, updatedUser);
+        var updatedEvent = new UserUpdatedEvent(oldUser, user);
         
-        // Publish the event
-        await publisher.Publish(updatedEvent).ConfigureAwait(false);
+        // Add the event
+        user.AddDomainEvent(updatedEvent);
+        
+        // Update the user
+        var updatedUser = unitOfWork.GeoGuessrUsers.UpdateUser(user);
         
         return updatedUser;
     }

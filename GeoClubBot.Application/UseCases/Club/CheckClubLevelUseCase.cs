@@ -79,11 +79,11 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         // Create a scope
         using var scope = _serviceProvider.CreateScope();
         
-        // Get the club repository
-        var clubRepository = scope.ServiceProvider.GetRequiredService<IClubRepository>();
+        // Get the unit of work
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         
         // Read the club
-        var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
+        var club = await unitOfWork.Clubs.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
         
         // If the club was not found
         if (club == null)
@@ -103,11 +103,11 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         // Create a scope
         using var scope = _serviceProvider.CreateScope();
         
-        // Get the club repository
-        var clubRepository = scope.ServiceProvider.GetRequiredService<IClubRepository>();
+        // Get the unit of work
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         
         // Read the existing club
-        var club =  await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
+        var club =  await unitOfWork.Clubs.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
         
         // If the club was not found
         if (club == null)
@@ -122,8 +122,11 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         club.Level = newClubLevel;
         
         // Save the club to the database
-        await clubRepository.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
+        await unitOfWork.Clubs.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
 
+        // Save the changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+        
         return club;
     }
     

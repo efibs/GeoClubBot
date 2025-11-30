@@ -3,11 +3,22 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Strikes;
 
-public class RevokeStrikeUseCase(IStrikesRepository strikesRepository) : IRevokeStrikeUseCase
+public class RevokeStrikeUseCase(IUnitOfWork unitOfWork) : IRevokeStrikeUseCase
 {
     public async Task<bool> RevokeStrikeAsync(Guid strikeId)
     {
         // Delegate to repository
-        return await strikesRepository.RevokeStrikeByIdAsync(strikeId).ConfigureAwait(false);
+        var successful = await unitOfWork.Strikes.RevokeStrikeByIdAsync(strikeId).ConfigureAwait(false);
+        
+        // If the update was not successful
+        if (successful == false)
+        {
+            return false;
+        }
+        
+        // Save the changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+        
+        return true;
     }
 }

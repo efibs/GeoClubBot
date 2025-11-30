@@ -6,15 +6,14 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class RenderPlayerActivityUseCase(IHistoryRepository repository, 
-    IClubMemberRepository clubMemberRepository, 
+public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork, 
     IRenderHistoryUseCase renderHistoryUseCase, 
     IConfiguration config) : IRenderPlayerActivityUseCase
 {
     public async Task<MemoryStream?> RenderPlayerActivityAsync(string nickname, int maxNumHistoryEntries)
     {
         // Get the relevant history entries
-        var playersHistoryEntries = await repository
+        var playersHistoryEntries = await unitOfWork.History
             .ReadHistoryEntriesByPlayerNicknameAsync(nickname)
             .ConfigureAwait(false);
         
@@ -25,7 +24,7 @@ public class RenderPlayerActivityUseCase(IHistoryRepository repository,
         }
         
         // Read the member
-        var member = await clubMemberRepository
+        var member = await unitOfWork.ClubMembers
             .ReadClubMemberByNicknameAsync(nickname)
             .ConfigureAwait(false);
         

@@ -4,12 +4,12 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Strikes;
 
-public class ReadAllStrikesUseCase(IStrikesRepository strikesRepository) : IReadAllStrikesUseCase
+public class ReadAllStrikesUseCase(IUnitOfWork unitOfWork) : IReadAllStrikesUseCase
 {
     public async Task<List<ClubMemberStrike>> ReadAllStrikesAsync()
     {
         // Read the strikes
-        var strikes = await strikesRepository.ReadAllStrikesAsync().ConfigureAwait(false);
+        var strikes = await unitOfWork.Strikes.ReadAllStrikesAsync().ConfigureAwait(false);
         
         return strikes;
     }

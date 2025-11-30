@@ -4,12 +4,12 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class PlayerStatisticsUseCase(IHistoryRepository historyRepository) : IPlayerStatisticsUseCase
+public class PlayerStatisticsUseCase(IUnitOfWork unitOfWork) : IPlayerStatisticsUseCase
 {
     public async Task<PlayerStatistics?> GetPlayerStatisticsAsync(string nickname)
     {
         // Get the history entries
-        var historyEntries = await historyRepository.ReadHistoryEntriesByPlayerNicknameAsync(nickname).ConfigureAwait(false);
+        var historyEntries = await unitOfWork.History.ReadHistoryEntriesByPlayerNicknameAsync(nickname).ConfigureAwait(false);
 
         // If there are no history entries for the player
         if (historyEntries == null)

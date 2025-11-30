@@ -11,8 +11,7 @@ namespace UseCases.UseCases.Club;
 
 public class SyncClubUseCase(
     IGeoGuessrClient geoGuessrClient,
-    IClubRepository clubRepository,
-    IClubMemberRepository clubMemberRepository,
+    IUnitOfWork unitOfWork,
     ISetClubLevelStatusUseCase setClubLevelStatusUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
     IConfiguration config) : ISyncClubUseCase
@@ -26,13 +25,13 @@ public class SyncClubUseCase(
         var club = ClubAssembler.AssembleEntity(clubDto);
         
         // Sync the club
-        await clubRepository.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
+        await unitOfWork.Clubs.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
         
         // Set the status
         await setClubLevelStatusUseCase.SetClubLevelStatusAsync(club.Level).ConfigureAwait(false);
         
         // Read the members from the database
-        var databaseClubMembers = await clubMemberRepository.ReadClubMembersAsync().ConfigureAwait(false);
+        var databaseClubMembers = await unitOfWork.ClubMembers.ReadClubMembersAsync().ConfigureAwait(false);
         
         // Assemble the club members
         var geoGuessrClubMembers = ClubMemberAssembler.AssembleEntities(clubDto.Members, clubDto.ClubId);
@@ -42,6 +41,9 @@ public class SyncClubUseCase(
         
         // Save the club members
         await saveClubMembersUseCase.SaveClubMembersAsync(toSaveClubMembers).ConfigureAwait(false);
+        
+        // Save
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
     }
 
     private List<ClubMember> _joinClubMembersList(List<ClubMember> geoGuessrCurrentClubMembers,
@@ -62,13 +64,10 @@ public class SyncClubUseCase(
                 .Where(m => clubMemberUserIds.Contains(m.UserId) == false)
                 .Select(m =>
                 {
-                    // Copy the club member
-                    var copy = m.DeepCopy();
-                    
                     // Set the is member to false
-                    copy.IsCurrentlyMember = false;
+                    m.IsCurrentlyMember = false;
 
-                    return copy;
+                    return m;
                 }));
 
         return joinedClubMembers;

@@ -6,12 +6,12 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class ClubStatisticsUseCase(IClubRepository clubRepository, IHistoryRepository historyRepository, IConfiguration config) : IClubStatisticsUseCase
+public class ClubStatisticsUseCase(IUnitOfWork unitOfWork, IConfiguration config) : IClubStatisticsUseCase
 {
     public async Task<ClubStatistics?> GetClubStatisticsAsync()
     {
         // Read the club
-        var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
+        var club = await unitOfWork.Clubs.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
         
         // If the club was not found
         if (club == null)
@@ -20,7 +20,7 @@ public class ClubStatisticsUseCase(IClubRepository clubRepository, IHistoryRepos
         }
         
         // Read the entire history
-        var history = await historyRepository.ReadHistoryEntriesAsync().ConfigureAwait(false);
+        var history = await unitOfWork.History.ReadHistoryEntriesAsync().ConfigureAwait(false);
         
         // Group the history by user id and get the average points
         var averagePointsEarned = history

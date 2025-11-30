@@ -2,7 +2,6 @@ using Constants;
 using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.ClubMembers;
-using UseCases.InputPorts.Organization;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
@@ -10,20 +9,20 @@ using UseCases.OutputPorts.GeoGuessr.Assemblers;
 namespace UseCases.UseCases.ClubMembers;
 
 public class ReadOrSyncClubMemberUseCase(
-    IClubMemberRepository clubMemberRepository,
+    IUnitOfWork unitOfWork,
     IGeoGuessrClient geoGuessrClient,
     ISaveClubMembersUseCase saveClubMembersUseCase,
     IConfiguration config) : IReadOrSyncClubMemberUseCase
 {
     public async Task<ClubMember?> ReadOrSyncClubMemberByNicknameAsync(string nickname)
     {
-        return await _readOrSyncGenericAsync(nickname, clubMemberRepository.ReadClubMemberByNicknameAsync,
+        return await _readOrSyncGenericAsync(nickname, unitOfWork.ClubMembers.ReadClubMemberByNicknameAsync,
             m => m.User!.Nickname == nickname).ConfigureAwait(false);
     }
 
     public async Task<ClubMember?> ReadOrSyncClubMemberByUserIdAsync(string userId)
     {
-        return await _readOrSyncGenericAsync(userId, clubMemberRepository.ReadClubMemberByUserIdAsync,
+        return await _readOrSyncGenericAsync(userId, unitOfWork.ClubMembers.ReadClubMemberByUserIdAsync,
             m => m.User!.UserId == userId).ConfigureAwait(false);
     }
 

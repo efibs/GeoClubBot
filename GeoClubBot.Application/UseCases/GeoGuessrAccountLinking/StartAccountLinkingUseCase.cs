@@ -6,7 +6,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
-public class StartAccountLinkingUseCase(IAccountLinkingRequestRepository accountLinkingRequestRepository) : IStartAccountLinkingProcessUseCase
+public class StartAccountLinkingUseCase(IUnitOfWork unitOfWork) : IStartAccountLinkingProcessUseCase
 {
     public async Task<string?> StartLinkingProcessAsync(ulong discordUserId, string geoGuessrUserId)
     {
@@ -19,7 +19,10 @@ public class StartAccountLinkingUseCase(IAccountLinkingRequestRepository account
         };
         
         // Create the linking request
-        var createdRequest = await accountLinkingRequestRepository.CreateRequestAsync(request).ConfigureAwait(false);
+        var createdRequest = unitOfWork.AccountLinkingRequests.CreateRequest(request);
+        
+        // Save the changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         
         return createdRequest?.OneTimePassword;
     }

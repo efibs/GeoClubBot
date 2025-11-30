@@ -9,7 +9,7 @@ namespace UseCases.UseCases.MemberPrivateChannels;
 public class HandleUserUpdatedForPrivateChannelUseCase(
     ICreateMemberPrivateChannelUseCase createMemberPrivateChannelUseCase,
     IDeleteMemberPrivateChannelUseCase deleteMemberPrivateChannelUseCase,
-    IClubMemberRepository clubMemberRepository) 
+    IUnitOfWork unitOfWork) 
     : INotificationHandler<UserUpdatedEvent>
 {
     public async Task Handle(UserUpdatedEvent notification, CancellationToken cancellationToken)
@@ -41,7 +41,7 @@ public class HandleUserUpdatedForPrivateChannelUseCase(
     private async Task _handleOldUserAsync(GeoGuessrUser oldUser)
     {
         // Try to read the club member.
-        var clubMember = await clubMemberRepository
+        var clubMember = await unitOfWork.ClubMembers
             .ReadClubMemberByUserIdAsync(oldUser.UserId)
             .ConfigureAwait(false);
         
@@ -56,7 +56,7 @@ public class HandleUserUpdatedForPrivateChannelUseCase(
         // due to a created event being thrown and also being handled.
         // If the user is not in the database yet, he will be soon. Then
         // the created event get's thrown and he gets the channel.
-        var clubMember = await clubMemberRepository
+        var clubMember = await unitOfWork.ClubMembers
             .ReadClubMemberByUserIdAsync(newUser.UserId)
             .ConfigureAwait(false);
         

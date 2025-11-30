@@ -5,14 +5,14 @@ using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.Users;
 
-public class ReadOrSyncGeoGuessrUserUseCase(IGeoGuessrUserRepository geoGuessrUserRepository, 
+public class ReadOrSyncGeoGuessrUserUseCase(IUnitOfWork unitOfWork, 
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase,
     IGeoGuessrClient geoGuessrClient) : IReadOrSyncGeoGuessrUserUseCase
 {
     public async Task<GeoGuessrUser?> ReadOrSyncGeoGuessrUserByUserIdAsync(string userId)
     {
         // Try to read the user from the repository
-        var user = await geoGuessrUserRepository.ReadUserByUserIdAsync(userId).ConfigureAwait(false);
+        var user = await unitOfWork.GeoGuessrUsers.ReadUserByUserIdAsync(userId).ConfigureAwait(false);
         
         // If the user was found
         if (user != null)

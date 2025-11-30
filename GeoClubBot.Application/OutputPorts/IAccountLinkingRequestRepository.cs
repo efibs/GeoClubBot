@@ -4,9 +4,9 @@ namespace UseCases.OutputPorts;
 
 public interface IAccountLinkingRequestRepository
 {
-    Task<GeoGuessrAccountLinkingRequest?> CreateRequestAsync(GeoGuessrAccountLinkingRequest request);
+    GeoGuessrAccountLinkingRequest CreateRequest(GeoGuessrAccountLinkingRequest request);
     
     Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId, string geoGuessrUserId);
     
-    Task<bool> DeleteRequestAsync(ulong discordUserId, string geoGuessrUserId);
+    void DeleteRequest(GeoGuessrAccountLinkingRequest request);
 }

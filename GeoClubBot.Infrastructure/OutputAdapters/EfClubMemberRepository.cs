@@ -1,60 +1,25 @@
 using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts;
 
 namespace Infrastructure.OutputAdapters;
 
 public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMemberRepository
 {
-    public async Task<ClubMember> CreateClubMemberAsync(ClubMember clubMember)
+    public ClubMember CreateClubMember(ClubMember clubMember)
     {
-        // Deep copy the club member
-        var clubMemberCopy = clubMember.ShallowCopy();
-        
-#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-        // Null out navigation properties
-        clubMemberCopy.User = null;
-        clubMemberCopy.Club = null;
-        clubMemberCopy.Excuses = null;
-        clubMemberCopy.History = null;
-        clubMemberCopy.Strikes = null;
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
-        
         // Add the club member
-        dbContext.Add(clubMemberCopy);
-        
-        // Save the changes to the database
-        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-        
-        // Reload the navigation properties
-        await dbContext.Entry(clubMemberCopy).Reference(m => m.User).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(clubMemberCopy).Reference(m => m.Club).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(clubMemberCopy).Collection(m => m.Excuses).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(clubMemberCopy).Collection(m => m.History).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(clubMemberCopy).Collection(m => m.Strikes).LoadAsync().ConfigureAwait(false);
-        
-        return clubMemberCopy;
+        dbContext.Add(clubMember);
+
+        return clubMember;
     }
     
     public async Task<ClubMember?> UpdateClubMemberAsync(ClubMember clubMember)
     {
-        // Deep copy the club member
-        var clubMemberCopy = clubMember.ShallowCopy();
-
-#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
-        // Null out navigation properties
-        clubMemberCopy.User = null;
-        clubMemberCopy.Club = null;
-        clubMemberCopy.Excuses = null;
-        clubMemberCopy.History = null;
-        clubMemberCopy.Strikes = null;
-#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
-        
         // Get the database entry
         var dbEntry = await dbContext.ClubMembers
-            .FindAsync(clubMemberCopy.UserId)
+            .FindAsync(clubMember.UserId)
             .ConfigureAwait(false);
         
         // If the entity was not found
@@ -64,18 +29,12 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         }
         
         // Update the club member
-        dbContext.Entry(dbEntry).CurrentValues.SetValues(clubMemberCopy);
+        dbEntry.ClubId = clubMember.ClubId;
+        dbEntry.IsCurrentlyMember = clubMember.IsCurrentlyMember;
+        dbEntry.Xp = clubMember.Xp;
+        dbEntry.JoinedAt = clubMember.JoinedAt;
+        dbEntry.PrivateTextChannelId = clubMember.PrivateTextChannelId;
 
-        // Save the changes to the database
-        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-        // Reload the navigation properties
-        await dbContext.Entry(dbEntry).Reference(m => m.User).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(dbEntry).Reference(m => m.Club).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(dbEntry).Collection(m => m.Excuses).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(dbEntry).Collection(m => m.History).LoadAsync().ConfigureAwait(false);
-        await dbContext.Entry(dbEntry).Collection(m => m.Strikes).LoadAsync().ConfigureAwait(false);
-        
         return dbEntry;
     }
 
@@ -97,7 +56,7 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         var clubMember = await dbContext.ClubMembers
             .Include(m => m.User)
             .AsNoTracking()
-            .SingleOrDefaultAsync(m => m.UserId == userId)
+            .FirstOrDefaultAsync(m => m.UserId == userId)
             .ConfigureAwait(false);
         
         return clubMember;
@@ -121,8 +80,9 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         var numDeletedClubMembers = await dbContext.ClubMembers
             .Include(m => m.History)
             .Include(m => m.Strikes)
-            .Where(m => !m.History!.Any() && !m.Strikes!.Any())
-            .ExecuteDeleteAsync().ConfigureAwait(false);
+            .Where(m => !m.History.Any() && !m.Strikes.Any())
+            .ExecuteDeleteAsync()
+            .ConfigureAwait(false);
 
         return numDeletedClubMembers;
     }

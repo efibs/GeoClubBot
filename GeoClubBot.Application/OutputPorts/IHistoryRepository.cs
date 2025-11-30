@@ -4,7 +4,7 @@ namespace UseCases.OutputPorts;
 
 public interface IHistoryRepository
 {
-    Task<bool> CreateHistoryEntriesAsync(IEnumerable<ClubMemberHistoryEntry> entries);
+    List<ClubMemberHistoryEntry> CreateHistoryEntries(ICollection<ClubMemberHistoryEntry> entries);
 
     Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync();
     

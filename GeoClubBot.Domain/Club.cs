@@ -14,15 +14,4 @@ public class Club
     {
         return Name;
     }
-
-    public Club DeepCopy()
-    {
-        return new Club
-        {
-            ClubId = ClubId,
-            Name = Name,
-            Level = Level,
-            LatestActivityCheckTime = LatestActivityCheckTime,
-        };
-    }
 }

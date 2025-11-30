@@ -1,12 +1,11 @@
 using Entities;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.Excuses;
-using UseCases.InputPorts.Organization;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Excuses;
 
-public class AddExcuseUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase, IExcusesRepository excusesRepository) : IAddExcuseUseCase
+public class AddExcuseUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase, IUnitOfWork unitOfWork) : IAddExcuseUseCase
 {
     public async Task<Guid?> AddExcuseAsync(string memberNickname, DateTimeOffset from, DateTimeOffset to)
     {
@@ -29,8 +28,11 @@ public class AddExcuseUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase
         };
         
         // Write the excuse
-        var createdExcuse = await excusesRepository.CreateExcuseAsync(newExcuse).ConfigureAwait(false);
+        var createdExcuse = unitOfWork.Excuses.CreateExcuse(newExcuse);
         
-        return createdExcuse?.ExcuseId;
+        // Save changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+        
+        return createdExcuse.ExcuseId;
     }
 }

@@ -1,6 +1,6 @@
 namespace Entities;
 
-public sealed class GeoGuessrUser
+public sealed class GeoGuessrUser : BaseEntity
 {
     public required string UserId { get; set; }
     
@@ -11,29 +11,5 @@ public sealed class GeoGuessrUser
     public override string ToString()
     {
         return Nickname;
-    }
-
-    /// <summary>
-    /// Create a deep copy of this user
-    /// </summary>
-    /// <returns></returns>
-    public GeoGuessrUser DeepCopy()
-    {
-        return new GeoGuessrUser
-        {
-            UserId = UserId,
-            Nickname = Nickname,
-            DiscordUserId = DiscordUserId
-        };
-    }
-    
-    public GeoGuessrUser ShallowCopy()
-    {
-        return new GeoGuessrUser
-        {
-            UserId = UserId,
-            Nickname = Nickname,
-            DiscordUserId = DiscordUserId
-        };
     }
 }

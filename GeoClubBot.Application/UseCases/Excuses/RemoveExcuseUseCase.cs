@@ -3,10 +3,25 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Excuses;
 
-public class RemoveExcuseUseCase(IExcusesRepository excusesRepository) : IRemoveExcuseUseCase
+public class RemoveExcuseUseCase(IUnitOfWork unitOfWork) : IRemoveExcuseUseCase
 {
     public async Task<bool> RemoveExcuseAsync(Guid excuseId)
     {
-        return await excusesRepository.DeleteExcuseByIdAsync(excuseId).ConfigureAwait(false);
+        // Try to read the excuse
+        var excuse = await unitOfWork.Excuses.ReadExcuseAsync(excuseId).ConfigureAwait(false);
+        
+        // If the excuse was not found
+        if (excuse is null)
+        {
+            return false;
+        }
+
+        // Remove the excuse
+        unitOfWork.Excuses.DeleteExcuse(excuse);
+            
+        // Save the changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+        
+        return true;
     }
 }

@@ -24,5 +24,8 @@ public class GeoGuesrUserConfiguration : IEntityTypeConfiguration<GeoGuessrUser>
         // Discord user id with unique index and filter
         builder.HasIndex(u => u.DiscordUserId)
             .IsUnique();
+        
+        // Ignore the domain events
+        builder.Ignore(u => u.DomainEvents);
     }
 }

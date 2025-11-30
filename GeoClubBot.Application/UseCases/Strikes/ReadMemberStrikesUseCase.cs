@@ -4,12 +4,14 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Strikes;
 
-public class ReadMemberStrikesUseCase(IStrikesRepository strikesRepository) : IReadMemberStrikesUseCase
+public class ReadMemberStrikesUseCase(IUnitOfWork unitOfWork) : IReadMemberStrikesUseCase
 {
     public async Task<ClubMemberStrikeStatus?> ReadMemberStrikesAsync(string memberNickname)
     {
         // Read the number of strikes
-        var strikes = await strikesRepository.ReadStrikesByMemberNicknameAsync(memberNickname).ConfigureAwait(false);
+        var strikes = await unitOfWork.Strikes
+            .ReadStrikesByMemberNicknameAsync(memberNickname)
+            .ConfigureAwait(false);
 
         // If the player does not exist
         if (strikes == null)

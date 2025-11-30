@@ -15,10 +15,8 @@ namespace UseCases.UseCases.ClubMemberActivity;
 
 public class CheckGeoGuessrPlayerActivityUseCase(
     IGeoGuessrClient geoGuessrClient,
-    IHistoryRepository historyRepository,
+    IUnitOfWork unitOfWork,
     IActivityStatusMessageSender activityStatusMessageSender,
-    IExcusesRepository excusesRepository,
-    IStrikesRepository strikesRepository,
     ICheckStrikeDecayUseCase checkStrikeDecayUseCase,
     IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
     ICleanupUseCase cleanupUseCase,
@@ -31,7 +29,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     {
         // Check the strikes for decayed strikes and remove them
         await checkStrikeDecayUseCase.CheckStrikeDecayAsync().ConfigureAwait(false);
-        
+
         // Log debug message
         logger.LogDebug("Checking player activity...");
 
@@ -41,16 +39,19 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         // Assemble the entities
         var members = ClubMemberAssembler.AssembleEntities(response, _clubId);
-        
+
         // Save the club members
         await saveClubMembersUseCase.SaveClubMembersAsync(members).ConfigureAwait(false);
-        
+
         // Get the latest activities
-        var latestHistoryEntries = await historyRepository
-            .ReadLatestHistoryEntriesAsync().ConfigureAwait(false);
+        var latestHistoryEntries = await unitOfWork.History
+            .ReadLatestHistoryEntriesAsync()
+            .ConfigureAwait(false);
 
         // Get the excuses
-        var excuses = await excusesRepository.ReadExcusesAsync().ConfigureAwait(false);
+        var excuses = await unitOfWork.Excuses
+            .ReadExcusesAsync()
+            .ConfigureAwait(false);
 
         // Get the last activity check time
         var lastActivityCheckTime = latestHistoryEntries.Any()
@@ -71,11 +72,15 @@ public class CheckGeoGuessrPlayerActivityUseCase(
                 });
 
         // Save the new activity
-        await historyRepository
-            .CreateHistoryEntriesAsync(newLatestHistoryEntries.Values).ConfigureAwait(false);
+        unitOfWork.History.CreateHistoryEntries(newLatestHistoryEntries.Values);
 
         // Build the new statuses
-        var newStatuses = await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now).ConfigureAwait(false);
+        var newStatuses =
+            await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now)
+                .ConfigureAwait(false);
+
+        // Save changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
 
         // Send the update message
         await activityStatusMessageSender
@@ -84,7 +89,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         // Reward player activity
         await clubMemberActivityRewardUseCase
             .RewardMemberActivityAsync(newStatuses).ConfigureAwait(false);
-        
+
         // Log debug message
         logger.LogDebug("Checking player activity done.");
 
@@ -100,7 +105,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         DateTimeOffset now)
     {
         var statuses = new List<ClubMemberActivityStatus>(members.Count);
-        
+
         // Convert the latest history entries to dictionary
         var latestHistoryEntriesDict = latestHistoryEntries
             .ToDictionary(e => e.UserId, e => e);
@@ -112,19 +117,20 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         // Build the time range of the check interval
         var checkTimeRange = new TimeRange(lastActivityCheckTime, now);
-        
+
         // For every member
         foreach (var member in members)
         {
             // Calculate his new status
-            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange).ConfigureAwait(false);
+            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange)
+                .ConfigureAwait(false);
 
             if (newStatus != null)
             {
                 statuses.Add(newStatus);
             }
         }
-        
+
         return statuses;
     }
 
@@ -135,8 +141,9 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         TimeRange checkTimeRange)
     {
         // Read the member from the database
-        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(member.User.UserId).ConfigureAwait(false);
-        
+        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(member.User.UserId)
+            .ConfigureAwait(false);
+
         // If the club member could not be retrieved
         if (clubMember == null)
         {
@@ -144,7 +151,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             logger.LogError($"Club member {member.User.UserId} could not be found.");
             return null;
         }
-        
+
         // Get the latest activity of the player
         var latestActivity = latestActivities.GetValueOrDefault(clubMember.UserId);
 
@@ -153,99 +160,83 @@ public class CheckGeoGuessrPlayerActivityUseCase(
 
         // Calculate the players target respecting excuses and joined time
         var (target, individualTargetReason) = _calculateIndividualTarget(member, checkTimeRange, excuses);
-        
+
         // Calculate if the player achieved the target.
         var targetAchieved = xpSinceLastUpdate >= target;
 
+        // Read the number of strikes of the player
+        var numStrikes = await unitOfWork.Strikes.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId)
+            .ConfigureAwait(false) ?? 0;
+        
         // If the player did not meet the requirement and was not excused
         if (!targetAchieved)
         {
             // Add the strike
-            await _addStrikeAsync(clubMember.UserId, checkTimeRange.To).ConfigureAwait(false);
+            _addStrike(clubMember.UserId, checkTimeRange.To);
+            
+            // Increase the number of strikes
+            numStrikes++;
         }
 
-        // Read the number of strikes of the player
-        var numStrikes = await strikesRepository.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId).ConfigureAwait(false) ?? 0;
-        
         // Create the status object
-        return new ClubMemberActivityStatus(clubMember.User.Nickname, 
+        return new ClubMemberActivityStatus(clubMember.User.Nickname,
             clubMember.UserId,
             targetAchieved,
             xpSinceLastUpdate,
-            numStrikes, 
+            numStrikes,
             numStrikes > _maxNumStrikes,
             target,
             individualTargetReason);
     }
 
-    private async Task _addStrikeAsync(string memberUserId, DateTimeOffset now)
+    private void _addStrike(string memberUserId, DateTimeOffset now)
     {
-        ClubMemberStrike? createdStrike = null;
-        var numTries = 0;
+        // Build a new strike
+        var newStrike = new ClubMemberStrike
+        {
+            StrikeId = Guid.NewGuid(),
+            UserId = memberUserId,
+            Timestamp = now,
+            Revoked = false
+        };
 
-        while (createdStrike == null && numTries++ < _createStrikeMaxRetryCount)
-        {
-            // Build a new strike
-            var newStrike = new ClubMemberStrike
-            {
-                StrikeId = Guid.NewGuid(),
-                UserId = memberUserId,
-                Timestamp = now,
-                Revoked = false
-            };
-            
-            // Add the strike
-            createdStrike = await strikesRepository.CreateStrikeAsync(newStrike).ConfigureAwait(false);
-            
-            // If the creation failed
-            if (createdStrike == null)
-            {
-                // Log warning
-                logger.LogWarning($"Failed to create strike: {newStrike}");
-            }
-        }
-        
-        // If the strike is still not created
-        if (createdStrike == null)
-        {
-            // Log error
-            logger.LogError($"Strike for member {memberUserId} could not be created.");
-        }
+        // Add the strike
+        unitOfWork.Strikes.CreateStrike(newStrike);
     }
 
     private (int IndividualTarget, string? IndividualTargetReason) _calculateIndividualTarget(
-        ClubMember member, 
+        ClubMember member,
         TimeRange checkTimeRange,
         Dictionary<string, List<ClubMemberExcuse>> excuses)
     {
         var isNew = false;
         var isExcused = false;
         var joinedInGracePeriod = false;
-        
+
         // The list of all time ranges where the player is excused
         var blockingTimeRanges = new List<TimeRange>();
-        
+
         // If the member joined since the last activity check
         if (checkTimeRange.Contains(member.JoinedAt))
         {
             // Add the not in club time range
             blockingTimeRanges.Add(checkTimeRange with { To = member.JoinedAt });
             isNew = true;
-            
+
             // Get the time he is in the club
             var timeInClub = checkTimeRange.To - member.JoinedAt;
-            
+
             // If he joined in the grace period
             if (timeInClub < _gracePeriod)
             {
                 joinedInGracePeriod = true;
             }
         }
-        
+
         // Try to get the excuses of the player
         excuses.TryGetValue(member.User.UserId, out var memberExcuses);
         memberExcuses ??= [];
-        
+
         // Calculate the intersections between the check time range and the
         // excuses
         var excuseIntersections = memberExcuses
@@ -253,25 +244,25 @@ public class CheckGeoGuessrPlayerActivityUseCase(
             .Where(e => checkTimeRange.Intersects(e))
             .Select(e => checkTimeRange & e)
             .ToList();
-        
+
         // If there are excuses
         if (excuseIntersections.Any())
         {
             isExcused = true;
         }
-        
+
         // Add the excuses
         blockingTimeRanges.AddRange(excuseIntersections);
-        
+
         // Calculate the free percent
         var freePercent = checkTimeRange.CalculateFreePercent(blockingTimeRanges);
 
         // Build the individual target reason
         var individualTargetReason = _buildTargetReasons(isNew, isExcused, joinedInGracePeriod);
-        
+
         // Get the final individual target
         var individualTarget = joinedInGracePeriod ? 0 : (int)Math.Floor(freePercent * _xpRequirement);
-        
+
         return (individualTarget, individualTargetReason);
     }
 
@@ -281,7 +272,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         {
             return null;
         }
-        
+
         var individualTargetReasons = new List<string>();
         if (isNew)
         {
@@ -297,18 +288,18 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         {
             individualTargetReasons.Add("Joined in grace period");
         }
-        
+
         var individualTargetReason = string.Join(", ", individualTargetReasons);
 
         return individualTargetReason;
     }
-    
+
     private readonly int _xpRequirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
 
     private readonly TimeSpan _gracePeriod = TimeSpan.FromDays(
         config.GetValue<int>(ConfigKeys.ActivityCheckerGracePeriodDaysConfigurationKey));
+
     private readonly int _maxNumStrikes = config.GetValue<int>(ConfigKeys.ActivityCheckerMaxNumStrikesConfigurationKey);
-    private readonly int _createStrikeMaxRetryCount =
-        config.GetValue<int>(ConfigKeys.ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey);
+
     private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
 }

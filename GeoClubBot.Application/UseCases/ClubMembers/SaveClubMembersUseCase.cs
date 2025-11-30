@@ -1,15 +1,12 @@
 using Entities;
-using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.ClubMembers;
-using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMembers;
 
 public class SaveClubMembersUseCase(ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase, 
-    IGeoGuessrUserRepository geoGuessrUserRepository, 
-    IClubMemberRepository clubMemberRepository,
+    IUnitOfWork unitOfWork,
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase) : ISaveClubMembersUseCase
 {
     public async Task SaveClubMembersAsync(IEnumerable<ClubMember> clubMembers)
@@ -18,7 +15,7 @@ public class SaveClubMembersUseCase(ICreateOrUpdateClubMemberUseCase createOrUpd
         foreach (var geoGuessrClubMember in clubMembers)
         {
             // Try to read the user
-            var geoGuessrUser = await geoGuessrUserRepository.ReadUserByUserIdAsync(geoGuessrClubMember.User!.UserId).ConfigureAwait(false);
+            var geoGuessrUser = await unitOfWork.GeoGuessrUsers.ReadUserByUserIdAsync(geoGuessrClubMember.User!.UserId).ConfigureAwait(false);
             
             // Create the GeoGuessr user entity if the user was not found
             geoGuessrUser ??= new GeoGuessrUser
@@ -34,7 +31,7 @@ public class SaveClubMembersUseCase(ICreateOrUpdateClubMemberUseCase createOrUpd
             await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(geoGuessrUser).ConfigureAwait(false);
             
             // Try to read the club member from the database
-            var clubMemberFromDatabase = await clubMemberRepository
+            var clubMemberFromDatabase = await unitOfWork.ClubMembers
                 .ReadClubMemberByUserIdAsync(geoGuessrClubMember.User.UserId)
                 .ConfigureAwait(false);
             

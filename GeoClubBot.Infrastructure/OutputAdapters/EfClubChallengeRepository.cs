@@ -7,35 +7,28 @@ namespace Infrastructure.OutputAdapters;
 
 public class EfClubChallengeRepository(GeoClubBotDbContext dbContext) : IClubChallengeRepository
 {
-    public async Task<List<ClubChallengeLink>> CreateLatestClubChallengeLinksAsync(List<ClubChallengeLink> links)
+    public List<ClubChallengeLink> CreateLatestClubChallengeLinks(ICollection<ClubChallengeLink> links)
     {
-        // Add every link
-        foreach (var link in links)
-        {
-            dbContext.Add(link);
-        }
+        // Add the links
+        dbContext.LatestClubChallengeLinks.AddRange(links);
         
-        // Save the changes to the database
-        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-        
-        return links;
+        return links.ToList();
     }
 
     public async Task<List<ClubChallengeLink>> ReadLatestClubChallengeLinksAsync()
     {
         // Read the links
-        var links = await dbContext.LatestClubChallengeLinks.ToListAsync().ConfigureAwait(false);
+        var links = await dbContext.LatestClubChallengeLinks
+            .AsNoTracking()
+            .ToListAsync()
+            .ConfigureAwait(false);
         
         return links;
     }
 
-    public async Task<int> DeleteLatestClubChallengeLinksAsync(List<int> linkIds)
+    public void DeleteLatestClubChallengeLinks(ICollection<ClubChallengeLink> links)
     {
         // Delete the links
-        var numDeleted = await dbContext.LatestClubChallengeLinks
-            .Where(x => linkIds.Contains(x.Id))
-            .ExecuteDeleteAsync().ConfigureAwait(false);
-        
-        return numDeleted;
+        dbContext.LatestClubChallengeLinks.RemoveRange(links);
     }
 }

@@ -7,54 +7,32 @@ namespace Infrastructure.OutputAdapters;
 
 public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGuessrUserRepository
 {
-    public async Task<GeoGuessrUser> CreateUserAsync(GeoGuessrUser user)
+    public GeoGuessrUser CreateUser(GeoGuessrUser user)
     {
-        // Create a deep copy of the user
-        var userCopy = user.ShallowCopy();
-
         // Add the club member
-        dbContext.Add(userCopy);
+        dbContext.Add(user);
 
-        // Save the changes to the database
-        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-        return userCopy;
+        return user;
     }
     
-    public async Task<GeoGuessrUser> UpdateUserAsync(GeoGuessrUser user)
+    public GeoGuessrUser UpdateUser(GeoGuessrUser user)
     {
-        // Create a deep copy of the user
-        var userCopy = user.ShallowCopy();
+        // Update the user. This is ok in this case because
+        // the user has no child entities and everything should be 
+        // updated.
+        dbContext.Update(user);
 
-        // Update the club member
-        dbContext.Update(userCopy);
-
-        // Save the changes to the database
-        await dbContext.SaveChangesAsync().ConfigureAwait(false);
-
-        return userCopy;
+        return user;
     }
 
     public async Task<GeoGuessrUser?> ReadUserByUserIdAsync(string userId)
     {
         // Try to find the user
         var clubMember = await dbContext.GeoGuessrUsers
-            .FindAsync(userId)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserId == userId)
             .ConfigureAwait(false);
-        
-        // If the club member was not found
-        if (clubMember == null)
-        {
-            return null;
-        }
-        
-        // Detach the entity from the context.
-        // This disables change tracking and improves 
-        // performance. In this case this is also possible
-        // because the GeoGuessrUser entity doesn't have any 
-        // relationships.
-        dbContext.Entry(clubMember).State = EntityState.Detached;
-        
+
         return clubMember;
     }
     

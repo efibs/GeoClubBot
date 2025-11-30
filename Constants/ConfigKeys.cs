@@ -17,8 +17,7 @@ public static class ConfigKeys
     public const string LlmApiKeyConfigurationKey = "AI:LlmApiKey";
     public const string EmbeddingModelNameConfigurationKey = "AI:EmbeddingModel";
     public const string EmbeddingMaxDegreeOfParallelismConfigurationKey = "AI:MaxDegreeOfParallelism";
-    
-    public const string DiscordBotTokenConfigurationKey = "Discord:BotToken";
+
     public const string DiscordServerIdConfigurationKey = "Discord:ServerId";
     public const string DiscordWelcomeMessageConfigurationKey = "Discord:WelcomeMessage";
     public const string DiscordWelcomeTextChannelIdConfigurationKey = "Discord:WelcomeTextChannelId";
@@ -29,23 +28,15 @@ public static class ConfigKeys
     public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:Club:SyncSchedule";
     
     public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
-    public const string ActivityCheckerTextChannelIdConfigurationKey = "ActivityChecker:TextChannelId";
     public const string ActivityCheckerMinXpConfigurationKey = "ActivityChecker:MinXP";
     public const string ActivityCheckerGracePeriodDaysConfigurationKey = "ActivityChecker:GracePeriodDays";
     public const string ActivityCheckerMaxNumStrikesConfigurationKey = "ActivityChecker:MaxNumStrikes";
     public const string ActivityCheckerHistoryKeepTimeSpanConfigurationKey = "ActivityChecker:HistoryKeepTimeSpan";
-    public const string ActivityCheckerCreateStrikeMaxRetryCountConfigurationKey = "ActivityChecker:CreateStrikeMaxRetryCount";
     public const string ActivityCheckerStrikeDecayTimeSpanConfigurationKey = "ActivityChecker:StrikeDecayTimeSpan";
     
-    public const string ActivityRewardTextChannelIdConfigurationKey = "ActivityReward:TextChannelId";
-    public const string ActivityRewardMvpRoleIdConfigurationKey = "ActivityReward:MvpRoleId";
-    
     public const string ClubLevelCheckerCronScheduleConfigurationKey =  "ClubLevelChecker:Schedule";
-    public const string ClubLevelCheckerLevelUpMessageChannelIdConfigurationKey =  "ClubLevelChecker:LevelUpMessageChannelId";
     
     public const string DailyChallengesCronScheduleConfigurationKey = "DailyChallenges:Schedule";
-    public const string DailyChallengesTextChannelIdConfigurationKey = "DailyChallenges:TextChannelId";
-    public const string DailyChallengesConfigurationFilePathConfigurationKey = "DailyChallenges:ConfigurationFilePath";
     public const string DailyChallengesFirstRoleIdConfigurationKey = "DailyChallenges:FirstRoleId";
     public const string DailyChallengesSecondRoleIdConfigurationKey = "DailyChallenges:SecondRoleId";
     public const string DailyChallengesThirdRoleIdConfigurationKey = "DailyChallenges:ThirdRoleId";

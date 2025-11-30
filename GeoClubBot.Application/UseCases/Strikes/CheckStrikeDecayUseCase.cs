@@ -6,7 +6,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Strikes;
 
-public class CheckStrikeDecayUseCase(IStrikesRepository strikesRepository, ILogger<CheckStrikeDecayUseCase> logger, IConfiguration config) : ICheckStrikeDecayUseCase
+public class CheckStrikeDecayUseCase(IUnitOfWork unitOfWork, ILogger<CheckStrikeDecayUseCase> logger, IConfiguration config) : ICheckStrikeDecayUseCase
 {
     public async Task CheckStrikeDecayAsync()
     {
@@ -14,8 +14,9 @@ public class CheckStrikeDecayUseCase(IStrikesRepository strikesRepository, ILogg
         logger.LogDebug("Checking strike decay...");
         
         // Remove the strikes before the decay threshold
-        var numDeleted = await strikesRepository
-            .DeleteStrikesBeforeAsync(DateTimeOffset.UtcNow - _strikeDecayTimeSpan).ConfigureAwait(false);
+        var numDeleted = await unitOfWork.Strikes
+            .DeleteStrikesBeforeAsync(DateTimeOffset.UtcNow - _strikeDecayTimeSpan)
+            .ConfigureAwait(false);
         
         // Log info
         logger.LogInformation($"Deleted {numDeleted} decayed strikes.");

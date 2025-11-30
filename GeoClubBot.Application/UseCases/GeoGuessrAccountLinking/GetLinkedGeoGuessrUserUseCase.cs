@@ -4,10 +4,10 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
-public class GetLinkedGeoGuessrUserUseCase(IGeoGuessrUserRepository repository) : IGetLinkedGeoGuessrUserUseCase
+public class GetLinkedGeoGuessrUserUseCase(IUnitOfWork unitOfWork) : IGetLinkedGeoGuessrUserUseCase
 {
     public async Task<GeoGuessrUser?> GetLinkedGeoGuessrUserAsync(ulong discordUserId)
     {
-        return await repository.ReadUserByDiscordUserIdAsync(discordUserId).ConfigureAwait(false);
+        return await unitOfWork.GeoGuessrUsers.ReadUserByDiscordUserIdAsync(discordUserId).ConfigureAwait(false);
     }
 }

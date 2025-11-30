@@ -8,7 +8,7 @@ using UseCases.OutputPorts.GeoGuessr;
 namespace UseCases.UseCases.Strikes;
 
 public class ReadAllRelevantStrikesUseCase(IGeoGuessrClient geoGuessrClient,
-    IStrikesRepository strikesRepository,
+    IUnitOfWork unitOfWork,
     IConfiguration config) 
     : IReadAllRelevantStrikesUseCase
 {
@@ -26,7 +26,7 @@ public class ReadAllRelevantStrikesUseCase(IGeoGuessrClient geoGuessrClient,
         foreach (var clubMember in clubMembers)
         {
             // Read the number of active strikes for the user
-            var numActiveStrikes = await strikesRepository
+            var numActiveStrikes = await unitOfWork.Strikes
                 .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.User.UserId)
                 .ConfigureAwait(false);
             

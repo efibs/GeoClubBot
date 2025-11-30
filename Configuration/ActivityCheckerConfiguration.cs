@@ -24,9 +24,6 @@ public class ActivityCheckerConfiguration
     [Required(AllowEmptyStrings = false)]
     public required string HistoryKeepTimeSpan { get; set; }
 
-    [Required]
-    public required int CreateStrikeMaxRetryCount { get; set; }
-
     [Required(AllowEmptyStrings = false)]
     public required string StrikeDecayTimeSpan { get; set; }
 }

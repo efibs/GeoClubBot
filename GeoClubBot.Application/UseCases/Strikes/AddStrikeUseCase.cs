@@ -6,7 +6,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Strikes;
 
-public class AddStrikeUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase, IStrikesRepository strikesRepository) : IAddStrikeUseCase
+public class AddStrikeUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase, IUnitOfWork unitOfWork) : IAddStrikeUseCase
 {
     public async Task<Guid?> AddStrikeAsync(string memberNickname, DateTimeOffset strikeDate)
     {
@@ -29,7 +29,10 @@ public class AddStrikeUseCase(IReadOrSyncClubMemberUseCase readClubMemberUseCase
         };
         
         // Write the strike
-        var createdStrike = await strikesRepository.CreateStrikeAsync(newStrike).ConfigureAwait(false);
+        var createdStrike = unitOfWork.Strikes.CreateStrike(newStrike);
+        
+        // Save
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         
         return createdStrike?.StrikeId;
     }

@@ -18,5 +18,7 @@ public class ClubConfiguration : IEntityTypeConfiguration<Club>
         builder.Property(c => c.Name)
             .IsRequired()
             .HasMaxLength(StringLengthConstants.GeoGuessrClubNameMaxLength);
+        
+        
     }
 }

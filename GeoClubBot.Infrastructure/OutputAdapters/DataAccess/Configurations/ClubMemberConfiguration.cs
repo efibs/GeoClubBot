@@ -31,7 +31,7 @@ public class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMember>
             .IsRequired(false);
         
         // Configure the club foreign key
-        builder.HasOne(x => x.Club)
+        builder.HasOne<Club>()
             .WithMany()
             .HasForeignKey(x => x.ClubId)
             .OnDelete(DeleteBehavior.Cascade);
@@ -41,5 +41,8 @@ public class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMember>
             .WithOne()
             .HasForeignKey<ClubMember>(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+        
+        // Ignore the domain events
+        builder.Ignore(x => x.DomainEvents);
     }
 }

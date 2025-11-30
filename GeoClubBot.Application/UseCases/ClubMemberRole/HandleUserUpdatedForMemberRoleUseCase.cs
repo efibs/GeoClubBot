@@ -8,7 +8,7 @@ using UseCases.UseCases.Users;
 namespace UseCases.UseCases.ClubMemberRole;
 
 public class HandleUserUpdatedForMemberRoleUseCase(
-    IClubMemberRepository clubMemberRepository,
+    IUnitOfWork unitOfWork,
     IDiscordServerRolesAccess rolesAccess, 
     IConfiguration config) : INotificationHandler<UserUpdatedEvent>
 {
@@ -42,7 +42,7 @@ public class HandleUserUpdatedForMemberRoleUseCase(
         // due to a created event being thrown and also being handled.
         // If the user is not in the database yet, he will be soon. Then
         // the created event get's thrown and he gets the role.
-        var clubMember = await clubMemberRepository
+        var clubMember = await unitOfWork.ClubMembers
             .ReadClubMemberByUserIdAsync(notification.NewUser.UserId)
             .ConfigureAwait(false);
             

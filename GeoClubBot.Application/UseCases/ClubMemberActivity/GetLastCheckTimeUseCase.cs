@@ -6,12 +6,12 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class GetLastCheckTimeUseCase(IClubRepository clubRepository, ILogger<GetLastCheckTimeUseCase> logger, IConfiguration config) : IGetLastCheckTimeUseCase
+public class GetLastCheckTimeUseCase(IUnitOfWork unitOfWork, ILogger<GetLastCheckTimeUseCase> logger, IConfiguration config) : IGetLastCheckTimeUseCase
 {
     public async Task<DateTimeOffset?> GetLastCheckTimeAsync()
     {
         // Get the club
-        var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
+        var club = await unitOfWork.Clubs.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
 
         // If the club was not found
         if (club == null)

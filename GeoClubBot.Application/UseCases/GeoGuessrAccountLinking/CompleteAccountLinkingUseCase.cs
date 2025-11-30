@@ -1,16 +1,15 @@
 using Constants;
 using Entities;
 using Microsoft.Extensions.Configuration;
-using UseCases.InputPorts.Club;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
-using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
-public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository accountLinkingRequestRepository, 
+public class CompleteAccountLinkingUseCase(
+    IUnitOfWork unitOfWork,
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase, 
     IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase,
     IDiscordServerRolesAccess rolesAccess,
@@ -19,7 +18,7 @@ public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository acco
     public async Task<(bool Successful, GeoGuessrUser? User)> CompleteLinkingAsync(ulong discordUserId, string geoGuessrUserId, string oneTimePassword)
     {
         // Read the request
-        var request = await accountLinkingRequestRepository.ReadRequestAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
+        var request = await unitOfWork.AccountLinkingRequests.ReadRequestAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
         
         // If the request does not exist
         if (request == null)
@@ -49,7 +48,10 @@ public class CompleteAccountLinkingUseCase(IAccountLinkingRequestRepository acco
         await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
 
         // Delete the linking request
-        await accountLinkingRequestRepository.DeleteRequestAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
+        unitOfWork.AccountLinkingRequests.DeleteRequest(request);
+        
+        // Save changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         
         // Give the user the has linked role
         await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _hasLinkedRoleId).ConfigureAwait(false);

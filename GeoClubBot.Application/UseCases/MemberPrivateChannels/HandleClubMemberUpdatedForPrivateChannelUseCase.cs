@@ -1,8 +1,5 @@
-using Entities;
 using MediatR;
-using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.MemberPrivateChannels;
-using UseCases.OutputPorts;
 using UseCases.UseCases.ClubMembers;
 
 namespace UseCases.UseCases.MemberPrivateChannels;

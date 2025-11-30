@@ -1,16 +1,15 @@
 using Entities;
-using MediatR;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMembers;
 
-public class CreateOrUpdateClubMemberUseCase(IPublisher publisher, IClubMemberRepository repository) : ICreateOrUpdateClubMemberUseCase
+public class CreateOrUpdateClubMemberUseCase(IUnitOfWork unitOfWork) : ICreateOrUpdateClubMemberUseCase
 {
     public async Task<ClubMember?> CreateOrUpdateClubMemberAsync(ClubMember member)
     {
         // Try to read the club member
-        var existingClubMember = await repository.ReadClubMemberByUserIdAsync(member.UserId).ConfigureAwait(false);
+        var existingClubMember = await unitOfWork.ClubMembers.ReadClubMemberByUserIdAsync(member.UserId).ConfigureAwait(false);
         
         // If there is a club member
         if (existingClubMember != null)
@@ -20,40 +19,34 @@ public class CreateOrUpdateClubMemberUseCase(IPublisher publisher, IClubMemberRe
         }
 
         // Create the member
-        return await _createClubMemberAsync(member).ConfigureAwait(false);
+        return _createClubMember(member);
     }
 
-    private async Task<ClubMember> _createClubMemberAsync(ClubMember clubMember)
+    private ClubMember _createClubMember(ClubMember clubMember)
     {
-        // Create the club member
-        var createdClubMember = await repository.CreateClubMemberAsync(clubMember).ConfigureAwait(false);
-        
         // Build the created event
-        var createdEvent = new ClubMemberCreatedEvent(createdClubMember);
+        var createdEvent = new ClubMemberCreatedEvent(clubMember);
         
-        // Publish the event
-        await publisher.Publish(createdEvent).ConfigureAwait(false);
-
+        // Add the event
+        clubMember.AddDomainEvent(createdEvent);
+        
+        // Create the club member
+        var createdClubMember = unitOfWork.ClubMembers.CreateClubMember(clubMember);
+ 
         return createdClubMember;
     }
 
     private async Task<ClubMember?> _updateClubMemberAsync(ClubMember oldClubMember, ClubMember clubMember)
     {
-        // Update the club member 
-        var updatedClubMember = await repository.UpdateClubMemberAsync(clubMember).ConfigureAwait(false);
-        
-        // If the club member could not be updated
-        if (updatedClubMember == null)
-        {
-            return null;
-        }
-        
         // Build the updated event
-        var updatedEvent = new ClubMemberUpdatedEvent(oldClubMember, updatedClubMember);
+        var updatedEvent = new ClubMemberUpdatedEvent(oldClubMember, clubMember);
         
-        // Publish the event
-        await publisher.Publish(updatedEvent).ConfigureAwait(false);
+        // Add the domain event
+        clubMember.AddDomainEvent(updatedEvent);
         
+        // Update the club member 
+        var updatedClubMember = await unitOfWork.ClubMembers.UpdateClubMemberAsync(clubMember).ConfigureAwait(false);
+
         return updatedClubMember;
     }
 }

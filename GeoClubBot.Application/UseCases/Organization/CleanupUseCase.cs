@@ -7,9 +7,7 @@ using UseCases.OutputPorts;
 namespace UseCases.UseCases.Organization;
 
 public class CleanupUseCase(
-    IHistoryRepository historyRepository,
-    IExcusesRepository excusesRepository,
-    IClubMemberRepository clubMemberRepository,
+    IUnitOfWork unitOfWork,
     IConfiguration config,
     ILogger<CleanupUseCase> logger) : ICleanupUseCase
 {
@@ -19,13 +17,13 @@ public class CleanupUseCase(
         var threshold = DateTime.UtcNow.Subtract(_historyKeepThreshold);
         
         // Cleanup excuses
-        var deletedExcuses = await excusesRepository.DeleteExcusesBeforeAsync(threshold).ConfigureAwait(false);
+        var deletedExcuses = await unitOfWork.Excuses.DeleteExcusesBeforeAsync(threshold).ConfigureAwait(false);
 
         // Cleanup History
-        var deletedHistoryEntries = await historyRepository.DeleteHistoryEntriesBeforeAsync(threshold).ConfigureAwait(false);
+        var deletedHistoryEntries = await unitOfWork.History.DeleteHistoryEntriesBeforeAsync(threshold).ConfigureAwait(false);
         
         // Cleanup members that have no history anymore
-        var deletedMembers = await clubMemberRepository.DeleteClubMembersWithoutHistoryAndStrikesAsync().ConfigureAwait(false);
+        var deletedMembers = await unitOfWork.ClubMembers.DeleteClubMembersWithoutHistoryAndStrikesAsync().ConfigureAwait(false);
         
         // Print info log
         logger.LogInformation($"Deleted {deletedExcuses} excuses, {deletedHistoryEntries} history entries and {deletedMembers} members.");

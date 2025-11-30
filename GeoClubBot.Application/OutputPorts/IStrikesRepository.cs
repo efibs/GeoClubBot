@@ -4,8 +4,7 @@ namespace UseCases.OutputPorts;
 
 public interface IStrikesRepository
 {
-    Task<ClubMemberStrike?> CreateStrikeAsync(ClubMemberStrike strike);
-
+    ClubMemberStrike CreateStrike(ClubMemberStrike strike);
     Task<int?> ReadNumberOfActiveStrikesByMemberUserIdAsync(string memberUserId);
     
     Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname);

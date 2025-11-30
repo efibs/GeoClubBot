@@ -13,7 +13,7 @@ namespace UseCases.UseCases.DailyChallenge;
 
 public class DailyChallengeUseCase(
     IGeoGuessrClient geoGuessrClient,
-    IClubChallengeRepository clubChallengeRepository,
+    IUnitOfWork unitOfWork,
     IDiscordMessageAccess discordMessageAccess,
     IDistributeDailyChallengeRolesUseCase distributeDailyChallengeRolesUseCase,
     IOptions<DailyChallengesConfiguration> config) : IDailyChallengeUseCase
@@ -67,7 +67,7 @@ public class DailyChallengeUseCase(
         }
 
         // Read the old club challenges
-        var oldClubChallenges = await clubChallengeRepository.ReadLatestClubChallengeLinksAsync().ConfigureAwait(false);
+        var oldClubChallenges = await unitOfWork.ClubChallenges.ReadLatestClubChallengeLinksAsync().ConfigureAwait(false);
         
         // Convert to club challenges link
         var clubChallengeLinks = nextChallenges.Select(c => new ClubChallengeLink
@@ -78,13 +78,16 @@ public class DailyChallengeUseCase(
         }).ToList();
         
         // Create the new club challenges
-        await clubChallengeRepository.CreateLatestClubChallengeLinksAsync(clubChallengeLinks).ConfigureAwait(false);
+        unitOfWork.ClubChallenges.CreateLatestClubChallengeLinks(clubChallengeLinks);
 
         // Get the last challenge high scores
         var lastChallengeHighScores = await _readLastChallengeHighScoresAsync(oldClubChallenges).ConfigureAwait(false);
 
         // Delete the old club challenges
-        await clubChallengeRepository.DeleteLatestClubChallengeLinksAsync(oldClubChallenges.Select(c => c.Id).ToList()).ConfigureAwait(false);
+        unitOfWork.ClubChallenges.DeleteLatestClubChallengeLinks(oldClubChallenges);
+        
+        // Save the changes
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         
         // Send the messages
         await _sendMessagesAsync(lastChallengeHighScores, nextChallenges).ConfigureAwait(false);

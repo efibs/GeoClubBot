@@ -69,14 +69,7 @@ public static class ClubBotServices
         services.AddHostedService<UserJoinedService>();
 
         // Add the output adapters 
-        services.AddTransient<IClubRepository, EfClubRepository>();
-        services.AddTransient<IClubMemberRepository, EfClubMemberRepository>();
-        services.AddTransient<IHistoryRepository, EfHistoryRepository>();
-        services.AddTransient<IExcusesRepository, EfExcusesRepository>();
-        services.AddTransient<IStrikesRepository, EfStrikesRepository>();
-        services.AddTransient<IClubChallengeRepository, EfClubChallengeRepository>();
-        services.AddTransient<IGeoGuessrUserRepository, EfGeoGuessrUserRepository>();
-        services.AddTransient<IAccountLinkingRequestRepository, EfAccountLinkingRequestRepository>();
+        services.AddTransient<IUnitOfWork, DbUnitOfWork>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IDiscordStatusUpdater, DiscordDiscordStatusUpdater>();
         services.AddTransient<IDiscordMessageAccess, DiscordDiscordMessageAccess>();

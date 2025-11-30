@@ -7,7 +7,7 @@ using UseCases.UseCases.Users;
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public class HandleUserNicknameChangedForPrivateChannelUseCase(
-    IClubMemberRepository clubMemberRepository,
+    IUnitOfWork unitOfWork,
     IDiscordTextChannelAccess discordTextChannelAccess) 
     : INotificationHandler<UserUpdatedEvent>
 {
@@ -28,7 +28,7 @@ public class HandleUserNicknameChangedForPrivateChannelUseCase(
         }
 
         // Try to read the club member.
-        var clubMember = await clubMemberRepository
+        var clubMember = await unitOfWork.ClubMembers
             .ReadClubMemberByUserIdAsync(notification.NewUser.UserId)
             .ConfigureAwait(false);
         
