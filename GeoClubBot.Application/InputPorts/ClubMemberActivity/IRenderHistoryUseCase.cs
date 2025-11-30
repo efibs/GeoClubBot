@@ -1,5 +1,3 @@
-using Entities;
-
 namespace UseCases.InputPorts.ClubMemberActivity;
 
 public interface IRenderHistoryUseCase

@@ -2,7 +2,6 @@ using Constants;
 using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.SelfRoles;
-using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.SelfRoles;

@@ -1,7 +1,6 @@
 using Constants;
 using MediatR;
 using Microsoft.Extensions.Configuration;
-using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.ClubMembers;
 

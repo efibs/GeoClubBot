@@ -1,7 +1,6 @@
 using Entities;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.MemberPrivateChannels;
-using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.MemberPrivateChannels;

@@ -1,4 +1,3 @@
-using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Users;
 
 namespace UseCases.UseCases.Users;

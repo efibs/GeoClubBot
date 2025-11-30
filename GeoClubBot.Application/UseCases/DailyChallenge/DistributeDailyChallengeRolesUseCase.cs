@@ -3,7 +3,6 @@ using Entities;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.DailyChallenge;
 using UseCases.InputPorts.Users;
-using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.DailyChallenge;

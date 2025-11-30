@@ -6,7 +6,7 @@ internal static class ClubMemberAssembler
 {
     public static List<ClubMember> AssembleEntities(ICollection<ClubMemberDto> dtos, Guid clubId)
     {
-        return dtos.Select(dto => ClubMemberAssembler.AssembleEntity(dto, clubId)).ToList();
+        return dtos.Select(dto => AssembleEntity(dto, clubId)).ToList();
     }
     
     public static ClubMember AssembleEntity(ClubMemberDto dto, Guid clubId)

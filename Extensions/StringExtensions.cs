@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Extensions;
 
 public static class StringExtensions
@@ -6,7 +8,7 @@ public static class StringExtensions
     {
         var parts = str.Split(splitChar);
         var result = new List<string>();
-        var current = new System.Text.StringBuilder();
+        var current = new StringBuilder();
 
         foreach (var part in parts)
         {

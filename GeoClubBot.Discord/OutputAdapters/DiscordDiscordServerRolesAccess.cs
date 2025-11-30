@@ -1,7 +1,5 @@
 using Configuration;
-using Constants;
 using Discord.WebSocket;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.Discord;

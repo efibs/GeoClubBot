@@ -6,7 +6,6 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using UseCases.InputPorts.AI;
-using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.AI;

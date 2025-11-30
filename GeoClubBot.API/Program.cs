@@ -1,6 +1,5 @@
 using Configuration;
 using Constants;
-using GeoClubBot;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
 using Infrastructure.OutputAdapters.DataAccess;

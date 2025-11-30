@@ -2,7 +2,6 @@ using Constants;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using QuartzExtensions;
-using UseCases.InputPorts;
 using UseCases.InputPorts.DailyChallenge;
 
 namespace Infrastructure.InputAdapters.Jobs;

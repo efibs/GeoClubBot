@@ -1,4 +1,3 @@
-using UseCases.OutputPorts;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Infrastructure.OutputAdapters.Hubs;

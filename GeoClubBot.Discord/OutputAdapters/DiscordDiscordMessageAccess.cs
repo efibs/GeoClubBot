@@ -4,7 +4,6 @@ using Constants;
 using Discord;
 using Discord.WebSocket;
 using Entities;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.Discord;
 
