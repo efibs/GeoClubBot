@@ -10,7 +10,6 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Constants\Constants.csproj"/>
-        <ProjectReference Include="..\Extensions\Extensions.csproj"/>
         <ProjectReference Include="..\GeoClubBot.Application\GeoClubBot.Application.csproj" />
         <ProjectReference Include="..\GeoClubBot.Discord\GeoClubBot.Discord.csproj" />
         <ProjectReference Include="..\QuartzExtensions\QuartzExtensions.csproj" />
