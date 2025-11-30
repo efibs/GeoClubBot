@@ -6,7 +6,7 @@ using Microsoft.SemanticKernel;
 
 namespace UseCases.UseCases.AI;
 
-public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<PlonkItGuidePlugin> logger)
+public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<PlonkItGuidePlugin> logger)
 {
     [KernelFunction]
     [Description("Search for information in the PlonkIt Guide using semantic search based on a query")]
@@ -14,7 +14,7 @@ public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<Plo
         [Description("The search query to find relevant information")] string query,
         [Description("Maximum number of results to return")] int limit = 7)
     {
-        logger.LogDebug($"Running search query '{query}' with limit {limit}");
+        LogRunningSearchQueryWithLimit(logger, query, limit);
 
         try
         {
@@ -64,7 +64,7 @@ public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<Plo
     public async Task<string> GetInformationByCountry(
         [Description("The name of the country to retrieve the information for")] string country)
     {
-        logger.LogDebug("Running get all sections for country {country}", country);
+        LogRunningGetAllSectionsForCountry(logger, country);
         
         var sections = await vectorStore.GetSectionsByCountryAsync(country).ConfigureAwait(false);
         
@@ -74,7 +74,7 @@ public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<Plo
         var sb = new StringBuilder();
         sb.AppendLine($"Found {sections.Count} sections for {country}:\n");
 
-        for (int i = 0; i < sections.Count; i++)
+        for (var i = 0; i < sections.Count; i++)
         {
             var section = sections[i];
             sb.AppendLine($"--- Section {i + 1} ---");
@@ -88,4 +88,10 @@ public class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<Plo
     }
     
     public SemaphoreSlim RebuildStoreLock => vectorStore.RebuildStoreLock;
+    
+    [LoggerMessage(LogLevel.Debug, "Running search query '{query}' with limit {limit}")]
+    static partial void LogRunningSearchQueryWithLimit(ILogger<PlonkItGuidePlugin> logger, string query, int limit);
+
+    [LoggerMessage(LogLevel.Debug, "Running get all sections for country {country}")]
+    static partial void LogRunningGetAllSectionsForCountry(ILogger<PlonkItGuidePlugin> logger, string country);
 }

@@ -8,7 +8,7 @@ using UseCases.OutputPorts.Discord;
 
 namespace GeoClubBot.Discord.OutputAdapters;
 
-public class DiscordDiscordServerRolesAccess(DiscordSocketClient client, ILogger<DiscordDiscordServerRolesAccess> logger, IOptions<DiscordConfiguration> config) : IDiscordServerRolesAccess
+public partial class DiscordDiscordServerRolesAccess(DiscordSocketClient client, ILogger<DiscordDiscordServerRolesAccess> logger, IOptions<DiscordConfiguration> config) : IDiscordServerRolesAccess
 {
     public async Task<int> RemoveRoleFromAllPlayersAsync(ulong roleId)
     {
@@ -69,9 +69,9 @@ public class DiscordDiscordServerRolesAccess(DiscordSocketClient client, ILogger
             
             // Add the role to the user
             await user.AddRoleAsync(roleId).ConfigureAwait(false);
-        
+            
             // Log debug
-            logger.LogDebug($"Added role {roleId} to member {user.DisplayName}.");
+            LogAddedRoleToMember(logger, roleId, user.DisplayName);
         }
     }
 
@@ -88,4 +88,7 @@ public class DiscordDiscordServerRolesAccess(DiscordSocketClient client, ILogger
 
         return Task.FromResult(usersWithRole);
     }
+
+    [LoggerMessage(LogLevel.Debug, "Added role {roleId} to member {userDisplayName}.")]
+    static partial void LogAddedRoleToMember(ILogger<DiscordDiscordServerRolesAccess> logger, ulong roleId, string userDisplayName);
 }

@@ -13,7 +13,7 @@ using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class CheckGeoGuessrPlayerActivityUseCase(
+public partial class CheckGeoGuessrPlayerActivityUseCase(
     IGeoGuessrClient geoGuessrClient,
     IUnitOfWork unitOfWork,
     IActivityStatusMessageSender activityStatusMessageSender,
@@ -148,7 +148,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
         if (clubMember == null)
         {
             // Log warning
-            logger.LogError($"Club member {member.User.UserId} could not be found.");
+            LogClubMemberCouldNotBeFound(logger, member.User.UserId);
             return null;
         }
 
@@ -302,4 +302,7 @@ public class CheckGeoGuessrPlayerActivityUseCase(
     private readonly int _maxNumStrikes = config.GetValue<int>(ConfigKeys.ActivityCheckerMaxNumStrikesConfigurationKey);
 
     private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
+    
+    [LoggerMessage(LogLevel.Error, "Club member {memberUserId} could not be found.")]
+    static partial void LogClubMemberCouldNotBeFound(ILogger<CheckGeoGuessrPlayerActivityUseCase> logger, string memberUserId);
 }

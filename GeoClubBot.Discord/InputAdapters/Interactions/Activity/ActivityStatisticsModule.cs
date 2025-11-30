@@ -114,11 +114,14 @@ public partial class ActivityModule
             catch (Exception ex)
             {
                 // Log error
-                logger.LogError(ex, $"Error while creating history plot for player {memberNickname}");
+                LogErrorWhileCreatingHistoryPlotForPlayer(logger, ex, memberNickname);
                 
                 // Give error
                 await FollowupAsync($"Failed to generate history plot. Please try again later. If the problem persists, please contact an admin.", ephemeral: true).ConfigureAwait(false);
             }
         }
+
+        [LoggerMessage(LogLevel.Error, "Error while creating history plot for player {memberNickname}")]
+        static partial void LogErrorWhileCreatingHistoryPlotForPlayer(ILogger<ActivityStatisticsModule> logger, Exception ex, string memberNickname);
     }
 }

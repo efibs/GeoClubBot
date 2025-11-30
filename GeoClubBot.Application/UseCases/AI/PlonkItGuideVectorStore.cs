@@ -327,7 +327,7 @@ public partial class PlonkItGuideVectorStore(
     
     private async Task _addSectionAsync(string text, string textForEmbedding, string source, string country)
     {
-        logger.LogDebug($"Adding section for country: {country}.");
+        LogAddingSectionForCountry(logger, country);
 
         var embedding = await embeddingService
             .GenerateAsync(textForEmbedding)
@@ -515,7 +515,7 @@ public partial class PlonkItGuideVectorStore(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error fetching plonk-it-guide page {url}", url);
+            LogErrorFetchingPlonkItGuidePageUrl(logger, e, url);
             retryCount++;
             if (retryCount < 5)
             {
@@ -550,4 +550,10 @@ public partial class PlonkItGuideVectorStore(
     private static partial Regex IdRegex();
 
     private readonly SemaphoreSlim _rebuildStoreLock = new(1, 1);
+    
+    [LoggerMessage(LogLevel.Debug, "Adding section for country: {country}.")]
+    static partial void LogAddingSectionForCountry(ILogger<PlonkItGuideVectorStore> logger, string country);
+
+    [LoggerMessage(LogLevel.Error, "Error fetching plonk-it-guide page {url}")]
+    static partial void LogErrorFetchingPlonkItGuidePageUrl(ILogger<PlonkItGuideVectorStore> logger, Exception ex, string url);
 }

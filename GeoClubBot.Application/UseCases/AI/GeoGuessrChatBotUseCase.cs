@@ -11,7 +11,7 @@ using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.AI;
 
-public class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
+public partial class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
 {
     private const string SystemName = "Dragon";
     private const string AvailableCountriesPlaceholder = "{{AvailableCountries}}";
@@ -60,10 +60,10 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         var embeddingEndpoint = config.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
         var llmApiKey = config.GetValue<string>(ConfigKeys.LlmApiKeyConfigurationKey);
 
-        _logger.LogInformation("LLM Endpoint: {Endpoint}", llmEndpoint);
-        _logger.LogInformation("LLM Model: {Model}", llmModelName);
-        _logger.LogInformation("Embedding Endpoint: {Endpoint}", embeddingEndpoint);
-        _logger.LogInformation("Embedding Model: {Model}", embeddingModelName);
+        LogLlmEndpoint(llmEndpoint);
+        LogLlmModel(llmModelName);
+        LogEmbeddingEndpoint(embeddingEndpoint);
+        LogEmbeddingModel(embeddingModelName);
 
         var kernelBuilder = Kernel.CreateBuilder()
             .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint + "/v1"));
@@ -89,7 +89,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         
         try
         {
-            _logger.LogDebug($"Handling message using AI: {prompt}");
+            LogHandlingMessageUsingAiPrompt(prompt);
 
             // Get the message
             var message = prompt.Replace($"<@{_discordSelfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
@@ -145,4 +145,19 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
     private readonly IDiscordSelfUserAccess _discordSelfUserAccess;
     private readonly ILogger<GeoGuessrChatBotUseCase> _logger;
     private readonly PlonkItGuidePlugin _plonkItGuidePlugIn;
+    
+    [LoggerMessage(LogLevel.Information, "LLM Endpoint: {endpoint}")]
+    partial void LogLlmEndpoint(string endpoint);
+
+    [LoggerMessage(LogLevel.Information, "LLM Model: {model}")]
+    partial void LogLlmModel(string model);
+
+    [LoggerMessage(LogLevel.Information, "Embedding Endpoint: {endpoint}")]
+    partial void LogEmbeddingEndpoint(string endpoint);
+
+    [LoggerMessage(LogLevel.Information, "Embedding Model: {model}")]
+    partial void LogEmbeddingModel(string model);
+
+    [LoggerMessage(LogLevel.Debug, "Handling message using AI: {prompt}")]
+    partial void LogHandlingMessageUsingAiPrompt(string prompt);
 }

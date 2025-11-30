@@ -9,7 +9,7 @@ using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public class CreateMemberPrivateChannelUseCase(
+public partial class CreateMemberPrivateChannelUseCase(
     ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase,
     IDiscordTextChannelAccess discordTextChannelAccess, 
     IDiscordMessageAccess discordMessageAccess,
@@ -34,7 +34,7 @@ public class CreateMemberPrivateChannelUseCase(
         if (textChannelId == null)
         {
             // Log warning
-            logger.LogWarning($"Private text channel could not be created for club member '{clubMember.User.Nickname}'");
+            LogPrivateTextChannelCouldNotBeCreatedForClubMember(logger, clubMember.User.Nickname);
             return null;
         }
         
@@ -66,4 +66,7 @@ public class CreateMemberPrivateChannelUseCase(
         config.GetValue<ulong>(ConfigKeys.MemberPrivateChannelsCategoryIdConfigurationKey);
     private readonly string _privateChannelsDescription = 
         config.GetValue<string>(ConfigKeys.MemberPrivateChannelsDescriptionConfigurationKey)!;
+
+    [LoggerMessage(LogLevel.Warning, "Private text channel could not be created for club member '{clubMemberNickname}'")]
+    static partial void LogPrivateTextChannelCouldNotBeCreatedForClubMember(ILogger<CreateMemberPrivateChannelUseCase> logger, string clubMemberNickname);
 }

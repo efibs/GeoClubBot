@@ -11,7 +11,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
 [Group("gg-account", "Commands for linking Discord accounts to GeoGuessr accounts")]
-public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase, 
+public partial class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase, 
     IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
     IStartAccountLinkingProcessUseCase startAccountLinkingProcessUseCase, 
     ILogger<GeoGuessrAccountLinkPublicModule> logger,
@@ -110,7 +110,7 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Account linking process failed for profile: {shareProfileLink}.");
+            LogAccountLinkingProcessFailed(logger, ex, shareProfileLink);
             
             // Respond with error message
             await FollowupAsync("Account link failed: Internal error. Try again later. If the problem persists, please contact an admin.", ephemeral: true).ConfigureAwait(false);
@@ -169,4 +169,7 @@ public class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase get
 
     private readonly ulong _accountLinkingAdminChannelId =
         config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingAdminChannelIdConfigurationKey);
+
+    [LoggerMessage(LogLevel.Error, "Account linking process failed for profile: {shareProfileLink}.")]
+    static partial void LogAccountLinkingProcessFailed(ILogger<GeoGuessrAccountLinkPublicModule> logger, Exception ex, string shareProfileLink);
 }

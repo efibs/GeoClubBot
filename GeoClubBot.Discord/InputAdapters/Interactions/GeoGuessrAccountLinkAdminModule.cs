@@ -11,7 +11,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
 [Group("gg-account-link-admin", "Commands for linking Discord accounts to GeoGuessr accounts")]
-public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase completeAccountLinkingUseCase,
+public partial class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase completeAccountLinkingUseCase,
     IUnlinkAccountsUseCase unlinkAccountsUseCase,
     ICancelAccountLinkingUseCase cancelAccountLinkingUseCase,
     ILogger<GeoGuessrAccountLinkAdminModule> logger) : InteractionModuleBase<SocketInteractionContext>
@@ -35,7 +35,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Slash command complete account linking request failed for discord user {discordUser.Username} ({discordUser.Id}) on GeoGuessr account {geoGuessrUserId}.");
+            LogSlashCommandCompleteAccountLinkingRequestFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
             
             // Respond
             await  FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
@@ -60,7 +60,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Slash command complete account linking request failed for discord user {discordUser.Username} ({discordUser.Id}) on GeoGuessr account {geoGuessrUserId}.");
+            LogSlashCommandCompleteAccountLinkingRequestFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
             
             // Respond
             await  FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
@@ -92,7 +92,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Slash command unlink accounts failed for discord user {discordUser.Username} ({discordUser.Id}) on GeoGuessr account {geoGuessrUserId}.");
+            LogSlashCommandUnlinkAccountsFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
             
             // Respond
             await  FollowupAsync("Failed to remove account link.", ephemeral: true).ConfigureAwait(false);
@@ -118,7 +118,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Error while trying to open one time password input modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.");
+            LogErrorWhileTryingToOpenOneTimePasswordInputModal(logger, ex, discordUserIdString, geoGuessrUserId);
             
             // Respond
             await RespondAsync("Failed to open one time password input modal.", ephemeral: true).ConfigureAwait(false);
@@ -149,7 +149,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Failed to link GeoGuessr Account '{geoGuessrUserId}' to Discord user '{discordUserIdString}'.");
+            LogFailedToLinkGeoguessrAccountToDiscordUser(logger, ex, geoGuessrUserId, discordUserIdString);
             
             // Respond with error
             await FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
@@ -174,7 +174,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Error while trying to open cancel modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.");
+            LogErrorWhileTryingToOpenCancelModal(logger, ex, geoGuessrUserId, discordUserIdString);
             
             // Respond
             await RespondAsync("Failed to open cancel modal.", ephemeral: true).ConfigureAwait(false);
@@ -213,7 +213,7 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
         catch (Exception ex)
         {
             // Log error
-            logger.LogError(ex, $"Failed to link GeoGuessr Account '{geoGuessrUserId}' to Discord user '{discordUserIdString}'.");
+            LogFailedToLinkGeoguessrAccountToDiscordUser(logger, ex, geoGuessrUserId, discordUserIdString);
             
             // Respond with error
             await FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
@@ -319,4 +319,19 @@ public class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase comp
             await message.DeleteAsync().ConfigureAwait(false);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Slash command complete account linking request failed for discord user {discordUsername} ({discordUserId}) on GeoGuessr account {geoGuessrUserId}.")]
+    static partial void LogSlashCommandCompleteAccountLinkingRequestFailed(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUsername, ulong discordUserId, string geoGuessrUserId);
+
+    [LoggerMessage(LogLevel.Error, "Slash command unlink accounts failed for discord user {discordUsername} ({discordUserId}) on GeoGuessr account {geoGuessrUserId}.")]
+    static partial void LogSlashCommandUnlinkAccountsFailed(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUsername, ulong discordUserId, string geoGuessrUserId);
+
+    [LoggerMessage(LogLevel.Error, "Error while trying to open one time password input modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.")]
+    static partial void LogErrorWhileTryingToOpenOneTimePasswordInputModal(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUserIdString, string geoGuessrUserId);
+
+    [LoggerMessage(LogLevel.Error, "Failed to link GeoGuessr Account '{geoGuessrUserId}' to Discord user '{discordUserIdString}'.")]
+    static partial void LogFailedToLinkGeoguessrAccountToDiscordUser(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string geoGuessrUserId, string discordUserIdString);
+
+    [LoggerMessage(LogLevel.Error, "Error while trying to open cancel modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.")]
+    static partial void LogErrorWhileTryingToOpenCancelModal(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUserIdString, string geoGuessrUserId);
 }

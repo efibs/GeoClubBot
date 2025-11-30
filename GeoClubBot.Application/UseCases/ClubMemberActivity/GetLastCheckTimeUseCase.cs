@@ -6,7 +6,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class GetLastCheckTimeUseCase(IUnitOfWork unitOfWork, ILogger<GetLastCheckTimeUseCase> logger, IConfiguration config) : IGetLastCheckTimeUseCase
+public partial class GetLastCheckTimeUseCase(IUnitOfWork unitOfWork, ILogger<GetLastCheckTimeUseCase> logger, IConfiguration config) : IGetLastCheckTimeUseCase
 {
     public async Task<DateTimeOffset?> GetLastCheckTimeAsync()
     {
@@ -17,7 +17,7 @@ public class GetLastCheckTimeUseCase(IUnitOfWork unitOfWork, ILogger<GetLastChec
         if (club == null)
         {
             // Log error
-            logger.LogError($"Club with id {_clubId} not found.");
+            LogClubNotFound(logger, _clubId);
         }
         
         // Get the latest activity check time of the club
@@ -25,4 +25,7 @@ public class GetLastCheckTimeUseCase(IUnitOfWork unitOfWork, ILogger<GetLastChec
     }
     
     private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
+    
+    [LoggerMessage(LogLevel.Error, "Club with id {clubId} not found.")]
+    static partial void LogClubNotFound(ILogger<GetLastCheckTimeUseCase> logger, Guid clubId);
 }

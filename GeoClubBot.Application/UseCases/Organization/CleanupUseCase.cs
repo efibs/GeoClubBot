@@ -6,7 +6,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Organization;
 
-public class CleanupUseCase(
+public partial class CleanupUseCase(
     IUnitOfWork unitOfWork,
     IConfiguration config,
     ILogger<CleanupUseCase> logger) : ICleanupUseCase
@@ -26,9 +26,12 @@ public class CleanupUseCase(
         var deletedMembers = await unitOfWork.ClubMembers.DeleteClubMembersWithoutHistoryAndStrikesAsync().ConfigureAwait(false);
         
         // Print info log
-        logger.LogInformation($"Deleted {deletedExcuses} excuses, {deletedHistoryEntries} history entries and {deletedMembers} members.");
+        LogDeleteResults(logger, deletedExcuses, deletedHistoryEntries, deletedMembers);
     }
 
     private readonly TimeSpan _historyKeepThreshold =
         config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerHistoryKeepTimeSpanConfigurationKey);
+
+    [LoggerMessage(LogLevel.Information, "Deleted {deletedExcuses} excuses, {deletedHistoryEntries} history entries and {deletedMembers} members.")]
+    static partial void LogDeleteResults(ILogger<CleanupUseCase> logger, int deletedExcuses, int deletedHistoryEntries, int deletedMembers);
 }

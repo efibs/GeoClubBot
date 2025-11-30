@@ -8,7 +8,7 @@ using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.Club;
 
-public class CheckClubLevelUseCase : ICheckClubLevelUseCase
+public partial class CheckClubLevelUseCase : ICheckClubLevelUseCase
 {
     public CheckClubLevelUseCase(IConfiguration config,
         ILogger<CheckClubLevelUseCase> logger,
@@ -44,7 +44,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         if (clubLevel != _lastLevel)
         {
             // Log debug
-            _logger.LogDebug($"Club level changed to {clubLevel}");
+            LogClubLevelChangedToClubLevel(clubLevel);
 
             // Get the status updater
             var statusUpdater = scope.ServiceProvider.GetRequiredService<ISetClubLevelStatusUseCase>();
@@ -89,7 +89,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         if (club == null)
         {
             // Log warning
-            _logger.LogWarning($"{nameof(CheckClubLevelUseCase)}.{nameof(_initClubLevelAsync)}: Failed to init club level. Club {_clubId} does not exits.");
+            LogFailedToInitClubLevelClubDoesNotExits(_clubId);
             
             return;
         }
@@ -113,7 +113,7 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
         if (club == null)
         {
             // Log warning
-            _logger.LogWarning($"{nameof(CheckClubLevelUseCase)}.{nameof(_updateClubLevelAsync)}: Failed to update club level. Club {_clubId} does not exits.");
+            LogFailedToUpdateClubLevelClubDoesNotExits(_clubId);
             
             throw new InvalidOperationException($"Failed to update club level. Club {_clubId} does not exits.");
         }
@@ -135,4 +135,13 @@ public class CheckClubLevelUseCase : ICheckClubLevelUseCase
     private int? _lastLevel;
     private readonly ILogger<CheckClubLevelUseCase> _logger;
     private readonly IServiceProvider _serviceProvider;
+    
+    [LoggerMessage(LogLevel.Debug, "Club level changed to {clubLevel}")]
+    partial void LogClubLevelChangedToClubLevel(int clubLevel);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to init club level. Club {clubId} does not exits.")]
+    partial void LogFailedToInitClubLevelClubDoesNotExits(Guid clubId);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to update club level. Club {clubId} does not exits.")]
+    partial void LogFailedToUpdateClubLevelClubDoesNotExits(Guid clubId);
 }

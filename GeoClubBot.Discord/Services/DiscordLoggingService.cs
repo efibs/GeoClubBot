@@ -81,7 +81,7 @@ public class DiscordLoggingService
         // Create the logger
         var logger = _loggerFactory.CreateLogger("Connection");
         
-        logger.LogWarning("Disconnected: {ex}", ex);
+        logger.LogWarning(ex, "Disconnected from the Discord Gateway.");
         return Task.CompletedTask;
     }
     

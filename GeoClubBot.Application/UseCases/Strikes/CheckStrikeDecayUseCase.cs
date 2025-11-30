@@ -6,7 +6,7 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.Strikes;
 
-public class CheckStrikeDecayUseCase(IUnitOfWork unitOfWork, ILogger<CheckStrikeDecayUseCase> logger, IConfiguration config) : ICheckStrikeDecayUseCase
+public partial class CheckStrikeDecayUseCase(IUnitOfWork unitOfWork, ILogger<CheckStrikeDecayUseCase> logger, IConfiguration config) : ICheckStrikeDecayUseCase
 {
     public async Task CheckStrikeDecayAsync()
     {
@@ -19,8 +19,11 @@ public class CheckStrikeDecayUseCase(IUnitOfWork unitOfWork, ILogger<CheckStrike
             .ConfigureAwait(false);
         
         // Log info
-        logger.LogInformation($"Deleted {numDeleted} decayed strikes.");
+        LogDeletedNumStrikes(logger, numDeleted);
     }
     
     private readonly TimeSpan _strikeDecayTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+    
+    [LoggerMessage(LogLevel.Information, "Deleted {numDeleted} decayed strikes.")]
+    static partial void LogDeletedNumStrikes(ILogger<CheckStrikeDecayUseCase> logger, int numDeleted);
 }

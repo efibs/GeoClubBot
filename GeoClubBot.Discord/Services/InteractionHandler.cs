@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace GeoClubBot.Discord.Services;
 
-public class InteractionHandler
+public partial class InteractionHandler
 {
     public InteractionHandler(DiscordSocketClient client, InteractionService interactionService,
         IServiceProvider serviceProvider, ILogger<InteractionHandler> logger, IOptions<DiscordConfiguration> config)
@@ -47,8 +47,7 @@ public class InteractionHandler
     private async Task _handleInteractionAsync(SocketInteraction interaction)
     {
         // Log debug
-        _logger.LogDebug("Handling interaction on guild {guild} in channel {channel}", interaction.GuildId,
-            interaction.ChannelId);
+        LogHandlingInteractionOnGuildInChannel(interaction.GuildId, interaction.ChannelId);
 
         try
         {
@@ -61,7 +60,7 @@ public class InteractionHandler
             // If the execution failed
             if (!result.IsSuccess)
             {
-                _logger.LogError("Slash command failed: {reason}", result.ErrorReason);
+                LogSlashCommandFailed(result.ErrorReason);
             }
         }
         catch (Exception ex)
@@ -75,4 +74,10 @@ public class InteractionHandler
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<InteractionHandler> _logger;
     private readonly DiscordConfiguration _config;
+    
+    [LoggerMessage(LogLevel.Debug, "Handling interaction on guild {guild} in channel {channel}")]
+    partial void LogHandlingInteractionOnGuildInChannel(ulong? guild, ulong? channel);
+
+    [LoggerMessage(LogLevel.Error, "Slash command failed: {reason}")]
+    partial void LogSlashCommandFailed(string reason);
 }
