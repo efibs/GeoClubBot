@@ -40,7 +40,9 @@ public static class ConfigKeys
     public const string DailyChallengesFirstRoleIdConfigurationKey = "DailyChallenges:FirstRoleId";
     public const string DailyChallengesSecondRoleIdConfigurationKey = "DailyChallenges:SecondRoleId";
     public const string DailyChallengesThirdRoleIdConfigurationKey = "DailyChallenges:ThirdRoleId";
-    
+
+    public const string DailyMissionReminderCronScheduleConfigurationKey = "DailyMissionReminder:Schedule";
+
     public const string GeoGuessrAccountLinkingAdminChannelIdConfigurationKey = "GeoGuessrAccountLinking:AdminChannelId";
     public const string GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey = "GeoGuessrAccountLinking:HasLinkedRoleId";
     public const string GeoGuessrAccountLinkingClubMemberRoleIdConfigurationKey = "GeoGuessrAccountLinking:ClubMemberRoleId";

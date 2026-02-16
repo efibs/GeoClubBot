@@ -31,5 +31,10 @@ public static class DependencyInjectionExtensions
             .Bind(config.GetSection(DailyChallengesConfiguration.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        services.AddOptions<DailyMissionReminderConfiguration>()
+            .Bind(config.GetSection(DailyMissionReminderConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
     }
 }

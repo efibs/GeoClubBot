@@ -27,6 +27,8 @@ public class GeoClubBotDbContext : DbContext
     
     public DbSet<GeoGuessrAccountLinkingRequest> GeoGuessrAccountLinkingRequests { get; set; }
 
+    public DbSet<DailyMissionReminder> DailyMissionReminders { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);

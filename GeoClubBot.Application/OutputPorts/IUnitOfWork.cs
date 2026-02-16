@@ -18,5 +18,7 @@ public interface IUnitOfWork
     
     public IStrikesRepository Strikes { get; }
 
+    public IDailyMissionReminderRepository DailyMissionReminders { get; }
+
     Task<int> SaveChangesAsync();
 }

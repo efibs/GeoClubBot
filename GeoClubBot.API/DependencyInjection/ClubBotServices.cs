@@ -12,6 +12,7 @@ using UseCases.InputPorts.Club;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.DailyChallenge;
+using UseCases.InputPorts.DailyMissionReminder;
 using UseCases.InputPorts.Excuses;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.InputPorts.MemberPrivateChannels;
@@ -26,6 +27,7 @@ using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.DailyChallenge;
+using UseCases.UseCases.DailyMissionReminder;
 using UseCases.UseCases.Excuses;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using UseCases.UseCases.MemberPrivateChannels;
@@ -78,6 +80,7 @@ public static class ClubBotServices
         services.AddTransient<IClubEventNotifier, SignalRClubEventNotifier>();
         services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
         services.AddTransient<IDiscordSelfUserAccess, DiscordDiscordSelfUserAccess>();
+        services.AddTransient<IDiscordDirectMessageAccess, DiscordDirectMessageAccess>();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
@@ -121,7 +124,11 @@ public static class ClubBotServices
         services.AddTransient<IRenderPlayerActivityUseCase, RenderPlayerActivityUseCase>();
         services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
         services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
-        
+        services.AddTransient<ISetDailyMissionReminderUseCase, SetDailyMissionReminderUseCase>();
+        services.AddTransient<IStopDailyMissionReminderUseCase, StopDailyMissionReminderUseCase>();
+        services.AddTransient<IGetDailyMissionReminderStatusUseCase, GetDailyMissionReminderStatusUseCase>();
+        services.AddTransient<ISendDueRemindersUseCase, SendDueRemindersUseCase>();
+
         // Add the ai services
         services.AddAiServicesIfConfigured(configuration);
         
