@@ -28,15 +28,19 @@ public class SaveClubMembersUseCase(ICreateOrUpdateClubMemberUseCase createOrUpd
             geoGuessrUser.Nickname = geoGuessrClubMember.User.Nickname;
             
             // Save the user to the database
-            await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(geoGuessrUser).ConfigureAwait(false);
-            
+            var trackedUser = await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(geoGuessrUser).ConfigureAwait(false);
+
             // Try to read the club member from the database
             var clubMemberFromDatabase = await unitOfWork.ClubMembers
                 .ReadClubMemberByUserIdAsync(geoGuessrClubMember.User.UserId)
                 .ConfigureAwait(false);
-            
+
             // Set if not found
             var updatedClubMember = clubMemberFromDatabase ?? geoGuessrClubMember;
+
+            // Ensure the navigation property references the tracked user instance
+            // to avoid EF tracking conflicts when adding a new club member
+            updatedClubMember.User = trackedUser;
             
             // Update the properties
             updatedClubMember.IsCurrentlyMember = geoGuessrClubMember.IsCurrentlyMember;
