@@ -39,7 +39,7 @@ public static class ConfigKeys
 
     public const string GeoGuessrAccountLinkingAdminChannelIdConfigurationKey = "GeoGuessrAccountLinking:AdminChannelId";
     public const string GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey = "GeoGuessrAccountLinking:HasLinkedRoleId";
-    public const string GeoGuessrAccountLinkingClubMemberRoleIdConfigurationKey = "GeoGuessrAccountLinking:ClubMemberRoleId";
+
 
     public const string MemberPrivateChannelsCategoryIdConfigurationKey = "MemberPrivateChannels:CategoryId";
     public const string MemberPrivateChannelsDescriptionConfigurationKey = "MemberPrivateChannels:Description";

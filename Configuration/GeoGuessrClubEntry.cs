@@ -24,6 +24,8 @@ public class GeoGuessrClubEntry
 
     public int? AverageXpHistoryDepth { get; set; }
 
+    public ulong? RoleId { get; set; }
+
     public int GetMinXP(ActivityCheckerConfiguration defaults) => MinXP ?? defaults.MinXP;
 
     public int GetGracePeriodDays(ActivityCheckerConfiguration defaults) => GracePeriodDays ?? defaults.GracePeriodDays;
