@@ -13,4 +13,14 @@ internal static class UserAssembler
             DiscordUserId = null
         };
     }
+
+    public static GeoGuessrUser AssembleEntity(UserDto dto)
+    {
+        return new GeoGuessrUser
+        {
+            UserId = dto.Id,
+            Nickname = dto.Nick,
+            DiscordUserId = null,
+        };
+    }
 }

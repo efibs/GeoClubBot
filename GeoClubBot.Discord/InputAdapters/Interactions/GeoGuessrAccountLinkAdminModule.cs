@@ -63,7 +63,7 @@ public partial class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseC
             LogSlashCommandCompleteAccountLinkingRequestFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
             
             // Respond
-            await  FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
+            await  FollowupAsync("Failed to cancel linking process (internal error).", ephemeral: true).ConfigureAwait(false);
         }
     }
     
@@ -152,7 +152,7 @@ public partial class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseC
             LogFailedToLinkGeoguessrAccountToDiscordUser(logger, ex, geoGuessrUserId, discordUserIdString);
             
             // Respond with error
-            await FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Failed to complete linking process (internal error).", ephemeral: true).ConfigureAwait(false);
         }
     }
     
@@ -216,7 +216,7 @@ public partial class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseC
             LogFailedToLinkGeoguessrAccountToDiscordUser(logger, ex, geoGuessrUserId, discordUserIdString);
             
             // Respond with error
-            await FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Failed to cancel linking process (internal error).", ephemeral: true).ConfigureAwait(false);
         }
     }
     

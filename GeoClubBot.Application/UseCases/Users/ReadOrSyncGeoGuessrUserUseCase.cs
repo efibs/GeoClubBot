@@ -2,6 +2,7 @@ using Entities;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.GeoGuessr.Assemblers;
 
 namespace UseCases.UseCases.Users;
 
@@ -19,19 +20,23 @@ public class ReadOrSyncGeoGuessrUserUseCase(IUnitOfWork unitOfWork,
         {
             return user;
         }
+
+        try
+        {
+            // Read the user from GeoGuessr
+            var geoGuessrUserDto = await geoGuessrClient.ReadUserAsync(userId).ConfigureAwait(false);
+
+            // Assemble the entity
+            var entity = UserAssembler.AssembleEntity(geoGuessrUserDto);
+            
+            // Save the user
+            var createdUser = await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(entity).ConfigureAwait(false);
         
-        // Read the user from GeoGuessr
-        var geoGuessrUserDto = await geoGuessrClient.ReadUserAsync(userId).ConfigureAwait(false);
-        
-        // If the user was not found
-        if (user == null)
+            return createdUser;
+        }
+        catch
         {
             return null;
         }
-        
-        // Save the user
-        var createdUser = await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
-        
-        return createdUser;
     }
 }
