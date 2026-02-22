@@ -18,4 +18,7 @@ public interface IGeoGuessrClient
     
     [Get("/v3/results/highscores/{challengeId}")]
     Task<ChallengeResultHighscoresDto> ReadHighscoresAsync(string challengeId, [Query] ReadHighscoresQueryParams @params);
+    
+    [Get("/v4/clubs/{clubId}/activities")]
+    Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, [Query] ReadClubActivitiesQueryParams @params);
 }

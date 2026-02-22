@@ -47,4 +47,15 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
 
         return club;
     }
+    
+    public async Task<Club?> ReadClubByNameAsync(string clubName)
+    {
+        // Try to find the club
+        var club = await dbContext.Clubs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Name == clubName)
+            .ConfigureAwait(false);
+
+        return club;
+    }
 }

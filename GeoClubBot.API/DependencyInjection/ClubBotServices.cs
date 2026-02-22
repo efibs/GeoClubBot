@@ -141,6 +141,7 @@ public static class ClubBotServices
         services.AddTransient<IStopDailyMissionReminderUseCase, StopDailyMissionReminderUseCase>();
         services.AddTransient<IGetDailyMissionReminderStatusUseCase, GetDailyMissionReminderStatusUseCase>();
         services.AddTransient<ISendDueRemindersUseCase, SendDueRemindersUseCase>();
+        services.AddTransient<IGetClubTodaysXpUseCase, GetClubTodaysXpUseCase>();
 
         // Add the ai services
         services.AddAiServicesIfConfigured(configuration);
