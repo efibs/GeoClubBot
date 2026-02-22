@@ -1,7 +1,7 @@
-using Constants;
+using Configuration;
 using Entities;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.Organization;
@@ -22,11 +22,19 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
     ICleanupUseCase cleanupUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
     IClubMemberActivityRewardUseCase clubMemberActivityRewardUseCase,
-    IConfiguration config,
+    IOptions<GeoGuessrConfiguration> geoGuessrConfig,
+    IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
 {
     public async Task CheckPlayerActivityAsync(Guid clubId)
     {
+        // Resolve per-club activity settings (with fallback to global defaults)
+        var clubEntry = geoGuessrConfig.Value.GetClub(clubId);
+        var defaults = activityCheckerConfig.Value;
+        var xpRequirement = clubEntry.GetMinXP(defaults);
+        var gracePeriod = TimeSpan.FromDays(clubEntry.GetGracePeriodDays(defaults));
+        var maxNumStrikes = clubEntry.GetMaxNumStrikes(defaults);
+
         // Check the strikes for decayed strikes and remove them
         await checkStrikeDecayUseCase.CheckStrikeDecayAsync().ConfigureAwait(false);
 
@@ -80,7 +88,8 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
 
         // Build the new statuses
         var newStatuses =
-            await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now)
+            await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now,
+                    xpRequirement, gracePeriod, maxNumStrikes)
                 .ConfigureAwait(false);
 
         // Save changes
@@ -92,7 +101,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
 
         // Send the update message
         await activityStatusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName).ConfigureAwait(false);
+            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement).ConfigureAwait(false);
 
         // Reward player activity
         await clubMemberActivityRewardUseCase
@@ -110,7 +119,10 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         IEnumerable<ClubMemberHistoryEntry> latestHistoryEntries,
         IEnumerable<ClubMemberExcuse> excuses,
         DateTimeOffset lastActivityCheckTime,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        int xpRequirement,
+        TimeSpan gracePeriod,
+        int maxNumStrikes)
     {
         var statuses = new List<ClubMemberActivityStatus>(members.Count);
 
@@ -130,7 +142,8 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         foreach (var member in members)
         {
             // Calculate his new status
-            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange)
+            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange,
+                    xpRequirement, gracePeriod, maxNumStrikes)
                 .ConfigureAwait(false);
 
             if (newStatus != null)
@@ -146,7 +159,10 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         ClubMember member,
         Dictionary<string, ClubMemberHistoryEntry> latestActivities,
         Dictionary<string, List<ClubMemberExcuse>> excuses,
-        TimeRange checkTimeRange)
+        TimeRange checkTimeRange,
+        int xpRequirement,
+        TimeSpan gracePeriod,
+        int maxNumStrikes)
     {
         // Read the member from the database
         var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(member.User.UserId)
@@ -167,7 +183,8 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         var xpSinceLastUpdate = member.Xp - (latestActivity?.Xp ?? 0);
 
         // Calculate the players target respecting excuses and joined time
-        var (target, individualTargetReason) = _calculateIndividualTarget(member, checkTimeRange, excuses);
+        var (target, individualTargetReason) = _calculateIndividualTarget(member, checkTimeRange, excuses,
+            xpRequirement, gracePeriod);
 
         // Calculate if the player achieved the target.
         var targetAchieved = xpSinceLastUpdate >= target;
@@ -192,7 +209,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
             targetAchieved,
             xpSinceLastUpdate,
             numStrikes,
-            numStrikes > _maxNumStrikes,
+            numStrikes > maxNumStrikes,
             target,
             individualTargetReason);
     }
@@ -212,10 +229,12 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         unitOfWork.Strikes.CreateStrike(newStrike);
     }
 
-    private (int IndividualTarget, string? IndividualTargetReason) _calculateIndividualTarget(
+    private static (int IndividualTarget, string? IndividualTargetReason) _calculateIndividualTarget(
         ClubMember member,
         TimeRange checkTimeRange,
-        Dictionary<string, List<ClubMemberExcuse>> excuses)
+        Dictionary<string, List<ClubMemberExcuse>> excuses,
+        int xpRequirement,
+        TimeSpan gracePeriod)
     {
         var isNew = false;
         var isExcused = false;
@@ -235,7 +254,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
             var timeInClub = checkTimeRange.To - member.JoinedAt;
 
             // If he joined in the grace period
-            if (timeInClub < _gracePeriod)
+            if (timeInClub < gracePeriod)
             {
                 joinedInGracePeriod = true;
             }
@@ -269,7 +288,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         var individualTargetReason = _buildTargetReasons(isNew, isExcused, joinedInGracePeriod);
 
         // Get the final individual target
-        var individualTarget = joinedInGracePeriod ? 0 : (int)Math.Floor(freePercent * _xpRequirement);
+        var individualTarget = joinedInGracePeriod ? 0 : (int)Math.Floor(freePercent * xpRequirement);
 
         return (individualTarget, individualTargetReason);
     }
@@ -301,13 +320,6 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
 
         return individualTargetReason;
     }
-
-    private readonly int _xpRequirement = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
-
-    private readonly TimeSpan _gracePeriod = TimeSpan.FromDays(
-        config.GetValue<int>(ConfigKeys.ActivityCheckerGracePeriodDaysConfigurationKey));
-
-    private readonly int _maxNumStrikes = config.GetValue<int>(ConfigKeys.ActivityCheckerMaxNumStrikesConfigurationKey);
 
     [LoggerMessage(LogLevel.Error, "Club member {memberUserId} could not be found.")]
     static partial void LogClubMemberCouldNotBeFound(ILogger<CheckGeoGuessrPlayerActivityUseCase> logger, string memberUserId);

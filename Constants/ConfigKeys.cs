@@ -25,9 +25,6 @@ public static class ConfigKeys
     public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:SyncSchedule";
     
     public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
-    public const string ActivityCheckerMinXpConfigurationKey = "ActivityChecker:MinXP";
-    public const string ActivityCheckerGracePeriodDaysConfigurationKey = "ActivityChecker:GracePeriodDays";
-    public const string ActivityCheckerMaxNumStrikesConfigurationKey = "ActivityChecker:MaxNumStrikes";
     public const string ActivityCheckerHistoryKeepTimeSpanConfigurationKey = "ActivityChecker:HistoryKeepTimeSpan";
     public const string ActivityCheckerStrikeDecayTimeSpanConfigurationKey = "ActivityChecker:StrikeDecayTimeSpan";
     

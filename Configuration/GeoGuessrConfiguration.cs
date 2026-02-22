@@ -15,6 +15,8 @@ public class GeoGuessrConfiguration : IValidatableObject
 
     public GeoGuessrClubEntry MainClub => Clubs.Single(c => c.IsMain);
 
+    public GeoGuessrClubEntry GetClub(Guid clubId) => Clubs.Single(c => c.ClubId == clubId);
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         var mainClubs = Clubs.Where(c => c.IsMain).ToList();

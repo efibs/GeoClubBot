@@ -11,7 +11,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
 {
     private const int MaxNumPlayersPerMessage = 15;
 
-    public async Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName)
+    public async Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName, int minXP)
     {
         // Get the server
         var server = client.GetGuild(discordConfig.Value.ServerId);
@@ -41,7 +41,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         // Build the message first part of the message
         var messageString =
             _buildStatusUpdateMessageBeginningString(
-                playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList(), clubName);
+                playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList(), clubName, minXP);
 
         // Send the message
         await channel.SendMessageAsync(messageString).ConfigureAwait(false);
@@ -82,14 +82,14 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         }
     }
 
-    private string _buildStatusUpdateMessageBeginningString(List<ClubMemberActivityStatus> players, string clubName)
+    private string _buildStatusUpdateMessageBeginningString(List<ClubMemberActivityStatus> players, string clubName, int minXP)
     {
         // Create a string builder
         var builder = new StringBuilder($"**======= Activity status update - {clubName} =======**\n\n");
 
         // Add header for members that failed to meet the requirement
         builder.Append("Members that failed to meet the ");
-        builder.Append(activityCheckerConfig.Value.MinXP);
+        builder.Append(minXP);
         builder.Append("XP requirement:");
 
         // If no player failed the requirement

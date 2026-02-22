@@ -1,14 +1,15 @@
-using Constants;
+using Configuration;
 using Entities;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork, 
-    IRenderHistoryUseCase renderHistoryUseCase, 
-    IConfiguration config) : IRenderPlayerActivityUseCase
+public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
+    IRenderHistoryUseCase renderHistoryUseCase,
+    IOptions<GeoGuessrConfiguration> geoGuessrConfig,
+    IOptions<ActivityCheckerConfiguration> activityCheckerConfig) : IRenderPlayerActivityUseCase
 {
     public async Task<MemoryStream?> RenderPlayerActivityAsync(string nickname, int maxNumHistoryEntries)
     {
@@ -16,18 +17,18 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
         var playersHistoryEntries = await unitOfWork.History
             .ReadHistoryEntriesByPlayerNicknameAsync(nickname)
             .ConfigureAwait(false);
-        
+
         // If there are no entries
         if (playersHistoryEntries == null)
         {
             return null;
         }
-        
+
         // Read the member
         var member = await unitOfWork.ClubMembers
             .ReadClubMemberByNicknameAsync(nickname)
             .ConfigureAwait(false);
-        
+
         // If the club member was found
         if (member != null)
         {
@@ -45,7 +46,10 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
         {
             return null;
         }
-        
+
+        // Resolve the MinXP for this player's club (fall back to global default)
+        var weeklyXpTarget = _resolveMinXP(member);
+
         // Order by timestamp
         var entriesOrdered = playersHistoryEntries
             .OrderBy(e => e.Timestamp);
@@ -54,22 +58,38 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
         var entriesToShow = entriesOrdered
             .Skip(playersHistoryEntries.Count - maxNumHistoryEntries - 1)
             .ToList();
-        
+
         // Zip to calculate the differences
         var values = entriesToShow
             .Skip(1)
-            .Zip(entriesToShow, (a, b) => 
+            .Zip(entriesToShow, (a, b) =>
                 a.Xp - b.Xp)
             .ToList();
-        
+
         // Get the timestamps
         var timestamps = entriesToShow.Select(e => e.Timestamp).ToList();
-        
+
         // Create plot
-        var plotStream = renderHistoryUseCase.RenderHistory(values, timestamps, _weeklyXpTarget);
-        
+        var plotStream = renderHistoryUseCase.RenderHistory(values, timestamps, weeklyXpTarget);
+
         return plotStream;
     }
-    
-    private readonly int _weeklyXpTarget = config.GetValue<int>(ConfigKeys.ActivityCheckerMinXpConfigurationKey);
+
+    private int _resolveMinXP(ClubMember? member)
+    {
+        if (member == null)
+        {
+            return activityCheckerConfig.Value.MinXP;
+        }
+
+        // Find the club entry for this member's club
+        var clubEntry = geoGuessrConfig.Value.Clubs.FirstOrDefault(c => c.ClubId == member.ClubId);
+
+        if (clubEntry == null)
+        {
+            return activityCheckerConfig.Value.MinXP;
+        }
+
+        return clubEntry.GetMinXP(activityCheckerConfig.Value);
+    }
 }
