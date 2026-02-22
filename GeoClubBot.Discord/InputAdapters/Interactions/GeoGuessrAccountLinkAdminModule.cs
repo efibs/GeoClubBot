@@ -38,7 +38,7 @@ public partial class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseC
             LogSlashCommandCompleteAccountLinkingRequestFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
             
             // Respond
-            await  FollowupAsync("Failed to complete linking process.", ephemeral: true).ConfigureAwait(false);
+            await  FollowupAsync("Failed to complete linking process (internal error).", ephemeral: true).ConfigureAwait(false);
         }
     }
     
