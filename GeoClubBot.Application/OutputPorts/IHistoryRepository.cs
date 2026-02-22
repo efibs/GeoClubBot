@@ -12,5 +12,7 @@ public interface IHistoryRepository
     
     Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesAsync();
 
+    Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId);
+
     Task<int> DeleteHistoryEntriesBeforeAsync(DateTimeOffset threshold);
 }

@@ -1,27 +1,27 @@
-using Constants;
+using Configuration;
 using Entities;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class ClubStatisticsUseCase(IUnitOfWork unitOfWork, IConfiguration config) : IClubStatisticsUseCase
+public class ClubStatisticsUseCase(IUnitOfWork unitOfWork, IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IClubStatisticsUseCase
 {
     public async Task<ClubStatistics?> GetClubStatisticsAsync()
     {
         // Read the club
         var club = await unitOfWork.Clubs.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
-        
+
         // If the club was not found
         if (club == null)
         {
             return null;
         }
-        
+
         // Read the entire history
         var history = await unitOfWork.History.ReadHistoryEntriesAsync().ConfigureAwait(false);
-        
+
         // Group the history by user id and get the average points
         var averagePointsEarned = history
             .GroupBy(e => e.UserId)
@@ -31,7 +31,7 @@ public class ClubStatisticsUseCase(IUnitOfWork unitOfWork, IConfiguration config
                 .Average())
             .Order()
             .ToList();
-        
+
         // Calculate stats
         var averagePoints = averagePointsEarned.Average();
         var minPoints = averagePointsEarned.Min();
@@ -43,6 +43,6 @@ public class ClubStatisticsUseCase(IUnitOfWork unitOfWork, IConfiguration config
         return new ClubStatistics(club.Name, averagePoints, minPoints, firstQuartilePoints, medianPoints,
             thirdQuartilePoints, maxPoints);
     }
-    
-    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
+
+    private readonly Guid _clubId = geoGuessrConfig.Value.MainClub.ClubId;
 }

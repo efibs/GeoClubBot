@@ -36,5 +36,10 @@ public static class DependencyInjectionExtensions
             .Bind(config.GetSection(DailyMissionReminderConfiguration.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        services.AddOptions<GeoGuessrConfiguration>()
+            .Bind(config.GetSection(GeoGuessrConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
     }
 }

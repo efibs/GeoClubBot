@@ -1,6 +1,6 @@
-using Constants;
+using Configuration;
 using Entities;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
@@ -10,9 +10,9 @@ namespace UseCases.UseCases.ClubMembers;
 
 public class ReadOrSyncClubMemberUseCase(
     IUnitOfWork unitOfWork,
-    IGeoGuessrClient geoGuessrClient,
+    IGeoGuessrClientFactory geoGuessrClientFactory,
     ISaveClubMembersUseCase saveClubMembersUseCase,
-    IConfiguration config) : IReadOrSyncClubMemberUseCase
+    IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IReadOrSyncClubMemberUseCase
 {
     public async Task<ClubMember?> ReadOrSyncClubMemberByNicknameAsync(string nickname)
     {
@@ -39,26 +39,31 @@ public class ReadOrSyncClubMemberUseCase(
             return clubMember;
         }
 
-        // Read all the club members of the club
-        var response = await geoGuessrClient.ReadClubMembersAsync(_clubId).ConfigureAwait(false);
-
-        // Assemble the entities
-        var geoGuessrClubMembers = ClubMemberAssembler.AssembleEntities(response, _clubId);
-        
-        // Try to find the club member with the nickname
-        var geoGuessrClubMember = geoGuessrClubMembers.FirstOrDefault(clubMemberListFinderPredicate);
-
-        // If the club member could not be found
-        if (geoGuessrClubMember == null)
+        // Iterate all clubs and try to find the member
+        foreach (var club in geoGuessrConfig.Value.Clubs)
         {
-            return null;
+            // Get the client for this club
+            var client = geoGuessrClientFactory.CreateClient(club.ClubId);
+
+            // Read all the club members of the club
+            var response = await client.ReadClubMembersAsync(club.ClubId).ConfigureAwait(false);
+
+            // Assemble the entities
+            var geoGuessrClubMembers = ClubMemberAssembler.AssembleEntities(response, club.ClubId);
+
+            // Try to find the club member
+            var geoGuessrClubMember = geoGuessrClubMembers.FirstOrDefault(clubMemberListFinderPredicate);
+
+            // If the club member was found
+            if (geoGuessrClubMember != null)
+            {
+                // Save the club member
+                await saveClubMembersUseCase.SaveClubMembersAsync(Enumerable.Repeat(geoGuessrClubMember, 1)).ConfigureAwait(false);
+
+                return geoGuessrClubMember;
+            }
         }
 
-        // Save the club member
-        await saveClubMembersUseCase.SaveClubMembersAsync(Enumerable.Repeat(geoGuessrClubMember, 1)).ConfigureAwait(false);
-
-        return clubMember;
+        return null;
     }
-
-    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
 }

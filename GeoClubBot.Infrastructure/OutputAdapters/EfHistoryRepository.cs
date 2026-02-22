@@ -64,6 +64,26 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         return latestEntries;
     }
 
+    public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId)
+    {
+        // Get user IDs belonging to this club
+        var clubMemberUserIds = dbContext.ClubMembers
+            .Where(m => m.ClubId == clubId)
+            .Select(m => m.UserId);
+
+        // Read the latest entries for members of this club
+        var latestEntries = await dbContext.ClubMemberHistoryEntries
+            .AsNoTracking()
+            .Where(e => clubMemberUserIds.Contains(e.UserId))
+            .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries
+                .Where(ei => clubMemberUserIds.Contains(ei.UserId))
+                .Max(ei => ei.Timestamp))
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return latestEntries;
+    }
+
     public async Task<int> DeleteHistoryEntriesBeforeAsync(DateTimeOffset threshold)
     {
         // Delete the entries

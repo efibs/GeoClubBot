@@ -14,5 +14,7 @@ public interface IClubMemberRepository
     
     Task<List<ClubMember>> ReadClubMembersAsync();
 
+    Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId);
+
     Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync();
 }

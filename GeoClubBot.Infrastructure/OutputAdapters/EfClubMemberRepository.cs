@@ -70,7 +70,19 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .Include(m => m.User)
             .ToListAsync()
             .ConfigureAwait(false);
-        
+
+        return clubMembers;
+    }
+
+    public async Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId)
+    {
+        var clubMembers = await dbContext.ClubMembers
+            .AsNoTracking()
+            .Include(m => m.User)
+            .Where(m => m.ClubId == clubId)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
         return clubMembers;
     }
 

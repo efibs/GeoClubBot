@@ -22,10 +22,7 @@ public static class ConfigKeys
     public const string DiscordWelcomeMessageConfigurationKey = "Discord:WelcomeMessage";
     public const string DiscordWelcomeTextChannelIdConfigurationKey = "Discord:WelcomeTextChannelId";
 
-    public const string GeoGuessrTokenConfigurationKey = "GeoGuessr:NcfaToken";
-    public const string GeoGuessrClubIdConfigurationKey = "GeoGuessr:ClubId";
-    
-    public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:Club:SyncSchedule";
+    public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:SyncSchedule";
     
     public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
     public const string ActivityCheckerMinXpConfigurationKey = "ActivityChecker:MinXP";

@@ -11,7 +11,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
 {
     private const int MaxNumPlayersPerMessage = 15;
 
-    public async Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses)
+    public async Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName)
     {
         // Get the server
         var server = client.GetGuild(discordConfig.Value.ServerId);
@@ -41,7 +41,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         // Build the message first part of the message
         var messageString =
             _buildStatusUpdateMessageBeginningString(
-                playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList());
+                playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList(), clubName);
 
         // Send the message
         await channel.SendMessageAsync(messageString).ConfigureAwait(false);
@@ -82,10 +82,10 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         }
     }
 
-    private string _buildStatusUpdateMessageBeginningString(List<ClubMemberActivityStatus> players)
+    private string _buildStatusUpdateMessageBeginningString(List<ClubMemberActivityStatus> players, string clubName)
     {
         // Create a string builder
-        var builder = new StringBuilder("**======= Activity status update =======**\n\n");
+        var builder = new StringBuilder($"**======= Activity status update - {clubName} =======**\n\n");
 
         // Add header for members that failed to meet the requirement
         builder.Append("Members that failed to meet the ");

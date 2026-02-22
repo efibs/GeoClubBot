@@ -14,7 +14,7 @@ using Utilities;
 namespace UseCases.UseCases.ClubMemberActivity;
 
 public partial class CheckGeoGuessrPlayerActivityUseCase(
-    IGeoGuessrClient geoGuessrClient,
+    IGeoGuessrClientFactory geoGuessrClientFactory,
     IUnitOfWork unitOfWork,
     IActivityStatusMessageSender activityStatusMessageSender,
     ICheckStrikeDecayUseCase checkStrikeDecayUseCase,
@@ -25,27 +25,31 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
     IConfiguration config,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
 {
-    public async Task CheckPlayerActivityAsync()
+    public async Task CheckPlayerActivityAsync(Guid clubId)
     {
         // Check the strikes for decayed strikes and remove them
         await checkStrikeDecayUseCase.CheckStrikeDecayAsync().ConfigureAwait(false);
 
         // Log debug message
-        logger.LogDebug("Checking player activity...");
+        logger.LogDebug("Checking player activity for club {ClubId}...", clubId);
+
+        // Get the client for this club
+        var client = geoGuessrClientFactory.CreateClient(clubId);
 
         // Get the current members of the club
-        var response = await geoGuessrClient
-            .ReadClubMembersAsync(_clubId).ConfigureAwait(false);
+        var response = await client
+            .ReadClubMembersAsync(clubId).ConfigureAwait(false);
 
         // Assemble the entities
-        var members = ClubMemberAssembler.AssembleEntities(response, _clubId);
+        var members = ClubMemberAssembler.AssembleEntities(response, clubId);
 
-        // Save the club members
+        // Save the club members and commit so subsequent AsNoTracking queries can find them
         await saveClubMembersUseCase.SaveClubMembersAsync(members).ConfigureAwait(false);
+        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
 
-        // Get the latest activities
+        // Get the latest activities for this club
         var latestHistoryEntries = await unitOfWork.History
-            .ReadLatestHistoryEntriesAsync()
+            .ReadLatestHistoryEntriesByClubIdAsync(clubId)
             .ConfigureAwait(false);
 
         // Get the excuses
@@ -82,16 +86,20 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         // Save changes
         await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
 
+        // Read the club name for the activity report header
+        var club = await unitOfWork.Clubs.ReadClubByIdAsync(clubId).ConfigureAwait(false);
+        var clubName = club?.Name ?? clubId.ToString();
+
         // Send the update message
         await activityStatusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses).ConfigureAwait(false);
+            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName).ConfigureAwait(false);
 
         // Reward player activity
         await clubMemberActivityRewardUseCase
             .RewardMemberActivityAsync(newStatuses).ConfigureAwait(false);
 
         // Log debug message
-        logger.LogDebug("Checking player activity done.");
+        logger.LogDebug("Checking player activity for club {ClubId} done.", clubId);
 
         // Trigger the cleanup
         await cleanupUseCase.DoCleanupAsync().ConfigureAwait(false);
@@ -167,13 +175,13 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         // Read the number of strikes of the player
         var numStrikes = await unitOfWork.Strikes.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId)
             .ConfigureAwait(false) ?? 0;
-        
+
         // If the player did not meet the requirement and was not excused
         if (!targetAchieved)
         {
             // Add the strike
             _addStrike(clubMember.UserId, checkTimeRange.To);
-            
+
             // Increase the number of strikes
             numStrikes++;
         }
@@ -301,8 +309,6 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
 
     private readonly int _maxNumStrikes = config.GetValue<int>(ConfigKeys.ActivityCheckerMaxNumStrikesConfigurationKey);
 
-    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
-    
     [LoggerMessage(LogLevel.Error, "Club member {memberUserId} could not be found.")]
     static partial void LogClubMemberCouldNotBeFound(ILogger<CheckGeoGuessrPlayerActivityUseCase> logger, string memberUserId);
 }

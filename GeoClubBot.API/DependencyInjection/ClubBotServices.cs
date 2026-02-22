@@ -1,3 +1,4 @@
+using Configuration;
 using Constants;
 using GeoClubBot.Discord.OutputAdapters;
 using Infrastructure.InputAdapters;
@@ -45,24 +46,35 @@ public static class ClubBotServices
 {
     public static void AddClubBotServices(this IServiceCollection services, IConfiguration configuration)
     {
-        // Get the geoguessr token
-        var geoGuessrToken = configuration.GetValue<string>(ConfigKeys.GeoGuessrTokenConfigurationKey);
-
-        // Sanity check
-        if (string.IsNullOrWhiteSpace(geoGuessrToken))
+        // Get the GeoGuessr configuration
+        var geoGuessrConfig = new GeoGuessrConfiguration
         {
-            throw new InvalidOperationException("GeoGuessrToken is not set");
+            SyncSchedule = null!,
+            Clubs = null!
+        };
+        configuration.GetSection(GeoGuessrConfiguration.SectionName).Bind(geoGuessrConfig);
+
+        // Register a named HttpClient per club with its own NCFA token
+        foreach (var club in geoGuessrConfig.Clubs)
+        {
+            services.AddHttpClient($"GeoGuessr_{club.ClubId}", client =>
+                {
+                    client.BaseAddress = new Uri("https://www.geoguessr.com/api");
+                    client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={club.NcfaToken}");
+                })
+                .AddResilienceHandler($"GeoGuessrApiResiliencePipeline_{club.ClubId}",
+                    ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
         }
 
-        // Add the GeoGuessr access along with it's http client
+        // Register the client factory
+        services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();
+
+        // Register a default IGeoGuessrClient using the main club's token (for club-independent operations)
         services.AddRefitClient<IGeoGuessrClient>()
             .ConfigureHttpClient(client =>
             {
-                // Set the base address
                 client.BaseAddress = new Uri("https://www.geoguessr.com/api");
-
-                // Set the token in the cookies
-                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrToken}");
+                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.MainClub.NcfaToken}");
             })
             .AddResilienceHandler("GeoGuessrApiResiliencePipeline", ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
 

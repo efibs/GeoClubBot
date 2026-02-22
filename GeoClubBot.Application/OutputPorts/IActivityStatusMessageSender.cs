@@ -4,5 +4,5 @@ namespace UseCases.OutputPorts;
 
 public interface IActivityStatusMessageSender
 {
-    Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses);
+    Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName);
 }

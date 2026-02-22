@@ -2,5 +2,5 @@ namespace UseCases.InputPorts.ClubMemberActivity;
 
 public interface ICheckGeoGuessrPlayerActivityUseCase
 {
-    Task CheckPlayerActivityAsync();
+    Task CheckPlayerActivityAsync(Guid clubId);
 }

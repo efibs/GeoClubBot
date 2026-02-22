@@ -1,16 +1,17 @@
-using Constants;
+using Configuration;
 using GeoClubBot.DTOs;
 using GeoClubBot.DTOs.Assemblers;
 using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 using UseCases.OutputPorts;
 
 namespace GeoClubBot.Controllers;
 
 [ApiController]
 [Route("/api/v1/club")]
-public class ClubController(IConfiguration config) : ControllerBase
+public class ClubController(IOptions<GeoGuessrConfiguration> geoGuessrConfig) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<ClubDto>> ReadClub(IClubRepository clubRepository, CancellationToken cancellationToken)
@@ -19,16 +20,16 @@ public class ClubController(IConfiguration config) : ControllerBase
         {
             // Read the club
             var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
-            
+
             // If the club was not found
             if (club == null)
             {
                 return NotFound();
             }
-            
+
             // Assemble the dto
             var dto = ClubDtoAssembler.AssembleDto(club);
-            
+
             return Ok(dto);
         }
         catch (Exception ex)
@@ -40,10 +41,10 @@ public class ClubController(IConfiguration config) : ControllerBase
 #endif
         }
     }
-    
+
 #if DEBUG
     [HttpPost("clubLevelUpEvent")]
-    public async Task<IActionResult> TriggerClubLevelUp(int newLevel, 
+    public async Task<IActionResult> TriggerClubLevelUp(int newLevel,
         IHubContext<ClubNotificationHub, IClubNotificationClient> hubContext,
         CancellationToken cancellationToken)
     {
@@ -51,7 +52,7 @@ public class ClubController(IConfiguration config) : ControllerBase
         {
             // Send the event
             await hubContext.Clients.All.ClubLevelUp(newLevel).ConfigureAwait(false);
-            
+
             return Accepted();
         }
         catch (Exception ex)
@@ -59,7 +60,7 @@ public class ClubController(IConfiguration config) : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, ex.Message + "\n" + ex.StackTrace);
         }
     }
-#endif 
-    
-    private readonly Guid _clubId = config.GetValue<Guid>(ConfigKeys.GeoGuessrClubIdConfigurationKey);
+#endif
+
+    private readonly Guid _clubId = geoGuessrConfig.Value.MainClub.ClubId;
 }
