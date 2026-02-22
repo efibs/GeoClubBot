@@ -26,4 +26,10 @@ public class ActivityCheckerConfiguration
 
     [Required(AllowEmptyStrings = false)]
     public required string StrikeDecayTimeSpan { get; set; }
+
+    public int? AverageXpTopN { get; set; }
+
+    public int? AverageXpBottomN { get; set; }
+
+    public int AverageXpHistoryDepth { get; set; } = 4;
 }

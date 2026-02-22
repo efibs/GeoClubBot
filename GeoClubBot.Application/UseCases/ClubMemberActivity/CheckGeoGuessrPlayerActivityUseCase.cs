@@ -22,6 +22,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
     ICleanupUseCase cleanupUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
     IClubMemberActivityRewardUseCase clubMemberActivityRewardUseCase,
+    ICalculateAverageXpUseCase calculateAverageXpUseCase,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
@@ -102,6 +103,43 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         // Send the update message
         await activityStatusMessageSender
             .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement).ConfigureAwait(false);
+
+        // Send average XP section if configured
+        var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);
+        var averageXpBottomN = clubEntry.GetAverageXpBottomN(defaults);
+
+        if (averageXpTopN.HasValue || averageXpBottomN.HasValue)
+        {
+            var historyDepth = clubEntry.GetAverageXpHistoryDepth(defaults);
+            var averageXpResults = await calculateAverageXpUseCase
+                .CalculateAverageXpAsync(clubId, historyDepth).ConfigureAwait(false);
+
+            // Top members sorted by average XP descending, ties broken by earlier join date (longer in club wins)
+            var topMembers = averageXpTopN.HasValue
+                ? averageXpResults
+                    .OrderByDescending(m => m.AverageXp)
+                    .ThenBy(m => m.JoinedAt)
+                    .Take(averageXpTopN.Value).ToList()
+                : [];
+
+            // Bottom members sorted by average XP ascending, ties broken by later join date (longer in club ranks higher)
+            var topNicknames = topMembers.Select(m => m.Nickname).ToHashSet();
+            var bottomMembers = averageXpBottomN.HasValue
+                ? averageXpResults
+                    .Where(m => !topNicknames.Contains(m.Nickname))
+                    .OrderBy(m => m.AverageXp)
+                    .ThenByDescending(m => m.JoinedAt)
+                    .Take(averageXpBottomN.Value)
+                    .ToList()
+                : [];
+
+            if (topMembers.Count > 0 || bottomMembers.Count > 0)
+            {
+                await activityStatusMessageSender
+                    .SendAverageXpMessageAsync(topMembers, bottomMembers, clubName, historyDepth)
+                    .ConfigureAwait(false);
+            }
+        }
 
         // Reward player activity
         await clubMemberActivityRewardUseCase

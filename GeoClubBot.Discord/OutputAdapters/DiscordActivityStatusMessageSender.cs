@@ -156,6 +156,59 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         }
     }
 
+    public async Task SendAverageXpMessageAsync(
+        List<ClubMemberAverageXp> topMembers,
+        List<ClubMemberAverageXp> bottomMembers,
+        string clubName,
+        int historyDepth)
+    {
+        // Get the server
+        var server = client.GetGuild(discordConfig.Value.ServerId);
+
+        if (server == null)
+        {
+            throw new InvalidOperationException($"No server found for id {discordConfig.Value.ServerId}");
+        }
+
+        // Get the channel
+        var channel = server.GetTextChannel(activityCheckerConfig.Value.TextChannelId);
+
+        if (channel == null)
+        {
+            throw new InvalidOperationException($"No channel found for id {activityCheckerConfig.Value.TextChannelId}");
+        }
+
+        var builder = new StringBuilder();
+
+        if (topMembers.Count > 0)
+        {
+            builder.Append($"​\nTop {topMembers.Count} members by average XP (last {historyDepth} intervals):");
+            for (var i = 0; i < topMembers.Count; i++)
+            {
+                builder.AppendLine();
+                builder.Append($"{i + 1}. {topMembers[i].Nickname} — {topMembers[i].AverageXp:F1}XP");
+            }
+        }
+
+        if (bottomMembers.Count > 0)
+        {
+            if (builder.Length > 0)
+                builder.AppendLine();
+
+            builder.Append($"​\nBottom {bottomMembers.Count} members by average XP (last {historyDepth} intervals):");
+            for (var i = 0; i < bottomMembers.Count; i++)
+            {
+                builder.AppendLine();
+                builder.Append($"{i + 1}. {bottomMembers[i].Nickname} — {bottomMembers[i].AverageXp:F1}XP");
+            }
+        }
+
+        if (builder.Length > 0)
+        {
+            await channel.SendMessageAsync(builder.ToString()).ConfigureAwait(false);
+        }
+    }
+
     private string _buildIndividualTargetPlayersMessage(List<ClubMemberActivityStatus> playersWithIndividualTarget)
     {
         // Create the builder
