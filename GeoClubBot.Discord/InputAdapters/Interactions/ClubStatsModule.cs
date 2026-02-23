@@ -46,7 +46,7 @@ public partial class ClubStatsModule(
         catch (Exception ex)
         {
             LogGetTodaysXpFailed(ex, clubName ?? "<default>");
-            await FollowupAsync("Failed to fetch the clubs current XP. Please try again later.", ephemeral: false)
+            await FollowupAsync("Failed to fetch the clubs current XP. Please try again later. If the issue persists, please contact an admin.", ephemeral: false)
                 .ConfigureAwait(false);
         }
     }

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Discord.Interactions;
+using Entities;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMemberActivity;
 
@@ -12,6 +13,7 @@ public partial class ActivityModule
         IPlayerStatisticsUseCase playerStatisticsUseCase, 
         IRenderPlayerActivityUseCase renderPlayerActivityUseCase,
         IClubStatisticsUseCase clubStatisticsUseCase,
+        IGetActivityLeaderboardUseCase getActivityLeaderboardUseCase,
         ILogger<ActivityStatisticsModule> logger)
     {
         [SlashCommand("player", "Read the statistics of a player")]
@@ -121,7 +123,75 @@ public partial class ActivityModule
             }
         }
 
+        [SlashCommand("average-leaderboard", "Read the leaderboard of members by average club xp")]
+        public async Task ReadAverageLeaderboardAsync(
+            [Summary(description: "[optional] The clubs name")] string? clubName = null,
+            [MinValue(1)] [Summary(description: "[optional] The number of intervals to include in the average")] int periods = 4)
+        {
+            try
+            {
+                // Save input club name
+                var inputClubName = clubName;
+                
+                // Defer the response
+                await DeferAsync(ephemeral: true).ConfigureAwait(false);
+                
+                // Get averages
+                (var leaderboard, clubName) = await getActivityLeaderboardUseCase
+                    .GetActivityLeaderboardAsync(clubName, periods)
+                    .ConfigureAwait(false);
+                
+                // If the club was not found
+                if (clubName is null)
+                {
+                    // Send error
+                    await FollowupAsync($"The club '{inputClubName ?? "<default>"}' does not exist in the database.", ephemeral: false)
+                        .ConfigureAwait(false);
+                    return;
+                }
+                
+                // Build the message
+                var message = _buildLeaderboardMessage(leaderboard!, inputClubName!, periods);
+                
+                // Send message
+                await FollowupAsync(
+                        message,
+                        ephemeral: true)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                LogGetAverageLeaderboardFailed(ex, clubName ?? "<default>", periods);
+                await FollowupAsync("Failed to fetch average leaderboard. Please try again later.", ephemeral: true)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private string _buildLeaderboardMessage(List<ClubMemberAverageXp> leaderboard, string clubName, int historyDepth)
+        {
+            if (leaderboard.Count > 0)
+            {
+                var builder = new StringBuilder();
+                
+                builder.Append($"##Top members of {clubName} by average XP (last {historyDepth} intervals):");
+                for (var i = 0; i < leaderboard.Count; i++)
+                {
+                    builder.AppendLine();
+                    builder.Append($"{i + 1}. {leaderboard[i].Nickname} — {leaderboard[i].AverageXp:F1}XP");
+                }
+                
+                return builder.ToString();
+            }
+            else
+            {
+                return "There were no member activities found.";
+            }
+        }
+        
         [LoggerMessage(LogLevel.Error, "Error while creating history plot for player {memberNickname}")]
         static partial void LogErrorWhileCreatingHistoryPlotForPlayer(ILogger<ActivityStatisticsModule> logger, Exception ex, string memberNickname);
+        
+        [LoggerMessage(LogLevel.Error, "Failed to fetch average leaderboard of club {ClubName} for depth {depth}.")]
+        partial void LogGetAverageLeaderboardFailed(Exception ex, string clubName, int depth);
     }
 }
