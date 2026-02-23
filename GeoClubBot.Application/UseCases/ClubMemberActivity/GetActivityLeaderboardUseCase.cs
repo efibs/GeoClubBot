@@ -24,6 +24,12 @@ public class GetActivityLeaderboardUseCase(ICalculateAverageXpUseCase calculateA
             .CalculateAverageXpAsync(club.ClubId, historyDepth)
             .ConfigureAwait(false);
         
-        return (leaderboard, club.Name);
+        // Top members sorted by average XP descending, ties broken by earlier join date (longer in club wins)
+        var topMembers = leaderboard
+                .OrderByDescending(m => m.AverageXp)
+                .ThenBy(m => m.JoinedAt)
+                .ToList();
+        
+        return (topMembers, club.Name);
     }
 }

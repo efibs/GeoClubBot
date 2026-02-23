@@ -173,7 +173,7 @@ public partial class ActivityModule
             {
                 var builder = new StringBuilder();
                 
-                builder.Append($"##Top members of {clubName} by average XP (last {historyDepth} intervals):");
+                builder.Append($"## Top members of {clubName} by average XP (last {historyDepth} intervals):");
                 for (var i = 0; i < leaderboard.Count; i++)
                 {
                     builder.AppendLine();
