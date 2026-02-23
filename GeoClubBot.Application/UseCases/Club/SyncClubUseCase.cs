@@ -43,7 +43,7 @@ public class SyncClubUseCase(
         var geoGuessrClubMembers = ClubMemberAssembler.AssembleEntities(clubDto.Members, clubDto.ClubId);
 
         // Join the two lists
-        var toSaveClubMembers = _joinClubMembersList(geoGuessrClubMembers, databaseClubMembers);
+        var toSaveClubMembers = _joinClubMembersList(geoGuessrClubMembers, databaseClubMembers, clubId);
 
         // Save the club members
         await saveClubMembersUseCase.SaveClubMembersAsync(toSaveClubMembers).ConfigureAwait(false);
@@ -53,7 +53,8 @@ public class SyncClubUseCase(
     }
 
     private List<ClubMember> _joinClubMembersList(List<ClubMember> geoGuessrCurrentClubMembers,
-        IEnumerable<ClubMember> databaseClubMembers)
+        IEnumerable<ClubMember> databaseClubMembers,
+        Guid clubId)
     {
         // The resulting joined list
         var joinedClubMembers = new List<ClubMember>();
@@ -72,10 +73,18 @@ public class SyncClubUseCase(
                 {
                     // Set the is member to false
                     m.IsCurrentlyMember = false;
-
+                    
                     return m;
                 }));
 
+        // Update the club id on all actual club members
+        foreach (var member in joinedClubMembers
+                     .Where(m => clubMemberUserIds.Contains(m.UserId)))
+        {
+            // Set the club id
+            member.ClubId = clubId;
+        }
+        
         return joinedClubMembers;
     }
 }
