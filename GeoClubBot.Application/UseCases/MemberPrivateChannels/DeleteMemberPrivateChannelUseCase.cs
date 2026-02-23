@@ -1,15 +1,20 @@
 using Entities;
+using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public class DeleteMemberPrivateChannelUseCase(IDiscordTextChannelAccess discordTextChannelAccess,
-    ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase) : IDeleteMemberPrivateChannelUseCase
+public partial class DeleteMemberPrivateChannelUseCase(IDiscordTextChannelAccess discordTextChannelAccess,
+    ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase,
+    ILogger<DeleteMemberPrivateChannelUseCase> logger) : IDeleteMemberPrivateChannelUseCase
 {
     public async Task<bool> DeletePrivateChannelAsync(ClubMember? clubMember)
     {
+        // Log info
+        LogDeletingPrivateChannel(logger, clubMember?.User?.Nickname ?? "<null>");
+        
         // If the user had no text channel set
         if (clubMember?.PrivateTextChannelId == null)
         {
@@ -27,4 +32,7 @@ public class DeleteMemberPrivateChannelUseCase(IDiscordTextChannelAccess discord
         
         return successful;
     }
+    
+    [LoggerMessage(LogLevel.Information, "Deleting private text channel for club member '{clubMemberNickname}'...")]
+    static partial void LogDeletingPrivateChannel(ILogger<DeleteMemberPrivateChannelUseCase> logger, string clubMemberNickname);
 }

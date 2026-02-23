@@ -1,14 +1,16 @@
 using Entities;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public class HandleUserNicknameChangedForPrivateChannelUseCase(
+public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
     IUnitOfWork unitOfWork,
-    IDiscordTextChannelAccess discordTextChannelAccess) 
+    IDiscordTextChannelAccess discordTextChannelAccess,
+    ILogger<HandleUserNicknameChangedForPrivateChannelUseCase> logger) 
     : INotificationHandler<UserUpdatedEvent>
 {
     public async Task Handle(UserUpdatedEvent notification, CancellationToken cancellationToken)
@@ -53,7 +55,13 @@ public class HandleUserNicknameChangedForPrivateChannelUseCase(
             Name = textChannelName
         };
         
+        // Log
+        LogRenamingPrivateChannel(logger, clubMember.User.Nickname);
+        
         // Update the text channel
         await discordTextChannelAccess.UpdateTextChannelAsync(newTextChannel).ConfigureAwait(false);
     }
+    
+    [LoggerMessage(LogLevel.Information, "Handling user updated for renaming private text channel for club member '{clubMemberNickname}'...")]
+    static partial void LogRenamingPrivateChannel(ILogger<HandleUserNicknameChangedForPrivateChannelUseCase> logger, string clubMemberNickname);
 }

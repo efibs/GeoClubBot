@@ -1,12 +1,14 @@
 using MediatR;
+using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.UseCases.ClubMembers;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public class HandleClubMemberUpdatedForPrivateChannelUseCase(
+public partial class HandleClubMemberUpdatedForPrivateChannelUseCase(
     ICreateMemberPrivateChannelUseCase createMemberPrivateChannelUseCase,
-    IDeleteMemberPrivateChannelUseCase deleteMemberPrivateChannelUseCase) 
+    IDeleteMemberPrivateChannelUseCase deleteMemberPrivateChannelUseCase,
+    ILogger<HandleClubMemberUpdatedForPrivateChannelUseCase> logger) 
     : INotificationHandler<ClubMemberUpdatedEvent>
 {
     public async Task Handle(ClubMemberUpdatedEvent notification, CancellationToken cancellationToken)
@@ -31,15 +33,27 @@ public class HandleClubMemberUpdatedForPrivateChannelUseCase(
         // If the user is a member
         if (isMember)
         {
+            // Log
+            LogCreatingPrivateChannel(logger, notification.NewClubMember.User.Nickname);
+            
             // Create a text channel for him
             await createMemberPrivateChannelUseCase.CreatePrivateChannelAsync(notification.NewClubMember)
                 .ConfigureAwait(false);
         }
         else
         {
+            // Log
+            LogDeletingPrivateChannel(logger, notification.NewClubMember.User.Nickname);
+            
             // Delete his private channel
             await deleteMemberPrivateChannelUseCase.DeletePrivateChannelAsync(notification.NewClubMember)
                 .ConfigureAwait(false);
         }
     }
+    
+    [LoggerMessage(LogLevel.Information, "Handling club member updated for creating private text channel for club member '{clubMemberNickname}'...")]
+    static partial void LogCreatingPrivateChannel(ILogger<HandleClubMemberUpdatedForPrivateChannelUseCase> logger, string clubMemberNickname);
+    
+    [LoggerMessage(LogLevel.Information, "Handling club member updated for deleting private text channel for club member '{clubMemberNickname}'...")]
+    static partial void LogDeletingPrivateChannel(ILogger<HandleClubMemberUpdatedForPrivateChannelUseCase> logger, string clubMemberNickname);
 }

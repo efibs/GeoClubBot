@@ -18,6 +18,9 @@ public partial class CreateMemberPrivateChannelUseCase(
 {
     public async Task<ulong?> CreatePrivateChannelAsync(ClubMember clubMember)
     {
+        // Log info
+        LogCreatingPrivateChannel(logger, clubMember.User.Nickname);
+        
         // Get the text channel name
         var textChannelName = $"{clubMember.User.Nickname.ToLowerInvariant()}-private-channel";
         
@@ -68,4 +71,7 @@ public partial class CreateMemberPrivateChannelUseCase(
 
     [LoggerMessage(LogLevel.Warning, "Private text channel could not be created for club member '{clubMemberNickname}'")]
     static partial void LogPrivateTextChannelCouldNotBeCreatedForClubMember(ILogger<CreateMemberPrivateChannelUseCase> logger, string clubMemberNickname);
+    
+    [LoggerMessage(LogLevel.Information, "Creating private text channel for club member '{clubMemberNickname}'...")]
+    static partial void LogCreatingPrivateChannel(ILogger<CreateMemberPrivateChannelUseCase> logger, string clubMemberNickname);
 }

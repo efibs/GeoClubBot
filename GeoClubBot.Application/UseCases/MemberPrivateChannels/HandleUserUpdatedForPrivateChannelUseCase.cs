@@ -1,15 +1,17 @@
 using Entities;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.OutputPorts;
 using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public class HandleUserUpdatedForPrivateChannelUseCase(
+public partial class HandleUserUpdatedForPrivateChannelUseCase(
     ICreateMemberPrivateChannelUseCase createMemberPrivateChannelUseCase,
     IDeleteMemberPrivateChannelUseCase deleteMemberPrivateChannelUseCase,
-    IUnitOfWork unitOfWork) 
+    IUnitOfWork unitOfWork,
+    ILogger<HandleUserUpdatedForPrivateChannelUseCase> logger) 
     : INotificationHandler<UserUpdatedEvent>
 {
     public async Task Handle(UserUpdatedEvent notification, CancellationToken cancellationToken)
@@ -40,6 +42,9 @@ public class HandleUserUpdatedForPrivateChannelUseCase(
 
     private async Task _handleOldUserAsync(GeoGuessrUser oldUser)
     {
+        // Log
+        LogDeletingPrivateChannel(logger, oldUser.Nickname);
+        
         // Try to read the club member.
         var clubMember = await unitOfWork.ClubMembers
             .ReadClubMemberByUserIdAsync(oldUser.UserId)
@@ -66,7 +71,16 @@ public class HandleUserUpdatedForPrivateChannelUseCase(
             return;
         }
         
+        // Log
+        LogCreatingPrivateChannel(logger, newUser.Nickname);
+        
         // Create the text channel
         await createMemberPrivateChannelUseCase.CreatePrivateChannelAsync(clubMember).ConfigureAwait(false);
     }
+    
+    [LoggerMessage(LogLevel.Information, "Handling user updated for creating private text channel for club member '{clubMemberNickname}'...")]
+    static partial void LogCreatingPrivateChannel(ILogger<HandleUserUpdatedForPrivateChannelUseCase> logger, string clubMemberNickname);
+    
+    [LoggerMessage(LogLevel.Information, "Handling user updated for deleting private text channel for club member '{clubMemberNickname}'...")]
+    static partial void LogDeletingPrivateChannel(ILogger<HandleUserUpdatedForPrivateChannelUseCase> logger, string clubMemberNickname);
 }
