@@ -68,7 +68,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
     {
         // Get user IDs belonging to this club
         var clubMemberUserIds = dbContext.ClubMembers
-            .Where(m => m.ClubId == clubId && m.IsCurrentlyMember)
+            .Where(m => m.ClubId == clubId)
             .Select(m => m.UserId);
 
         // Read the latest entries for members of this club
@@ -88,7 +88,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
     {
         // Get user IDs belonging to this club
         var clubMemberUserIds = dbContext.ClubMembers
-            .Where(m => m.ClubId == clubId)
+            .Where(m => m.ClubId == clubId && m.IsCurrentlyMember)
             .Select(m => m.UserId);
 
         // Read all history entries for members of this club
