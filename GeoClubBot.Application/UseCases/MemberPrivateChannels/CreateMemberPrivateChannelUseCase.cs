@@ -2,18 +2,18 @@ using Constants;
 using Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.MemberPrivateChannels;
+using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public partial class CreateMemberPrivateChannelUseCase(
-    ICreateOrUpdateClubMemberUseCase createOrUpdateClubMemberUseCase,
-    IDiscordTextChannelAccess discordTextChannelAccess, 
+    IUnitOfWork unitOfWork,
+    IDiscordTextChannelAccess discordTextChannelAccess,
     IDiscordMessageAccess discordMessageAccess,
     IConfiguration config,
-    ILogger<CreateMemberPrivateChannelUseCase> logger) 
+    ILogger<CreateMemberPrivateChannelUseCase> logger)
     : ICreateMemberPrivateChannelUseCase
 {
     public async Task<ulong?> CreatePrivateChannelAsync(ClubMember clubMember)
@@ -43,11 +43,8 @@ public partial class CreateMemberPrivateChannelUseCase(
         // Send the welcome message
         await _sendWelcomeMessageAsync(clubMember, textChannelId.Value).ConfigureAwait(false);
         
-        // Set the text channel id on the club member
-        clubMember.PrivateTextChannelId = textChannelId;
-        
-        // Save the club member to the database
-        await createOrUpdateClubMemberUseCase.CreateOrUpdateClubMemberAsync(clubMember).ConfigureAwait(false);
+        // Save the private text channel id on the club member
+        await unitOfWork.ClubMembers.SetPrivateTextChannelIdAsync(clubMember.UserId, textChannelId.Value).ConfigureAwait(false);
         
         return textChannelId;
     }

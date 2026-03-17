@@ -10,7 +10,6 @@ namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public class CompleteAccountLinkingUseCase(
     IUnitOfWork unitOfWork,
-    ICreateOrUpdateUserUseCase createOrUpdateUserUseCase, 
     IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase,
     IDiscordServerRolesAccess rolesAccess,
     IConfiguration config) : ICompleteAccountLinkingUseCase
@@ -41,11 +40,9 @@ public class CompleteAccountLinkingUseCase(
             throw new InvalidOperationException($"User with id {geoGuessrUserId} does not exist.");
         }
         
-        // Update the user
-        user.DiscordUserId = discordUserId;
-        
-        // Save the user
-        await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
+        // Link the Discord account to the GeoGuessr user
+        var linkedUser = await unitOfWork.GeoGuessrUsers.LinkDiscordAccountAsync(user.UserId, discordUserId).ConfigureAwait(false);
+        user = linkedUser ?? user;
 
         // Delete the linking request
         unitOfWork.AccountLinkingRequests.DeleteRequest(request);

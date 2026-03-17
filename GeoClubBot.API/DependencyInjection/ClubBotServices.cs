@@ -74,7 +74,7 @@ public static class ClubBotServices
         services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();
         services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
         services.AddTransient<IReadOrSyncClubMemberUseCase, ReadOrSyncClubMemberUseCase>();
-        services.AddTransient<ISyncClubUseCase, SyncClubUseCase>();
+        services.AddTransient<ISyncClubsUseCase, SyncClubsUseCase>();
         services.AddTransient<ICheckStrikeDecayUseCase, CheckStrikeDecayUseCase>();
         services.AddTransient<IRevokeStrikeUseCase, RevokeStrikeUseCase>();
         services.AddTransient<IUnrevokeStrikeUseCase, UnrevokeStrikeUseCase>();
@@ -91,7 +91,7 @@ public static class ClubBotServices
         services.AddTransient<ICompleteAccountLinkingUseCase, CompleteAccountLinkingUseCase>();
         services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
         services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
-        services.AddTransient<ISyncClubUseCase, SyncClubUseCase>();
+        services.AddTransient<ISyncClubsUseCase, SyncClubsUseCase>();
         services.AddTransient<IClubMemberActivityRewardUseCase, ClubMemberActivityRewardUseCase>();
         services.AddTransient<IGeoGuessrUserIdsToDiscordUserIdsUseCase, GeoGuessrUserIdsToDiscordUserIdsUseCase>();
         services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();

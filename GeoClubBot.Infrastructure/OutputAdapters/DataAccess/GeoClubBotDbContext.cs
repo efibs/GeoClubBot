@@ -62,6 +62,9 @@ public class GeoClubBotDbContext : DbContext
             .SelectMany(e => e.DomainEvents)
             .ToList();
 
+        // Clear events before dispatching to prevent re-dispatch in nested SaveChangesAsync calls
+        entities.ForEach(e => e.ClearDomainEvents());
+
         var result = await base.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // Dispatch events after successful save
@@ -69,9 +72,6 @@ public class GeoClubBotDbContext : DbContext
         {
             await _mediator.Publish(domainEvent, cancellationToken).ConfigureAwait(false);
         }
-
-        // Clear events
-        entities.ForEach(e => e.ClearDomainEvents());
 
         return result;
     }

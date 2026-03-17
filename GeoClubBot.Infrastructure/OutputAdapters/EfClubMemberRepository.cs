@@ -7,10 +7,22 @@ namespace Infrastructure.OutputAdapters;
 
 public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMemberRepository
 {
-    public ClubMember CreateClubMember(ClubMember clubMember)
+    public async Task<ClubMember> CreateClubMemberAsync(ClubMember clubMember)
     {
-        // Add the club member
-        dbContext.Add(clubMember);
+        // Mark only the club member as added (not its navigation properties)
+        // to avoid conflicts with an already-tracked User entity
+        dbContext.Entry(clubMember).State = EntityState.Added;
+
+        // Resolve the tracked User entity so the navigation property
+        // includes DB-only properties like DiscordUserId
+        var trackedUser = await dbContext.GeoGuessrUsers
+            .FindAsync(clubMember.UserId)
+            .ConfigureAwait(false);
+
+        if (trackedUser != null)
+        {
+            clubMember.User = trackedUser;
+        }
 
         return clubMember;
     }
@@ -30,7 +42,6 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         
         // Update the club member
         dbEntry.ClubId = clubMember.ClubId;
-        dbEntry.IsCurrentlyMember = clubMember.IsCurrentlyMember;
         dbEntry.Xp = clubMember.Xp;
         dbEntry.JoinedAt = clubMember.JoinedAt;
         dbEntry.PrivateTextChannelId = clubMember.PrivateTextChannelId;
@@ -84,6 +95,38 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .ConfigureAwait(false);
 
         return clubMembers;
+    }
+
+    public async Task<ClubMember?> SetPrivateTextChannelIdAsync(string userId, ulong privateTextChannelId)
+    {
+        var dbEntry = await dbContext.ClubMembers
+            .FindAsync(userId)
+            .ConfigureAwait(false);
+
+        if (dbEntry is null)
+        {
+            return null;
+        }
+
+        dbEntry.PrivateTextChannelId = privateTextChannelId;
+
+        return dbEntry;
+    }
+
+    public async Task<ClubMember?> ClearPrivateTextChannelIdAsync(string userId)
+    {
+        var dbEntry = await dbContext.ClubMembers
+            .FindAsync(userId)
+            .ConfigureAwait(false);
+
+        if (dbEntry is null)
+        {
+            return null;
+        }
+
+        dbEntry.PrivateTextChannelId = null;
+
+        return dbEntry;
     }
 
     public async Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync()

@@ -3,14 +3,12 @@ using Constants;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
-using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public class UnlinkAccountsUseCase(IUnitOfWork unitOfWork,
-    ICreateOrUpdateUserUseCase createOrUpdateUserUseCase,
     IDiscordServerRolesAccess rolesAccess,
     IConfiguration config,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IUnlinkAccountsUseCase
@@ -32,11 +30,8 @@ public class UnlinkAccountsUseCase(IUnitOfWork unitOfWork,
             return false;
         }
 
-        // Remove the discord user id of the user
-        user.DiscordUserId = null;
-
-        // Update the user
-        await createOrUpdateUserUseCase.CreateOrUpdateUserAsync(user).ConfigureAwait(false);
+        // Unlink the Discord account from the GeoGuessr user
+        await unitOfWork.GeoGuessrUsers.UnlinkDiscordAccountAsync(geoGuessrUserId).ConfigureAwait(false);
 
         // Save the changes
         await unitOfWork.SaveChangesAsync().ConfigureAwait(false);

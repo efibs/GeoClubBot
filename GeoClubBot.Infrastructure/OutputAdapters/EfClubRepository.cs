@@ -41,7 +41,6 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
     {
         // Try to find the club
         var club = await dbContext.Clubs
-            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.ClubId == clubId)
             .ConfigureAwait(false);
 
@@ -52,7 +51,6 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
     {
         // Try to find the club
         var club = await dbContext.Clubs
-            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Name == clubName)
             .ConfigureAwait(false);
 

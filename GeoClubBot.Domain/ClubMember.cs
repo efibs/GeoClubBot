@@ -4,11 +4,9 @@ public class ClubMember : BaseEntity
 {
     public required string UserId { get; set; }
     
-    public required Guid ClubId { get; set; }
+    public required Guid? ClubId { get; set; }
 
     public required GeoGuessrUser User { get; set; }
-
-    public required bool IsCurrentlyMember { get; set; }
     
     public required int Xp { get; set; }
     

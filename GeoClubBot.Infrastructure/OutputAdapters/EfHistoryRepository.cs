@@ -52,18 +52,6 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         return entries;
     }
 
-    public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesAsync()
-    {
-        // Read the latest entries
-        var latestEntries = await dbContext.ClubMemberHistoryEntries
-            .AsNoTracking()
-            .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries.Max(ei => ei.Timestamp))
-            .ToListAsync()
-            .ConfigureAwait(false);
-
-        return latestEntries;
-    }
-
     public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId)
     {
         // Get user IDs belonging to this club
@@ -88,7 +76,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
     {
         // Get user IDs belonging to this club
         var clubMemberUserIds = dbContext.ClubMembers
-            .Where(m => m.ClubId == clubId && m.IsCurrentlyMember)
+            .Where(m => m.ClubId == clubId)
             .Select(m => m.UserId);
 
         // Read all history entries for members of this club

@@ -4,7 +4,7 @@ namespace UseCases.OutputPorts;
 
 public interface IClubMemberRepository
 {
-    ClubMember CreateClubMember(ClubMember clubMember);
+    Task<ClubMember> CreateClubMemberAsync(ClubMember clubMember);
     
     Task<ClubMember?> UpdateClubMemberAsync(ClubMember clubMember);
     
@@ -17,4 +17,8 @@ public interface IClubMemberRepository
     Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId);
 
     Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync();
+
+    Task<ClubMember?> SetPrivateTextChannelIdAsync(string userId, ulong privateTextChannelId);
+
+    Task<ClubMember?> ClearPrivateTextChannelIdAsync(string userId);
 }

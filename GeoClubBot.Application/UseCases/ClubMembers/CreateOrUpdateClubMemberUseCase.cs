@@ -19,34 +19,68 @@ public class CreateOrUpdateClubMemberUseCase(IUnitOfWork unitOfWork) : ICreateOr
         }
 
         // Create the member
-        return _createClubMember(member);
+        return await _createClubMemberAsync(member).ConfigureAwait(false);
     }
 
-    private ClubMember _createClubMember(ClubMember clubMember)
+    private async Task<ClubMember> _createClubMemberAsync(ClubMember clubMember)
     {
-        // Build the created event
-        var createdEvent = new ClubMemberCreatedEvent(clubMember);
-        
-        // Add the event
-        clubMember.AddDomainEvent(createdEvent);
-        
         // Create the club member
-        var createdClubMember = unitOfWork.ClubMembers.CreateClubMember(clubMember);
- 
+        var createdClubMember = await unitOfWork.ClubMembers.CreateClubMemberAsync(clubMember).ConfigureAwait(false);
+
+        // If the user is in a club
+        if (createdClubMember.ClubId is not null)
+        {
+            // Build the joined event
+            var joinedEvent = new PlayerJoinedClubEvent(createdClubMember);
+
+            // Add the event
+            createdClubMember.AddDomainEvent(joinedEvent);
+        }
+
         return createdClubMember;
     }
 
     private async Task<ClubMember?> _updateClubMemberAsync(ClubMember oldClubMember, ClubMember clubMember)
     {
-        // Build the updated event
-        var updatedEvent = new ClubMemberUpdatedEvent(oldClubMember, clubMember);
-        
-        // Add the domain event
-        clubMember.AddDomainEvent(updatedEvent);
-        
         // Update the club member 
         var updatedClubMember = await unitOfWork.ClubMembers.UpdateClubMemberAsync(clubMember).ConfigureAwait(false);
 
+        // If the club member was not found
+        if (updatedClubMember is null)
+        {
+            return null;
+        }
+        
+        // If the user is no longer in a club but was 
+        if (oldClubMember.ClubId is not null && clubMember.ClubId is null)
+        {
+            // Build the left event
+            var leftEvent = new PlayerLeftClubEvent(oldClubMember);
+        
+            // Add the domain event
+            updatedClubMember.AddDomainEvent(leftEvent);
+        }
+        else if (oldClubMember.ClubId is null && clubMember.ClubId is not null)
+        {
+            // Else if the user was not in a club but is now
+            
+            // Build the joined event
+            var joinedEvent = new PlayerJoinedClubEvent(updatedClubMember);
+        
+            // Add the domain event
+            updatedClubMember.AddDomainEvent(joinedEvent);
+        }
+        else if (oldClubMember.ClubId is not null && clubMember.ClubId is not null && oldClubMember.ClubId != clubMember.ClubId)
+        {
+            // Else if both old and new club id are set and are not the same
+            
+            // Build the updated event
+            var switchedEvent = new PlayerSwitchedClubsEvent(oldClubMember, updatedClubMember);
+        
+            // Add the domain event
+            updatedClubMember.AddDomainEvent(switchedEvent);
+        }
+        
         return updatedClubMember;
     }
 }

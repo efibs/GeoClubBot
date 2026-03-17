@@ -9,8 +9,6 @@ public interface IHistoryRepository
     Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync();
     
     Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname);
-    
-    Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesAsync();
 
     Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId);
 

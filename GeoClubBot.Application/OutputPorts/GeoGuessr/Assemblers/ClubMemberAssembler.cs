@@ -16,7 +16,6 @@ internal static class ClubMemberAssembler
             UserId = dto.User.UserId,
             ClubId = clubId,
             User = UserAssembler.AssembleEntity(dto.User),
-            IsCurrentlyMember = true,
             Xp = dto.Xp,
             JoinedAt =  dto.JoinedAt,
             PrivateTextChannelId = null

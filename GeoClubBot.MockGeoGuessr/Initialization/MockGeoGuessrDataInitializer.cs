@@ -40,7 +40,7 @@ public class MockGeoGuessrDataInitializer(
             var dbMembers = await unitOfWork.ClubMembers.ReadClubMembersByClubIdAsync(dbClub.ClubId);
             var memberDict = new ConcurrentDictionary<string, ClubMemberDto>();
 
-            foreach (var dbMember in dbMembers.Where(m => m.IsCurrentlyMember))
+            foreach (var dbMember in dbMembers.Where(m => m.ClubId is not null))
             {
                 memberDict[dbMember.UserId] = MapClubMemberToDto(dbMember);
                 dataStore.Users.TryAdd(dbMember.UserId, MapGeoGuessrUserToDto(dbMember.User));

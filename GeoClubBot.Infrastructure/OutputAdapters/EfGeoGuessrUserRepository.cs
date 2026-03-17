@@ -15,21 +15,26 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
         return user;
     }
     
-    public GeoGuessrUser UpdateUser(GeoGuessrUser user)
+    public async Task<GeoGuessrUser?> UpdateUserAsync(GeoGuessrUser user)
     {
-        // Update the user. This is ok in this case because
-        // the user has no child entities and everything should be 
-        // updated.
-        dbContext.Update(user);
+        var dbEntry = await dbContext.GeoGuessrUsers
+            .FindAsync(user.UserId)
+            .ConfigureAwait(false);
 
-        return user;
+        if (dbEntry is null)
+        {
+            return null;
+        }
+
+        dbEntry.Nickname = user.Nickname;
+
+        return dbEntry;
     }
 
     public async Task<GeoGuessrUser?> ReadUserByUserIdAsync(string userId)
     {
         // Try to find the user
         var clubMember = await dbContext.GeoGuessrUsers
-            .AsNoTracking()
             .FirstOrDefaultAsync(u => u.UserId == userId)
             .ConfigureAwait(false);
 
@@ -45,6 +50,38 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
             .ConfigureAwait(false);
 
         return clubMember;
+    }
+
+    public async Task<GeoGuessrUser?> LinkDiscordAccountAsync(string userId, ulong discordUserId)
+    {
+        var dbEntry = await dbContext.GeoGuessrUsers
+            .FindAsync(userId)
+            .ConfigureAwait(false);
+
+        if (dbEntry is null)
+        {
+            return null;
+        }
+
+        dbEntry.DiscordUserId = discordUserId;
+
+        return dbEntry;
+    }
+
+    public async Task<GeoGuessrUser?> UnlinkDiscordAccountAsync(string userId)
+    {
+        var dbEntry = await dbContext.GeoGuessrUsers
+            .FindAsync(userId)
+            .ConfigureAwait(false);
+
+        if (dbEntry is null)
+        {
+            return null;
+        }
+
+        dbEntry.DiscordUserId = null;
+
+        return dbEntry;
     }
 
     public async Task<List<GeoGuessrUser>> ReadAllLinkedUsersAsync()

@@ -19,8 +19,6 @@ public class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMember>
         // Configure the properties to be required
         builder.Property(x => x.ClubId)
             .IsRequired();
-        builder.Property(x => x.IsCurrentlyMember)
-            .IsRequired();
         builder.Property(x => x.Xp)
             .IsRequired();
         builder.Property(x => x.JoinedAt)

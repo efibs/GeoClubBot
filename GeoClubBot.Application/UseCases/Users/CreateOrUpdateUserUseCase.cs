@@ -16,39 +16,45 @@ public class CreateOrUpdateUserUseCase(IUnitOfWork unitOfWork) : ICreateOrUpdate
         // If there is a user
         if (existingUser != null)
         {
-            // Update the member
-            return _updateUser(existingUser, user);
+            // Update the user
+            return await _updateUserAsync(existingUser, user).ConfigureAwait(false);
         }
 
-        // Create the member
+        // Create the user
         return _createUser(user);
     }
 
     private GeoGuessrUser _createUser(GeoGuessrUser user)
     {
-        // Build the created event
-        var createdEvent = new UserCreatedEvent(user);
-        
-        // Add the event
-        user.AddDomainEvent(createdEvent);
-        
         // Create the user
         var createdUser = unitOfWork.GeoGuessrUsers.CreateUser(user);
 
+        // Build the created event
+        var createdEvent = new UserCreatedEvent(createdUser);
+
+        // Add the event
+        createdUser.AddDomainEvent(createdEvent);
+        
         return createdUser;
     }
 
-    private GeoGuessrUser _updateUser(GeoGuessrUser oldUser, GeoGuessrUser user)
+    private async Task<GeoGuessrUser> _updateUserAsync(GeoGuessrUser oldUser, GeoGuessrUser newUser)
     {
+        // If the old and new users are the same
+        if (oldUser == newUser)
+        {
+            return oldUser;
+        }
+
+        // Update the user (copies properties onto the tracked entity)
+        var trackedUser = await unitOfWork.GeoGuessrUsers.UpdateUserAsync(newUser).ConfigureAwait(false);
+
         // Build the updated event
-        var updatedEvent = new UserUpdatedEvent(oldUser, user);
+        var updatedEvent = new UserUpdatedEvent(oldUser, trackedUser!);
         
-        // Add the event
-        user.AddDomainEvent(updatedEvent);
-        
-        // Update the user
-        var updatedUser = unitOfWork.GeoGuessrUsers.UpdateUser(user);
-        
-        return updatedUser;
+        // Add the event to the tracked entity
+        trackedUser!.AddDomainEvent(updatedEvent);
+
+        return trackedUser;
     }
 }
