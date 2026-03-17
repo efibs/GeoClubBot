@@ -70,6 +70,9 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
             ? latestHistoryEntries.Select(a => a.Timestamp).Max()
             : DateTimeOffset.MinValue;
 
+        // Log info
+        logger.LogInformation("Last activity check was on {LastActivityCheckTime:F}", lastActivityCheckTime);
+        
         // Get the current date
         var now = DateTimeOffset.UtcNow;
 
