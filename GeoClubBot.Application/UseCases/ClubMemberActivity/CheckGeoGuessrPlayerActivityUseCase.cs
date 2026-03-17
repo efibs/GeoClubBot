@@ -21,13 +21,12 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
     IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
     ICleanupUseCase cleanupUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
-    IClubMemberActivityRewardUseCase clubMemberActivityRewardUseCase,
     ICalculateAverageXpUseCase calculateAverageXpUseCase,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
     ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
 {
-    public async Task CheckPlayerActivityAsync(Guid clubId)
+    public async Task<List<ClubMemberActivityStatus>> CheckPlayerActivityAsync(Guid clubId)
     {
         // Resolve per-club activity settings (with fallback to global defaults)
         var clubEntry = geoGuessrConfig.Value.GetClub(clubId);
@@ -102,7 +101,8 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
 
         // Send the update message
         await activityStatusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement).ConfigureAwait(false);
+            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement)
+            .ConfigureAwait(false);
 
         // Send average XP section if configured
         var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);
@@ -141,15 +141,13 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
             }
         }
 
-        // Reward player activity
-        await clubMemberActivityRewardUseCase
-            .RewardMemberActivityAsync(newStatuses).ConfigureAwait(false);
-
         // Log debug message
         logger.LogDebug("Checking player activity for club {ClubId} done.", clubId);
 
         // Trigger the cleanup
         await cleanupUseCase.DoCleanupAsync().ConfigureAwait(false);
+
+        return newStatuses;
     }
 
     private async Task<List<ClubMemberActivityStatus>> _calculateStatusesAsync(

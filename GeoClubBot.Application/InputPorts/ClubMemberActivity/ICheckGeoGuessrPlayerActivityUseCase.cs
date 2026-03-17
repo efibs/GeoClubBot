@@ -1,6 +1,8 @@
+using Entities;
+
 namespace UseCases.InputPorts.ClubMemberActivity;
 
 public interface ICheckGeoGuessrPlayerActivityUseCase
 {
-    Task CheckPlayerActivityAsync(Guid clubId);
+    Task<List<ClubMemberActivityStatus>> CheckPlayerActivityAsync(Guid clubId);
 }
