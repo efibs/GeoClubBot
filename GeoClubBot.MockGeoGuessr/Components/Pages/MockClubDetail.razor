@@ -1,0 +1,370 @@
+@page "/mock/club/{ClubId:guid}"
+@rendermode InteractiveServer
+
+@if (_club is null)
+{
+    <div class="alert alert-warning">Club not found.</div>
+    return;
+}
+
+<h3>@_club.Name</h3>
+<p class="text-muted">Club ID: <code>@ClubId</code></p>
+
+<!-- Club Properties -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Club Properties</span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _editingClub = !_editingClub">
+            @(_editingClub ? "Cancel" : "Edit")
+        </button>
+    </div>
+    <div class="card-body">
+        @if (_editingClub)
+        {
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Name</label>
+                    <input class="form-control" @bind="_club.Name" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Level</label>
+                    <div class="input-group">
+                        <input class="form-control" type="number" @bind="_club.Level" />
+                        <button class="btn btn-outline-success" @onclick="IncrementLevel">+1</button>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">XP</label>
+                    <input class="form-control" type="number" @bind="_club.Xp" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Max Members</label>
+                    <input class="form-control" type="number" @bind="_club.MaxMemberCount" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Tag</label>
+                    <input class="form-control" @bind="_club.Tag" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Description</label>
+                    <input class="form-control" @bind="_club.Description" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Language</label>
+                    <input class="form-control" @bind="_club.Language" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Join Rule</label>
+                    <input class="form-control" type="number" @bind="_club.JoinRule" />
+                </div>
+            </div>
+            <button class="btn btn-primary mt-3" @onclick="SaveClub">Save</button>
+        }
+        else
+        {
+            <div class="row">
+                <div class="col-md-2"><strong>Level:</strong> @_club.Level</div>
+                <div class="col-md-2"><strong>XP:</strong> @_club.Xp</div>
+                <div class="col-md-2"><strong>Tag:</strong> @_club.Tag</div>
+                <div class="col-md-2"><strong>Members:</strong> @_members.Count / @_club.MaxMemberCount</div>
+                <div class="col-md-4"><strong>Description:</strong> @_club.Description</div>
+            </div>
+            <button class="btn btn-success btn-sm mt-2" @onclick="IncrementLevel">Increment Level</button>
+        }
+    </div>
+</div>
+
+<!-- Members -->
+<div class="card mb-4">
+    <div class="card-header">Members (@_members.Count)</div>
+    <div class="card-body">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Nickname</th>
+                    <th>User ID</th>
+                    <th>XP</th>
+                    <th>Weekly XP</th>
+                    <th>Role</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var member in _members)
+                {
+                    <tr>
+                        <td>@member.User.Nick</td>
+                        <td><code>@member.User.UserId[..Math.Min(8, member.User.UserId.Length)]...</code></td>
+                        <td>
+                            @if (_editingMemberId == member.User.UserId)
+                            {
+                                <input class="form-control form-control-sm" type="number" style="width: 80px;"
+                                       @bind="_editMemberXp" />
+                            }
+                            else
+                            {
+                                @member.Xp
+                            }
+                        </td>
+                        <td>
+                            @if (_editingMemberId == member.User.UserId)
+                            {
+                                <input class="form-control form-control-sm" type="number" style="width: 80px;"
+                                       @bind="_editMemberWeeklyXp" />
+                            }
+                            else
+                            {
+                                @member.WeeklyXp
+                            }
+                        </td>
+                        <td>
+                            @if (_editingMemberId == member.User.UserId)
+                            {
+                                <input class="form-control form-control-sm" type="number" style="width: 60px;"
+                                       @bind="_editMemberRole" />
+                            }
+                            else
+                            {
+                                @member.Role
+                            }
+                        </td>
+                        <td>@member.JoinedAt.ToString("yyyy-MM-dd")</td>
+                        <td>
+                            @if (_editingMemberId == member.User.UserId)
+                            {
+                                <button class="btn btn-sm btn-success" @onclick="() => SaveMemberEdit(member)">Save</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="CancelMemberEdit">Cancel</button>
+                            }
+                            else
+                            {
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-success" title="Add 20 XP"
+                                            @onclick="() => AddXp(member)">+20 XP</button>
+                                    <button class="btn btn-outline-primary" title="Edit"
+                                            @onclick="() => StartMemberEdit(member)">Edit</button>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown">
+                                            Move
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            @foreach (var (otherClubId, otherClub) in DataStore.Clubs.Where(c => c.Key != ClubId))
+                                            {
+                                                <li>
+                                                    <button class="dropdown-item"
+                                                            @onclick="() => MoveMember(member.User.UserId, otherClubId)">
+                                                        @otherClub.Name
+                                                    </button>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                    <button class="btn btn-outline-danger" title="Remove"
+                                            @onclick="() => RemoveMember(member.User.UserId)">Remove</button>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Member -->
+<div class="card mb-4">
+    <div class="card-header">Add Member</div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Select existing user</label>
+                <select class="form-select" @bind="_selectedUserIdToAdd">
+                    <option value="">-- Select a user --</option>
+                    @foreach (var user in _availableUsers)
+                    {
+                        <option value="@user.Id">@user.Nick (@user.Id[..Math.Min(8, user.Id.Length)]...)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-success" @onclick="AddSelectedMember"
+                        disabled="@(string.IsNullOrEmpty(_selectedUserIdToAdd))">
+                    Add to Club
+                </button>
+            </div>
+            <div class="col-md-2">
+                <a href="/mock/users" class="btn btn-outline-secondary">Create New User</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Activities -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Recent Activities</span>
+        <a href="@($"/mock/club/{ClubId}/activities")" class="btn btn-sm btn-outline-primary">View All</a>
+    </div>
+    <div class="card-body">
+        @if (_recentActivities.Count == 0)
+        {
+            <p class="text-muted">No activities recorded yet.</p>
+        }
+        else
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>XP Reward</th>
+                        <th>Recorded At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var activity in _recentActivities)
+                    {
+                        var userName = DataStore.Users.TryGetValue(activity.UserId, out var u) ? u.Nick : activity.UserId;
+                        <tr>
+                            <td>@userName</td>
+                            <td>+@activity.XpReward</td>
+                            <td>@activity.RecordedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid ClubId { get; set; }
+    [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
+
+    private ClubDto? _club;
+    private List<ClubMemberDto> _members = [];
+    private List<ReadClubActivitiesItemDto> _recentActivities = [];
+    private List<UserDto> _availableUsers = [];
+    private bool _editingClub;
+    private string _selectedUserIdToAdd = "";
+
+    // Member editing state
+    private string? _editingMemberId;
+    private int _editMemberXp;
+    private int _editMemberWeeklyXp;
+    private int _editMemberRole;
+
+    protected override void OnParametersSet() => RefreshData();
+
+    private void RefreshData()
+    {
+        DataStore.Clubs.TryGetValue(ClubId, out _club);
+        _members = DataStore.ClubMembers.TryGetValue(ClubId, out var m)
+            ? m.Values.ToList()
+            : [];
+
+        var memberIds = _members.Select(mb => mb.User.UserId).ToHashSet();
+        _availableUsers = DataStore.Users.Values
+            .Where(u => !memberIds.Contains(u.Id))
+            .OrderBy(u => u.Nick)
+            .ToList();
+
+        _recentActivities = DataStore.ClubActivities.TryGetValue(ClubId, out var a)
+            ? a.OrderByDescending(x => x.RecordedAt).Take(10).ToList()
+            : [];
+    }
+
+    private void IncrementLevel()
+    {
+        if (_club is null) return;
+        _club.Level++;
+        DataStore.NotifyDataChanged();
+        RefreshData();
+    }
+
+    private void SaveClub()
+    {
+        _editingClub = false;
+        DataStore.NotifyDataChanged();
+    }
+
+    private void AddXp(ClubMemberDto member)
+    {
+        member.Xp += 20;
+        DataStore.AddActivity(ClubId, member.User.UserId, 20);
+        DataStore.NotifyDataChanged();
+        RefreshData();
+    }
+
+    private void StartMemberEdit(ClubMemberDto member)
+    {
+        _editingMemberId = member.User.UserId;
+        _editMemberXp = member.Xp;
+        _editMemberWeeklyXp = member.WeeklyXp;
+        _editMemberRole = member.Role;
+    }
+
+    private void SaveMemberEdit(ClubMemberDto member)
+    {
+        member.Xp = _editMemberXp;
+        member.WeeklyXp = _editMemberWeeklyXp;
+        member.Role = _editMemberRole;
+        _editingMemberId = null;
+        DataStore.NotifyDataChanged();
+        RefreshData();
+    }
+
+    private void CancelMemberEdit() => _editingMemberId = null;
+
+    private void MoveMember(string userId, Guid targetClubId)
+    {
+        if (!DataStore.ClubMembers.TryGetValue(ClubId, out var sourceMembers)) return;
+        if (!sourceMembers.TryRemove(userId, out var member)) return;
+
+        var targetMembers = DataStore.ClubMembers.GetOrAdd(targetClubId, _ => new());
+        targetMembers[userId] = member;
+        DataStore.NotifyDataChanged();
+        RefreshData();
+    }
+
+    private void RemoveMember(string userId)
+    {
+        if (!DataStore.ClubMembers.TryGetValue(ClubId, out var members)) return;
+        members.TryRemove(userId, out _);
+        DataStore.NotifyDataChanged();
+        RefreshData();
+    }
+
+    private void AddSelectedMember()
+    {
+        if (string.IsNullOrEmpty(_selectedUserIdToAdd)) return;
+        if (!DataStore.Users.TryGetValue(_selectedUserIdToAdd, out var user)) return;
+
+        var members = DataStore.ClubMembers.GetOrAdd(ClubId, _ => new());
+        members[user.Id] = new ClubMemberDto
+        {
+            User = new ClubMemberUserDto
+            {
+                UserId = user.Id,
+                Nick = user.Nick,
+                Avatar = "",
+                FullBodyAvatar = "",
+                BorderUrl = "",
+                IsVerified = user.IsVerified,
+                Flair = 0,
+                CountryCode = user.CountryCode,
+                TierId = 0,
+                ClubUserType = 0
+            },
+            Role = 0,
+            JoinedAt = DateTimeOffset.UtcNow,
+            IsOnline = false,
+            Xp = 0,
+            WeeklyXp = 0,
+            LastActive = null
+        };
+
+        _selectedUserIdToAdd = "";
+        DataStore.NotifyDataChanged();
+        RefreshData();
+    }
+}

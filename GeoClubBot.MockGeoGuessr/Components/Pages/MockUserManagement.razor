@@ -1,0 +1,250 @@
+@page "/mock/users"
+@rendermode InteractiveServer
+
+<h3>Users</h3>
+<p class="text-muted">Manage GeoGuessr users in the mock data store.</p>
+
+<!-- Create User -->
+<div class="card mb-4">
+    <div class="card-header">Create New User</div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Nickname *</label>
+                <input class="form-control" @bind="_newNick" placeholder="PlayerNick" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">User ID (auto-generated if empty)</label>
+                <input class="form-control" @bind="_newUserId" placeholder="Leave empty for auto" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Country Code</label>
+                <input class="form-control" @bind="_newCountryCode" placeholder="us" />
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" @bind="_newIsProUser" id="isProCheck" />
+                    <label class="form-check-label" for="isProCheck">Pro User</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-success" @onclick="CreateUser"
+                        disabled="@(string.IsNullOrWhiteSpace(_newNick))">Create User</button>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(_createMessage))
+        {
+            <div class="alert alert-success mt-2">@_createMessage</div>
+        }
+    </div>
+</div>
+
+<!-- Users Table -->
+<div class="card">
+    <div class="card-header">All Users (@DataStore.Users.Count)</div>
+    <div class="card-body">
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Nickname</th>
+                    <th>User ID</th>
+                    <th>Country</th>
+                    <th>Pro</th>
+                    <th>Elo</th>
+                    <th>Rating</th>
+                    <th>Club Membership</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in DataStore.Users.Values.OrderBy(u => u.Nick))
+                {
+                    var clubName = GetUserClub(user.Id);
+                    <tr>
+                        <td>
+                            @if (_editingUserId == user.Id)
+                            {
+                                <input class="form-control form-control-sm" @bind="_editNick" />
+                            }
+                            else
+                            {
+                                @user.Nick
+                            }
+                        </td>
+                        <td><code>@user.Id</code></td>
+                        <td>
+                            @if (_editingUserId == user.Id)
+                            {
+                                <input class="form-control form-control-sm" style="width: 60px;" @bind="_editCountryCode" />
+                            }
+                            else
+                            {
+                                @user.CountryCode
+                            }
+                        </td>
+                        <td>
+                            @if (_editingUserId == user.Id)
+                            {
+                                <input type="checkbox" class="form-check-input" @bind="_editIsProUser" />
+                            }
+                            else
+                            {
+                                @(user.IsProUser ? "Yes" : "No")
+                            }
+                        </td>
+                        <td>
+                            @if (_editingUserId == user.Id)
+                            {
+                                <input class="form-control form-control-sm" type="number" style="width: 80px;"
+                                       @bind="_editElo" />
+                            }
+                            else
+                            {
+                                @user.Competitive.Elo
+                            }
+                        </td>
+                        <td>
+                            @if (_editingUserId == user.Id)
+                            {
+                                <input class="form-control form-control-sm" type="number" style="width: 80px;"
+                                       @bind="_editRating" />
+                            }
+                            else
+                            {
+                                @user.Competitive.Rating
+                            }
+                        </td>
+                        <td>
+                            @if (string.IsNullOrEmpty(clubName))
+                            {
+                                <span class="text-muted">None</span>
+                            }
+                            else
+                            {
+                                @clubName
+                            }
+                        </td>
+                        <td>
+                            @if (_editingUserId == user.Id)
+                            {
+                                <button class="btn btn-sm btn-success" @onclick="() => SaveUserEdit(user)">Save</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="CancelEdit">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => StartEdit(user)">Edit</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
+
+    // Create user form
+    private string _newNick = "";
+    private string _newUserId = "";
+    private string _newCountryCode = "us";
+    private bool _newIsProUser = true;
+    private string? _createMessage;
+
+    // Edit user state
+    private string? _editingUserId;
+    private string _editNick = "";
+    private string _editCountryCode = "";
+    private bool _editIsProUser;
+    private int _editElo;
+    private int _editRating;
+
+    private void CreateUser()
+    {
+        if (string.IsNullOrWhiteSpace(_newNick)) return;
+
+        var userId = string.IsNullOrWhiteSpace(_newUserId)
+            ? Guid.NewGuid().ToString("N")[..24]
+            : _newUserId;
+
+        var user = new UserDto
+        {
+            Id = userId,
+            Nick = _newNick.Trim(),
+            Created = DateTimeOffset.UtcNow,
+            IsProUser = _newIsProUser,
+            Type = "user",
+            IsVerified = false,
+            CustomImage = "",
+            FullBodyPin = "",
+            BorderUrl = "",
+            Color = 0,
+            Url = $"/user/{userId}",
+            CountryCode = _newCountryCode,
+            Competitive = new UserCompetitiveDto
+            {
+                Elo = 1000,
+                Rating = 1000,
+                LastRatingChange = 0
+            },
+            IsBanned = false,
+            ChatBan = false
+        };
+
+        if (DataStore.Users.TryAdd(userId, user))
+        {
+            _createMessage = $"User '{_newNick}' created with ID {userId}";
+            _newNick = "";
+            _newUserId = "";
+            _newCountryCode = "us";
+            _newIsProUser = true;
+            DataStore.NotifyDataChanged();
+        }
+        else
+        {
+            _createMessage = $"User ID '{userId}' already exists.";
+        }
+    }
+
+    private void StartEdit(UserDto user)
+    {
+        _editingUserId = user.Id;
+        _editNick = user.Nick;
+        _editCountryCode = user.CountryCode;
+        _editIsProUser = user.IsProUser;
+        _editElo = user.Competitive.Elo;
+        _editRating = user.Competitive.Rating;
+    }
+
+    private void SaveUserEdit(UserDto user)
+    {
+        user.Nick = _editNick;
+        user.CountryCode = _editCountryCode;
+        user.IsProUser = _editIsProUser;
+        user.Competitive.Elo = _editElo;
+        user.Competitive.Rating = _editRating;
+
+        // Also update nickname in any club membership
+        foreach (var members in DataStore.ClubMembers.Values)
+        {
+            if (members.TryGetValue(user.Id, out var member))
+                member.User.Nick = _editNick;
+        }
+
+        _editingUserId = null;
+        DataStore.NotifyDataChanged();
+    }
+
+    private void CancelEdit() => _editingUserId = null;
+
+    private string? GetUserClub(string userId)
+    {
+        foreach (var (clubId, members) in DataStore.ClubMembers)
+        {
+            if (members.ContainsKey(userId) && DataStore.Clubs.TryGetValue(clubId, out var club))
+                return club.Name;
+        }
+        return null;
+    }
+}

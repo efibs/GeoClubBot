@@ -2,6 +2,8 @@ using Configuration;
 using Constants;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
+using GeoClubBot.MockGeoGuessr.DependencyInjection;
+using GeoClubBot.MockGeoGuessr.Endpoints;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +39,13 @@ builder.Services.AddClubBotOptions(builder.Configuration);
 // Add the discord services
 builder.Services.AddDiscordServices();
 
+// Add GeoGuessr client (mock or real)
+var useMockGeoGuessr = builder.Configuration.GetValue("GeoGuessr:UseMock", false);
+if (useMockGeoGuessr)
+    builder.Services.AddMockGeoGuessrServices();
+else
+    builder.Services.AddGeoGuessrHttpClients(builder.Configuration);
+
 // Add all the necessary services
 builder.Services.AddClubBotServices(builder.Configuration);
 
@@ -64,7 +73,38 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
+
+if (useMockGeoGuessr)
+{
+    app.UseStaticFiles();
+    app.MapMockGeoGuessrEndpoints();
+}
+
 app.MapControllers();
 app.MapHealthChecks("/health");
 app.MapHub<ClubNotificationHub>("/api/clubNotificationHub");
+
+if (useMockGeoGuessr)
+{
+    app.Lifetime.ApplicationStarted.Register(() =>
+    {
+        var addresses = app.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>()
+            .Features.Get<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>();
+        var baseUrl = addresses?.Addresses.FirstOrDefault() ?? "http://localhost:5194";
+        var mockUrl = $"{baseUrl}/mock";
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(mockUrl)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            app.Logger.LogInformation("Mock GeoGuessr UI available at: {Url}", mockUrl);
+        }
+    });
+}
+
 app.Run();

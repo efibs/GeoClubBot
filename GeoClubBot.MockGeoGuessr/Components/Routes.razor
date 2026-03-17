@@ -1,0 +1,14 @@
+<Router AppAssembly="typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(MockLayout)" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(MockLayout)">
+            <div class="alert alert-warning mt-4">
+                <h4>Page not found</h4>
+                <p>The requested mock page does not exist.</p>
+                <a href="/mock" class="btn btn-primary">Back to Dashboard</a>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>

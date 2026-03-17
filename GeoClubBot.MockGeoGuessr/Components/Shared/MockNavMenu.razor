@@ -1,0 +1,48 @@
+<nav class="bg-dark text-white p-3 position-fixed" style="width: 250px; height: 100vh; overflow-y: auto;">
+    <h5 class="mb-3">Mock GeoGuessr API</h5>
+    <hr class="border-secondary" />
+    <ul class="nav flex-column">
+        <li class="nav-item">
+            <a class="nav-link text-white" href="/mock">Dashboard</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link text-white" href="/mock/users">Users</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link text-white" href="/mock/challenges">Challenges</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link text-white" href="/mock/jobs">Jobs</a>
+        </li>
+    </ul>
+    @if (_clubs is not null)
+    {
+        <hr class="border-secondary" />
+        <h6 class="text-secondary">Clubs</h6>
+        <ul class="nav flex-column">
+            @foreach (var club in _clubs)
+            {
+                <li class="nav-item">
+                    <a class="nav-link text-white" href="@($"/mock/club/{club.Key}")">@club.Value.Name</a>
+                </li>
+            }
+        </ul>
+    }
+</nav>
+
+@code {
+    [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
+
+    private IEnumerable<KeyValuePair<Guid, ClubDto>>? _clubs;
+
+    protected override void OnInitialized()
+    {
+        _clubs = DataStore.Clubs;
+        DataStore.OnDataChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        DataStore.OnDataChanged -= StateHasChanged;
+    }
+}

@@ -1,0 +1,108 @@
+@page "/mock/club/{ClubId:guid}/activities"
+@rendermode InteractiveServer
+
+@if (_club is null)
+{
+    <div class="alert alert-warning">Club not found.</div>
+    return;
+}
+
+<h3>Activities - @_club.Name</h3>
+<p class="text-muted">
+    <a href="@($"/mock/club/{ClubId}")">Back to Club</a>
+</p>
+
+<!-- Add Activity -->
+<div class="card mb-4">
+    <div class="card-header">Add Activity</div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Member</label>
+                <select class="form-select" @bind="_selectedUserId">
+                    <option value="">-- Select member --</option>
+                    @foreach (var member in _members)
+                    {
+                        <option value="@member.User.UserId">@member.User.Nick</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">XP Reward</label>
+                <input class="form-control" type="number" @bind="_xpReward" />
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-success" @onclick="AddActivity"
+                        disabled="@(string.IsNullOrEmpty(_selectedUserId))">Add Activity</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Activity Log -->
+<div class="card">
+    <div class="card-header">All Activities (@_activities.Count)</div>
+    <div class="card-body">
+        @if (_activities.Count == 0)
+        {
+            <p class="text-muted">No activities recorded.</p>
+        }
+        else
+        {
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>XP Reward</th>
+                        <th>Recorded At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var activity in _activities)
+                    {
+                        var userName = DataStore.Users.TryGetValue(activity.UserId, out var u) ? u.Nick : activity.UserId;
+                        <tr>
+                            <td>@userName</td>
+                            <td>+@activity.XpReward</td>
+                            <td>@activity.RecordedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid ClubId { get; set; }
+    [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
+
+    private ClubDto? _club;
+    private List<ClubMemberDto> _members = [];
+    private List<ReadClubActivitiesItemDto> _activities = [];
+
+    private string _selectedUserId = "";
+    private int _xpReward = 20;
+
+    protected override void OnParametersSet() => RefreshData();
+
+    private void RefreshData()
+    {
+        DataStore.Clubs.TryGetValue(ClubId, out _club);
+        _members = DataStore.ClubMembers.TryGetValue(ClubId, out var m) ? m.Values.ToList() : [];
+        _activities = DataStore.ClubActivities.TryGetValue(ClubId, out var a)
+            ? a.OrderByDescending(x => x.RecordedAt).ToList()
+            : [];
+    }
+
+    private void AddActivity()
+    {
+        if (string.IsNullOrEmpty(_selectedUserId)) return;
+
+        DataStore.AddActivity(ClubId, _selectedUserId, _xpReward);
+        _selectedUserId = "";
+        _xpReward = 20;
+        DataStore.NotifyDataChanged();
+        RefreshData();
+    }
+}

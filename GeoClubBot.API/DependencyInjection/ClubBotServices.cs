@@ -46,38 +46,6 @@ public static class ClubBotServices
 {
     public static void AddClubBotServices(this IServiceCollection services, IConfiguration configuration)
     {
-        // Get the GeoGuessr configuration
-        var geoGuessrConfig = new GeoGuessrConfiguration
-        {
-            SyncSchedule = null!,
-            Clubs = null!
-        };
-        configuration.GetSection(GeoGuessrConfiguration.SectionName).Bind(geoGuessrConfig);
-
-        // Register a named HttpClient per club with its own NCFA token
-        foreach (var club in geoGuessrConfig.Clubs)
-        {
-            services.AddHttpClient($"GeoGuessr_{club.ClubId}", client =>
-                {
-                    client.BaseAddress = new Uri("https://www.geoguessr.com/api");
-                    client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={club.NcfaToken}");
-                })
-                .AddResilienceHandler($"GeoGuessrApiResiliencePipeline_{club.ClubId}",
-                    ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
-        }
-
-        // Register the client factory
-        services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();
-
-        // Register a default IGeoGuessrClient using the main club's token (for club-independent operations)
-        services.AddRefitClient<IGeoGuessrClient>()
-            .ConfigureHttpClient(client =>
-            {
-                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
-                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.MainClub.NcfaToken}");
-            })
-            .AddResilienceHandler("GeoGuessrApiResiliencePipeline", ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
-
         // Add the input adapters
         services.AddHostedService<InitialSyncService>();
         services.AddHostedService<UserJoinedService>();
@@ -172,9 +140,41 @@ public static class ClubBotServices
         services.AddQuartzHostedService(options =>
         {
             options.AwaitApplicationStarted = true;
-            
+
             // when shutting down we want jobs to complete gracefully
             options.WaitForJobsToComplete = true;
         });
+    }
+
+    public static void AddGeoGuessrHttpClients(this IServiceCollection services, IConfiguration configuration)
+    {
+        var geoGuessrConfig = new GeoGuessrConfiguration
+        {
+            SyncSchedule = null!,
+            Clubs = null!
+        };
+        configuration.GetSection(GeoGuessrConfiguration.SectionName).Bind(geoGuessrConfig);
+
+        foreach (var club in geoGuessrConfig.Clubs)
+        {
+            services.AddHttpClient($"GeoGuessr_{club.ClubId}", client =>
+                {
+                    client.BaseAddress = new Uri("https://www.geoguessr.com/api");
+                    client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={club.NcfaToken}");
+                })
+                .AddResilienceHandler($"GeoGuessrApiResiliencePipeline_{club.ClubId}",
+                    ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
+        }
+
+        services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();
+
+        services.AddRefitClient<IGeoGuessrClient>()
+            .ConfigureHttpClient(client =>
+            {
+                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
+                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.MainClub.NcfaToken}");
+            })
+            .AddResilienceHandler("GeoGuessrApiResiliencePipeline",
+                ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
     }
 }

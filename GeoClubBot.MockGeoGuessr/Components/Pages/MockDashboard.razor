@@ -1,0 +1,66 @@
+@page "/mock"
+@rendermode InteractiveServer
+
+<h3>Mock GeoGuessr API - Dashboard</h3>
+<p class="text-muted">All data is held in memory and initialized from the database on startup.</p>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">@DataStore.Clubs.Count</h5>
+                <p class="card-text text-muted">Clubs</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">@DataStore.Users.Count</h5>
+                <p class="card-text text-muted">Users</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">@DataStore.Challenges.Count</h5>
+                <p class="card-text text-muted">Challenges</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4>Clubs</h4>
+<table class="table table-striped table-hover">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Club ID</th>
+            <th>Level</th>
+            <th>XP</th>
+            <th>Members</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var (clubId, club) in DataStore.Clubs)
+        {
+            var memberCount = DataStore.ClubMembers.TryGetValue(clubId, out var m) ? m.Count : 0;
+            <tr>
+                <td>@club.Name</td>
+                <td><code>@clubId.ToString()[..8]...</code></td>
+                <td>@club.Level</td>
+                <td>@club.Xp</td>
+                <td>@memberCount / @club.MaxMemberCount</td>
+                <td>
+                    <a href="@($"/mock/club/{clubId}")" class="btn btn-sm btn-primary">Manage</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
+}
