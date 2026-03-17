@@ -64,7 +64,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
             .AsNoTracking()
             .Where(e => clubMemberUserIds.Contains(e.UserId))
             .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries
-                .Where(ei => clubMemberUserIds.Contains(ei.UserId))
+                .Where(ei => ei.UserId == e.UserId)
                 .Max(ei => ei.Timestamp))
             .ToListAsync()
             .ConfigureAwait(false);
