@@ -31,8 +31,20 @@ public class UnlinkAccountsUseCase(IUnitOfWork unitOfWork,
         }
 
         // Unlink the Discord account from the GeoGuessr user
-        await unitOfWork.GeoGuessrUsers.UnlinkDiscordAccountAsync(geoGuessrUserId).ConfigureAwait(false);
+        var unlinkedUser = await unitOfWork.GeoGuessrUsers.UnlinkDiscordAccountAsync(geoGuessrUserId).ConfigureAwait(false);
 
+        // If the user was not successfully unlinked
+        if (unlinkedUser is null)
+        {
+            return false;
+        }
+        
+        // Create the unlinked event
+        var unlinkedEvent = new AccountUnlinkedEvent(user);
+        
+        // Add to the entity
+        unlinkedUser.AddDomainEvent(unlinkedEvent);
+        
         // Save the changes
         await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
 

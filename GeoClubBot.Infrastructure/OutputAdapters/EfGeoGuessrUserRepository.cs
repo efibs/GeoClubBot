@@ -35,6 +35,7 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
     {
         // Try to find the user
         var clubMember = await dbContext.GeoGuessrUsers
+            .AsNoTracking()
             .FirstOrDefaultAsync(u => u.UserId == userId)
             .ConfigureAwait(false);
 

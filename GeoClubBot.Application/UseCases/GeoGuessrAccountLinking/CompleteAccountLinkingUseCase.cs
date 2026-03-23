@@ -42,8 +42,19 @@ public class CompleteAccountLinkingUseCase(
         
         // Link the Discord account to the GeoGuessr user
         var linkedUser = await unitOfWork.GeoGuessrUsers.LinkDiscordAccountAsync(user.UserId, discordUserId).ConfigureAwait(false);
-        user = linkedUser ?? user;
 
+        // If the user was not found
+        if (linkedUser is null)
+        {
+            return (false, null);
+        }
+        
+        // Create the linked event
+        var linkedEvent = new AccountLinkedEvent(linkedUser);
+        
+        // Add the event
+        linkedUser.AddDomainEvent(linkedEvent);
+        
         // Delete the linking request
         unitOfWork.AccountLinkingRequests.DeleteRequest(request);
         
@@ -53,7 +64,7 @@ public class CompleteAccountLinkingUseCase(
         // Give the user the has linked role
         await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _hasLinkedRoleId).ConfigureAwait(false);
         
-        return (true, user);
+        return (true, linkedUser);
     }
     
     private readonly ulong _hasLinkedRoleId = config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
