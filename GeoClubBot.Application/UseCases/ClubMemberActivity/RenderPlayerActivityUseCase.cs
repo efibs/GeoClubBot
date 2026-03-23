@@ -11,11 +11,20 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig) : IRenderPlayerActivityUseCase
 {
-    public async Task<MemoryStream?> RenderPlayerActivityAsync(string nickname, int maxNumHistoryEntries)
+    public async Task<MemoryStream?> RenderPlayerActivityAsync(string nickname, int maxNumHistoryEntries, string? clubName)
     {
+        // Get the club id
+        var clubId = await _resolveClubId(clubName, nickname).ConfigureAwait(false);
+        
+        // If the club id could not be found
+        if (clubId is null)
+        {
+            return null;
+        }
+        
         // Get the relevant history entries
         var playersHistoryEntries = await unitOfWork.History
-            .ReadHistoryEntriesByPlayerNicknameAsync(nickname)
+            .ReadHistoryEntriesByPlayerNicknameAsync(nickname, clubId.Value)
             .ConfigureAwait(false);
 
         // If there are no entries
@@ -37,6 +46,7 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
             {
                 UserId = member.UserId,
                 Timestamp = member.JoinedAt,
+                ClubId = member.ClubId!.Value,
                 Xp = 0
             }).ToList();
         }
@@ -91,5 +101,24 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
         }
 
         return clubEntry.GetMinXP(activityCheckerConfig.Value);
+    }
+
+    private async Task<Guid?> _resolveClubId(string? clubName, string memberNickname)
+    {
+        // If the club name is null
+        if (clubName is null)
+        {
+            // Get the club member
+            var clubMember = await unitOfWork.ClubMembers.ReadClubMemberByNicknameAsync(memberNickname).ConfigureAwait(false);
+
+            return clubMember?.ClubId;
+        }
+        else
+        {
+            // Get the club
+            var club = await unitOfWork.Clubs.ReadClubByNameAsync(clubName).ConfigureAwait(false);
+            
+            return club?.ClubId;
+        }
     }
 }

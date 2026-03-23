@@ -8,8 +8,17 @@ public class PlayerStatisticsUseCase(IUnitOfWork unitOfWork) : IPlayerStatistics
 {
     public async Task<PlayerStatistics?> GetPlayerStatisticsAsync(string nickname)
     {
+        // Get the club member
+        var clubMember = await unitOfWork.ClubMembers.ReadClubMemberByNicknameAsync(nickname).ConfigureAwait(false);
+        
+        // If the club member was not found
+        if (clubMember?.ClubId is null)
+        {
+            return null;
+        }
+        
         // Get the history entries
-        var historyEntries = await unitOfWork.History.ReadHistoryEntriesByPlayerNicknameAsync(nickname).ConfigureAwait(false);
+        var historyEntries = await unitOfWork.History.ReadHistoryEntriesByPlayerNicknameAsync(nickname, clubMember.ClubId.Value).ConfigureAwait(false);
 
         // If there are no history entries for the player
         if (historyEntries == null)

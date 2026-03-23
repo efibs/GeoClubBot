@@ -15,10 +15,11 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         return entries.ToList();
     }
 
-    public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync()
+    public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync(Guid clubId)
     {
         // Read the entries
         var entries = await dbContext.ClubMemberHistoryEntries
+            .Where(e => e.ClubId == clubId)
             .AsNoTracking()
             .ToListAsync()
             .ConfigureAwait(false);
@@ -26,7 +27,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
         return entries;
     }
 
-    public async Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname)
+    public async Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname, Guid clubId)
     {
         // Get if the player is tracked
         var playerExists = await dbContext.ClubMembers
@@ -45,7 +46,7 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
             .AsNoTracking()
             .Include(e => e.ClubMember)
             .ThenInclude(m => m!.User)
-            .Where(e => e.ClubMember!.User!.Nickname == playerNickname)
+            .Where(e => e.ClubMember!.User!.Nickname == playerNickname && e.ClubId == clubId)
             .ToListAsync()
             .ConfigureAwait(false);
 
@@ -54,15 +55,10 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
 
     public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId)
     {
-        // Get user IDs belonging to this club
-        var clubMemberUserIds = dbContext.ClubMembers
-            .Where(m => m.ClubId == clubId)
-            .Select(m => m.UserId);
-
         // Read the latest entries for members of this club
         var latestEntries = await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
-            .Where(e => clubMemberUserIds.Contains(e.UserId))
+            .Where(e => e.ClubId == clubId)
             .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries
                 .Where(ei => ei.UserId == e.UserId)
                 .Max(ei => ei.Timestamp))
@@ -74,17 +70,12 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
 
     public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesByClubIdAsync(Guid clubId)
     {
-        // Get user IDs belonging to this club
-        var clubMemberUserIds = dbContext.ClubMembers
-            .Where(m => m.ClubId == clubId)
-            .Select(m => m.UserId);
-
         // Read all history entries for members of this club
         var entries = await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
             .Include(e => e.ClubMember)
             .ThenInclude(m => m!.User)
-            .Where(e => clubMemberUserIds.Contains(e.UserId))
+            .Where(e => e.ClubId == clubId)
             .OrderByDescending(e => e.Timestamp)
             .ToListAsync()
             .ConfigureAwait(false);

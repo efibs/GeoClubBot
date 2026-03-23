@@ -31,5 +31,12 @@ public class ClubMemberHistoryEntryConfiguration : IEntityTypeConfiguration<Club
             .WithMany(x => x.History)
             .HasForeignKey(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+        
+        // Configure the club relationship
+        builder.HasOne(x => x.Club)
+            .WithMany()
+            .HasForeignKey(x => x.ClubId)
+            .OnDelete(DeleteBehavior.Cascade);
+            
     }
 }

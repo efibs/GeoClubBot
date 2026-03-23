@@ -20,7 +20,7 @@ public class ClubStatisticsUseCase(IUnitOfWork unitOfWork, IOptions<GeoGuessrCon
         }
 
         // Read the entire history
-        var history = await unitOfWork.History.ReadHistoryEntriesAsync().ConfigureAwait(false);
+        var history = await unitOfWork.History.ReadHistoryEntriesAsync(club.ClubId).ConfigureAwait(false);
 
         // Group the history by user id and get the average points
         var averagePointsEarned = history

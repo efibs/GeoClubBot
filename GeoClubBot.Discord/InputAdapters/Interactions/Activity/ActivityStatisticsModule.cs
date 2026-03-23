@@ -89,7 +89,8 @@ public partial class ActivityModule
         [SlashCommand("player-history", "Read the history of a player")]
         public async Task ReadPlayerHistoryAsync(
             string memberNickname, 
-            [MinValue(1)] [Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries)
+            [MinValue(1)] [Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries, 
+            [Summary(description: "[optional] The clubs name")] string? clubName = null)
         {
             try
             {
@@ -98,7 +99,7 @@ public partial class ActivityModule
                 
                 // Try to read the plot
                 using var plot = await renderPlayerActivityUseCase
-                    .RenderPlayerActivityAsync(memberNickname, maxNumEntries)
+                    .RenderPlayerActivityAsync(memberNickname, maxNumEntries, clubName)
                     .ConfigureAwait(false);
                 
                 // If there is no entry

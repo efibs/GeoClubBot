@@ -83,6 +83,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
                 {
                     Timestamp = now,
                     UserId = m.User.UserId,
+                    ClubId = clubId,
                     Xp = m.Xp
                 });
 

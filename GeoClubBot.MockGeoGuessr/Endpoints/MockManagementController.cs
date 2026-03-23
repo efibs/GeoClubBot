@@ -112,6 +112,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             return NotFound();
         if (!source.TryRemove(userId, out var member))
             return NotFound("Member not found");
+        member.Xp = 0;
+        member.WeeklyXp = 0;
         var target = store.ClubMembers.GetOrAdd(req.TargetClubId, _ => new ConcurrentDictionary<string, ClubMemberDto>());
         target[userId] = member;
         store.NotifyDataChanged();
