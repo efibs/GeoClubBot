@@ -61,6 +61,8 @@ function showView(v,clubId){
 }
 
 function h(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function copyBtn(id,label){return `<button class="btn btn-sm btn-outline-secondary ms-1" title="Copy ${label}" onclick="navigator.clipboard.writeText('${id}')">${label==='User ID'?'Copy ID':'Copy Link'}</button>`}
+function userCopyBtns(id){return copyBtn(id,'User ID')+copyBtn('https://www.geoguessr.com/user/'+id,'Profile Link')}
 
 // ── Dashboard ──
 async function load_dashboard(){
@@ -122,7 +124,7 @@ async function loadClub(id){
     <table class="table table-sm"><thead><tr><th>Nick</th><th>User ID</th><th>XP</th><th>Weekly XP</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead><tbody>`;
   d.members.forEach(m=>{
     let moveHtml=clubs.map(tc=>`<li><a class="dropdown-item" href="#" onclick="moveMember('${c.clubId}','${m.userId}','${tc.clubId}')">${h(tc.name)}</a></li>`).join('');
-    html+=`<tr><td>${h(m.nick)}</td><td><code>${m.userId.substring(0,8)}...</code></td><td>${m.xp}</td><td>${m.weeklyXp}</td><td>${m.role}</td><td>${m.joinedAt}</td>
+    html+=`<tr><td>${h(m.nick)}</td><td><code>${m.userId.substring(0,8)}...</code> ${userCopyBtns(m.userId)}</td><td>${m.xp}</td><td>${m.weeklyXp}</td><td>${m.role}</td><td>${m.joinedAt}</td>
     <td><div class="btn-group btn-group-sm">
       <button class="btn btn-outline-success" onclick="addXp('${c.clubId}','${m.userId}')">+20 XP</button>
       <div class="btn-group btn-group-sm"><button class="btn btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown">Move</button><ul class="dropdown-menu">${moveHtml}</ul></div>
@@ -144,7 +146,7 @@ async function loadClub(id){
   if(d.activities.length===0) html+=`<p class="text-muted">No activities yet.</p>`;
   else{
     html+=`<table class="table table-sm"><thead><tr><th>User</th><th>XP</th><th>Time</th></tr></thead><tbody>`;
-    d.activities.forEach(a=>{html+=`<tr><td>${h(a.userNick)}</td><td>+${a.xpReward}</td><td>${a.recordedAt}</td></tr>`});
+    d.activities.forEach(a=>{html+=`<tr><td>${h(a.userNick)} ${userCopyBtns(a.userId)}</td><td>+${a.xpReward}</td><td>${a.recordedAt}</td></tr>`});
     html+=`</tbody></table>`;
   }
   html+=`</div></div>`;
@@ -188,7 +190,7 @@ async function load_users(){
   html+=`<div class="card"><div class="card-header">All Users (${users.length})</div><div class="card-body">
   <table class="table table-sm table-striped"><thead><tr><th>Nick</th><th>ID</th><th>Country</th><th>Pro</th><th>Elo</th><th>Rating</th><th>Club</th><th></th></tr></thead><tbody>`;
   users.forEach(u=>{
-    html+=`<tr id="ur-${u.id}"><td>${h(u.nick)}</td><td><code>${u.id}</code></td><td>${u.countryCode}</td><td>${u.isProUser?'Yes':'No'}</td>
+    html+=`<tr id="ur-${u.id}"><td>${h(u.nick)}</td><td><code>${u.id}</code> ${userCopyBtns(u.id)}</td><td>${u.countryCode}</td><td>${u.isProUser?'Yes':'No'}</td>
     <td>${u.elo}</td><td>${u.rating}</td><td>${u.clubName?h(u.clubName):'<span class="text-muted">None</span>'}</td>
     <td><button class="btn btn-sm btn-outline-primary" onclick="editUser('${u.id}','${h(u.nick)}','${u.countryCode}',${u.isProUser},${u.elo},${u.rating})">Edit</button></td></tr>`;
   });
@@ -265,7 +267,7 @@ async function toggleCh(token){
     if(scores.length){
       inner+=`<table class="table table-sm"><thead><tr><th>#</th><th>Player</th><th>Score</th><th>Distance</th></tr></thead><tbody>`;
       scores.sort((a,b)=>(+b.score)-(+a.score)).forEach((s,i)=>{
-        inner+=`<tr><td>${i+1}</td><td>${h(s.nick)}</td><td>${s.score} pts</td><td>${s.distance} m</td></tr>`;
+        inner+=`<tr><td>${i+1}</td><td>${h(s.nick)} ${userCopyBtns(s.id)}</td><td>${s.score} pts</td><td>${s.distance} m</td></tr>`;
       });
       inner+=`</tbody></table>`;
     }else inner+=`<p class="text-muted">No scores.</p>`;

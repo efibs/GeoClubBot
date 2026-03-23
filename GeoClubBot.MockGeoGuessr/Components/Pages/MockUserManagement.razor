@@ -71,7 +71,13 @@
                                 @user.Nick
                             }
                         </td>
-                        <td><code>@user.Id</code></td>
+                        <td>
+                            <code>@user.Id</code>
+                            <button class="btn btn-sm btn-outline-secondary ms-1" title="Copy User ID"
+                                    @onclick="() => CopyToClipboard(user.Id)">Copy ID</button>
+                            <button class="btn btn-sm btn-outline-secondary ms-1" title="Copy Profile Link"
+                                    @onclick="() => CopyProfileLink(user.Id)">Copy Link</button>
+                        </td>
                         <td>
                             @if (_editingUserId == user.Id)
                             {
@@ -141,6 +147,8 @@
         </table>
     </div>
 </div>
+
+@inject IJSRuntime JS
 
 @code {
     [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
@@ -237,6 +245,12 @@
     }
 
     private void CancelEdit() => _editingUserId = null;
+
+    private async Task CopyToClipboard(string text) =>
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+
+    private async Task CopyProfileLink(string userId) =>
+        await CopyToClipboard("https://www.geoguessr.com/user/" + userId);
 
     private string? GetUserClub(string userId)
     {

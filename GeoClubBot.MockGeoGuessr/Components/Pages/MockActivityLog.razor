@@ -62,7 +62,13 @@
                     {
                         var userName = DataStore.Users.TryGetValue(activity.UserId, out var u) ? u.Nick : activity.UserId;
                         <tr>
-                            <td>@userName</td>
+                            <td>
+                                @userName
+                                <button class="btn btn-sm btn-outline-secondary ms-1" title="Copy User ID"
+                                        @onclick="() => CopyToClipboard(activity.UserId)">Copy ID</button>
+                                <button class="btn btn-sm btn-outline-secondary ms-1" title="Copy Profile Link"
+                                        @onclick="() => CopyProfileLink(activity.UserId)">Copy Link</button>
+                            </td>
                             <td>+@activity.XpReward</td>
                             <td>@activity.RecordedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
                         </tr>
@@ -72,6 +78,8 @@
         }
     </div>
 </div>
+
+@inject IJSRuntime JS
 
 @code {
     [Parameter] public Guid ClubId { get; set; }
@@ -94,6 +102,12 @@
             ? a.OrderByDescending(x => x.RecordedAt).ToList()
             : [];
     }
+
+    private async Task CopyToClipboard(string text) =>
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+
+    private async Task CopyProfileLink(string userId) =>
+        await CopyToClipboard("https://www.geoguessr.com/user/" + userId);
 
     private void AddActivity()
     {

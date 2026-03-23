@@ -116,7 +116,13 @@
                             {
                                 <tr>
                                     <td>@rank</td>
-                                    <td>@item.Game.Player.Nick</td>
+                                    <td>
+                                        @item.Game.Player.Nick
+                                        <button class="btn btn-sm btn-outline-secondary ms-1" title="Copy User ID"
+                                                @onclick="() => CopyToClipboard(item.Game.Player.Id)">Copy ID</button>
+                                        <button class="btn btn-sm btn-outline-secondary ms-1" title="Copy Profile Link"
+                                                @onclick="() => CopyProfileLink(item.Game.Player.Id)">Copy Link</button>
+                                    </td>
                                     <td>@item.Game.Player.TotalScore.Amount @item.Game.Player.TotalScore.Unit</td>
                                     <td>@item.Game.Player.TotalDistance.Meters.Amount @item.Game.Player.TotalDistance.Meters.Unit</td>
                                 </tr>
@@ -139,6 +145,8 @@
     <div class="alert alert-info">No challenges created yet.</div>
 }
 
+@inject IJSRuntime JS
+
 @code {
     [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
 
@@ -155,6 +163,12 @@
     private int _addScoreDistance = 100;
 
     private string? _expandedChallenge;
+
+    private async Task CopyToClipboard(string text) =>
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+
+    private async Task CopyProfileLink(string userId) =>
+        await CopyToClipboard("https://www.geoguessr.com/user/" + userId);
 
     private void ToggleExpand(string token)
     {
