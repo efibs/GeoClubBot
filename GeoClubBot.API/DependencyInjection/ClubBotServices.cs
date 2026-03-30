@@ -112,6 +112,7 @@ public static class ClubBotServices
         services.AddTransient<IGetClubTodaysXpUseCase, GetClubTodaysXpUseCase>();
         services.AddTransient<IGetActivityLeaderboardUseCase, GetActivityLeaderboardUseCase>();
         services.AddTransient<IGetClubByNameOrDefaultUseCase, GetClubByNameOrDefaultUseCase>();
+        services.AddTransient<IGetOpenAccountLinkingRequestUseCase, GetOpenAccountLinkingRequestUseCase>();
 
         // Add the ai services
         services.AddAiServicesIfConfigured(configuration);

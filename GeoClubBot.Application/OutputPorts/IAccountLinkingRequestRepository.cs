@@ -8,5 +8,7 @@ public interface IAccountLinkingRequestRepository
     
     Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId, string geoGuessrUserId);
     
+    Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId);
+    
     void DeleteRequest(GeoGuessrAccountLinkingRequest request);
 }

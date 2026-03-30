@@ -14,6 +14,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 public partial class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase, 
     IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
     IStartAccountLinkingProcessUseCase startAccountLinkingProcessUseCase, 
+    IGetOpenAccountLinkingRequestUseCase getOpenAccountLinkingRequestUseCase,
     ILogger<GeoGuessrAccountLinkPublicModule> logger,
     IConfiguration config) : InteractionModuleBase<SocketInteractionContext>
 {
@@ -79,6 +80,38 @@ public partial class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUse
                 return;
             }
             
+            // Check if the user already has a linking process running
+            var linkingRequest = await getOpenAccountLinkingRequestUseCase
+                .GetOpenAccountLinkingRequestForDiscordUserIdAsync(executingUser.Id)
+                .ConfigureAwait(false);
+            
+            // If the user already has a linking process open
+            if (linkingRequest is not null)
+            {
+                // If the GG user id matches
+                if (geoGuessrUserId == linkingRequest.GeoGuessrUserId)
+                {
+                    // Respond with message giving the password again
+                    await FollowupAsync($"You already started an account linking for this account. Here is the one " +
+                                        $"time password again in case you lost it: **{linkingRequest.OneTimePassword}**",
+                            ephemeral: true)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    // Respond with error message
+                    await FollowupAsync("Account link failed: You already started an account linking process for " +
+                                        $"another GeoGuessr account (Id: {linkingRequest.GeoGuessrUserId}) that needs to be completed or canceled first. \n\n" +
+                                        "To complete it: Send the one time password to an admin in GeoGuessr.\n" +
+                                        "To cancel it: Ask an admin to cancel the process for you.",
+                            ephemeral: true)
+                        .ConfigureAwait(false);
+                }
+                
+
+                return;
+            }
+            
             // Start the account linking process
             var oneTimePassword = await startAccountLinkingProcessUseCase
                 .StartLinkingProcessAsync(executingUser.Id, geoGuessrUserId)
@@ -101,7 +134,7 @@ public partial class GeoGuessrAccountLinkPublicModule(IGetLinkedDiscordUserIdUse
             await FollowupAsync("**IMPORTANT! READ CAREFULLY!**: Account linking process successfully started. To complete the linking process, " +
                                 "please send the following one time password to an admin of this Discord server as a direct message **in GeoGuessr**. Do not send " +
                                 "the password here in Discord or anywhere else other than as a direct message in GeoGuessr.\n" +
-                                $"Here is your one time password: {oneTimePassword}\n\n" +
+                                $"Here is your one time password: **{oneTimePassword}**\n\n" +
                                 "The admin will then complete your request and you will get notified.", ephemeral: true).ConfigureAwait(false);
             
             // Send admin message

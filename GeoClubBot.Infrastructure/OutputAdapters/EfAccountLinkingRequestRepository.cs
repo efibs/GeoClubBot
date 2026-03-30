@@ -26,6 +26,16 @@ public class EfAccountLinkingRequestRepository(GeoClubBotDbContext dbContext) : 
         return request;
     }
 
+    public async Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId)
+    {
+        var request = await dbContext.GeoGuessrAccountLinkingRequests
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.DiscordUserId == discordUserId)
+            .ConfigureAwait(false);
+
+        return request;
+    }
+
     public void DeleteRequest(GeoGuessrAccountLinkingRequest request)
     {
         // Delete the entity
