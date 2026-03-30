@@ -34,6 +34,12 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
                 return;
             }
 
+            // Check if the member already has a private channel
+            if (clubMember.PrivateTextChannelId is not null)
+            {
+                return;
+            }
+
             // Log
             LogCreatingPrivateChannel(logger, user.Nickname);
 

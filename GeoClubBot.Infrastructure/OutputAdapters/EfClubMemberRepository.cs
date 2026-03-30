@@ -40,11 +40,11 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             return null;
         }
         
-        // Update the club member
+        // Update the club member (only API-sourced fields; PrivateTextChannelId is
+        // managed exclusively via Set/ClearPrivateTextChannelIdAsync)
         dbEntry.ClubId = clubMember.ClubId;
         dbEntry.Xp = clubMember.Xp;
         dbEntry.JoinedAt = clubMember.JoinedAt;
-        dbEntry.PrivateTextChannelId = clubMember.PrivateTextChannelId;
 
         return dbEntry;
     }

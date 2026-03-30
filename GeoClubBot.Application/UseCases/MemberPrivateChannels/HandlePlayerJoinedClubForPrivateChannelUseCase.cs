@@ -24,6 +24,12 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
                 return;
             }
 
+            // Check if the member already has a private channel
+            if (notification.ClubMember.PrivateTextChannelId is not null)
+            {
+                return;
+            }
+
             // Create the private channel
             await useCase.CreatePrivateChannelAsync(notification.ClubMember).ConfigureAwait(false);
 
