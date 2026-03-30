@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.ClubMembers;
-using UseCases.InputPorts.Organization;
 using UseCases.InputPorts.Strikes;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
@@ -19,7 +18,6 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
     IActivityStatusMessageSender activityStatusMessageSender,
     ICheckStrikeDecayUseCase checkStrikeDecayUseCase,
     IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
-    ICleanupUseCase cleanupUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
     ICalculateAverageXpUseCase calculateAverageXpUseCase,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
@@ -147,9 +145,6 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
 
         // Log debug message
         logger.LogDebug("Checking player activity for club {ClubId} done.", clubId);
-
-        // Trigger the cleanup
-        await cleanupUseCase.DoCleanupAsync().ConfigureAwait(false);
 
         return newStatuses;
     }
