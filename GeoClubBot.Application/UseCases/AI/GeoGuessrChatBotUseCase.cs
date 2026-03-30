@@ -64,8 +64,9 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         LogEmbeddingEndpoint(embeddingEndpoint);
         LogEmbeddingModel(embeddingModelName);
 
+        var httpClient = new HttpClient(new RateLimitRetryHandler(new HttpClientHandler()));
         var kernelBuilder = Kernel.CreateBuilder()
-            .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint + "/v1"));
+            .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint + "/v1"), httpClient: httpClient);
         _kernel = kernelBuilder.Build();
 
         _kernel.Plugins
@@ -159,4 +160,37 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 
     [LoggerMessage(LogLevel.Debug, "Handling message using AI: {prompt}")]
     partial void LogHandlingMessageUsingAiPrompt(string prompt);
+
+    private sealed class RateLimitRetryHandler(HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
+    {
+        private const int MaxRetries = 5;
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            // Buffer content so it can be resent on retries
+            if (request.Content is not null)
+                await request.Content.LoadIntoBufferAsync();
+
+            HttpResponseMessage response = null!;
+
+            for (var attempt = 0; attempt <= MaxRetries; attempt++)
+            {
+                if (attempt > 0)
+                {
+                    var delay = response.Headers.RetryAfter?.Delta
+                        ?? TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                    response.Dispose();
+                    await Task.Delay(delay, cancellationToken);
+                }
+
+                response = await base.SendAsync(request, cancellationToken);
+
+                if (response.StatusCode != HttpStatusCode.TooManyRequests)
+                    return response;
+            }
+
+            return response;
+        }
+    }
 }
