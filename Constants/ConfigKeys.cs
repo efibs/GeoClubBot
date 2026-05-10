@@ -17,6 +17,8 @@ public static class ConfigKeys
     public const string LlmApiKeyConfigurationKey = "AI:LlmApiKey";
     public const string EmbeddingModelNameConfigurationKey = "AI:EmbeddingModel";
     public const string EmbeddingMaxDegreeOfParallelismConfigurationKey = "AI:MaxDegreeOfParallelism";
+    public const string LlmRequestTimeoutSecondsConfigurationKey = "AI:RequestTimeoutSeconds";
+    public const string LlmOverallTimeoutSecondsConfigurationKey = "AI:OverallTimeoutSeconds";
 
     public const string DiscordServerIdConfigurationKey = "Discord:ServerId";
     public const string DiscordWelcomeMessageConfigurationKey = "Discord:WelcomeMessage";

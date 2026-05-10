@@ -64,7 +64,15 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         LogEmbeddingEndpoint(embeddingEndpoint);
         LogEmbeddingModel(embeddingModelName);
 
-        var httpClient = new HttpClient(new RateLimitRetryHandler(new HttpClientHandler()));
+        var requestTimeoutSeconds = config.GetValue<int>(ConfigKeys.LlmRequestTimeoutSecondsConfigurationKey, 60);
+        var overallTimeoutSeconds = config.GetValue<int>(ConfigKeys.LlmOverallTimeoutSecondsConfigurationKey, 180);
+        _requestTimeout = TimeSpan.FromSeconds(requestTimeoutSeconds);
+        _overallTimeout = TimeSpan.FromSeconds(overallTimeoutSeconds);
+
+        var httpClient = new HttpClient(new RateLimitRetryHandler(new HttpClientHandler()))
+        {
+            Timeout = _requestTimeout
+        };
         var kernelBuilder = Kernel.CreateBuilder()
             .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(llmEndpoint + "/v1"), httpClient: httpClient);
         _kernel = kernelBuilder.Build();
@@ -87,6 +95,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
             return "The internal PlonkIt Guide is currently being updated. Try again later.";
         }
         
+        using var cts = new CancellationTokenSource(_overallTimeout);
         try
         {
             LogHandlingMessageUsingAiPrompt(prompt);
@@ -112,7 +121,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 
             var chatSvc = _kernel.GetRequiredService<IChatCompletionService>();
             await startTypingAsync().ConfigureAwait(false);
-            var response = await chatSvc.GetChatMessageContentAsync(history, promtExecutionSettings, _kernel)
+            var response = await chatSvc.GetChatMessageContentAsync(history, promtExecutionSettings, _kernel, cts.Token)
                 .ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(response.Content))
@@ -123,6 +132,16 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 
             _logger.LogDebug("Handling done.");
             return response.Content;
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            _logger.LogError("AI overall timeout of {timeout}s reached.", _overallTimeout.TotalSeconds);
+            return $"AI response timed out (overall limit of {_overallTimeout.TotalSeconds}s reached). Try again later.";
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogError("AI per-request timeout of {timeout}s reached.", _requestTimeout.TotalSeconds);
+            return $"AI response timed out (request limit of {_requestTimeout.TotalSeconds}s reached). Try again later.";
         }
         catch (HttpOperationException httpEx) when (httpEx.StatusCode == HttpStatusCode.TooManyRequests)
         {
@@ -145,6 +164,8 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
     private readonly IDiscordSelfUserAccess _discordSelfUserAccess;
     private readonly ILogger<GeoGuessrChatBotUseCase> _logger;
     private readonly PlonkItGuidePlugin _plonkItGuidePlugIn;
+    private readonly TimeSpan _requestTimeout;
+    private readonly TimeSpan _overallTimeout;
     
     [LoggerMessage(LogLevel.Information, "LLM Endpoint: {endpoint}")]
     partial void LogLlmEndpoint(string endpoint);
