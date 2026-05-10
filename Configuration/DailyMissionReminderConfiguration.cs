@@ -11,4 +11,7 @@ public class DailyMissionReminderConfiguration
 
     [Required(AllowEmptyStrings = false)]
     public required string DefaultMessage { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int DailyMissionXpReward { get; set; } = 20;
 }

@@ -9,4 +9,9 @@ public class MockGeoGuessrClientFactory(MockGeoGuessrDataStore dataStore) : IGeo
     {
         return new MockGeoGuessrClient(dataStore);
     }
+
+    public IGeoGuessrClient CreateActivityClient()
+    {
+        return new MockGeoGuessrClient(dataStore);
+    }
 }

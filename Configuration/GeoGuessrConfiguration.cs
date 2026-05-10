@@ -9,6 +9,11 @@ public class GeoGuessrConfiguration : IValidatableObject
     [Required(AllowEmptyStrings = false)]
     public required string SyncSchedule { get; set; }
 
+    [Required(AllowEmptyStrings = false)]
+    public required string ActivityNcfaToken { get; set; }
+
+    public TimeSpan ActivityCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(5);
+
     [Required]
     [MinLength(1)]
     public required List<GeoGuessrClubEntry> Clubs { get; set; }
@@ -19,6 +24,12 @@ public class GeoGuessrConfiguration : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        if (ActivityCacheTimeToLive <= TimeSpan.Zero)
+        {
+            yield return new ValidationResult(
+                $"{nameof(ActivityCacheTimeToLive)} must be greater than zero.");
+        }
+
         var mainClubs = Clubs.Where(c => c.IsMain).ToList();
 
         if (mainClubs.Count == 0)

@@ -61,6 +61,8 @@ public static class ClubBotServices
         services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
         services.AddTransient<IDiscordSelfUserAccess, DiscordDiscordSelfUserAccess>();
         services.AddTransient<IDiscordDirectMessageAccess, DiscordDirectMessageAccess>();
+        services.AddTransient<IGeoGuessrActivityReader, CachingGeoGuessrActivityReader>();
+        services.AddMemoryCache();
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
@@ -152,6 +154,7 @@ public static class ClubBotServices
         var geoGuessrConfig = new GeoGuessrConfiguration
         {
             SyncSchedule = null!,
+            ActivityNcfaToken = null!,
             Clubs = null!
         };
         configuration.GetSection(GeoGuessrConfiguration.SectionName).Bind(geoGuessrConfig);
@@ -166,6 +169,14 @@ public static class ClubBotServices
                 .AddResilienceHandler($"GeoGuessrApiResiliencePipeline_{club.ClubId}",
                     ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
         }
+
+        services.AddHttpClient(GeoGuessrClientFactory.ActivityHttpClientName, client =>
+            {
+                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
+                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.ActivityNcfaToken}");
+            })
+            .AddResilienceHandler("GeoGuessrApiResiliencePipeline_Activity",
+                ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
 
         services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();
 
