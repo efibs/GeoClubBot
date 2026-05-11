@@ -31,4 +31,10 @@ public class UserDto
     public required bool IsBanned { get; set; }
 
     public required bool ChatBan { get; set; }
+
+    public DateTimeOffset? SuspendedUntil { get; set; }
+
+    public UserProgressDto? Progress { get; set; }
+
+    public UserClubDto? Club { get; set; }
 }

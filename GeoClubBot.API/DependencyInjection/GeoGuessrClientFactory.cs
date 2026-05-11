@@ -8,10 +8,12 @@ public class GeoGuessrClientFactory(IHttpClientFactory httpClientFactory) : IGeo
 {
     public const string ActivityHttpClientName = "GeoGuessr_Activity";
     public const string MissionsHttpClientName = "GeoGuessr_Missions";
+    public const string UserProfileHttpClientName = "GeoGuessr_UserProfile";
 
     private readonly ConcurrentDictionary<Guid, IGeoGuessrClient> _clients = new();
     private IGeoGuessrClient? _activityClient;
     private IGeoGuessrClient? _missionsClient;
+    private IGeoGuessrClient? _userProfileClient;
 
     public IGeoGuessrClient CreateClient(Guid clubId)
     {
@@ -32,5 +34,11 @@ public class GeoGuessrClientFactory(IHttpClientFactory httpClientFactory) : IGeo
     {
         return _missionsClient ??= RestService.For<IGeoGuessrClient>(
             httpClientFactory.CreateClient(MissionsHttpClientName));
+    }
+
+    public IGeoGuessrClient CreateUserProfileClient()
+    {
+        return _userProfileClient ??= RestService.For<IGeoGuessrClient>(
+            httpClientFactory.CreateClient(UserProfileHttpClientName));
     }
 }

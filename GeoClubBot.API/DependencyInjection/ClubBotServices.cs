@@ -64,6 +64,7 @@ public static class ClubBotServices
         services.AddTransient<IDiscordSelfUserAccess, DiscordDiscordSelfUserAccess>();
         services.AddTransient<IDiscordDirectMessageAccess, DiscordDirectMessageAccess>();
         services.AddTransient<IGeoGuessrActivityReader, CachingGeoGuessrActivityReader>();
+        services.AddTransient<IGeoGuessrUserProfileReader, CachingGeoGuessrUserProfileReader>();
         services.AddMemoryCache();
 
         // Add the use cases
@@ -102,6 +103,7 @@ public static class ClubBotServices
         services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
         services.AddTransient<IGetLinkedGeoGuessrUserUseCase, GetLinkedGeoGuessrUserUseCase>();
         services.AddTransient<IGetDiscordUserByNicknameUseCase, GetDiscordUserByNicknameUseCase>();
+        services.AddTransient<IGetGeoGuessrProfileUseCase, GetGeoGuessrProfileUseCase>();
         services.AddTransient<IReadAllRelevantStrikesUseCase, ReadAllRelevantStrikesUseCase>();
         services.AddTransient<ICreateOrUpdateUserUseCase, CreateOrUpdateUserUseCase>();
         services.AddTransient<ICreateOrUpdateClubMemberUseCase, CreateOrUpdateClubMemberUseCase>();
@@ -161,6 +163,7 @@ public static class ClubBotServices
             SyncSchedule = null!,
             ActivityNcfaToken = null!,
             MissionsNcfaToken = null!,
+            UserProfileNcfaToken = null!,
             Clubs = null!
         };
         configuration.GetSection(GeoGuessrConfiguration.SectionName).Bind(geoGuessrConfig);
@@ -190,6 +193,14 @@ public static class ClubBotServices
                 client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.MissionsNcfaToken}");
             })
             .AddResilienceHandler("GeoGuessrApiResiliencePipeline_Missions",
+                ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
+
+        services.AddHttpClient(GeoGuessrClientFactory.UserProfileHttpClientName, client =>
+            {
+                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
+                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.UserProfileNcfaToken}");
+            })
+            .AddResilienceHandler("GeoGuessrApiResiliencePipeline_UserProfile",
                 ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
 
         services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();

@@ -19,4 +19,9 @@ public class MockGeoGuessrClientFactory(MockGeoGuessrDataStore dataStore) : IGeo
     {
         return new MockGeoGuessrClient(dataStore);
     }
+
+    public IGeoGuessrClient CreateUserProfileClient()
+    {
+        return new MockGeoGuessrClient(dataStore);
+    }
 }

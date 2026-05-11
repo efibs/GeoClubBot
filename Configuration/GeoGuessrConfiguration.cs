@@ -15,7 +15,12 @@ public class GeoGuessrConfiguration : IValidatableObject
     [Required(AllowEmptyStrings = false)]
     public required string MissionsNcfaToken { get; set; }
 
+    [Required(AllowEmptyStrings = false)]
+    public required string UserProfileNcfaToken { get; set; }
+
     public TimeSpan ActivityCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(5);
+
+    public TimeSpan UserProfileCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(30);
 
     [Required]
     [MinLength(1)]
@@ -31,6 +36,12 @@ public class GeoGuessrConfiguration : IValidatableObject
         {
             yield return new ValidationResult(
                 $"{nameof(ActivityCacheTimeToLive)} must be greater than zero.");
+        }
+
+        if (UserProfileCacheTimeToLive <= TimeSpan.Zero)
+        {
+            yield return new ValidationResult(
+                $"{nameof(UserProfileCacheTimeToLive)} must be greater than zero.");
         }
 
         var mainClubs = Clubs.Where(c => c.IsMain).ToList();
