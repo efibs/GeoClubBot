@@ -68,6 +68,7 @@ public static class ClubBotServices
 
         // Add the use cases
         services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
+        services.AddTransient<IGetActivityThisWeekUseCase, GetActivityThisWeekUseCase>();
         services.AddTransient<ICalculateAverageXpUseCase, CalculateAverageXpUseCase>();
         services.AddTransient<IReadMemberStrikesUseCase, ReadMemberStrikesUseCase>();
         services.AddTransient<IAddExcuseUseCase, AddExcuseUseCase>();

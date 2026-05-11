@@ -68,6 +68,54 @@ public partial class CachingGeoGuessrActivityReader(
         }
     }
 
+    public async Task<IReadOnlyList<ReadClubActivitiesItemDto>> ReadActivitiesSinceAsync(Guid clubId, DateTimeOffset since)
+    {
+        var cacheKey = $"GeoGuessrActivities:{clubId}:since:{since:yyyy-MM-ddTHH:mm:ssZ}";
+
+        var cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = config.Value.ActivityCacheTimeToLive;
+            LogCacheMiss(clubId);
+            return await _fetchActivitiesSinceAsync(clubId, since).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        return cached ?? [];
+    }
+
+    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> _fetchActivitiesSinceAsync(Guid clubId, DateTimeOffset since)
+    {
+        var client = clientFactory.CreateActivityClient();
+        var activities = new List<ReadClubActivitiesItemDto>();
+        string? paginationToken = null;
+
+        while (true)
+        {
+            var batch = await client
+                .ReadClubActivitiesAsync(clubId, new ReadClubActivitiesQueryParams { PaginationToken = paginationToken })
+                .ConfigureAwait(false);
+
+            if (batch.Items.Count == 0)
+                return activities;
+
+            var reachedCutoff = false;
+            foreach (var item in batch.Items.OrderByDescending(i => i.RecordedAt))
+            {
+                if (item.RecordedAt < since)
+                {
+                    reachedCutoff = true;
+                    break;
+                }
+
+                activities.Add(item);
+            }
+
+            if (reachedCutoff || batch.PaginationToken is null)
+                return activities;
+
+            paginationToken = batch.PaginationToken;
+        }
+    }
+
     [LoggerMessage(LogLevel.Debug, "Activity cache miss for club {ClubId}, fetching from GeoGuessr API.")]
     partial void LogCacheMiss(Guid clubId);
 }
