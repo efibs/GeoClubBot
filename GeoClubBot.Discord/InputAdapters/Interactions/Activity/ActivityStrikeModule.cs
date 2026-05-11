@@ -196,13 +196,15 @@ public partial class ActivityModule
             }
 
             // Revoke the strike
-            var revokeSuccessful = await revokeStrikeUseCase.RevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
+            var strike = await revokeStrikeUseCase.RevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
 
             // If the revoke was successful
-            if (revokeSuccessful)
+            if (strike != null)
             {
-                // Respond
-                await RespondAsync($"Strike with id {strikeId} was successfully revoked.").ConfigureAwait(false);
+                var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
+                await RespondAsync(
+                    $"Strike for player **{nickname}** from {strike.Timestamp:d} (id: {strikeId}) was successfully revoked.")
+                    .ConfigureAwait(false);
             }
             else
             {
@@ -225,14 +227,15 @@ public partial class ActivityModule
                 return;
             }
 
-            // Revoke the strike
-            var revokeSuccessful = await unrevokeStrikeUseCase.UnrevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
+            // Unrevoke the strike
+            var strike = await unrevokeStrikeUseCase.UnrevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
 
-            // If the revoke was successful
-            if (revokeSuccessful)
+            // If the unrevoke was successful
+            if (strike != null)
             {
-                // Respond
-                await RespondAsync($"Revocation of strike with id {strikeId} was successfully removed.")
+                var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
+                await RespondAsync(
+                    $"Revocation of strike for player **{nickname}** from {strike.Timestamp:d} (id: {strikeId}) was successfully removed.")
                     .ConfigureAwait(false);
             }
             else

@@ -54,36 +54,40 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         return strikes;
     }
 
-    public async Task<bool> RevokeStrikeByIdAsync(Guid strikeId)
+    public async Task<ClubMemberStrike?> RevokeStrikeByIdAsync(Guid strikeId)
     {
-        // Read the strike
-        var strike = await dbContext.ClubMemberStrikes.FindAsync(strikeId).ConfigureAwait(false);
+        var strike = await dbContext.ClubMemberStrikes
+            .Include(s => s.ClubMember)
+            .ThenInclude(m => m!.User)
+            .FirstOrDefaultAsync(s => s.StrikeId == strikeId)
+            .ConfigureAwait(false);
 
         if (strike == null)
         {
-            return false;
+            return null;
         }
-        
-        // Revoke the strike
+
         strike.Revoked = true;
 
-        return true;
+        return strike;
     }
-    
-    public async Task<bool> UnrevokeStrikeByIdAsync(Guid strikeId)
+
+    public async Task<ClubMemberStrike?> UnrevokeStrikeByIdAsync(Guid strikeId)
     {
-        // Read the strike
-        var strike = await dbContext.ClubMemberStrikes.FindAsync(strikeId).ConfigureAwait(false);
+        var strike = await dbContext.ClubMemberStrikes
+            .Include(s => s.ClubMember)
+            .ThenInclude(m => m!.User)
+            .FirstOrDefaultAsync(s => s.StrikeId == strikeId)
+            .ConfigureAwait(false);
 
         if (strike == null)
         {
-            return false;
+            return null;
         }
-        
-        // Unrevoke the strike
+
         strike.Revoked = false;
 
-        return true;
+        return strike;
     }
 
     public async Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold)

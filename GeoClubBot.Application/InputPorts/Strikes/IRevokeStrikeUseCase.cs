@@ -1,6 +1,8 @@
+using Entities;
+
 namespace UseCases.InputPorts.Strikes;
 
 public interface IRevokeStrikeUseCase
 {
-    Task<bool> RevokeStrikeAsync(Guid strikeId);
+    Task<ClubMemberStrike?> RevokeStrikeAsync(Guid strikeId);
 }

@@ -11,9 +11,9 @@ public interface IStrikesRepository
     
     Task<List<ClubMemberStrike>> ReadAllStrikesAsync();
     
-    Task<bool> RevokeStrikeByIdAsync(Guid strikeId);
-    
-    Task<bool> UnrevokeStrikeByIdAsync(Guid strikeId);
+    Task<ClubMemberStrike?> RevokeStrikeByIdAsync(Guid strikeId);
+
+    Task<ClubMemberStrike?> UnrevokeStrikeByIdAsync(Guid strikeId);
     
     Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold);
 }
