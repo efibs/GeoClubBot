@@ -8,7 +8,8 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [CommandContextType(InteractionContextType.Guild)]
 [Group("user-info", "Commands for getting information about a user")]
 public partial class UserInfoModule(IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
-    ILogger<UserInfoModule> logger) 
+    IGetDiscordUserByNicknameUseCase getDiscordUserByNicknameUseCase,
+    ILogger<UserInfoModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
     [SlashCommand("gg-nickname", "Get the GeoGuessr nickname of a user")]
@@ -51,4 +52,36 @@ public partial class UserInfoModule(IGetLinkedGeoGuessrUserUseCase getLinkedGeoG
 
     [LoggerMessage(LogLevel.Error, "Reading the GeoGuessr nickname of the user '{userDisplayName}' failed.")]
     static partial void LogReadingTheGeoguessrNicknameOfUserFailed(ILogger<UserInfoModule> logger, Exception ex, string userDisplayName);
+
+    [SlashCommand("discord-user", "Get the Discord user for a GeoGuessr nickname")]
+    public async Task GetDiscordUserAsync(string nickname)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true).ConfigureAwait(false);
+
+            var discordUserId = await getDiscordUserByNicknameUseCase
+                .GetDiscordUserIdByNicknameAsync(nickname)
+                .ConfigureAwait(false);
+
+            if (discordUserId == null)
+            {
+                await FollowupAsync($"No linked Discord user found for GeoGuessr player '**{nickname}**'.", ephemeral: true)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                await FollowupAsync($"The GeoGuessr player '**{nickname}**' is <@{discordUserId}>.", ephemeral: true)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogReadingTheDiscordUserOfNicknameFailed(logger, ex, nickname);
+            await FollowupAsync("Reading the Discord user failed. Try again later. If the problem persists, please contact an admin.", ephemeral: true).ConfigureAwait(false);
+        }
+    }
+
+    [LoggerMessage(LogLevel.Error, "Reading the Discord user for GeoGuessr nickname '{nickname}' failed.")]
+    static partial void LogReadingTheDiscordUserOfNicknameFailed(ILogger<UserInfoModule> logger, Exception ex, string nickname);
 }
