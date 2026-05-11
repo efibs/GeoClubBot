@@ -9,4 +9,7 @@ public static class StringLengthConstants
     public const int AccountLinkingRequestOneTimePasswordLength = 18;
     public const int TimeZoneIdMaxLength = 64;
     public const int DailyMissionReminderCustomMessageMaxLength = 500;
+    public const int DailyMissionTypeMaxLength = 32;
+    public const int DailyMissionGameModeMaxLength = 32;
+    public const int DailyMissionRewardTypeMaxLength = 32;
 }

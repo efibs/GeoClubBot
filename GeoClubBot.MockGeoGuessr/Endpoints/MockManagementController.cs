@@ -293,4 +293,77 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         await scheduler.TriggerJob(new JobKey(name));
         return Ok();
     }
+
+    [HttpGet("missions")]
+    public IActionResult ListMissions()
+    {
+        List<DailyMissionDto> snapshot;
+        lock (store.DailyMissions)
+        {
+            snapshot = store.DailyMissions.ToList();
+        }
+        return Ok(new
+        {
+            nextMissionDate = store.NextMissionDate,
+            missions = snapshot
+        });
+    }
+
+    [HttpPost("missions")]
+    public IActionResult AddMission([FromBody] AddMissionRequest req)
+    {
+        var mission = new DailyMissionDto
+        {
+            Id = Guid.NewGuid(),
+            Type = req.Type,
+            GameMode = req.GameMode,
+            CurrentProgress = req.CurrentProgress,
+            TargetProgress = req.TargetProgress,
+            Completed = req.Completed,
+            EndDate = req.EndDate ?? DateTimeOffset.UtcNow.Date.AddDays(1),
+            RewardAmount = req.RewardAmount,
+            RewardType = req.RewardType
+        };
+        lock (store.DailyMissions)
+        {
+            store.DailyMissions.Add(mission);
+        }
+        store.NotifyDataChanged();
+        return Ok(new { id = mission.Id });
+    }
+
+    [HttpDelete("missions/{id:guid}")]
+    public IActionResult RemoveMission(Guid id)
+    {
+        lock (store.DailyMissions)
+        {
+            var index = store.DailyMissions.FindIndex(m => m.Id == id);
+            if (index < 0)
+            {
+                return NotFound();
+            }
+            store.DailyMissions.RemoveAt(index);
+        }
+        store.NotifyDataChanged();
+        return Ok();
+    }
+
+    [HttpDelete("missions")]
+    public IActionResult ClearMissions()
+    {
+        lock (store.DailyMissions)
+        {
+            store.DailyMissions.Clear();
+        }
+        store.NotifyDataChanged();
+        return Ok();
+    }
+
+    [HttpPost("missions/next-date")]
+    public IActionResult UpdateNextMissionDate([FromBody] UpdateNextMissionDateRequest req)
+    {
+        store.NextMissionDate = req.NextMissionDate;
+        store.NotifyDataChanged();
+        return Ok();
+    }
 }

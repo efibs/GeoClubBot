@@ -36,6 +36,16 @@ public class MockGeoGuessrDataStore
     /// </summary>
     public ConcurrentDictionary<Guid, ConcurrentBag<ReadClubActivitiesItemDto>> ClubActivities { get; } = new();
 
+    /// <summary>
+    /// Current daily missions served by the mock missions endpoint.
+    /// </summary>
+    public List<DailyMissionDto> DailyMissions { get; } = new();
+
+    /// <summary>
+    /// The next mission date returned by the mock missions endpoint.
+    /// </summary>
+    public DateTimeOffset NextMissionDate { get; set; } = DateTimeOffset.UtcNow.Date.AddDays(1);
+
     private int _challengeCounter;
 
     public string GenerateChallengeToken()

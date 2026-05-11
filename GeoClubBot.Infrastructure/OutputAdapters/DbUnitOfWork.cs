@@ -18,6 +18,7 @@ public class DbUnitOfWork : IUnitOfWork
         History = new EfHistoryRepository(_dbContext);
         Strikes = new EfStrikesRepository(_dbContext);
         DailyMissionReminders = new EfDailyMissionReminderRepository(_dbContext);
+        DailyMissions = new EfDailyMissionRepository(_dbContext);
     }
 
     public IAccountLinkingRequestRepository AccountLinkingRequests { get; }
@@ -37,6 +38,8 @@ public class DbUnitOfWork : IUnitOfWork
     public IStrikesRepository Strikes { get; }
 
     public IDailyMissionReminderRepository DailyMissionReminders { get; }
+
+    public IDailyMissionRepository DailyMissions { get; }
 
     public async Task<int> SaveChangesAsync()
     {

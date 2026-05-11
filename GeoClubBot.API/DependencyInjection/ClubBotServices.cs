@@ -13,6 +13,7 @@ using UseCases.InputPorts.Club;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.ClubMembers;
 using UseCases.InputPorts.DailyChallenge;
+using UseCases.InputPorts.DailyMissionLogging;
 using UseCases.InputPorts.DailyMissionReminder;
 using UseCases.InputPorts.Excuses;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
@@ -28,6 +29,7 @@ using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.DailyChallenge;
+using UseCases.UseCases.DailyMissionLogging;
 using UseCases.UseCases.DailyMissionReminder;
 using UseCases.UseCases.Excuses;
 using UseCases.UseCases.GeoGuessrAccountLinking;
@@ -111,6 +113,7 @@ public static class ClubBotServices
         services.AddTransient<IStopDailyMissionReminderUseCase, StopDailyMissionReminderUseCase>();
         services.AddTransient<IGetDailyMissionReminderStatusUseCase, GetDailyMissionReminderStatusUseCase>();
         services.AddTransient<ISendDueRemindersUseCase, SendDueRemindersUseCase>();
+        services.AddTransient<ILogDailyMissionsUseCase, LogDailyMissionsUseCase>();
         services.AddTransient<IGetClubTodaysXpUseCase, GetClubTodaysXpUseCase>();
         services.AddTransient<IGetActivityLeaderboardUseCase, GetActivityLeaderboardUseCase>();
         services.AddTransient<IGetClubByNameOrDefaultUseCase, GetClubByNameOrDefaultUseCase>();
@@ -155,6 +158,7 @@ public static class ClubBotServices
         {
             SyncSchedule = null!,
             ActivityNcfaToken = null!,
+            MissionsNcfaToken = null!,
             Clubs = null!
         };
         configuration.GetSection(GeoGuessrConfiguration.SectionName).Bind(geoGuessrConfig);
@@ -176,6 +180,14 @@ public static class ClubBotServices
                 client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.ActivityNcfaToken}");
             })
             .AddResilienceHandler("GeoGuessrApiResiliencePipeline_Activity",
+                ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
+
+        services.AddHttpClient(GeoGuessrClientFactory.MissionsHttpClientName, client =>
+            {
+                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
+                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.MissionsNcfaToken}");
+            })
+            .AddResilienceHandler("GeoGuessrApiResiliencePipeline_Missions",
                 ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
 
         services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();

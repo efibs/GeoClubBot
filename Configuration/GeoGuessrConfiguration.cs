@@ -12,6 +12,9 @@ public class GeoGuessrConfiguration : IValidatableObject
     [Required(AllowEmptyStrings = false)]
     public required string ActivityNcfaToken { get; set; }
 
+    [Required(AllowEmptyStrings = false)]
+    public required string MissionsNcfaToken { get; set; }
+
     public TimeSpan ActivityCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(5);
 
     [Required]

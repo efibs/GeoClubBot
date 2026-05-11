@@ -32,3 +32,13 @@ public record UpdateUserRequest(string? Nick = null, string? CountryCode = null,
 public record CreateChallengeRequest(string? Map = "world", int TimeLimit = 60, bool ForbidMoving = false, bool ForbidRotating = false, bool ForbidZooming = false);
 public record AddScoreRequest(string UserId, int Score = 25000, int Distance = 100);
 public record AddActivityRequest(string UserId, int XpReward = 20);
+public record AddMissionRequest(
+    string Type,
+    string GameMode,
+    int TargetProgress,
+    int CurrentProgress = 0,
+    bool Completed = false,
+    DateTimeOffset? EndDate = null,
+    int RewardAmount = 100,
+    string RewardType = "Coins");
+public record UpdateNextMissionDateRequest(DateTimeOffset NextMissionDate);

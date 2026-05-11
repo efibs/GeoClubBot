@@ -20,5 +20,7 @@ public interface IUnitOfWork
 
     public IDailyMissionReminderRepository DailyMissionReminders { get; }
 
+    public IDailyMissionRepository DailyMissions { get; }
+
     Task<int> SaveChangesAsync();
 }

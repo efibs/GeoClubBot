@@ -39,6 +39,8 @@ public static class ConfigKeys
 
     public const string DailyMissionReminderCronScheduleConfigurationKey = "DailyMissionReminder:Schedule";
 
+    public const string DailyMissionLoggingCronScheduleConfigurationKey = "DailyMissionLogging:Schedule";
+
     public const string GeoGuessrAccountLinkingAdminChannelIdConfigurationKey = "GeoGuessrAccountLinking:AdminChannelId";
     public const string GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey = "GeoGuessrAccountLinking:HasLinkedRoleId";
 

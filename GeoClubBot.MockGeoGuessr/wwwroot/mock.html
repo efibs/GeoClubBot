@@ -29,6 +29,7 @@ table th{font-size:.9em;white-space:nowrap}
   <a href="#" onclick="showView('dashboard')">Dashboard</a>
   <a href="#" onclick="showView('users')">Users</a>
   <a href="#" onclick="showView('challenges')">Challenges</a>
+  <a href="#" onclick="showView('missions')">Missions</a>
   <a href="#" onclick="showView('jobs')">Jobs</a>
   <hr/><div id="nav-clubs"><small class="text-secondary">Clubs</small></div>
 </div>
@@ -37,6 +38,7 @@ table th{font-size:.9em;white-space:nowrap}
   <div id="v-club" style="display:none"></div>
   <div id="v-users" style="display:none"></div>
   <div id="v-challenges" style="display:none"></div>
+  <div id="v-missions" style="display:none"></div>
   <div id="v-jobs" style="display:none"></div>
 </div>
 <script>
@@ -288,6 +290,93 @@ async function addScore(token){
   if(!uid){alert('Select a user');return}
   await post('/challenges/'+token+'/scores',{userId:uid,score:+document.getElementById('as-score-'+token).value,distance:+document.getElementById('as-dist-'+token).value});
   toggleCh(token);toggleCh(token);// refresh
+}
+
+// ── Missions ──
+const MISSION_TYPES=['PlayGames','Score','WinGames'];
+const GAME_MODES=['Duels','TeamDuels','RankedDuels','RankedTeamDuels','UnrankedDuels','UnrankedTeamDuels','DailyChallenge','SinglePlayerQuiz','ReplayableQuiz','AnyBattleRoyale','Classic','CommunityStreak','CountryStreak'];
+
+async function load_missions(){
+  const data=await api('/missions');
+  const nextDate=(data.nextMissionDate||'').substring(0,16);
+  const typeOpts=MISSION_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('');
+  const modeOpts=GAME_MODES.map(m=>`<option value="${m}">${m}</option>`).join('');
+  const tomorrow=new Date(Date.now()+86400000).toISOString().substring(0,10);
+
+  let html=`<h3>Daily Missions</h3><p class="text-muted">Configure the missions returned by the mock <code>/v4/missions</code> endpoint.</p>
+
+  <div class="card"><div class="card-header">Next Mission Date</div><div class="card-body"><div class="row g-2 align-items-end">
+    <div class="col-md-4"><label class="form-label">Next Mission Date (UTC)</label><input class="form-control form-control-sm" type="datetime-local" id="nm-next" value="${nextDate}"/></div>
+    <div class="col-md-2"><button class="btn btn-primary btn-sm" onclick="saveNextMissionDate()">Save</button></div>
+  </div></div></div>
+
+  <div class="card"><div class="card-header">Create New Mission</div><div class="card-body"><div class="row g-2 align-items-end">
+    <div class="col-md-2"><label class="form-label">Type</label><select class="form-select form-select-sm" id="nm-type">${typeOpts}</select></div>
+    <div class="col-md-2"><label class="form-label">Game Mode</label><select class="form-select form-select-sm" id="nm-mode">${modeOpts}</select></div>
+    <div class="col-md-1"><label class="form-label">Current</label><input class="form-control form-control-sm" type="number" id="nm-cur" value="0"/></div>
+    <div class="col-md-1"><label class="form-label">Target</label><input class="form-control form-control-sm" type="number" id="nm-tgt" value="3"/></div>
+    <div class="col-md-1"><label class="form-label">Reward</label><input class="form-control form-control-sm" type="number" id="nm-rwd" value="100"/></div>
+    <div class="col-md-1"><label class="form-label">Reward Type</label><input class="form-control form-control-sm" id="nm-rwdt" value="Coins"/></div>
+    <div class="col-md-1"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" id="nm-done"/><label class="form-check-label" for="nm-done">Done</label></div></div>
+    <div class="col-md-2"><label class="form-label">End Date (UTC)</label><input class="form-control form-control-sm" type="date" id="nm-end" value="${tomorrow}"/></div>
+    <div class="col-md-12 mt-2"><button class="btn btn-success btn-sm" onclick="addMission()">Add Mission</button></div>
+  </div></div></div>`;
+
+  const missions=data.missions||[];
+  if(missions.length===0){
+    html+=`<div class="alert alert-info">No missions configured. The mock will return an empty list.</div>`;
+  }else{
+    html+=`<div class="card"><div class="card-header d-flex justify-content-between align-items-center">
+      <span>Current Missions (${missions.length})</span>
+      <button class="btn btn-sm btn-outline-danger" onclick="clearMissions()">Clear all</button></div>
+      <div class="card-body p-0"><table class="table table-sm mb-0">
+      <thead><tr><th>Id</th><th>Type</th><th>Game Mode</th><th>Progress</th><th>Reward</th><th>Completed</th><th>End Date</th><th></th></tr></thead><tbody>`;
+    missions.forEach(m=>{
+      const id=m.id;
+      html+=`<tr><td><code>${id.substring(0,8)}</code></td><td>${h(m.type)}</td><td>${h(m.gameMode)}</td>
+      <td>${m.currentProgress} / ${m.targetProgress}</td>
+      <td>${m.rewardAmount} ${h(m.rewardType)}</td>
+      <td>${m.completed?'✓':''}</td>
+      <td>${(m.endDate||'').substring(0,10)}</td>
+      <td><button class="btn btn-sm btn-outline-danger" onclick="deleteMission('${id}')">Delete</button></td></tr>`;
+    });
+    html+=`</tbody></table></div></div>`;
+  }
+  document.getElementById('v-missions').innerHTML=html;
+}
+
+async function saveNextMissionDate(){
+  const v=document.getElementById('nm-next').value;
+  if(!v){alert('Pick a date');return}
+  await post('/missions/next-date',{nextMissionDate:new Date(v+'Z').toISOString()});
+  load_missions();
+}
+
+async function addMission(){
+  const endDateStr=document.getElementById('nm-end').value;
+  await post('/missions',{
+    type:document.getElementById('nm-type').value,
+    gameMode:document.getElementById('nm-mode').value,
+    currentProgress:+document.getElementById('nm-cur').value,
+    targetProgress:+document.getElementById('nm-tgt').value,
+    rewardAmount:+document.getElementById('nm-rwd').value,
+    rewardType:document.getElementById('nm-rwdt').value,
+    completed:document.getElementById('nm-done').checked,
+    endDate:endDateStr?new Date(endDateStr+'T00:00:00Z').toISOString():null
+  });
+  load_missions();
+}
+
+async function deleteMission(id){
+  if(!confirm('Delete this mission?'))return;
+  await del('/missions/'+id);
+  load_missions();
+}
+
+async function clearMissions(){
+  if(!confirm('Clear ALL missions?'))return;
+  await del('/missions');
+  load_missions();
 }
 
 // ── Jobs ──

@@ -55,6 +55,21 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         return Task.FromResult(new ChallengeResultHighscoresDto { Items = items });
     }
 
+    public Task<DailyMissionsResponseDto> ReadDailyMissionsAsync()
+    {
+        List<DailyMissionDto> snapshot;
+        lock (dataStore.DailyMissions)
+        {
+            snapshot = dataStore.DailyMissions.ToList();
+        }
+
+        return Task.FromResult(new DailyMissionsResponseDto
+        {
+            Missions = snapshot,
+            NextMissionDate = dataStore.NextMissionDate
+        });
+    }
+
     public Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params)
     {
         var response = new ReadClubActivitiesResponseDto

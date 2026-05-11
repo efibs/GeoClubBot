@@ -21,4 +21,7 @@ public interface IGeoGuessrClient
     
     [Get("/v4/clubs/{clubId}/activities")]
     Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, [Query] ReadClubActivitiesQueryParams @params);
+
+    [Get("/v4/missions")]
+    Task<DailyMissionsResponseDto> ReadDailyMissionsAsync();
 }
