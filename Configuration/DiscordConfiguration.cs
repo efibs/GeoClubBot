@@ -17,4 +17,10 @@ public class DiscordConfiguration
 
     [Required]
     public required ulong WelcomeTextChannelId { get; set; }
+
+    [Required(AllowEmptyStrings = false)]
+    public required string LeftMessage { get; set; }
+
+    [Required]
+    public required ulong LeftTextChannelId { get; set; }
 }

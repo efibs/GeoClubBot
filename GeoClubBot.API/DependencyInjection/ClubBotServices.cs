@@ -51,6 +51,7 @@ public static class ClubBotServices
         // Add the input adapters
         services.AddHostedService<InitialSyncService>();
         services.AddHostedService<UserJoinedService>();
+        services.AddHostedService<UserLeftService>();
 
         // Add the output adapters 
         services.AddTransient<IUnitOfWork, DbUnitOfWork>();
