@@ -17,6 +17,9 @@ public partial class ActivityModule(IGetLastCheckTimeUseCase getLastCheckTimeUse
 
     [Group("statistics", "Commands all about statistics about the activity")]
     public partial class ActivityStatisticsModule : InteractionModuleBase<SocketInteractionContext>;
+
+    [Group("current-week", "Commands about a member's current week activity")]
+    public partial class ActivityCurrentWeekModule : InteractionModuleBase<SocketInteractionContext>;
     
     [SlashCommand("last-check-time", "Prints the last time the activities were checked")]
     public async Task LastCheckTimeAsync()

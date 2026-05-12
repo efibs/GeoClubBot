@@ -104,6 +104,7 @@ public static class ClubBotServices
         services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
         services.AddTransient<IGetLinkedGeoGuessrUserUseCase, GetLinkedGeoGuessrUserUseCase>();
         services.AddTransient<IGetDiscordUserByNicknameUseCase, GetDiscordUserByNicknameUseCase>();
+        services.AddTransient<IGetGeoGuessrUserByNicknameUseCase, GetGeoGuessrUserByNicknameUseCase>();
         services.AddTransient<IGetGeoGuessrProfileUseCase, GetGeoGuessrProfileUseCase>();
         services.AddTransient<IReadAllRelevantStrikesUseCase, ReadAllRelevantStrikesUseCase>();
         services.AddTransient<ICreateOrUpdateUserUseCase, CreateOrUpdateUserUseCase>();
