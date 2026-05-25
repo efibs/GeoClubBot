@@ -12,12 +12,19 @@ using UseCases.OutputPorts.GeoGuessr.Assemblers;
 namespace UseCases.UseCases.DailyChallenge;
 
 public class DailyChallengeUseCase(
-    IGeoGuessrClient geoGuessrClient,
+    IGeoGuessrClientFactory geoGuessrClientFactory,
     IUnitOfWork unitOfWork,
     IDiscordMessageAccess discordMessageAccess,
     IDistributeDailyChallengeRolesUseCase distributeDailyChallengeRolesUseCase,
-    IOptions<DailyChallengesConfiguration> config) : IDailyChallengeUseCase
+    IOptions<DailyChallengesConfiguration> config,
+    IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IDailyChallengeUseCase
 {
+    // Challenges are always created on behalf of the main club's account.
+    private IGeoGuessrClient GeoGuessrClient =>
+        _geoGuessrClient ??= geoGuessrClientFactory.CreateClient(geoGuessrConfig.Value.MainClub.ClubId);
+
+    private IGeoGuessrClient? _geoGuessrClient;
+
     public async Task CreateDailyChallengeAsync()
     {
         // Read the challenges configuration file
@@ -55,7 +62,7 @@ public class DailyChallengeUseCase(
             };
             
             // Create the challenge
-            var response = await geoGuessrClient.CreateChallengeAsync(request).ConfigureAwait(false);
+            var response = await GeoGuessrClient.CreateChallengeAsync(request).ConfigureAwait(false);
             
             // Add to the next challenges
             nextChallenges.Add(
@@ -110,7 +117,7 @@ public class DailyChallengeUseCase(
             };
             
             // Read the highscores 
-            var response = await geoGuessrClient.ReadHighscoresAsync(oldChallengeLink.ChallengeId, @params).ConfigureAwait(false);
+            var response = await GeoGuessrClient.ReadHighscoresAsync(oldChallengeLink.ChallengeId, @params).ConfigureAwait(false);
             
             // Assemble the highscores
             var highscores = ChallengeResultHighScoresAssembler.AssembleEntities(response);

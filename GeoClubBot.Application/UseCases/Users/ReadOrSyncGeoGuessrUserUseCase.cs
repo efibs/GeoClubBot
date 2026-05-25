@@ -6,15 +6,15 @@ using UseCases.OutputPorts.GeoGuessr.Assemblers;
 
 namespace UseCases.UseCases.Users;
 
-public class ReadOrSyncGeoGuessrUserUseCase(IUnitOfWork unitOfWork, 
+public class ReadOrSyncGeoGuessrUserUseCase(IUnitOfWork unitOfWork,
     ICreateOrUpdateUserUseCase createOrUpdateUserUseCase,
-    IGeoGuessrClient geoGuessrClient) : IReadOrSyncGeoGuessrUserUseCase
+    IGeoGuessrClientFactory geoGuessrClientFactory) : IReadOrSyncGeoGuessrUserUseCase
 {
     public async Task<GeoGuessrUser?> ReadOrSyncGeoGuessrUserByUserIdAsync(string userId)
     {
         // Try to read the user from the repository
         var user = await unitOfWork.GeoGuessrUsers.ReadUserByUserIdAsync(userId).ConfigureAwait(false);
-        
+
         // If the user was found
         if (user != null)
         {
@@ -23,7 +23,8 @@ public class ReadOrSyncGeoGuessrUserUseCase(IUnitOfWork unitOfWork,
 
         try
         {
-            // Read the user from GeoGuessr
+            // Read the user from GeoGuessr via the dedicated user-profile NCFA token
+            var geoGuessrClient = geoGuessrClientFactory.CreateUserProfileClient();
             var geoGuessrUserDto = await geoGuessrClient.ReadUserAsync(userId).ConfigureAwait(false);
 
             // Assemble the entity

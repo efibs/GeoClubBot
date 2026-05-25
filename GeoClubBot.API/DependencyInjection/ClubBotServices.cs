@@ -1,7 +1,5 @@
 using Configuration;
 using GeoClubBot.DependencyInjection.Modules;
-using Infrastructure.OutputAdapters.GeoGuessr;
-using Refit;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace GeoClubBot.DependencyInjection;
@@ -75,16 +73,5 @@ public static class ClubBotServices
                 ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
 
         services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();
-
-        services.AddRefitClient<IGeoGuessrApi>()
-            .ConfigureHttpClient(client =>
-            {
-                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
-                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.MainClub.NcfaToken}");
-            })
-            .AddResilienceHandler("GeoGuessrApiResiliencePipeline",
-                ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
-
-        services.AddTransient<IGeoGuessrClient, RefitGeoGuessrClient>();
     }
 }
