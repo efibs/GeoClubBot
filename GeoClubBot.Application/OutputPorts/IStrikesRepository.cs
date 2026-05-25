@@ -5,6 +5,7 @@ namespace UseCases.OutputPorts;
 public interface IStrikesRepository
 {
     ClubMemberStrike CreateStrike(ClubMemberStrike strike);
+
     Task<int?> ReadNumberOfActiveStrikesByMemberUserIdAsync(string memberUserId);
 
     Task<Dictionary<string, int>> ReadActiveStrikeCountsByMemberUserIdsAsync(IEnumerable<string> memberUserIds);
@@ -13,9 +14,7 @@ public interface IStrikesRepository
 
     Task<List<ClubMemberStrike>> ReadAllStrikesAsync();
 
-    Task<ClubMemberStrike?> RevokeStrikeByIdAsync(Guid strikeId);
-
-    Task<ClubMemberStrike?> UnrevokeStrikeByIdAsync(Guid strikeId);
+    Task<ClubMemberStrike?> ReadForUpdateByIdAsync(Guid strikeId);
 
     Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold);
 }

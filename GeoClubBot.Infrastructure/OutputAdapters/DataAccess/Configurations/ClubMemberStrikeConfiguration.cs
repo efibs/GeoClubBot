@@ -9,29 +9,28 @@ public class ClubMemberStrikeConfiguration : IEntityTypeConfiguration<ClubMember
 {
     public void Configure(EntityTypeBuilder<ClubMemberStrike> builder)
     {
-        // Configure the primary key
         builder.HasKey(x => x.StrikeId);
         builder.Property(x => x.StrikeId)
             .ValueGeneratedNever();
-        
-        // Configure the user id property
+
         builder.Property(x => x.UserId)
             .IsRequired()
             .HasMaxLength(StringLengthConstants.GeoGuessrUserIdLength);
-        
-        // Configure the other properties to be required
-        builder.Property(x => x.Timestamp)
-            .IsRequired();
-        builder.Property(x => x.Revoked)
-            .IsRequired();
-        
-        // Configure the club member foreign key
+
+        builder.Property(x => x.Timestamp).IsRequired();
+        builder.Property(x => x.Revoked).IsRequired();
+
+        // Bypass private setters so EF cannot accidentally trigger domain behaviour during materialisation.
+        builder.UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        // Domain events are tracked via BaseEntity but not persisted.
+        builder.Ignore(x => x.DomainEvents);
+
         builder.HasOne(x => x.ClubMember)
             .WithMany(x => x.Strikes)
             .HasForeignKey(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
-        
-        // Configure the index
+
         builder.HasIndex(x => x.Timestamp);
     }
 }

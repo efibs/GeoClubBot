@@ -4,19 +4,13 @@ using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.Strikes;
+using UseCases.UseCases.Strikes;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 public partial class ActivityModule
 {
     public partial class ActivityStrikeModule(
-        IAddStrikeUseCase addStrikeUseCase,
-        IReadMemberStrikesUseCase readMemberStrikesUseCase,
-        IReadAllStrikesUseCase readAllStrikesUseCase,
-        IReadAllRelevantStrikesUseCase readAllRelevantStrikesUseCase,
-        IRevokeStrikeUseCase revokeStrikeUseCase,
-        IUnrevokeStrikeUseCase unrevokeStrikeUseCase,
         ISender mediator,
         ILogger<ActivityStrikeModule> logger,
         IConfiguration config) : ClubBotInteractionModule(mediator, logger)
@@ -28,7 +22,9 @@ public partial class ActivityModule
         {
             strikeDate = DateTime.SpecifyKind(strikeDate, DateTimeKind.Utc);
 
-            var strikeId = await addStrikeUseCase.AddStrikeAsync(memberNickname, strikeDate).ConfigureAwait(false);
+            var strikeId = await Mediator
+                .Send(new AddStrikeCommand(memberNickname, strikeDate))
+                .ConfigureAwait(false);
 
             if (strikeId == null)
             {
@@ -47,7 +43,9 @@ public partial class ActivityModule
         [SlashCommand("read", "Read the strikes a player currently has")]
         public async Task ReadStrikesAsync(string memberNickname)
         {
-            var strikeStatus = await readMemberStrikesUseCase.ReadMemberStrikesAsync(memberNickname).ConfigureAwait(false);
+            var strikeStatus = await Mediator
+                .Send(new ReadMemberStrikesQuery(memberNickname))
+                .ConfigureAwait(false);
 
             if (strikeStatus == null)
             {
@@ -76,7 +74,7 @@ public partial class ActivityModule
         [SlashCommand("read-all", "Read all strikes currently in the system")]
         public async Task ReadAllStrikesAsync()
         {
-            var strikes = await readAllStrikesUseCase.ReadAllStrikesAsync().ConfigureAwait(false);
+            var strikes = await Mediator.Send(new ReadAllStrikesQuery()).ConfigureAwait(false);
 
             if (strikes.Count == 0)
             {
@@ -114,10 +112,10 @@ public partial class ActivityModule
         [SlashCommand("read-relevant", "Read all strikes that are currently relevant")]
         public Task ReadAllRelevantStrikesAsync() =>
             ExecuteAsync(
-                async _ =>
+                async ct =>
                 {
-                    var strikes = await readAllRelevantStrikesUseCase
-                        .ReadAllRelevantStrikesAsync()
+                    var strikes = await Mediator
+                        .Send(new ReadAllRelevantStrikesQuery(), ct)
                         .ConfigureAwait(false);
 
                     if (strikes.Count == 0)
@@ -157,15 +155,13 @@ public partial class ActivityModule
         [SlashCommand("revoke", "Revoke a strike")]
         public async Task RevokeStrikeAsync(string strikeId)
         {
-            var parseSuccessful = Guid.TryParse(strikeId, out var strikeIdGuid);
-
-            if (!parseSuccessful)
+            if (!Guid.TryParse(strikeId, out var strikeIdGuid))
             {
                 await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
-            var strike = await revokeStrikeUseCase.RevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
+            var strike = await Mediator.Send(new RevokeStrikeCommand(strikeIdGuid)).ConfigureAwait(false);
 
             if (strike != null)
             {
@@ -184,15 +180,13 @@ public partial class ActivityModule
         [SlashCommand("unrevoke", "Remove a revocation of a strike")]
         public async Task UnrevokeStrikeAsync(string strikeId)
         {
-            var parseSuccessful = Guid.TryParse(strikeId, out var strikeIdGuid);
-
-            if (!parseSuccessful)
+            if (!Guid.TryParse(strikeId, out var strikeIdGuid))
             {
                 await RespondAsync($"Invalid GUID '{strikeId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
-            var strike = await unrevokeStrikeUseCase.UnrevokeStrikeAsync(strikeIdGuid).ConfigureAwait(false);
+            var strike = await Mediator.Send(new UnrevokeStrikeCommand(strikeIdGuid)).ConfigureAwait(false);
 
             if (strike != null)
             {

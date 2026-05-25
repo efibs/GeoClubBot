@@ -1,13 +1,14 @@
 using Configuration;
 using Entities;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.ClubMembers;
-using UseCases.InputPorts.Strikes;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
+using UseCases.UseCases.Strikes;
 using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
@@ -16,7 +17,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
     IGeoGuessrClientFactory geoGuessrClientFactory,
     IUnitOfWork unitOfWork,
     IActivityStatusMessageSender activityStatusMessageSender,
-    ICheckStrikeDecayUseCase checkStrikeDecayUseCase,
+    ISender mediator,
     IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
     ISaveClubMembersUseCase saveClubMembersUseCase,
     ICalculateAverageXpUseCase calculateAverageXpUseCase,
@@ -34,7 +35,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         var maxNumStrikes = clubEntry.GetMaxNumStrikes(defaults);
 
         // Check the strikes for decayed strikes and remove them
-        await checkStrikeDecayUseCase.CheckStrikeDecayAsync().ConfigureAwait(false);
+        await mediator.Send(new CheckStrikeDecayCommand()).ConfigureAwait(false);
 
         // Log debug message
         logger.LogDebug("Checking player activity for club {ClubId}...", clubId);
@@ -251,16 +252,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
 
     private void _addStrike(string memberUserId, DateTimeOffset now)
     {
-        // Build a new strike
-        var newStrike = new ClubMemberStrike
-        {
-            StrikeId = Guid.NewGuid(),
-            UserId = memberUserId,
-            Timestamp = now,
-            Revoked = false
-        };
-
-        // Add the strike
+        var newStrike = ClubMemberStrike.Create(memberUserId, now);
         unitOfWork.Strikes.CreateStrike(newStrike);
     }
 
