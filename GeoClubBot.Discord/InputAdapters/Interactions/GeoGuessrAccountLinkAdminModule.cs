@@ -3,6 +3,8 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Entities;
+using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
 
@@ -11,327 +13,207 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
 [Group("gg-account-link-admin", "Commands for linking Discord accounts to GeoGuessr accounts")]
-public partial class GeoGuessrAccountLinkAdminModule(ICompleteAccountLinkingUseCase completeAccountLinkingUseCase,
+public class GeoGuessrAccountLinkAdminModule(
+    ICompleteAccountLinkingUseCase completeAccountLinkingUseCase,
     IUnlinkAccountsUseCase unlinkAccountsUseCase,
     ICancelAccountLinkingUseCase cancelAccountLinkingUseCase,
-    ILogger<GeoGuessrAccountLinkAdminModule> logger) : InteractionModuleBase<SocketInteractionContext>
+    ISender mediator,
+    ILogger<GeoGuessrAccountLinkAdminModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
     [SlashCommand("complete", "Complete the account linking process")]
-    public async Task CompleteAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId, string oneTimePassword)
-    {
-        try
-        {
-            // Defer the response
-            await DeferAsync(ephemeral: true).ConfigureAwait(false);
-
-            // Complete the account linking
-            var result =
-                await completeAccountLinkingUseCase.CompleteLinkingAsync(discordUser.Id, geoGuessrUserId,
-                    oneTimePassword).ConfigureAwait(false);
-
-            // Handle the linking ended
-            await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, null).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Log error
-            LogSlashCommandCompleteAccountLinkingRequestFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
-            
-            // Respond
-            await  FollowupAsync("Failed to complete linking process (internal error).", ephemeral: true).ConfigureAwait(false);
-        }
-    }
-    
-    [SlashCommand("cancel", "Cancel the account linking process")]
-    public async Task CancelAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId)
-    {
-        try
-        {
-            // Defer the response
-            await DeferAsync(ephemeral: true).ConfigureAwait(false);
-
-            // Complete the account linking
-            var result =
-                await cancelAccountLinkingUseCase.CancelAccountLinkingAsync(discordUser.Id, geoGuessrUserId).ConfigureAwait(false);
-
-            // Handle the linking ended
-            await _handleLinkingCanceledByAdminAsync(result, discordUser, null).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Log error
-            LogSlashCommandCompleteAccountLinkingRequestFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
-            
-            // Respond
-            await  FollowupAsync("Failed to cancel linking process (internal error).", ephemeral: true).ConfigureAwait(false);
-        }
-    }
-    
-    [SlashCommand("unlink", "Unlink the accounts of a user")]
-    public async Task UnlinkAccountsSlashCommandAsync(IUser discordUser, string geoGuessrUserId)
-    {
-        try
-        {
-            // Defer the response
-            await DeferAsync(ephemeral: true).ConfigureAwait(false);
-        
-            // Unlink the accounts
-            var successful = await unlinkAccountsUseCase.UnlinkAccountsAsync(discordUser.Id, geoGuessrUserId).ConfigureAwait(false);
-        
-            // If the unlink was not successful
-            if (successful == false)
+    public Task CompleteAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId, string oneTimePassword) =>
+        ExecuteAsync(
+            async _ =>
             {
-                // Respond with error
-                await FollowupAsync("The given accounts are not linked", ephemeral: true).ConfigureAwait(false);
-                return;
-            }
-        
-            // Respond with successful message
-            await FollowupAsync("Account linking was successfully removed.", ephemeral: true).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Log error
-            LogSlashCommandUnlinkAccountsFailed(logger, ex, discordUser.Username, discordUser.Id, geoGuessrUserId);
-            
-            // Respond
-            await  FollowupAsync("Failed to remove account link.", ephemeral: true).ConfigureAwait(false);
-        }
+                var result = await completeAccountLinkingUseCase
+                    .CompleteLinkingAsync(discordUser.Id, geoGuessrUserId, oneTimePassword)
+                    .ConfigureAwait(false);
 
-    }
+                await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, null).ConfigureAwait(false);
+            },
+            ephemeral: true,
+            failureMessage: "Failed to complete linking process (internal error).");
 
+    [SlashCommand("cancel", "Cancel the account linking process")]
+    public Task CancelAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId) =>
+        ExecuteAsync(
+            async _ =>
+            {
+                var result = await cancelAccountLinkingUseCase
+                    .CancelAccountLinkingAsync(discordUser.Id, geoGuessrUserId)
+                    .ConfigureAwait(false);
+
+                await _handleLinkingCanceledByAdminAsync(result, discordUser, null).ConfigureAwait(false);
+            },
+            ephemeral: true,
+            failureMessage: "Failed to cancel linking process (internal error).");
+
+    [SlashCommand("unlink", "Unlink the accounts of a user")]
+    public Task UnlinkAccountsSlashCommandAsync(IUser discordUser, string geoGuessrUserId) =>
+        ExecuteAsync(
+            async _ =>
+            {
+                var successful = await unlinkAccountsUseCase
+                    .UnlinkAccountsAsync(discordUser.Id, geoGuessrUserId)
+                    .ConfigureAwait(false);
+
+                await FollowupAsync(
+                        successful
+                            ? "Account linking was successfully removed."
+                            : "The given accounts are not linked",
+                        ephemeral: true)
+                    .ConfigureAwait(false);
+            },
+            ephemeral: true,
+            failureMessage: "Failed to remove account link.");
+
+    // Button → modal interactions must use RespondWithModalAsync (an immediate response),
+    // so they cannot be wrapped in ExecuteAsync, which would defer first.
     [ComponentInteraction($"{ComponentIds.GeoGuessrAccountLinkingCompleteButtonId}:*,*", true)]
     public async Task CompleteLinkingButtonPressedAsync(string discordUserIdString, string geoGuessrUserId)
     {
         try
         {
-            // Get the message id
             var messageId = (Context.Interaction as SocketMessageComponent)?.Message?.Id;
-
-            // Build the modal id
             var modalId =
                 $"{ComponentIds.GeoGuessrAccountLinkingCompleteModalId}:{discordUserIdString},{geoGuessrUserId},{messageId}";
 
-            // Send the modal
             await Context.Interaction.RespondWithModalAsync<CompleteAccountLinkModal>(modalId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // Log error
-            LogErrorWhileTryingToOpenOneTimePasswordInputModal(logger, ex, discordUserIdString, geoGuessrUserId);
-            
-            // Respond
+            Logger.LogError(ex, "Error while trying to open one time password input modal for linking request between discord user {DiscordUserId} on GeoGuessr account {GeoGuessrUserId}.", discordUserIdString, geoGuessrUserId);
             await RespondAsync("Failed to open one time password input modal.", ephemeral: true).ConfigureAwait(false);
         }
     }
 
     [ModalInteraction($"{ComponentIds.GeoGuessrAccountLinkingCompleteModalId}:*,*,*", true)]
-    public async Task CompleteLinkingPasswordSubmitted(string discordUserIdString, string geoGuessrUserId, string messageIdString, CompleteAccountLinkModal modal)
-    {
-        try
-        {
-            // Defer the response
-            await DeferAsync(ephemeral: true).ConfigureAwait(false);
-            
-            // Parse the discord user id
-            var discordUserId = ulong.Parse(discordUserIdString);
+    public Task CompleteLinkingPasswordSubmitted(string discordUserIdString, string geoGuessrUserId, string messageIdString, CompleteAccountLinkModal modal) =>
+        ExecuteAsync(
+            async _ =>
+            {
+                var discordUserId = ulong.Parse(discordUserIdString);
 
-            // Complete the request
-            var result = await completeAccountLinkingUseCase
-                .CompleteLinkingAsync(discordUserId, geoGuessrUserId, modal.OneTimePassword).ConfigureAwait(false);
+                var result = await completeAccountLinkingUseCase
+                    .CompleteLinkingAsync(discordUserId, geoGuessrUserId, modal.OneTimePassword)
+                    .ConfigureAwait(false);
 
-            // Get the discord user
-            var discordUser = Context.Guild.GetUser(discordUserId);
-            
-            // Handle the linking ended
-            await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Log error
-            LogFailedToLinkGeoguessrAccountToDiscordUser(logger, ex, geoGuessrUserId, discordUserIdString);
-            
-            // Respond with error
-            await FollowupAsync("Failed to complete linking process (internal error).", ephemeral: true).ConfigureAwait(false);
-        }
-    }
-    
+                var discordUser = Context.Guild.GetUser(discordUserId);
+                await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString).ConfigureAwait(false);
+            },
+            ephemeral: true,
+            failureMessage: "Failed to complete linking process (internal error).");
+
     [ComponentInteraction($"{ComponentIds.GeoGuessrAccountLinkingCancelButtonId}:*,*", true)]
     public async Task CancelLinkingButtonPressedAsync(string discordUserIdString, string geoGuessrUserId)
     {
         try
         {
-            // Get the message id
             var messageId = (Context.Interaction as SocketMessageComponent)?.Message?.Id;
-
-            // Build the modal id
             var modalId =
                 $"{ComponentIds.GeoGuessrAccountLinkingCancelModalId}:{discordUserIdString},{geoGuessrUserId},{messageId}";
 
-            // Send the modal
             await Context.Interaction.RespondWithModalAsync<CancelAccountLinkModal>(modalId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // Log error
-            LogErrorWhileTryingToOpenCancelModal(logger, ex, geoGuessrUserId, discordUserIdString);
-            
-            // Respond
+            Logger.LogError(ex, "Error while trying to open cancel modal for linking request between discord user {DiscordUserId} on GeoGuessr account {GeoGuessrUserId}.", discordUserIdString, geoGuessrUserId);
             await RespondAsync("Failed to open cancel modal.", ephemeral: true).ConfigureAwait(false);
         }
     }
-    
+
     [ModalInteraction($"{ComponentIds.GeoGuessrAccountLinkingCancelModalId}:*,*,*", true)]
-    public async Task CancelLinkingSubmitted(string discordUserIdString, string geoGuessrUserId, string messageIdString, CancelAccountLinkModal modal)
-    {
-        try
-        {
-            // Defer the response
-            await DeferAsync(ephemeral: true).ConfigureAwait(false);
-            
-            // If the user did not enter "Confirm"
-            if (modal.ConfirmText != "Confirm")
+    public Task CancelLinkingSubmitted(string discordUserIdString, string geoGuessrUserId, string messageIdString, CancelAccountLinkModal modal) =>
+        ExecuteAsync(
+            async _ =>
             {
-                // Respond with successful message
-                await FollowupAsync("Account linking was not canceled. To cancel please enter 'Confirm' into the Confirm Text box.", ephemeral: true).ConfigureAwait(false);
-                return;
-            }
+                if (modal.ConfirmText != "Confirm")
+                {
+                    await FollowupAsync("Account linking was not canceled. To cancel please enter 'Confirm' into the Confirm Text box.", ephemeral: true).ConfigureAwait(false);
+                    return;
+                }
 
-            // Parse the discord user id
-            var discordUserId = ulong.Parse(discordUserIdString);
+                var discordUserId = ulong.Parse(discordUserIdString);
 
-            // Complete the request
-            var result = await cancelAccountLinkingUseCase
-                .CancelAccountLinkingAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
+                var result = await cancelAccountLinkingUseCase
+                    .CancelAccountLinkingAsync(discordUserId, geoGuessrUserId)
+                    .ConfigureAwait(false);
 
-            // Get the discord user
-            var discordUser = Context.Guild.GetUser(discordUserId);
-            
-            // Handle the linking ended
-            await _handleLinkingCanceledByAdminAsync(result, discordUser, messageIdString).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // Log error
-            LogFailedToLinkGeoguessrAccountToDiscordUser(logger, ex, geoGuessrUserId, discordUserIdString);
-            
-            // Respond with error
-            await FollowupAsync("Failed to cancel linking process (internal error).", ephemeral: true).ConfigureAwait(false);
-        }
-    }
-    
+                var discordUser = Context.Guild.GetUser(discordUserId);
+                await _handleLinkingCanceledByAdminAsync(result, discordUser, messageIdString).ConfigureAwait(false);
+            },
+            ephemeral: true,
+            failureMessage: "Failed to cancel linking process (internal error).");
+
     private async Task _handleLinkingEndedAsync(bool successful, GeoGuessrUser? geoGuessrUser, IUser discordUser, string? messageIdString)
     {
         try
         {
-            // If the linking was not successful
             if (successful == false)
             {
-                // Respond with wrong password message
                 await FollowupAsync("Account linking failed: Wrong password. Please try again.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
-            // Respond with successful message
             await FollowupAsync("Account linking was successful.", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // log warning
-            logger.LogWarning(ex, "Sending admin complete response failed.");
+            Logger.LogWarning(ex, "Sending admin complete response failed.");
         }
 
         try
         {
-            // Create a direct message channel with the user
             var dmChannel = await discordUser.CreateDMChannelAsync().ConfigureAwait(false);
-            
-            // Send successful message
             await dmChannel.SendMessageAsync(
                 $"Your GeoGuessr account \"{geoGuessrUser?.Nickname ?? "N/A"}\" was successfully linked to this Discord account.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // log warning
-            logger.LogWarning(ex, "Sending direct message to user with completed account linking failed.");
+            Logger.LogWarning(ex, "Sending direct message to user with completed account linking failed.");
         }
 
-        // If the original message id is still existing
         if (messageIdString != null)
         {
-            // Parse the message id
             var messageId = ulong.Parse(messageIdString);
-            
-            // Get the original message
             var message = await Context.Channel.GetMessageAsync(messageId).ConfigureAwait(false);
-            
-            // Delete the original message
             await message.DeleteAsync().ConfigureAwait(false);
         }
     }
-    
+
     private async Task _handleLinkingCanceledByAdminAsync(bool successful, IUser discordUser, string? messageIdString)
     {
         try
         {
-            // If the cancel was not successful
             if (successful == false)
             {
-                // Respond with wrong password message
                 await FollowupAsync("There was no account linking process for the given accounts.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
-            
-            // Respond with successful message
+
             await FollowupAsync("Account linking was successfully canceled.", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // log warning
-            logger.LogWarning(ex, "Sending admin complete response failed.");
+            Logger.LogWarning(ex, "Sending admin complete response failed.");
         }
 
         try
         {
-            // Create a direct message channel with the user
             var dmChannel = await discordUser.CreateDMChannelAsync().ConfigureAwait(false);
-            
-            // Send successful message
             await dmChannel.SendMessageAsync(
                 $"Your GeoGuessr account linking process on the {Context.Guild.Name} server was canceled by an admin. You can now create a new linking request if you wish.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // log warning
-            logger.LogWarning(ex, "Sending direct message to user with completed account linking failed.");
+            Logger.LogWarning(ex, "Sending direct message to user with completed account linking failed.");
         }
 
-        // If the original message id is still existing
         if (messageIdString != null)
         {
-            // Parse the message id
             var messageId = ulong.Parse(messageIdString);
-            
-            // Get the original message
             var message = await Context.Channel.GetMessageAsync(messageId).ConfigureAwait(false);
-            
-            // Delete the original message
             await message.DeleteAsync().ConfigureAwait(false);
         }
     }
-
-    [LoggerMessage(LogLevel.Error, "Slash command complete account linking request failed for discord user {discordUsername} ({discordUserId}) on GeoGuessr account {geoGuessrUserId}.")]
-    static partial void LogSlashCommandCompleteAccountLinkingRequestFailed(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUsername, ulong discordUserId, string geoGuessrUserId);
-
-    [LoggerMessage(LogLevel.Error, "Slash command unlink accounts failed for discord user {discordUsername} ({discordUserId}) on GeoGuessr account {geoGuessrUserId}.")]
-    static partial void LogSlashCommandUnlinkAccountsFailed(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUsername, ulong discordUserId, string geoGuessrUserId);
-
-    [LoggerMessage(LogLevel.Error, "Error while trying to open one time password input modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.")]
-    static partial void LogErrorWhileTryingToOpenOneTimePasswordInputModal(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUserIdString, string geoGuessrUserId);
-
-    [LoggerMessage(LogLevel.Error, "Failed to link GeoGuessr Account '{geoGuessrUserId}' to Discord user '{discordUserIdString}'.")]
-    static partial void LogFailedToLinkGeoguessrAccountToDiscordUser(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string geoGuessrUserId, string discordUserIdString);
-
-    [LoggerMessage(LogLevel.Error, "Error while trying to open cancel modal for linking request between discord user {discordUserIdString} on GeoGuessr account {geoGuessrUserId}.")]
-    static partial void LogErrorWhileTryingToOpenCancelModal(ILogger<GeoGuessrAccountLinkAdminModule> logger, Exception ex, string discordUserIdString, string geoGuessrUserId);
 }

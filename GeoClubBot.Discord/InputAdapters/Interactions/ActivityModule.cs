@@ -1,5 +1,8 @@
 using Discord;
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using MediatR;
+using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMemberActivity;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -7,35 +10,34 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
 [Group("member-activity", "Commands for interacting with the club member activity checker")]
-public partial class ActivityModule(IGetLastCheckTimeUseCase getLastCheckTimeUseCase) : InteractionModuleBase<SocketInteractionContext>
+public partial class ActivityModule(
+    IGetLastCheckTimeUseCase getLastCheckTimeUseCase,
+    ISender mediator,
+    ILogger<ActivityModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
     [Group("strike", "Commands all about the strikes of every player")]
-    public partial class ActivityStrikeModule : InteractionModuleBase<SocketInteractionContext>;
-    
+    public partial class ActivityStrikeModule;
+
     [Group("excuse", "Commands all about excusing players")]
-    public partial class ActivityExcuseModule : InteractionModuleBase<SocketInteractionContext>;
+    public partial class ActivityExcuseModule;
 
     [Group("statistics", "Commands all about statistics about the activity")]
-    public partial class ActivityStatisticsModule : InteractionModuleBase<SocketInteractionContext>;
+    public partial class ActivityStatisticsModule;
 
     [Group("current-week", "Commands about a member's current week activity")]
-    public partial class ActivityCurrentWeekModule : InteractionModuleBase<SocketInteractionContext>;
-    
+    public partial class ActivityCurrentWeekModule;
+
     [SlashCommand("last-check-time", "Prints the last time the activities were checked")]
     public async Task LastCheckTimeAsync()
     {
-        // Get the last check time
         var lastCheckTime = await getLastCheckTimeUseCase.GetLastCheckTimeAsync().ConfigureAwait(false);
-        
-        // If there is a last check time
+
         if (lastCheckTime.HasValue)
         {
-            // Respond
             await RespondAsync($"The last check was {lastCheckTime:f} UTC.", ephemeral: true).ConfigureAwait(false);
         }
         else
         {
-            // Respond
             await RespondAsync("There has not been any checks yet.", ephemeral: true).ConfigureAwait(false);
         }
     }

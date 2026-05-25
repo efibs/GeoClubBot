@@ -1,4 +1,7 @@
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using MediatR;
+using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.Excuses;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -9,7 +12,9 @@ public partial class ActivityModule
         IAddExcuseUseCase addExcuseUseCase,
         IUpdateExcuseUseCase updateExcuseUseCase,
         IRemoveExcuseUseCase removeExcuseUseCase,
-        IReadExcusesUseCase readExcusesUseCase)
+        IReadExcusesUseCase readExcusesUseCase,
+        ISender mediator,
+        ILogger<ActivityExcuseModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
         [SlashCommand("add", "Add an excuse for a player")]
         public async Task AddExcuseAsync(string memberNickname,

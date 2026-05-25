@@ -1,5 +1,7 @@
 using Discord;
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
@@ -12,76 +14,63 @@ public partial class ActivityModule
         IGetActivityThisWeekUseCase getActivityThisWeekUseCase,
         IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
         IGetGeoGuessrUserByNicknameUseCase getGeoGuessrUserByNicknameUseCase,
-        ILogger<ActivityCurrentWeekModule> logger)
+        ISender mediator,
+        ILogger<ActivityCurrentWeekModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
         [SlashCommand("by-nickname", "Show a member's current week activity by GeoGuessr nickname")]
-        public async Task CurrentWeekByNicknameAsync(
-            [Summary(description: "The GeoGuessr nickname of the member")] string nickname)
-        {
-            await DeferAsync(ephemeral: true).ConfigureAwait(false);
-
-            try
-            {
-                var geoGuessrUser = await getGeoGuessrUserByNicknameUseCase
-                    .GetGeoGuessrUserByNicknameAsync(nickname)
-                    .ConfigureAwait(false);
-
-                if (geoGuessrUser is null)
+        public Task CurrentWeekByNicknameAsync(
+            [Summary(description: "The GeoGuessr nickname of the member")] string nickname) =>
+            ExecuteAsync(
+                async _ =>
                 {
-                    await FollowupAsync($"No club member with the GeoGuessr nickname '**{nickname}**' was found.")
+                    var geoGuessrUser = await getGeoGuessrUserByNicknameUseCase
+                        .GetGeoGuessrUserByNicknameAsync(nickname)
                         .ConfigureAwait(false);
-                    return;
-                }
 
-                var activity = await getActivityThisWeekUseCase
-                    .GetCurrentWeekActivityForMemberAsync(geoGuessrUser.UserId)
-                    .ConfigureAwait(false);
+                    if (geoGuessrUser is null)
+                    {
+                        await FollowupAsync($"No club member with the GeoGuessr nickname '**{nickname}**' was found.")
+                            .ConfigureAwait(false);
+                        return;
+                    }
 
-                await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                LogCurrentWeekByNicknameFailed(logger, ex, nickname);
-                await FollowupAsync("Failed to retrieve the current week activity (internal error). Please try again later. If the issue persists, please contact an admin.")
-                    .ConfigureAwait(false);
-            }
-        }
+                    var activity = await getActivityThisWeekUseCase
+                        .GetCurrentWeekActivityForMemberAsync(geoGuessrUser.UserId)
+                        .ConfigureAwait(false);
+
+                    await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
+                        .ConfigureAwait(false);
+                },
+                ephemeral: true,
+                failureMessage: "Failed to retrieve the current week activity (internal error). Please try again later. If the issue persists, please contact an admin.");
 
         [SlashCommand("by-user", "Show a Discord user's current week activity")]
         [UserCommand("Current Week XP")]
         [DefaultMemberPermissions(GuildPermission.Administrator)]
-        public async Task CurrentWeekByUserAsync(IGuildUser user)
-        {
-            await DeferAsync(ephemeral: true).ConfigureAwait(false);
-
-            try
-            {
-                var geoGuessrUser = await getLinkedGeoGuessrUserUseCase
-                    .GetLinkedGeoGuessrUserAsync(user.Id)
-                    .ConfigureAwait(false);
-
-                if (geoGuessrUser is null)
+        public Task CurrentWeekByUserAsync(IGuildUser user) =>
+            ExecuteAsync(
+                async _ =>
                 {
-                    await FollowupAsync($"The user '{user.DisplayName}' has not linked their GeoGuessr account yet.")
+                    var geoGuessrUser = await getLinkedGeoGuessrUserUseCase
+                        .GetLinkedGeoGuessrUserAsync(user.Id)
                         .ConfigureAwait(false);
-                    return;
-                }
 
-                var activity = await getActivityThisWeekUseCase
-                    .GetCurrentWeekActivityForMemberAsync(geoGuessrUser.UserId)
-                    .ConfigureAwait(false);
+                    if (geoGuessrUser is null)
+                    {
+                        await FollowupAsync($"The user '{user.DisplayName}' has not linked their GeoGuessr account yet.")
+                            .ConfigureAwait(false);
+                        return;
+                    }
 
-                await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                LogCurrentWeekByUserFailed(logger, ex, user.DisplayName);
-                await FollowupAsync("Failed to retrieve the current week activity (internal error). Please try again later. If the issue persists, please contact an admin.")
-                    .ConfigureAwait(false);
-            }
-        }
+                    var activity = await getActivityThisWeekUseCase
+                        .GetCurrentWeekActivityForMemberAsync(geoGuessrUser.UserId)
+                        .ConfigureAwait(false);
+
+                    await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
+                        .ConfigureAwait(false);
+                },
+                ephemeral: true,
+                failureMessage: "Failed to retrieve the current week activity (internal error). Please try again later. If the issue persists, please contact an admin.");
 
         private static EmbedBuilder _buildWeekActivityEmbed(Entities.ClubMemberWeekActivity activity, string nickname)
         {
@@ -115,11 +104,5 @@ public partial class ActivityModule
 
             return embed;
         }
-
-        [LoggerMessage(LogLevel.Error, "Failed to get current week activity for GeoGuessr nickname '{nickname}'.")]
-        static partial void LogCurrentWeekByNicknameFailed(ILogger<ActivityCurrentWeekModule> logger, Exception ex, string nickname);
-
-        [LoggerMessage(LogLevel.Error, "Failed to get current week activity for Discord user '{displayName}'.")]
-        static partial void LogCurrentWeekByUserFailed(ILogger<ActivityCurrentWeekModule> logger, Exception ex, string displayName);
     }
 }
