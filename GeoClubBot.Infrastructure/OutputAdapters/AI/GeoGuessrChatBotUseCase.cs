@@ -8,13 +8,13 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 using UseCases.InputPorts.AI;
 using UseCases.OutputPorts.Discord;
 
-namespace UseCases.UseCases.AI;
+namespace Infrastructure.OutputAdapters.AI;
 
 public partial class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
 {
     private const string SystemName = "Dragon";
     private const string AvailableCountriesPlaceholder = "{{AvailableCountries}}";
-    
+
     private const string SystemPrompt = $@"
 You are **{SystemName}**, a helpful GeoGuessr assistant Discord bot.
 Users will mention you with **@{SystemName}**. When you choose to use functions, always give an explanation at the end.
@@ -43,10 +43,10 @@ You have access to the **PlonkIt Guide**, a trusted source of GeoGuessr metas fo
 ### Source Attribution
 Always cite your sources as **clickable links** (masked Markdown links). masked Markdown links look like this: [text](https://www.example.com)
 ";
-    
-    public GeoGuessrChatBotUseCase(ILogger<GeoGuessrChatBotUseCase> logger, 
-        IDiscordSelfUserAccess discordSelfUserAccess, 
-        PlonkItGuidePlugin  plonkItGuidePlugIn,
+
+    public GeoGuessrChatBotUseCase(ILogger<GeoGuessrChatBotUseCase> logger,
+        IDiscordSelfUserAccess discordSelfUserAccess,
+        PlonkItGuidePlugin plonkItGuidePlugIn,
         IConfiguration config)
     {
         _logger = logger;
@@ -80,33 +80,28 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         _kernel.Plugins
             .AddFromObject(plonkItGuidePlugIn, "PlonkIt_Guide");
     }
-    
+
     public async Task<string?> GetAiResponseAsync(string prompt, Func<Task> startTypingAsync)
     {
-        // Try to get the plonk it guides vector store lock
         var semaphoreClaimed = await _plonkItGuidePlugIn
             .RebuildStoreLock
             .WaitAsync(TimeSpan.FromSeconds(10))
             .ConfigureAwait(false);
 
-        // If we did not get the semaphore
         if (semaphoreClaimed == false)
         {
             return "The internal PlonkIt Guide is currently being updated. Try again later.";
         }
-        
+
         using var cts = new CancellationTokenSource(_overallTimeout);
         try
         {
             LogHandlingMessageUsingAiPrompt(prompt);
 
-            // Get the message
             var message = prompt.Replace($"<@{_discordSelfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
 
-            // Get the available countries
             var availableCountries = await _plonkItGuidePlugIn.GetCountries().ConfigureAwait(false);
 
-            // Format the system prompt
             var formattedSystemPrompt = SystemPrompt.Replace(AvailableCountriesPlaceholder, availableCountries);
 
             ChatHistory history = [];
@@ -159,14 +154,14 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 
         return null;
     }
-    
+
     private readonly Kernel _kernel;
     private readonly IDiscordSelfUserAccess _discordSelfUserAccess;
     private readonly ILogger<GeoGuessrChatBotUseCase> _logger;
     private readonly PlonkItGuidePlugin _plonkItGuidePlugIn;
     private readonly TimeSpan _requestTimeout;
     private readonly TimeSpan _overallTimeout;
-    
+
     [LoggerMessage(LogLevel.Information, "LLM Endpoint: {endpoint}")]
     partial void LogLlmEndpoint(string endpoint);
 
@@ -189,7 +184,6 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            // Buffer content so it can be resent on retries
             if (request.Content is not null)
                 await request.Content.LoadIntoBufferAsync();
 

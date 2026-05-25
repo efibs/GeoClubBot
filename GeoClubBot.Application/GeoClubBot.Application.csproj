@@ -16,25 +16,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Reference Include="Discord.Net.Core">
-          <HintPath>..\..\..\.nuget\packages\discord.net.core\3.17.4\lib\net9.0\Discord.Net.Core.dll</HintPath>
-        </Reference>
-        <Reference Include="Microsoft.Extensions.Configuration.Abstractions">
-            <HintPath>..\..\..\.dotnet\shared\Microsoft.AspNetCore.App\9.0.7\Microsoft.Extensions.Configuration.Abstractions.dll</HintPath>
-        </Reference>
-    </ItemGroup>
-
-    <ItemGroup>
         <PackageReference Include="FluentValidation" Version="11.11.0" />
         <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
-        <PackageReference Include="HtmlAgilityPack" Version="1.12.4" />
         <PackageReference Include="MediatR" Version="14.1.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.8" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.8" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
-        <PackageReference Include="Microsoft.SemanticKernel" Version="1.76.0" />
         <PackageReference Include="PasswordGenerator" Version="2.1.0" />
-        <PackageReference Include="PuppeteerSharp" Version="24.42.0" />
-        <PackageReference Include="Qdrant.Client" Version="1.18.1" />
     </ItemGroup>
 
 </Project>

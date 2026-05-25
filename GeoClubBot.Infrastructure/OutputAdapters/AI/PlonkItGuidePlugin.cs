@@ -4,7 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 
-namespace UseCases.UseCases.AI;
+namespace Infrastructure.OutputAdapters.AI;
 
 public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILogger<PlonkItGuidePlugin> logger)
 {
@@ -50,9 +50,9 @@ public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILo
     public async Task<string> GetCountries()
     {
         logger.LogDebug("Running get all countries");
-        
+
         var countries = await vectorStore.GetUniqueCountriesAsync().ConfigureAwait(false);
-        
+
         if (countries.Count == 0)
             return "No countries found in the database.";
 
@@ -65,9 +65,9 @@ public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILo
         [Description("The name of the country to retrieve the information for")] string country)
     {
         LogRunningGetAllSectionsForCountry(logger, country);
-        
+
         var sections = await vectorStore.GetSectionsByCountryAsync(country).ConfigureAwait(false);
-        
+
         if (sections.Count == 0)
             return $"No sections found for country: {country}";
 
@@ -86,9 +86,9 @@ public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILo
 
         return sb.ToString();
     }
-    
+
     public SemaphoreSlim RebuildStoreLock => vectorStore.RebuildStoreLock;
-    
+
     [LoggerMessage(LogLevel.Debug, "Running search query '{query}' with limit {limit}")]
     static partial void LogRunningSearchQueryWithLimit(ILogger<PlonkItGuidePlugin> logger, string query, int limit);
 

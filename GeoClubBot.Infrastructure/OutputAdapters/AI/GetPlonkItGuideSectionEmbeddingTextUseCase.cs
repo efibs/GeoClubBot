@@ -6,7 +6,7 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using UseCases.InputPorts.AI;
 
-namespace UseCases.UseCases.AI;
+namespace Infrastructure.OutputAdapters.AI;
 
 public class GetPlonkItGuideSectionEmbeddingTextUseCase : IGetPlonkItGuideSectionEmbeddingTextUseCase
 {
@@ -26,7 +26,7 @@ public class GetPlonkItGuideSectionEmbeddingTextUseCase : IGetPlonkItGuideSectio
     ];
 
     private const string ClassifyPrompt = @"
-You are a text classifier. You will be given a Text that describes a clue for GeoGuessr. 
+You are a text classifier. You will be given a Text that describes a clue for GeoGuessr.
 Classify text into one of the following categories and use the description for each category:
 {{$categories}}
 
@@ -42,11 +42,11 @@ Now classify:
 Text: {{$input}}
 Return only the category.
 ";
-    
+
     public GetPlonkItGuideSectionEmbeddingTextUseCase(ILogger<GetPlonkItGuideSectionEmbeddingTextUseCase> logger, IConfiguration config)
     {
-        _logger = logger;   
-        
+        _logger = logger;
+
         _llmEndpoint = config.GetConnectionString(ConfigKeys.CategorizationEndpoint)!;
         var llmModelName = config.GetValue<string>(ConfigKeys.CategorizeModelNameConfigurationKey)!;
         var llmApiKey = config.GetValue<string>(ConfigKeys.LlmApiKeyConfigurationKey);
@@ -63,12 +63,10 @@ Return only the category.
 
     public async Task<bool> TestConnectionAsync()
     {
-        // Create http client
         var client = new HttpClient();
 
         try
         {
-            // Try get call to /health
             var response = await client.GetAsync(_llmEndpoint + "/health").ConfigureAwait(false);
 
             return response.IsSuccessStatusCode;
@@ -78,16 +76,14 @@ Return only the category.
             return false;
         }
     }
-    
+
     public async Task<string> GetEmbeddingTextAsync(string country, string sectionContent, ICollection<string> continents)
     {
-        // Get the available categories
         var availableCategories = string.Join(", ", Categories.Select(c => c.Replace(CountryPlaceholder, country)));
-        
+
         string? category = null;
         try
         {
-            // Let the llm categorize
             var result = await _categorizeKernel.InvokeAsync(
                 _categorizeFunction,
                 new()
@@ -107,15 +103,14 @@ Return only the category.
             {
                 resultString = resultString.Substring(8);
             }
-            
+
             category = resultString.Trim();
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Categorization of PlonkIt section failed.");
         }
-        
-        // Build the text
+
         var textBuilder = new StringBuilder("Country: ");
         textBuilder.AppendLine(country);
         textBuilder.Append("Continent(s): ");
@@ -127,11 +122,11 @@ Return only the category.
         }
         textBuilder.AppendLine();
         textBuilder.Append(sectionContent);
-        
-        var text =  textBuilder.ToString();
+
+        var text = textBuilder.ToString();
         return text;
     }
-    
+
     private readonly Kernel _categorizeKernel;
     private readonly KernelFunction _categorizeFunction;
     private readonly ILogger<GetPlonkItGuideSectionEmbeddingTextUseCase> _logger;

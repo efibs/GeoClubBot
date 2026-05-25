@@ -2,7 +2,7 @@ using Discord;
 using Discord.Interactions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using UseCases.UseCases.AI;
+using UseCases.OutputPorts.AI;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
@@ -52,5 +52,5 @@ public class AiModule(IServiceProvider serviceProvider, ILogger<AiModule> logger
         }
     }
     
-    private readonly PlonkItGuideVectorStore? _plonkItGuideVectorStore = serviceProvider.GetService<PlonkItGuideVectorStore>();
+    private readonly IPlonkItGuideVectorStore? _plonkItGuideVectorStore = serviceProvider.GetService<IPlonkItGuideVectorStore>();
 }

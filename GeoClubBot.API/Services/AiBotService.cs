@@ -3,11 +3,11 @@ using Discord.WebSocket;
 using Extensions;
 using GeoClubBot.Discord.Services;
 using UseCases.InputPorts.AI;
-using UseCases.UseCases.AI;
+using UseCases.OutputPorts.AI;
 
 namespace GeoClubBot.Services;
 
-public class AiBotService(PlonkItGuideVectorStore plonkItGuideVectorStore, DiscordBotReadyService botReadyService, DiscordSocketClient client, IGeoGuessrChatBotUseCase chatBotUseCase) : IHostedService
+public class AiBotService(IPlonkItGuideVectorStore plonkItGuideVectorStore, DiscordBotReadyService botReadyService, DiscordSocketClient client, IGeoGuessrChatBotUseCase chatBotUseCase) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
