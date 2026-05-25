@@ -3,11 +3,12 @@ using Entities;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Rendering;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
 public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
-    IRenderHistoryUseCase renderHistoryUseCase,
+    IHistoryRenderer historyRenderer,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig) : IRenderPlayerActivityUseCase
 {
@@ -80,7 +81,7 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
         var timestamps = entriesToShow.Select(e => e.Timestamp).ToList();
 
         // Create plot
-        var plotStream = renderHistoryUseCase.RenderHistory(values, timestamps, weeklyXpTarget);
+        var plotStream = historyRenderer.RenderHistory(values, timestamps, weeklyXpTarget);
 
         return plotStream;
     }

@@ -1,6 +1,6 @@
-namespace UseCases.InputPorts.ClubMemberActivity;
+namespace UseCases.OutputPorts.Rendering;
 
-public interface IRenderHistoryUseCase
+public interface IHistoryRenderer
 {
     MemoryStream RenderHistory(List<int> values, List<DateTimeOffset> timestamps, int target);
 }
