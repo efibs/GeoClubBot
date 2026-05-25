@@ -5,14 +5,14 @@ namespace Infrastructure.OutputAdapters;
 
 public class DbUnitOfWork : IUnitOfWork
 {
-    public DbUnitOfWork(GeoClubBotDbContext dbContext)
+    public DbUnitOfWork(GeoClubBotDbContext dbContext, IClubRepository clubs)
     {
         _dbContext = dbContext;
 
         AccountLinkingRequests = new EfAccountLinkingRequestRepository(_dbContext);
         ClubChallenges = new EfClubChallengeRepository(_dbContext);
         ClubMembers = new EfClubMemberRepository(_dbContext);
-        Clubs = new EfClubRepository(_dbContext);
+        Clubs = clubs;
         Excuses = new EfExcusesRepository(_dbContext);
         GeoGuessrUsers = new EfGeoGuessrUserRepository(_dbContext);
         History = new EfHistoryRepository(_dbContext);
