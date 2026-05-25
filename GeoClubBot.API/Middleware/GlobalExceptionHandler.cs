@@ -1,7 +1,8 @@
-using System.ComponentModel.DataAnnotations;
 using Entities.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using DataAnnotationsValidationException = System.ComponentModel.DataAnnotations.ValidationException;
+using FluentValidationException = FluentValidation.ValidationException;
 
 namespace GeoClubBot.Middleware;
 
@@ -11,7 +12,8 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
     {
         var (statusCode, title) = exception switch
         {
-            ValidationException => (StatusCodes.Status400BadRequest, "Validation failed"),
+            FluentValidationException => (StatusCodes.Status400BadRequest, "Validation failed"),
+            DataAnnotationsValidationException => (StatusCodes.Status400BadRequest, "Validation failed"),
             NotFoundException => (StatusCodes.Status404NotFound, "Not found"),
             DomainException => (StatusCodes.Status422UnprocessableEntity, "Unprocessable entity"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred")
@@ -26,14 +28,32 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
             logger.LogWarning(exception, "Request failed with {StatusCode} for {Path}", statusCode, httpContext.Request.Path);
         }
 
-        var problemDetails = new ProblemDetails
+        ProblemDetails problemDetails;
+        if (exception is FluentValidationException fluentValidationException)
         {
-            Status = statusCode,
-            Title = title,
-            Detail = exception.Message,
-            Type = $"https://httpstatuses.com/{statusCode}",
-            Instance = httpContext.Request.Path
-        };
+            var errors = fluentValidationException.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+
+            problemDetails = new ValidationProblemDetails(errors)
+            {
+                Status = statusCode,
+                Title = title,
+                Type = $"https://httpstatuses.com/{statusCode}",
+                Instance = httpContext.Request.Path
+            };
+        }
+        else
+        {
+            problemDetails = new ProblemDetails
+            {
+                Status = statusCode,
+                Title = title,
+                Detail = exception.Message,
+                Type = $"https://httpstatuses.com/{statusCode}",
+                Instance = httpContext.Request.Path
+            };
+        }
 
         httpContext.Response.StatusCode = statusCode;
         await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken).ConfigureAwait(false);

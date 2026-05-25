@@ -1,9 +1,9 @@
 using Entities;
+using Entities.Events;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
-using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 

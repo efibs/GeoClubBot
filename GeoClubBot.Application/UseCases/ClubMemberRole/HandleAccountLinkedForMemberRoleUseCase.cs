@@ -1,10 +1,10 @@
 using Configuration;
+using Entities.Events;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
-using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace UseCases.UseCases.ClubMemberRole;
 

@@ -1,8 +1,8 @@
+using Entities.Events;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.OutputPorts;
-using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 

@@ -1,5 +1,6 @@
 using Constants;
 using Entities;
+using Entities.Events;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.InputPorts.Users;

@@ -1,4 +1,5 @@
 using Entities;
+using Entities.Events;
 using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 

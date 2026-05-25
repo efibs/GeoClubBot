@@ -1,5 +1,6 @@
 using Configuration;
 using Constants;
+using FluentValidation;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
 using GeoClubBot.Middleware;
@@ -7,8 +8,10 @@ using GeoClubBot.MockGeoGuessr.DependencyInjection;
 using GeoClubBot.MockGeoGuessr.Endpoints;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using QuartzExtensions;
+using UseCases.Behaviors;
 using UseCases.UseCases;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,8 +70,18 @@ else
 // Add all the necessary services
 builder.Services.AddClubBotServices(builder.Configuration);
 
-// Add the MediatR services
-builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<IUseCasesAssemblyMarker>());
+// Add the MediatR services with pipeline behaviors. Order matters: outermost first.
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssemblyContaining<IUseCasesAssemblyMarker>();
+    cfg.AddOpenBehavior(typeof(LoggingBehavior<,>));
+    cfg.AddOpenBehavior(typeof(UnhandledExceptionBehavior<,>));
+    cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+    cfg.AddOpenBehavior(typeof(UnitOfWorkBehavior<,>));
+});
+
+// Register FluentValidation validators from the use cases assembly.
+builder.Services.AddValidatorsFromAssemblyContaining<IUseCasesAssemblyMarker>();
 
 var app = builder.Build();
 
