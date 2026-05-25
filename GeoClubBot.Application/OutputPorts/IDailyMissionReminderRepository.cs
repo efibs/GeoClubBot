@@ -8,6 +8,8 @@ public interface IDailyMissionReminderRepository
 
     Task<DailyMissionReminder?> ReadReminderAsync(ulong discordUserId);
 
+    Task<DailyMissionReminder?> ReadReminderForUpdateAsync(ulong discordUserId);
+
     Task<List<DailyMissionReminder>> ReadDueRemindersAsync(TimeOnly currentTimeUtc, DateOnly todayUtc);
 
     void DeleteReminder(DailyMissionReminder reminder);

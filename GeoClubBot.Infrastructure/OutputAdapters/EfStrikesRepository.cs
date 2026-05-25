@@ -19,13 +19,31 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
     {
         // Get the number of strikes
         var numStrikes = await dbContext.ClubMemberStrikes
-            .Include(s => s.ClubMember)
+            .AsNoTracking()
+            .WhereActive()
             .Where(s => s.ClubMember!.UserId == memberUserId)
-            .Where(s => s.Revoked == false)
             .CountAsync()
             .ConfigureAwait(false);
-        
+
         return numStrikes;
+    }
+
+    public async Task<Dictionary<string, int>> ReadActiveStrikeCountsByMemberUserIdsAsync(IEnumerable<string> memberUserIds)
+    {
+        // Materialize the input set once so EF translates it as a single IN-list
+        var userIdSet = memberUserIds.ToHashSet();
+
+        // Group active strikes by user id and project to a dictionary
+        var counts = await dbContext.ClubMemberStrikes
+            .AsNoTracking()
+            .WhereActive()
+            .Where(s => s.ClubMember!.UserId != null && userIdSet.Contains(s.ClubMember.UserId))
+            .GroupBy(s => s.ClubMember!.UserId)
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.UserId, x => x.Count)
+            .ConfigureAwait(false);
+
+        return counts;
     }
 
     public async Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname)

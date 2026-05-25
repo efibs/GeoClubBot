@@ -98,7 +98,6 @@ public static class ClubBotServices
         services.AddTransient<ICompleteAccountLinkingUseCase, CompleteAccountLinkingUseCase>();
         services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
         services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
-        services.AddTransient<ISyncClubsUseCase, SyncClubsUseCase>();
         services.AddTransient<IClubMemberActivityRewardUseCase, ClubMemberActivityRewardUseCase>();
         services.AddTransient<IGeoGuessrUserIdsToDiscordUserIdsUseCase, GeoGuessrUserIdsToDiscordUserIdsUseCase>();
         services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
@@ -113,7 +112,6 @@ public static class ClubBotServices
         services.AddTransient<IDeleteMemberPrivateChannelUseCase, DeleteMemberPrivateChannelUseCase>();
         services.AddTransient<IRenderHistoryUseCase, RenderHistoryUseCase>();
         services.AddTransient<IRenderPlayerActivityUseCase, RenderPlayerActivityUseCase>();
-        services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
         services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
         services.AddTransient<ISetDailyMissionReminderUseCase, SetDailyMissionReminderUseCase>();
         services.AddTransient<IStopDailyMissionReminderUseCase, StopDailyMissionReminderUseCase>();

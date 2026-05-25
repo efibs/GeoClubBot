@@ -13,7 +13,7 @@ public partial class SetDailyMissionReminderUseCase(IUnitOfWork unitOfWork, ILog
         var utcTime = _convertToUtc(localTime, timeZoneId);
 
         // Check if a reminder already exists
-        var existing = await unitOfWork.DailyMissionReminders.ReadReminderAsync(discordUserId).ConfigureAwait(false);
+        var existing = await unitOfWork.DailyMissionReminders.ReadReminderForUpdateAsync(discordUserId).ConfigureAwait(false);
 
         if (existing != null)
         {

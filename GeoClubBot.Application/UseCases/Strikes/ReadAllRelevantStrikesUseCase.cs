@@ -28,26 +28,21 @@ public class ReadAllRelevantStrikesUseCase(IGeoGuessrClientFactory geoGuessrClie
                 .ReadClubMembersAsync(club.ClubId)
                 .ConfigureAwait(false);
 
-            // For every club member
+            // Batch-read the active strike counts for every member in one round-trip
+            var userIds = clubMembers.Select(m => m.User.UserId).ToList();
+            var activeStrikeCounts = await unitOfWork.Strikes
+                .ReadActiveStrikeCountsByMemberUserIdsAsync(userIds)
+                .ConfigureAwait(false);
+
+            // Zip strike counts back to members
             foreach (var clubMember in clubMembers)
             {
-                // Read the number of active strikes for the user
-                var numActiveStrikes = await unitOfWork.Strikes
-                    .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.User.UserId)
-                    .ConfigureAwait(false);
-
-                // If the user doesn't have strikes
-                if (numActiveStrikes is null or 0)
+                if (!activeStrikeCounts.TryGetValue(clubMember.User.UserId, out var numActiveStrikes) || numActiveStrikes == 0)
                 {
-                    // No relevant strikes for him
                     continue;
                 }
 
-                // Build the relevant strike object
-                var relevantStrike = new ClubMemberRelevantStrike(clubMember.User.Nick, numActiveStrikes.Value);
-
-                // Add to list
-                relevantStrikes.Add(relevantStrike);
+                relevantStrikes.Add(new ClubMemberRelevantStrike(clubMember.User.Nick, numActiveStrikes));
             }
         }
 

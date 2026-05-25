@@ -16,6 +16,14 @@ public class EfDailyMissionReminderRepository(GeoClubBotDbContext dbContext) : I
     public async Task<DailyMissionReminder?> ReadReminderAsync(ulong discordUserId)
     {
         return await dbContext.DailyMissionReminders
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.DiscordUserId == discordUserId)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<DailyMissionReminder?> ReadReminderForUpdateAsync(ulong discordUserId)
+    {
+        return await dbContext.DailyMissionReminders
             .FindAsync(discordUserId)
             .ConfigureAwait(false);
     }

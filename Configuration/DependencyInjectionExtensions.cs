@@ -46,5 +46,8 @@ public static class DependencyInjectionExtensions
             .Bind(config.GetSection(GeoGuessrConfiguration.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        services.AddOptions<CorsConfiguration>()
+            .Bind(config.GetSection(CorsConfiguration.SectionName));
     }
 }

@@ -2,6 +2,7 @@ using Configuration;
 using Constants;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
+using GeoClubBot.Middleware;
 using GeoClubBot.MockGeoGuessr.DependencyInjection;
 using GeoClubBot.MockGeoGuessr.Endpoints;
 using Infrastructure.OutputAdapters.DataAccess;
@@ -21,12 +22,29 @@ builder.Services.AddHealthChecks();
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+const string ConfiguredCorsPolicy = "ConfiguredCors";
+var allowedOrigins = builder.Configuration
+    .GetSection(CorsConfiguration.SectionName)
+    .Get<CorsConfiguration>()?.AllowedOrigins ?? [];
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy(ConfiguredCorsPolicy, policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        if (allowedOrigins.Length == 0)
+        {
+            // No origins configured — keep cross-origin requests disabled.
+            policy.DisallowCredentials();
+        }
+        else
+        {
+            policy.WithOrigins(allowedOrigins)
+                .AllowAnyMethod()
+                .AllowAnyHeader();
+        }
     });
 });
 
@@ -71,8 +89,9 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
     await db.Database.MigrateAsync().ConfigureAwait(false);
 }
 
+app.UseExceptionHandler();
 app.UseHttpsRedirection();
-app.UseCors("AllowAll");
+app.UseCors(ConfiguredCorsPolicy);
 
 if (useMockGeoGuessr)
 {
