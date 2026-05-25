@@ -15,19 +15,24 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
     {
         try
         {
-            LogLeaveDetected(logger, notification.ClubMember.User.Nickname);
+            LogLeaveDetected(logger, notification.Nickname);
 
-            // Check if the user has his GeoGuessr account linked
-            if (notification.ClubMember.User.DiscordUserId == null)
+            if (notification.DiscordUserId is null)
             {
-                // If the user has not linked his account, nothing to do
                 return;
             }
 
-            // Delete the private channel
-            await useCase.DeletePrivateChannelAsync(notification.ClubMember).ConfigureAwait(false);
+            var clubMember = await unitOfWork.ClubMembers
+                .ReadClubMemberByUserIdAsync(notification.UserId)
+                .ConfigureAwait(false);
 
-            // Save the changes
+            if (clubMember is null)
+            {
+                return;
+            }
+
+            await useCase.DeletePrivateChannelAsync(clubMember).ConfigureAwait(false);
+
             await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         }
         catch (Exception e)

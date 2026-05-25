@@ -17,10 +17,6 @@ public class HandleAccountUnlinkedForMemberRoleUseCase(
     {
         try
         {
-            // Get the old discord user id
-            var discordUserId = notification.User.DiscordUserId!.Value;
-
-            // Remove all configured club role IDs since we don't know which club they were in
             var allRoleIds = geoGuessrConfig.Value.Clubs
                 .Where(c => c.RoleId.HasValue)
                 .Select(c => c.RoleId!.Value)
@@ -28,7 +24,9 @@ public class HandleAccountUnlinkedForMemberRoleUseCase(
 
             if (allRoleIds.Length > 0)
             {
-                await rolesAccess.RemoveRolesFromUserAsync(discordUserId, allRoleIds).ConfigureAwait(false);
+                await rolesAccess
+                    .RemoveRolesFromUserAsync(notification.DiscordUserId, allRoleIds)
+                    .ConfigureAwait(false);
             }
         }
         catch (Exception e)

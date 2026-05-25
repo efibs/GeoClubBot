@@ -9,38 +9,30 @@ public class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMember>
 {
     public void Configure(EntityTypeBuilder<ClubMember> builder)
     {
-        // Configure the user id to be the primary key
         builder.HasKey(x => x.UserId);
         builder.Property(x => x.UserId)
             .HasMaxLength(StringLengthConstants.GeoGuessrUserIdLength)
             .ValueGeneratedNever()
             .IsRequired();
-        
-        // Configure the properties to be required
-        builder.Property(x => x.ClubId)
-            .IsRequired();
-        builder.Property(x => x.Xp)
-            .IsRequired();
-        builder.Property(x => x.JoinedAt)
-            .IsRequired();
-        
-        // Set the private text channel id to be not required
-        builder.Property(x => x.PrivateTextChannelId)
-            .IsRequired(false);
-        
-        // Configure the club foreign key
+
+        builder.Property(x => x.ClubId);
+        builder.Property(x => x.Xp).IsRequired();
+        builder.Property(x => x.JoinedAt).IsRequired();
+        builder.Property(x => x.PrivateTextChannelId).IsRequired(false);
+
+        // Bypass private setters so EF hydrates straight into the backing fields.
+        builder.UsePropertyAccessMode(PropertyAccessMode.Field);
+
         builder.HasOne<Club>()
             .WithMany()
             .HasForeignKey(x => x.ClubId)
             .OnDelete(DeleteBehavior.Cascade);
-        
-        // Configure the user foreign key
+
         builder.HasOne(x => x.User)
             .WithOne()
             .HasForeignKey<ClubMember>(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
-        
-        // Ignore the domain events
+
         builder.Ignore(x => x.DomainEvents);
     }
 }

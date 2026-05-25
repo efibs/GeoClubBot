@@ -2,4 +2,4 @@ using MediatR;
 
 namespace Entities.Events;
 
-public record AccountLinkedEvent(GeoGuessrUser User) : INotification;
+public record AccountLinkedEvent(string UserId, string Nickname, ulong DiscordUserId) : INotification;

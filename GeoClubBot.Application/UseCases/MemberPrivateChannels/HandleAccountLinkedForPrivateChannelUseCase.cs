@@ -7,7 +7,7 @@ using UseCases.OutputPorts;
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public partial class HandleAccountLinkedForPrivateChannelUseCase(
-    ICreateMemberPrivateChannelUseCase createMemberPrivateChannelUseCase, 
+    ICreateMemberPrivateChannelUseCase createMemberPrivateChannelUseCase,
     IUnitOfWork unitOfWork,
     ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger)
     : INotificationHandler<AccountLinkedEvent>
@@ -16,37 +16,26 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
     {
         try
         {
-            // Get the user
-            var user = notification.User;
-            
-            // Try to read the club member.
-            // Do not sync him here to avoid duplicate channel creating
-            // due to a created event being thrown and also being handled.
-            // If the user is not in the database yet, he will be soon. Then
-            // the created event get's thrown and he gets the channel.
+            // Avoid duplicate channel creation: if the user was just synced, the PlayerJoinedClubEvent
+            // will pick this up. Only handle existing members here.
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(user.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId)
                 .ConfigureAwait(false);
 
-            // If the user is not a member
             if (clubMember?.ClubId is null)
             {
                 return;
             }
 
-            // Check if the member already has a private channel
             if (clubMember.PrivateTextChannelId is not null)
             {
                 return;
             }
 
-            // Log
-            LogCreatingPrivateChannel(logger, user.Nickname);
+            LogCreatingPrivateChannel(logger, notification.Nickname);
 
-            // Create the text channel
             await createMemberPrivateChannelUseCase.CreatePrivateChannelAsync(clubMember).ConfigureAwait(false);
-            
-            // Save the changes
+
             await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         }
         catch (Exception e)
@@ -54,7 +43,7 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
             logger.LogError(e, "Error while handling HandleAccountLinkedForPrivateChannelUseCase");
         }
     }
-    
+
     [LoggerMessage(LogLevel.Information,
         "Handling account linked for creating private text channel for club member '{clubMemberNickname}'...")]
     static partial void LogCreatingPrivateChannel(ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger,

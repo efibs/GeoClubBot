@@ -44,7 +44,10 @@ public partial class CreateMemberPrivateChannelUseCase(
         await _sendWelcomeMessageAsync(clubMember, textChannelId.Value).ConfigureAwait(false);
         
         // Save the private text channel id on the club member
-        await unitOfWork.ClubMembers.SetPrivateTextChannelIdAsync(clubMember.UserId, textChannelId.Value).ConfigureAwait(false);
+        var trackedMember = await unitOfWork.ClubMembers
+            .ReadForUpdateByUserIdAsync(clubMember.UserId)
+            .ConfigureAwait(false);
+        trackedMember?.SetPrivateTextChannelId(textChannelId.Value);
         
         return textChannelId;
     }

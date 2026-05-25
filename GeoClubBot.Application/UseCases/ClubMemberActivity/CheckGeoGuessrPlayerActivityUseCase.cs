@@ -4,10 +4,10 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
-using UseCases.InputPorts.ClubMembers;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
+using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.Strikes;
 using Utilities;
 
@@ -18,8 +18,6 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
     IUnitOfWork unitOfWork,
     IActivityStatusMessageSender activityStatusMessageSender,
     ISender mediator,
-    IReadOrSyncClubMemberUseCase readOrSyncClubMemberUseCase,
-    ISaveClubMembersUseCase saveClubMembersUseCase,
     ICalculateAverageXpUseCase calculateAverageXpUseCase,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
@@ -51,7 +49,10 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         var members = ClubMemberAssembler.AssembleEntities(response, clubId);
 
         // Save the club members and commit so subsequent AsNoTracking queries can find them
-        await saveClubMembersUseCase.SaveClubMembersAsync(members).ConfigureAwait(false);
+        var snapshots = members
+            .Select(m => new ClubMemberSyncSnapshot(m.UserId, m.User.Nickname, clubId, m.Xp, m.JoinedAt))
+            .ToList();
+        await mediator.Send(new SaveClubMembersCommand(snapshots)).ConfigureAwait(false);
         await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
 
         // Get the latest activities for this club
@@ -76,15 +77,9 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         var now = DateTimeOffset.UtcNow;
 
         // Create the new latest activity for the players
-        var newLatestHistoryEntries =
-            members.ToDictionary(m => m.User.UserId,
-                m => new ClubMemberHistoryEntry
-                {
-                    Timestamp = now,
-                    UserId = m.User.UserId,
-                    ClubId = clubId,
-                    Xp = m.Xp
-                });
+        var newLatestHistoryEntries = members.ToDictionary(
+            m => m.User.UserId,
+            m => ClubMemberHistoryEntry.Create(m.User.UserId, clubId, m.Xp, now));
 
         // Save the new activity
         unitOfWork.History.CreateHistoryEntries(newLatestHistoryEntries.Values);
@@ -201,7 +196,8 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         int maxNumStrikes)
     {
         // Read the member from the database
-        var clubMember = await readOrSyncClubMemberUseCase.ReadOrSyncClubMemberByUserIdAsync(member.User.UserId)
+        var clubMember = await mediator
+            .Send(new ReadOrSyncClubMemberByUserIdQuery(member.User.UserId))
             .ConfigureAwait(false);
 
         // If the club member could not be retrieved

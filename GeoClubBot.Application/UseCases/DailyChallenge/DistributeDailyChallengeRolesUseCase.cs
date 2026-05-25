@@ -1,14 +1,16 @@
 using Constants;
 using Entities;
+using MediatR;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.DailyChallenge;
-using UseCases.InputPorts.Users;
 using UseCases.OutputPorts.Discord;
+using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.DailyChallenge;
 
-public class DistributeDailyChallengeRolesUseCase(IGeoGuessrUserIdsToDiscordUserIdsUseCase geoGuessrUserIdsToDiscordUserIdsUseCase,
-    IDiscordServerRolesAccess discordServerRolesAccess, 
+public class DistributeDailyChallengeRolesUseCase(
+    ISender mediator,
+    IDiscordServerRolesAccess discordServerRolesAccess,
     IConfiguration config)
     : IDistributeDailyChallengeRolesUseCase
 {
@@ -68,9 +70,9 @@ public class DistributeDailyChallengeRolesUseCase(IGeoGuessrUserIdsToDiscordUser
         }
         
         // Convert to Discord user ids
-        var firstPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(firstPlayersGeoGuessrUserIds).ConfigureAwait(false);
-        var secondPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(secondPlayersGeoGuessrUserIds).ConfigureAwait(false);
-        var thirdPlayers = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(thirdPlayersGeoGuessrUserIds).ConfigureAwait(false);
+        var firstPlayers = await mediator.Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(firstPlayersGeoGuessrUserIds)).ConfigureAwait(false);
+        var secondPlayers = await mediator.Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(secondPlayersGeoGuessrUserIds)).ConfigureAwait(false);
+        var thirdPlayers = await mediator.Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(thirdPlayersGeoGuessrUserIds)).ConfigureAwait(false);
         
         // Distribute the roles
         await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(firstPlayers, _firstRoleId).ConfigureAwait(false);

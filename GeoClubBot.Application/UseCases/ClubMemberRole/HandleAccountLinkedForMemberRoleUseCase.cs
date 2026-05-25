@@ -12,42 +12,33 @@ public class HandleAccountLinkedForMemberRoleUseCase(
     IUnitOfWork unitOfWork,
     IDiscordServerRolesAccess rolesAccess,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
-    ILogger<HandleAccountLinkedForMemberRoleUseCase> logger) 
+    ILogger<HandleAccountLinkedForMemberRoleUseCase> logger)
     : INotificationHandler<AccountLinkedEvent>
 {
     public async Task Handle(AccountLinkedEvent notification, CancellationToken cancellationToken)
     {
         try
         {
-            // Try to read the club member.
-            // Do not sync him here to avoid duplicate role adding
-            // due to a created event being thrown and also being handled.
-            // If the user is not in the database yet, he will be soon. Then
-            // the created event get's thrown and he gets the role.
+            // Do not sync the member here to avoid duplicate role-add when the corresponding
+            // PlayerJoinedClubEvent fires for a freshly-synced user.
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(notification.User.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId)
                 .ConfigureAwait(false);
 
-            // If the user is not a member
             if (clubMember?.ClubId is null)
             {
                 return;
             }
 
-            // Get the role ID for the user's club
             var roleId = geoGuessrConfig.Value.GetClub(clubMember.ClubId.Value).RoleId;
-
-            // If the club has no role configured, nothing to do
-            if (roleId == null)
+            if (roleId is null)
             {
                 return;
             }
 
-            // Get the new discord user id
-            var newDiscordUserId = notification.User.DiscordUserId!.Value;
-
-            // Give him the member role
-            await rolesAccess.AddRoleToMembersByUserIdsAsync([newDiscordUserId], roleId.Value).ConfigureAwait(false);
+            await rolesAccess
+                .AddRoleToMembersByUserIdsAsync([notification.DiscordUserId], roleId.Value)
+                .ConfigureAwait(false);
         }
         catch (Exception e)
         {

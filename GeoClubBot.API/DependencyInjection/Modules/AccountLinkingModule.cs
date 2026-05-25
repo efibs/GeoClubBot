@@ -1,7 +1,5 @@
 using UseCases.InputPorts.GeoGuessrAccountLinking;
-using UseCases.InputPorts.Users;
 using UseCases.UseCases.GeoGuessrAccountLinking;
-using UseCases.UseCases.Users;
 
 namespace GeoClubBot.DependencyInjection.Modules;
 
@@ -11,7 +9,6 @@ public static class AccountLinkingModule
     {
         services.AddTransient<IStartAccountLinkingProcessUseCase, StartAccountLinkingUseCase>();
         services.AddTransient<ICompleteAccountLinkingUseCase, CompleteAccountLinkingUseCase>();
-        services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
         services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
         services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
         services.AddTransient<IGetLinkedDiscordUserIdUseCase, GetLinkedDiscordUserIdUseCase>();

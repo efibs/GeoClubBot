@@ -8,17 +8,10 @@ internal static class ClubMemberAssembler
     {
         return dtos.Select(dto => AssembleEntity(dto, clubId)).ToList();
     }
-    
+
     public static ClubMember AssembleEntity(ClubMemberDto dto, Guid clubId)
     {
-        return new ClubMember
-        {
-            UserId = dto.User.UserId,
-            ClubId = clubId,
-            User = UserAssembler.AssembleEntity(dto.User),
-            Xp = dto.Xp,
-            JoinedAt =  dto.JoinedAt,
-            PrivateTextChannelId = null
-        };
+        var user = UserAssembler.AssembleEntity(dto.User);
+        return ClubMember.Create(user, clubId, dto.Xp, dto.JoinedAt);
     }
 }

@@ -1,72 +1,70 @@
 using Constants;
 using Entities;
-using Entities.Events;
+using MediatR;
 using Microsoft.Extensions.Configuration;
 using UseCases.InputPorts.GeoGuessrAccountLinking;
-using UseCases.InputPorts.Users;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
+using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public class CompleteAccountLinkingUseCase(
     IUnitOfWork unitOfWork,
-    IReadOrSyncGeoGuessrUserUseCase readOrSyncGeoGuessrUserUseCase,
+    ISender mediator,
     IDiscordServerRolesAccess rolesAccess,
     IConfiguration config) : ICompleteAccountLinkingUseCase
 {
     public async Task<(bool Successful, GeoGuessrUser? User)> CompleteLinkingAsync(ulong discordUserId, string geoGuessrUserId, string oneTimePassword)
     {
-        // Read the request
-        var request = await unitOfWork.AccountLinkingRequests.ReadRequestAsync(discordUserId, geoGuessrUserId).ConfigureAwait(false);
-        
-        // If the request does not exist
-        if (request == null)
+        var request = await unitOfWork.AccountLinkingRequests
+            .ReadRequestAsync(discordUserId, geoGuessrUserId)
+            .ConfigureAwait(false);
+
+        if (request is null)
         {
-            throw new InvalidOperationException($"There is no linking request for Discord user with id {discordUserId} and GeoGuessr user with id {geoGuessrUserId}");
+            throw new InvalidOperationException(
+                $"There is no linking request for Discord user with id {discordUserId} and GeoGuessr user with id {geoGuessrUserId}");
         }
-        
-        // If the password does not match
+
         if (request.OneTimePassword != oneTimePassword)
         {
             return (false, null);
         }
-        
-        // Read the user
-        var user = await readOrSyncGeoGuessrUserUseCase.ReadOrSyncGeoGuessrUserByUserIdAsync(geoGuessrUserId).ConfigureAwait(false);
-        
-        // If the user does not exist
-        if (user == null)
+
+        // Ensure the user exists in the database (sync from API if necessary).
+        var user = await mediator
+            .Send(new ReadOrSyncGeoGuessrUserByUserIdQuery(geoGuessrUserId))
+            .ConfigureAwait(false);
+
+        if (user is null)
         {
             throw new InvalidOperationException($"User with id {geoGuessrUserId} does not exist.");
         }
-        
-        // Link the Discord account to the GeoGuessr user
-        var linkedUser = await unitOfWork.GeoGuessrUsers.LinkDiscordAccountAsync(user.UserId, discordUserId).ConfigureAwait(false);
 
-        // If the user was not found
-        if (linkedUser is null)
+        // Re-read for update so the link mutation runs on a tracked instance.
+        var trackedUser = await unitOfWork.GeoGuessrUsers
+            .ReadForUpdateByUserIdAsync(geoGuessrUserId)
+            .ConfigureAwait(false);
+
+        if (trackedUser is null)
         {
             return (false, null);
         }
-        
-        // Create the linked event
-        var linkedEvent = new AccountLinkedEvent(linkedUser);
-        
-        // Add the event
-        linkedUser.AddDomainEvent(linkedEvent);
-        
-        // Delete the linking request
+
+        trackedUser.LinkDiscord(discordUserId);
+
         unitOfWork.AccountLinkingRequests.DeleteRequest(request);
-        
-        // Save changes
+
         await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
-        
-        // Give the user the has linked role
-        await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], _hasLinkedRoleId).ConfigureAwait(false);
-        
-        return (true, linkedUser);
+
+        await rolesAccess
+            .AddRoleToMembersByUserIdsAsync([discordUserId], _hasLinkedRoleId)
+            .ConfigureAwait(false);
+
+        return (true, trackedUser);
     }
-    
-    private readonly ulong _hasLinkedRoleId = config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
+
+    private readonly ulong _hasLinkedRoleId =
+        config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
 }

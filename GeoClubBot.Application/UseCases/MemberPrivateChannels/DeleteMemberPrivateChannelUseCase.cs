@@ -25,7 +25,10 @@ public partial class DeleteMemberPrivateChannelUseCase(IDiscordTextChannelAccess
         var successful = await discordTextChannelAccess.DeleteTextChannelAsync(clubMember.PrivateTextChannelId.Value).ConfigureAwait(false);
 
         // Clear the private text channel id from the club member
-        await unitOfWork.ClubMembers.ClearPrivateTextChannelIdAsync(clubMember.UserId).ConfigureAwait(false);
+        var trackedMember = await unitOfWork.ClubMembers
+            .ReadForUpdateByUserIdAsync(clubMember.UserId)
+            .ConfigureAwait(false);
+        trackedMember?.SetPrivateTextChannelId(null);
 
         return successful;
     }

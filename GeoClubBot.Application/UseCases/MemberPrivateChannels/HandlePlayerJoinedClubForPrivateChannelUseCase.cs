@@ -15,25 +15,29 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
     {
         try
         {
-            LogJoinDetected(logger, notification.ClubMember.User.Nickname);
+            LogJoinDetected(logger, notification.Nickname);
 
-            // Check if the user has his GeoGuessr account linked
-            if (notification.ClubMember.User.DiscordUserId == null)
-            {
-                // If the user has not linked his account, nothing to do
-                return;
-            }
-
-            // Check if the member already has a private channel
-            if (notification.ClubMember.PrivateTextChannelId is not null)
+            if (notification.DiscordUserId is null)
             {
                 return;
             }
 
-            // Create the private channel
-            await useCase.CreatePrivateChannelAsync(notification.ClubMember).ConfigureAwait(false);
+            if (notification.PrivateTextChannelId is not null)
+            {
+                return;
+            }
 
-            // Save the changes
+            var clubMember = await unitOfWork.ClubMembers
+                .ReadClubMemberByUserIdAsync(notification.UserId)
+                .ConfigureAwait(false);
+
+            if (clubMember is null)
+            {
+                return;
+            }
+
+            await useCase.CreatePrivateChannelAsync(clubMember).ConfigureAwait(false);
+
             await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         }
         catch (Exception e)

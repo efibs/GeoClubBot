@@ -2,4 +2,9 @@ using MediatR;
 
 namespace Entities.Events;
 
-public record PlayerLeftClubEvent(ClubMember ClubMember) : INotification;
+public record PlayerLeftClubEvent(
+    string UserId,
+    string Nickname,
+    ulong? DiscordUserId,
+    Guid OldClubId,
+    ulong? PrivateTextChannelId) : INotification;

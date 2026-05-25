@@ -17,50 +17,39 @@ public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
     {
         try
         {
-            // Check if the event is relevant
-            if (notification.OldUser.DiscordUserId != notification.NewUser.DiscordUserId)
+            if (notification.OldDiscordUserId != notification.NewDiscordUserId)
             {
-                // The event is not relevant if the discord user id did change
                 return;
             }
 
-            // Check if the event is relevant
-            if (notification.OldUser.Nickname == notification.NewUser.Nickname)
+            if (notification.OldNickname == notification.NewNickname)
             {
-                // The event is not relevant if the nickname did not change
                 return;
             }
 
-            // Try to read the club member.
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(notification.NewUser.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId)
                 .ConfigureAwait(false);
 
-            // If the user is not a member
             if (clubMember?.ClubId is null)
             {
                 return;
             }
 
-            // If the user has no text channel yet
             if (clubMember.PrivateTextChannelId.HasValue == false)
             {
                 return;
             }
 
-            // Get the text channel name
             var textChannelName = $"{clubMember.User.Nickname.ToLowerInvariant()}-private-channel";
 
-            // Build the new text channel
             var newTextChannel = new TextChannel(clubMember.PrivateTextChannelId.Value)
             {
                 Name = textChannelName
             };
 
-            // Log
             LogRenamingPrivateChannel(logger, clubMember.User.Nickname);
 
-            // Update the text channel
             await discordTextChannelAccess.UpdateTextChannelAsync(newTextChannel).ConfigureAwait(false);
         }
         catch (Exception e)

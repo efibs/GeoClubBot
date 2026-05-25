@@ -1,17 +1,19 @@
 using System.Text;
 using Configuration;
 using Entities;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.ClubMemberActivity;
-using UseCases.InputPorts.Users;
 using UseCases.OutputPorts.Discord;
+using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUseCase geoGuessrUserIdsToDiscordUserIdsUseCase,
-    IDiscordServerRolesAccess discordServerRolesAccess, 
-    IDiscordMessageAccess discordMessageAccess, 
+public class ClubMemberActivityRewardUseCase(
+    ISender mediator,
+    IDiscordServerRolesAccess discordServerRolesAccess,
+    IDiscordMessageAccess discordMessageAccess,
     ILogger<ClubMemberActivityRewardUseCase> logger,
     IOptions<ActivityRewardConfiguration> config) : IClubMemberActivityRewardUseCase
 {
@@ -91,7 +93,9 @@ public class ClubMemberActivityRewardUseCase(IGeoGuessrUserIdsToDiscordUserIdsUs
     private async Task _updateRolesAsync(IEnumerable<string> mvpPlayerUserIds)
     {
         // Get the discord user ids for the mvps
-        var discordUserIds = await geoGuessrUserIdsToDiscordUserIdsUseCase.GetDiscordUserIdsAsync(mvpPlayerUserIds).ConfigureAwait(false);
+        var discordUserIds = await mediator
+            .Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(mvpPlayerUserIds))
+            .ConfigureAwait(false);
         
         // Get the members that already have the mvp role
         var membersWithMvpRole = await discordServerRolesAccess.ReadMembersWithRoleAsync(config.Value.MvpRoleId).ConfigureAwait(false);

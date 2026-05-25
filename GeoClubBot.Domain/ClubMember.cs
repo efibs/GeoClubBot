@@ -1,27 +1,77 @@
+using Entities.Events;
+
 namespace Entities;
 
 public class ClubMember : BaseEntity
 {
-    public required string UserId { get; set; }
-    
-    public required Guid? ClubId { get; set; }
+    public string UserId { get; private set; } = string.Empty;
 
-    public required GeoGuessrUser User { get; set; }
-    
-    public required int Xp { get; set; }
-    
-    public required DateTimeOffset JoinedAt { get; set; }
-    
-    public required ulong? PrivateTextChannelId { get; set; }
+    public Guid? ClubId { get; private set; }
 
-    public List<ClubMemberHistoryEntry> History { get; set; } = [];
+    public GeoGuessrUser User { get; private set; } = null!;
 
-    public List<ClubMemberStrike> Strikes { get; set; } = [];
+    public int Xp { get; private set; }
 
-    public List<ClubMemberExcuse> Excuses { get; set; } = [];
-    
-    public override string ToString()
+    public DateTimeOffset JoinedAt { get; private set; }
+
+    public ulong? PrivateTextChannelId { get; private set; }
+
+    public List<ClubMemberHistoryEntry> History { get; private set; } = [];
+
+    public List<ClubMemberStrike> Strikes { get; private set; } = [];
+
+    public List<ClubMemberExcuse> Excuses { get; private set; } = [];
+
+    public static ClubMember Create(GeoGuessrUser user, Guid? clubId, int xp, DateTimeOffset joinedAt)
     {
-        return User.ToString();
+        var member = new ClubMember
+        {
+            UserId = user.UserId,
+            User = user,
+            ClubId = clubId,
+            Xp = xp,
+            JoinedAt = joinedAt
+        };
+
+        if (clubId is not null)
+        {
+            member.AddDomainEvent(new PlayerJoinedClubEvent(
+                user.UserId, user.Nickname, user.DiscordUserId, clubId.Value, null));
+        }
+
+        return member;
     }
+
+    public void SyncFromApi(Guid? newClubId, int newXp, DateTimeOffset newJoinedAt)
+    {
+        var oldClubId = ClubId;
+
+        Xp = newXp;
+        JoinedAt = newJoinedAt;
+        ClubId = newClubId;
+
+        if (oldClubId is not null && newClubId is null)
+        {
+            AddDomainEvent(new PlayerLeftClubEvent(
+                UserId, User.Nickname, User.DiscordUserId, oldClubId.Value, PrivateTextChannelId));
+        }
+        else if (oldClubId is null && newClubId is not null)
+        {
+            AddDomainEvent(new PlayerJoinedClubEvent(
+                UserId, User.Nickname, User.DiscordUserId, newClubId.Value, PrivateTextChannelId));
+        }
+        else if (oldClubId is not null && newClubId is not null && oldClubId != newClubId)
+        {
+            AddDomainEvent(new PlayerSwitchedClubsEvent(
+                UserId, User.Nickname, User.DiscordUserId, oldClubId.Value, newClubId.Value));
+        }
+    }
+
+    public void SetPrivateTextChannelId(ulong? channelId) => PrivateTextChannelId = channelId;
+
+    private ClubMember()
+    {
+    }
+
+    public override string ToString() => User.ToString();
 }

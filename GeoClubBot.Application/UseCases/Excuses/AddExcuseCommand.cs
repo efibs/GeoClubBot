@@ -1,20 +1,21 @@
 using Entities;
+using MediatR;
 using UseCases.Abstractions;
-using UseCases.InputPorts.ClubMembers;
 using UseCases.OutputPorts;
+using UseCases.UseCases.ClubMembers;
 
 namespace UseCases.UseCases.Excuses;
 
 public sealed record AddExcuseCommand(string MemberNickname, DateTimeOffset From, DateTimeOffset To) : ICommand<Guid?>;
 
 public sealed class AddExcuseHandler(
-    IReadOrSyncClubMemberUseCase readClubMemberUseCase,
-    IExcusesRepository excuses) : MediatR.IRequestHandler<AddExcuseCommand, Guid?>
+    ISender mediator,
+    IExcusesRepository excuses) : IRequestHandler<AddExcuseCommand, Guid?>
 {
     public async Task<Guid?> Handle(AddExcuseCommand request, CancellationToken cancellationToken)
     {
-        var clubMember = await readClubMemberUseCase
-            .ReadOrSyncClubMemberByNicknameAsync(request.MemberNickname)
+        var clubMember = await mediator
+            .Send(new ReadOrSyncClubMemberByNicknameQuery(request.MemberNickname), cancellationToken)
             .ConfigureAwait(false);
 
         if (clubMember is null)

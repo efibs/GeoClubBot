@@ -6,7 +6,8 @@ using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public partial class HandleAccountUnlinkedForPrivateChannelUseCase(IDeleteMemberPrivateChannelUseCase deleteMemberPrivateChannelUseCase, 
+public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
+    IDeleteMemberPrivateChannelUseCase deleteMemberPrivateChannelUseCase,
     IUnitOfWork unitOfWork,
     ILogger<HandleAccountUnlinkedForPrivateChannelUseCase> logger)
     : INotificationHandler<AccountUnlinkedEvent>
@@ -15,27 +16,21 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(IDeleteMember
     {
         try
         {
-            // Get the user 
-            var user = notification.User;
+            LogDeletingPrivateChannel(logger, notification.Nickname);
 
-            // Log
-            LogDeletingPrivateChannel(logger, user.Nickname);
-
-            // Try to read the club member.
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(user.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId)
                 .ConfigureAwait(false);
 
-            // Create the private channel
-            var successful = await deleteMemberPrivateChannelUseCase.DeletePrivateChannelAsync(clubMember).ConfigureAwait(false);
-            
-            // If the delete was not successful
+            var successful = await deleteMemberPrivateChannelUseCase
+                .DeletePrivateChannelAsync(clubMember)
+                .ConfigureAwait(false);
+
             if (!successful)
             {
-                logger.LogWarning("Failed to delete member private channel for member '{clubMemberNickname}'", user.Nickname);
+                logger.LogWarning("Failed to delete member private channel for member '{clubMemberNickname}'", notification.Nickname);
             }
-            
-            // Save the changes
+
             await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         }
         catch (Exception e)
@@ -43,7 +38,7 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(IDeleteMember
             logger.LogError(e, "Error while handling HandleAccountUnlinkedForPrivateChannelUseCase");
         }
     }
-    
+
     [LoggerMessage(LogLevel.Information,
         "Handling account unlinked for deleting private text channel for club member '{clubMemberNickname}'...")]
     static partial void LogDeletingPrivateChannel(ILogger<HandleAccountUnlinkedForPrivateChannelUseCase> logger,

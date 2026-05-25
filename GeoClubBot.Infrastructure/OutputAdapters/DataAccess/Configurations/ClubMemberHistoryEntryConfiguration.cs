@@ -9,34 +9,29 @@ public class ClubMemberHistoryEntryConfiguration : IEntityTypeConfiguration<Club
 {
     public void Configure(EntityTypeBuilder<ClubMemberHistoryEntry> builder)
     {
-        // Configure the composite primary key
-        builder.HasKey(x => new {x.Timestamp, x.UserId});
-        
-        // Set the timestamp to not be database generated
+        builder.HasKey(x => new { x.Timestamp, x.UserId });
+
         builder.Property(x => x.Timestamp)
             .ValueGeneratedNever()
             .IsRequired();
-        
-        // Set the user id max length and required
+
         builder.Property(x => x.UserId)
             .IsRequired()
             .HasMaxLength(StringLengthConstants.GeoGuessrUserIdLength);
-        
-        // Set the xp to be required
-        builder.Property(x => x.Xp)
-            .IsRequired();
-        
-        // Configure the club member relationship
+
+        builder.Property(x => x.Xp).IsRequired();
+
+        builder.UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Ignore(x => x.DomainEvents);
+
         builder.HasOne(x => x.ClubMember)
             .WithMany(x => x.History)
             .HasForeignKey(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
-        
-        // Configure the club relationship
+
         builder.HasOne(x => x.Club)
             .WithMany()
             .HasForeignKey(x => x.ClubId)
             .OnDelete(DeleteBehavior.Cascade);
-            
     }
 }

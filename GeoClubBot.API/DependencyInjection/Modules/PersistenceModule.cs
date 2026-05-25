@@ -23,6 +23,8 @@ public static class PersistenceModule
         // DbUnitOfWork; they migrate slice by slice alongside the use-case migration.
         services.AddTransient<IStrikesRepository, EfStrikesRepository>();
         services.AddTransient<IExcusesRepository, EfExcusesRepository>();
+        services.AddTransient<IClubMemberRepository, EfClubMemberRepository>();
+        services.AddTransient<IGeoGuessrUserRepository, EfGeoGuessrUserRepository>();
 
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
         services.AddDbContext<GeoClubBotDbContext>(options =>

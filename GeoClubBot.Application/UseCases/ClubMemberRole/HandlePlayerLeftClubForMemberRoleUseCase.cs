@@ -16,28 +16,20 @@ public class HandlePlayerLeftClubForMemberRoleUseCase(
     {
         try
         {
-            // Check if the event is relevant
-            if (notification.ClubMember.User.DiscordUserId.HasValue == false)
-            {
-                // The event is not relevant if the user does not
-                // have his accounts linked
-                return;
-            }
-
-            // Get the role ID for this club
-            var roleId = geoGuessrConfig.Value.GetClub(notification.ClubMember.ClubId!.Value).RoleId;
-
-            // If the club has no role configured, nothing to do
-            if (roleId == null)
+            if (notification.DiscordUserId is null)
             {
                 return;
             }
 
-            // Get the members discord user id
-            var discordUserId = notification.ClubMember.User.DiscordUserId.Value;
+            var roleId = geoGuessrConfig.Value.GetClub(notification.OldClubId).RoleId;
+            if (roleId is null)
+            {
+                return;
+            }
 
-            // Take the member role away
-            await rolesAccess.RemoveRolesFromUserAsync(discordUserId, [roleId.Value]).ConfigureAwait(false);
+            await rolesAccess
+                .RemoveRolesFromUserAsync(notification.DiscordUserId.Value, [roleId.Value])
+                .ConfigureAwait(false);
         }
         catch (Exception e)
         {

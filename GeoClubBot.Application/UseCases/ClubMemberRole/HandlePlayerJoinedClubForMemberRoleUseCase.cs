@@ -7,7 +7,8 @@ using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.ClubMemberRole;
 
-public class HandlePlayerJoinedClubForMemberRoleUseCase(IDiscordServerRolesAccess rolesAccess,
+public class HandlePlayerJoinedClubForMemberRoleUseCase(
+    IDiscordServerRolesAccess rolesAccess,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     ILogger<HandlePlayerJoinedClubForMemberRoleUseCase> logger) : INotificationHandler<PlayerJoinedClubEvent>
 {
@@ -15,28 +16,20 @@ public class HandlePlayerJoinedClubForMemberRoleUseCase(IDiscordServerRolesAcces
     {
         try
         {
-            // Check if the event is relevant
-            if (notification.ClubMember.User.DiscordUserId.HasValue == false)
+            if (notification.DiscordUserId is null)
             {
-                // The event is not relevant if the user does not
-                // have his accounts linked
                 return;
             }
-        
-            // Get the role ID for this club
-            var roleId = geoGuessrConfig.Value.GetClub(notification.ClubMember.ClubId!.Value).RoleId;
 
-            // If the club has no role configured, nothing to do
-            if (roleId == null)
+            var roleId = geoGuessrConfig.Value.GetClub(notification.ClubId).RoleId;
+            if (roleId is null)
             {
                 return;
             }
-        
-            // Get the members discord user id
-            var discordUserId = notification.ClubMember.User.DiscordUserId.Value;
-        
-            // Give him the member role
-            await rolesAccess.AddRoleToMembersByUserIdsAsync([discordUserId], roleId.Value).ConfigureAwait(false);
+
+            await rolesAccess
+                .AddRoleToMembersByUserIdsAsync([notification.DiscordUserId.Value], roleId.Value)
+                .ConfigureAwait(false);
         }
         catch (Exception e)
         {

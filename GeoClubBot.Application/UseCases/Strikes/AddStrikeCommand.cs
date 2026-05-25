@@ -1,20 +1,21 @@
 using Entities;
+using MediatR;
 using UseCases.Abstractions;
-using UseCases.InputPorts.ClubMembers;
 using UseCases.OutputPorts;
+using UseCases.UseCases.ClubMembers;
 
 namespace UseCases.UseCases.Strikes;
 
 public sealed record AddStrikeCommand(string MemberNickname, DateTimeOffset StrikeDate) : ICommand<Guid?>;
 
 public sealed class AddStrikeHandler(
-    IReadOrSyncClubMemberUseCase readClubMemberUseCase,
-    IStrikesRepository strikes) : MediatR.IRequestHandler<AddStrikeCommand, Guid?>
+    ISender mediator,
+    IStrikesRepository strikes) : IRequestHandler<AddStrikeCommand, Guid?>
 {
     public async Task<Guid?> Handle(AddStrikeCommand request, CancellationToken cancellationToken)
     {
-        var clubMember = await readClubMemberUseCase
-            .ReadOrSyncClubMemberByNicknameAsync(request.MemberNickname)
+        var clubMember = await mediator
+            .Send(new ReadOrSyncClubMemberByNicknameQuery(request.MemberNickname), cancellationToken)
             .ConfigureAwait(false);
 
         if (clubMember is null)

@@ -1,36 +1,61 @@
+using Entities.Events;
+
 namespace Entities;
 
 public sealed class GeoGuessrUser : BaseEntity
 {
-    public required string UserId { get; set; }
-    
-    public required string Nickname { get; set; }
+    public string UserId { get; private set; } = string.Empty;
 
-    public ulong? DiscordUserId { get; set; }
-    
-    public override string ToString()
+    public string Nickname { get; private set; } = string.Empty;
+
+    public ulong? DiscordUserId { get; private set; }
+
+    public static GeoGuessrUser Create(string userId, string nickname, ulong? discordUserId = null)
     {
-        return Nickname;
+        var user = new GeoGuessrUser
+        {
+            UserId = userId,
+            Nickname = nickname,
+            DiscordUserId = discordUserId
+        };
+        user.AddDomainEvent(new UserCreatedEvent(userId, nickname));
+        return user;
     }
 
-    public override bool Equals(object? obj)
+    public bool UpdateFromApi(string newNickname)
     {
-        if (obj is not GeoGuessrUser other) return false;
-        return UserId == other.UserId &&
-               Nickname == other.Nickname &&
-               DiscordUserId == other.DiscordUserId;
+        if (Nickname == newNickname)
+        {
+            return false;
+        }
+
+        var oldNickname = Nickname;
+        Nickname = newNickname;
+        AddDomainEvent(new UserUpdatedEvent(UserId, oldNickname, newNickname, DiscordUserId, DiscordUserId));
+        return true;
     }
 
-    public override int GetHashCode()
+    public void LinkDiscord(ulong discordUserId)
     {
-        return HashCode.Combine(UserId, Nickname, DiscordUserId);
+        DiscordUserId = discordUserId;
+        AddDomainEvent(new AccountLinkedEvent(UserId, Nickname, discordUserId));
     }
 
-    public static bool operator ==(GeoGuessrUser? left, GeoGuessrUser? right)
+    public void UnlinkDiscord()
     {
-        if (left is null) return right is null;
-        return left.Equals(right);
+        if (DiscordUserId is null)
+        {
+            return;
+        }
+
+        var oldDiscordUserId = DiscordUserId.Value;
+        DiscordUserId = null;
+        AddDomainEvent(new AccountUnlinkedEvent(UserId, Nickname, oldDiscordUserId));
     }
 
-    public static bool operator !=(GeoGuessrUser? left, GeoGuessrUser? right) => !(left == right);
+    private GeoGuessrUser()
+    {
+    }
+
+    public override string ToString() => Nickname;
 }

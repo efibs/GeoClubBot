@@ -42,14 +42,10 @@ public class RenderPlayerActivityUseCase(IUnitOfWork unitOfWork,
         // If the club member was found
         if (member != null)
         {
-            // Prepend 0 at joined date
-            playersHistoryEntries = playersHistoryEntries.Prepend(new ClubMemberHistoryEntry
-            {
-                UserId = member.UserId,
-                Timestamp = member.JoinedAt,
-                ClubId = member.ClubId!.Value,
-                Xp = 0
-            }).ToList();
+            // Prepend a synthetic zero-XP entry at the join date
+            playersHistoryEntries = playersHistoryEntries
+                .Prepend(ClubMemberHistoryEntry.Create(member.UserId, member.ClubId!.Value, 0, member.JoinedAt))
+                .ToList();
         }
 
         // If the player doesn't have enough entries

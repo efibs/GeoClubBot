@@ -6,21 +6,11 @@ internal static class UserAssembler
 {
     public static GeoGuessrUser AssembleEntity(ClubMemberUserDto dto)
     {
-        return new GeoGuessrUser
-        {
-            UserId = dto.UserId,
-            Nickname = dto.Nick,
-            DiscordUserId = null
-        };
+        return GeoGuessrUser.Create(dto.UserId, dto.Nick);
     }
 
     public static GeoGuessrUser AssembleEntity(UserDto dto)
     {
-        return new GeoGuessrUser
-        {
-            UserId = dto.Id,
-            Nickname = dto.Nick,
-            DiscordUserId = null,
-        };
+        return GeoGuessrUser.Create(dto.Id, dto.Nick);
     }
 }
