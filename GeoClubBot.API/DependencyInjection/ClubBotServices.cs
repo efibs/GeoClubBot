@@ -1,162 +1,30 @@
 using Configuration;
-using Constants;
-using GeoClubBot.Discord.OutputAdapters;
-using Infrastructure.InputAdapters;
-using Infrastructure.InputAdapters.Jobs;
-using Infrastructure.OutputAdapters;
-using Infrastructure.OutputAdapters.DataAccess;
+using GeoClubBot.DependencyInjection.Modules;
 using Infrastructure.OutputAdapters.GeoGuessr;
-using Infrastructure.OutputAdapters.Rendering;
-using Microsoft.EntityFrameworkCore;
-using Quartz;
-using QuartzExtensions;
 using Refit;
-using UseCases.InputPorts.Club;
-using UseCases.InputPorts.ClubMemberActivity;
-using UseCases.OutputPorts.Rendering;
-using UseCases.InputPorts.ClubMembers;
-using UseCases.InputPorts.DailyChallenge;
-using UseCases.InputPorts.DailyMissionLogging;
-using UseCases.InputPorts.DailyMissionReminder;
-using UseCases.InputPorts.Excuses;
-using UseCases.InputPorts.GeoGuessrAccountLinking;
-using UseCases.InputPorts.MemberPrivateChannels;
-using UseCases.InputPorts.Organization;
-using UseCases.InputPorts.SelfRoles;
-using UseCases.InputPorts.Strikes;
-using UseCases.InputPorts.Users;
-using UseCases.OutputPorts;
-using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
-using UseCases.UseCases.Club;
-using UseCases.UseCases.ClubMemberActivity;
-using UseCases.UseCases.ClubMembers;
-using UseCases.UseCases.DailyChallenge;
-using UseCases.UseCases.DailyMissionLogging;
-using UseCases.UseCases.DailyMissionReminder;
-using UseCases.UseCases.Excuses;
-using UseCases.UseCases.GeoGuessrAccountLinking;
-using UseCases.UseCases.MemberPrivateChannels;
-using UseCases.UseCases.Organization;
-using UseCases.UseCases.SelfRoles;
-using UseCases.UseCases.Strikes;
-using UseCases.UseCases.Users;
 
 namespace GeoClubBot.DependencyInjection;
 
 /// <summary>
-/// Helper class to register all required services in the dependency injection
+/// Composition root entry point. Delegates each bounded slice to its own module.
 /// </summary>
 public static class ClubBotServices
 {
     public static void AddClubBotServices(this IServiceCollection services, IConfiguration configuration)
     {
-        // Add the input adapters
-        services.AddHostedService<InitialSyncService>();
-        services.AddHostedService<UserJoinedService>();
-        services.AddHostedService<UserLeftService>();
-
-        // Add the output adapters 
-        services.AddTransient<IUnitOfWork, DbUnitOfWork>();
-        services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
-        services.AddTransient<IDiscordStatusUpdater, DiscordDiscordStatusUpdater>();
-        services.AddTransient<IDiscordMessageAccess, DiscordDiscordMessageAccess>();
-        services.AddTransient<IDiscordServerRolesAccess, DiscordDiscordServerRolesAccess>();
-        services.AddTransient<IDiscordTextChannelAccess, DiscordDiscordTextChannelAccess>();
-        services.AddTransient<IClubEventNotifier, SignalRClubEventNotifier>();
-        services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
-        services.AddTransient<IDiscordSelfUserAccess, DiscordDiscordSelfUserAccess>();
-        services.AddTransient<IDiscordDirectMessageAccess, DiscordDirectMessageAccess>();
-        services.AddTransient<IGeoGuessrActivityReader, CachingGeoGuessrActivityReader>();
-        services.AddTransient<IGeoGuessrUserProfileReader, CachingGeoGuessrUserProfileReader>();
-        services.AddMemoryCache();
-
-        // Add the use cases
-        services.AddTransient<ICheckGeoGuessrPlayerActivityUseCase, CheckGeoGuessrPlayerActivityUseCase>();
-        services.AddTransient<IGetActivityThisWeekUseCase, GetActivityThisWeekUseCase>();
-        services.AddTransient<ICalculateAverageXpUseCase, CalculateAverageXpUseCase>();
-        services.AddTransient<IReadMemberStrikesUseCase, ReadMemberStrikesUseCase>();
-        services.AddTransient<IAddExcuseUseCase, AddExcuseUseCase>();
-        services.AddTransient<IUpdateExcuseUseCase, UpdateExcuseUseCase>();
-        services.AddTransient<IRemoveExcuseUseCase, RemoveExcuseUseCase>();
-        services.AddTransient<IReadExcusesUseCase, ReadExcusesUseCase>();
-        services.AddTransient<ICleanupUseCase, CleanupUseCase>();
-        services.AddTransient<IGetLastCheckTimeUseCase, GetLastCheckTimeUseCase>();
-        services.AddSingleton<ICheckClubLevelUseCase, CheckClubLevelUseCase>();
-        services.AddTransient<IReadOrSyncClubMemberUseCase, ReadOrSyncClubMemberUseCase>();
-        services.AddTransient<ISyncClubsUseCase, SyncClubsUseCase>();
-        services.AddTransient<ICheckStrikeDecayUseCase, CheckStrikeDecayUseCase>();
-        services.AddTransient<IRevokeStrikeUseCase, RevokeStrikeUseCase>();
-        services.AddTransient<IUnrevokeStrikeUseCase, UnrevokeStrikeUseCase>();
-        services.AddTransient<IAddStrikeUseCase, AddStrikeUseCase>();
-        services.AddTransient<IDailyChallengeUseCase, DailyChallengeUseCase>();
-        services.AddTransient<IReadAllStrikesUseCase, ReadAllStrikesUseCase>();
-        services.AddTransient<ISetClubLevelStatusUseCase, SetClubLevelStatusUseCase>();
-        services.AddTransient<IDistributeDailyChallengeRolesUseCase, DistributeDailyChallengeRolesUseCase>();
-        services.AddTransient<IPlayerStatisticsUseCase, PlayerStatisticsUseCase>();
-        services.AddTransient<IClubStatisticsUseCase, ClubStatisticsUseCase>();
-        services.AddTransient<ISaveClubMembersUseCase, SaveClubMembersUseCase>();
-        services.AddTransient<IGetLinkedDiscordUserIdUseCase, GetLinkedDiscordUserIdUseCase>();
-        services.AddTransient<IStartAccountLinkingProcessUseCase, StartAccountLinkingUseCase>();
-        services.AddTransient<ICompleteAccountLinkingUseCase, CompleteAccountLinkingUseCase>();
-        services.AddTransient<IReadOrSyncGeoGuessrUserUseCase, ReadOrSyncGeoGuessrUserUseCase>();
-        services.AddTransient<IUnlinkAccountsUseCase, UnlinkAccountsUseCase>();
-        services.AddTransient<IClubMemberActivityRewardUseCase, ClubMemberActivityRewardUseCase>();
-        services.AddTransient<IGeoGuessrUserIdsToDiscordUserIdsUseCase, GeoGuessrUserIdsToDiscordUserIdsUseCase>();
-        services.AddTransient<ICancelAccountLinkingUseCase, CancelAccountLinkingUseCase>();
-        services.AddTransient<IGetLinkedGeoGuessrUserUseCase, GetLinkedGeoGuessrUserUseCase>();
-        services.AddTransient<IGetDiscordUserByNicknameUseCase, GetDiscordUserByNicknameUseCase>();
-        services.AddTransient<IGetGeoGuessrUserByNicknameUseCase, GetGeoGuessrUserByNicknameUseCase>();
-        services.AddTransient<IGetGeoGuessrProfileUseCase, GetGeoGuessrProfileUseCase>();
-        services.AddTransient<IReadAllRelevantStrikesUseCase, ReadAllRelevantStrikesUseCase>();
-        services.AddTransient<ICreateOrUpdateUserUseCase, CreateOrUpdateUserUseCase>();
-        services.AddTransient<ICreateOrUpdateClubMemberUseCase, CreateOrUpdateClubMemberUseCase>();
-        services.AddTransient<ICreateMemberPrivateChannelUseCase, CreateMemberPrivateChannelUseCase>();
-        services.AddTransient<IDeleteMemberPrivateChannelUseCase, DeleteMemberPrivateChannelUseCase>();
-        services.AddTransient<IHistoryRenderer, SkiaSharpHistoryRenderer>();
-        services.AddTransient<IRenderPlayerActivityUseCase, RenderPlayerActivityUseCase>();
-        services.AddTransient<IUpdateSelfRolesMessageUseCase, UpdateSelfRolesMessageUseCase>();
-        services.AddTransient<ISetDailyMissionReminderUseCase, SetDailyMissionReminderUseCase>();
-        services.AddTransient<IStopDailyMissionReminderUseCase, StopDailyMissionReminderUseCase>();
-        services.AddTransient<IGetDailyMissionReminderStatusUseCase, GetDailyMissionReminderStatusUseCase>();
-        services.AddTransient<ISendDueRemindersUseCase, SendDueRemindersUseCase>();
-        services.AddTransient<ILogDailyMissionsUseCase, LogDailyMissionsUseCase>();
-        services.AddTransient<IGetClubTodaysXpUseCase, GetClubTodaysXpUseCase>();
-        services.AddTransient<IGetActivityLeaderboardUseCase, GetActivityLeaderboardUseCase>();
-        services.AddTransient<IGetClubByNameOrDefaultUseCase, GetClubByNameOrDefaultUseCase>();
-        services.AddTransient<IGetOpenAccountLinkingRequestUseCase, GetOpenAccountLinkingRequestUseCase>();
-
-        // Add the ai services
+        services.AddPersistenceModule(configuration);
+        services.AddDiscordAdaptersModule();
+        services.AddGeoGuessrIntegrationModule();
+        services.AddRenderingModule();
+        services.AddStrikesModule();
+        services.AddExcusesModule();
+        services.AddClubMembersModule();
+        services.AddAccountLinkingModule();
+        services.AddDailyChallengesModule();
+        services.AddSelfRolesModule();
+        services.AddQuartzModule();
         services.AddAiServicesIfConfigured(configuration);
-        
-        // Get the connection string
-        var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
-        
-        // Add the db context
-        services.AddDbContext<GeoClubBotDbContext>(options => 
-            options.UseNpgsql(connectionString));
-        
-        // Add the quartz scheduler
-        services.AddQuartz(q =>
-        {
-            // Set the scheduler name
-            q.SchedulerId = StringConstants.QuartzSchedulerName;
-
-            // Get the assembly containing the jobs
-            var commandsAssembly = typeof(JobAssemblyMarker).Assembly;
-            
-            // Detect and add the jobs automatically
-            q.AddCronJobs(commandsAssembly);
-        });
-        
-        // ASP.NET Core hosting
-        services.AddQuartzHostedService(options =>
-        {
-            options.AwaitApplicationStarted = true;
-
-            // when shutting down we want jobs to complete gracefully
-            options.WaitForJobsToComplete = true;
-        });
     }
 
     public static void AddGeoGuessrHttpClients(this IServiceCollection services, IConfiguration configuration)
