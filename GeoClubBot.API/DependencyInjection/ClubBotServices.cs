@@ -5,6 +5,7 @@ using Infrastructure.InputAdapters;
 using Infrastructure.InputAdapters.Jobs;
 using Infrastructure.OutputAdapters;
 using Infrastructure.OutputAdapters.DataAccess;
+using Infrastructure.OutputAdapters.GeoGuessr;
 using Microsoft.EntityFrameworkCore;
 using Quartz;
 using QuartzExtensions;
@@ -205,7 +206,7 @@ public static class ClubBotServices
 
         services.AddSingleton<IGeoGuessrClientFactory, GeoGuessrClientFactory>();
 
-        services.AddRefitClient<IGeoGuessrClient>()
+        services.AddRefitClient<IGeoGuessrApi>()
             .ConfigureHttpClient(client =>
             {
                 client.BaseAddress = new Uri("https://www.geoguessr.com/api");
@@ -213,5 +214,7 @@ public static class ClubBotServices
             })
             .AddResilienceHandler("GeoGuessrApiResiliencePipeline",
                 ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
+
+        services.AddTransient<IGeoGuessrClient, RefitGeoGuessrClient>();
     }
 }
