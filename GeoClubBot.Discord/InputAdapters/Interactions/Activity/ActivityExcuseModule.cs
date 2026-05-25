@@ -2,17 +2,13 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.Excuses;
+using UseCases.UseCases.Excuses;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 public partial class ActivityModule
 {
     public partial class ActivityExcuseModule(
-        IAddExcuseUseCase addExcuseUseCase,
-        IUpdateExcuseUseCase updateExcuseUseCase,
-        IRemoveExcuseUseCase removeExcuseUseCase,
-        IReadExcusesUseCase readExcusesUseCase,
         ISender mediator,
         ILogger<ActivityExcuseModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
@@ -23,27 +19,23 @@ public partial class ActivityModule
             [Summary(description: "To date in format YYYY-MM-DD")]
             DateTime to)
         {
-            // Add one day to the to time and subtract a tick so that the 
-            // day still counts for the excuse
+            // Add one day to the to time and subtract a tick so that the day still counts.
             to = to.AddDays(1).AddTicks(-1);
-            
-            // Specify the date times as utc
+
             from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
-            
-            // Check if the dates are in wrong order
+
             if (from >= to)
             {
                 await RespondAsync($"Excuse could not be added: The given from date lies after the given to date.",
                     ephemeral: true).ConfigureAwait(false);
-                
                 return;
             }
-            
-            // Add the excuse
-            var excuseGuid = await addExcuseUseCase.AddExcuseAsync(memberNickname, from, to).ConfigureAwait(false);
 
-            // If the excuse could not be added
+            var excuseGuid = await Mediator
+                .Send(new AddExcuseCommand(memberNickname, from, to))
+                .ConfigureAwait(false);
+
             if (excuseGuid == null)
             {
                 await RespondAsync($"Excuse could not be added for player '{memberNickname}'. Is the nickname wrong?",
@@ -64,38 +56,29 @@ public partial class ActivityModule
             [Summary(description: "The new to date in format YYYY-MM-DD")]
             DateTime to)
         {
-            // Parse the excuse id
-            var parseSuccessful = Guid.TryParse(excuseId, out var excuseIdGuid);
-
-            // If the parse was not successful
-            if (!parseSuccessful)
+            if (!Guid.TryParse(excuseId, out var excuseIdGuid))
             {
-                // Respond
                 await RespondAsync($"Invalid GUID '{excuseId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
-            
-            // Add one day to the to time and subtract a tick so that the 
-            // day still counts for the excuse
+
+            // Add one day to the to time and subtract a tick so that the day still counts.
             to = to.AddDays(1).AddTicks(-1);
-            
-            // Specify the date times as utc
+
             from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
-            
-            // Check if the dates are in wrong order
+
             if (from >= to)
             {
                 await RespondAsync($"Excuse could not be updated: The given from date lies after the given to date.",
                     ephemeral: true).ConfigureAwait(false);
-                
                 return;
             }
-            
-            // Update the excuse
-            var updatedExcuse = await updateExcuseUseCase.UpdateExcuseAsync(excuseIdGuid, from, to).ConfigureAwait(false);
 
-            // If the excuse could not be updated
+            var updatedExcuse = await Mediator
+                .Send(new UpdateExcuseCommand(excuseIdGuid, from, to))
+                .ConfigureAwait(false);
+
             if (updatedExcuse == null)
             {
                 await RespondAsync($"Excuse '{excuseIdGuid}' does not exist.",
@@ -108,78 +91,56 @@ public partial class ActivityModule
                     .ConfigureAwait(false);
             }
         }
-        
+
         [SlashCommand("remove", "Remove an excuse for a player given its id")]
         public async Task RemoveExcuseAsync(string excuseId)
         {
-            // Parse the excuse id
-            var parseSuccessful = Guid.TryParse(excuseId, out var excuseIdGuid);
-
-            // If the parse was not successful
-            if (!parseSuccessful)
+            if (!Guid.TryParse(excuseId, out var excuseIdGuid))
             {
-                // Respond
                 await RespondAsync($"Invalid GUID '{excuseId}'. Please enter a valid GUID.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
-            // Remove the excuse
-            var successful = await removeExcuseUseCase.RemoveExcuseAsync(excuseIdGuid).ConfigureAwait(false);
+            var successful = await Mediator.Send(new RemoveExcuseCommand(excuseIdGuid)).ConfigureAwait(false);
 
-            // If the remove was successful
-            if (successful)
-            {
-                // Respond
-                await RespondAsync($"Excuse with id {excuseId} successfully removed").ConfigureAwait(false);
-            }
-            else
-            {
-                // Respond
-                await RespondAsync($"There is no excuse with id {excuseId}", ephemeral: true).ConfigureAwait(false);
-            }
+            await RespondAsync(
+                successful
+                    ? $"Excuse with id {excuseId} successfully removed"
+                    : $"There is no excuse with id {excuseId}",
+                ephemeral: !successful).ConfigureAwait(false);
         }
 
         [SlashCommand("read", "Read the excuses for a player")]
         public async Task ReadExcusesAsync(string memberNickname)
         {
-            // Read the excuses
-            var excuses = await readExcusesUseCase.ReadExcusesAsync(memberNickname).ConfigureAwait(false);
+            var excuses = await Mediator.Send(new ReadExcusesQuery(memberNickname)).ConfigureAwait(false);
 
-            // If there are no excuses
             if (excuses.Count == 0)
             {
-                // Respond
                 await RespondAsync($"The player {memberNickname} has no excuses.", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
-                // Build excuses string
                 var excusesString = string.Join("\n", excuses.Select(e => $"* {e}"));
 
-                // Respond
                 await RespondAsync($"The player {memberNickname} has the following excuses:\n{excusesString}",
                     ephemeral: true).ConfigureAwait(false);
             }
         }
-        
+
         [SlashCommand("read-all", "Read all excuses in the system")]
         public async Task ReadExcusesAsync()
         {
-            // Read the excuses
-            var excuses = await readExcusesUseCase.ReadExcusesAsync().ConfigureAwait(false);
+            var excuses = await Mediator.Send(new ReadExcusesQuery()).ConfigureAwait(false);
 
-            // If there are no excuses
             if (excuses.Count == 0)
             {
-                // Respond
                 await RespondAsync($"There are currently no excuses in the system.", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
-                // Build excuses string
                 var excusesString = string.Join("\n", excuses.Select(e => $"* {e.ToStringWithPlayerName()}"));
 
-                // Respond
                 await RespondAsync($"The following excuses are currently entered in the system:\n{excusesString}",
                     ephemeral: true).ConfigureAwait(false);
             }

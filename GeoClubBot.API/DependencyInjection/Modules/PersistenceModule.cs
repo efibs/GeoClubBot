@@ -22,6 +22,7 @@ public static class PersistenceModule
         // directly. Repositories not yet injected this way are still constructed inline by
         // DbUnitOfWork; they migrate slice by slice alongside the use-case migration.
         services.AddTransient<IStrikesRepository, EfStrikesRepository>();
+        services.AddTransient<IExcusesRepository, EfExcusesRepository>();
 
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
         services.AddDbContext<GeoClubBotDbContext>(options =>

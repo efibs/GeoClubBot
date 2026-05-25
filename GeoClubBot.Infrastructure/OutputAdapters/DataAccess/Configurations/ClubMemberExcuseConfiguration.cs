@@ -9,29 +9,29 @@ public class ClubMemberExcuseConfiguration : IEntityTypeConfiguration<ClubMember
 {
     public void Configure(EntityTypeBuilder<ClubMemberExcuse> builder)
     {
-        // Configure the primary key
         builder.HasKey(x => x.ExcuseId);
         builder.Property(x => x.ExcuseId)
             .ValueGeneratedOnAdd();
-        
-        // Configure user id
+
         builder.Property(x => x.UserId)
             .IsRequired()
             .HasMaxLength(StringLengthConstants.GeoGuessrUserIdLength);
-        
-        // Configure the date range to be required
-        builder.Property(x => x.From)
-            .IsRequired();
-        builder.Property(x => x.To)
-            .IsRequired();
-        
-        // Configure the club member relationship
+
+        builder.Property(x => x.From).IsRequired();
+        builder.Property(x => x.To).IsRequired();
+
+        // Bypass private setters so EF can hydrate from the database without going through
+        // factory/behaviour methods.
+        builder.UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        // Domain events live on BaseEntity but are not persisted.
+        builder.Ignore(x => x.DomainEvents);
+
         builder.HasOne(x => x.ClubMember)
             .WithMany(x => x.Excuses)
             .HasForeignKey(x => x.UserId)
             .OnDelete(DeleteBehavior.Cascade);
-        
-        // Add an index to the To property
+
         builder.HasIndex(x => x.To);
     }
 }
