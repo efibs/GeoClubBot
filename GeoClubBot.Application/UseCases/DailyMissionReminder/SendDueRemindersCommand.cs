@@ -2,7 +2,7 @@ using Configuration;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using UseCases.InputPorts.DailyMissionReminder;
+using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
@@ -10,27 +10,30 @@ using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace UseCases.UseCases.DailyMissionReminder;
 
-public partial class SendDueRemindersUseCase(
-    IUnitOfWork unitOfWork,
+public sealed record SendDueRemindersCommand : ICommand;
+
+public sealed partial class SendDueRemindersHandler(
+    IDailyMissionReminderRepository reminders,
+    IClubMemberRepository members,
     IDiscordDirectMessageAccess directMessageAccess,
     ISender mediator,
     IGeoGuessrActivityReader activityReader,
     IOptions<DailyMissionReminderConfiguration> config,
-    ILogger<SendDueRemindersUseCase> logger) : ISendDueRemindersUseCase
+    ILogger<SendDueRemindersHandler> logger) : IRequestHandler<SendDueRemindersCommand, Unit>
 {
-    public async Task SendDueRemindersAsync()
+    public async Task<Unit> Handle(SendDueRemindersCommand request, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
         var currentTime = new TimeOnly(now.Hour, now.Minute);
         var today = DateOnly.FromDateTime(now);
 
-        var dueReminders = await unitOfWork.DailyMissionReminders
+        var dueReminders = await reminders
             .ReadDueRemindersAsync(currentTime, today)
             .ConfigureAwait(false);
 
         if (dueReminders.Count == 0)
         {
-            return;
+            return Unit.Value;
         }
 
         LogSendingReminders(dueReminders.Count);
@@ -40,13 +43,12 @@ public partial class SendDueRemindersUseCase(
 
         foreach (var reminder in dueReminders)
         {
-            var alreadyDone = await _hasUserCompletedDailyMissionTodayAsync(
-                    reminder.DiscordUserId, dailyMissionXpReward)
+            var alreadyDone = await HasUserCompletedDailyMissionTodayAsync(reminder.DiscordUserId, dailyMissionXpReward, cancellationToken)
                 .ConfigureAwait(false);
 
             if (alreadyDone)
             {
-                reminder.LastSentDateUtc = today;
+                reminder.MarkSent(today);
                 LogReminderSkippedAlreadyDone(reminder.DiscordUserId);
                 continue;
             }
@@ -61,7 +63,7 @@ public partial class SendDueRemindersUseCase(
 
             if (sent)
             {
-                reminder.LastSentDateUtc = today;
+                reminder.MarkSent(today);
                 LogReminderSent(reminder.DiscordUserId);
             }
             else
@@ -70,13 +72,13 @@ public partial class SendDueRemindersUseCase(
             }
         }
 
-        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+        return Unit.Value;
     }
 
-    private async Task<bool> _hasUserCompletedDailyMissionTodayAsync(ulong discordUserId, int dailyMissionXpReward)
+    private async Task<bool> HasUserCompletedDailyMissionTodayAsync(ulong discordUserId, int dailyMissionXpReward, CancellationToken cancellationToken)
     {
         var linkedUser = await mediator
-            .Send(new GetLinkedGeoGuessrUserQuery(discordUserId))
+            .Send(new GetLinkedGeoGuessrUserQuery(discordUserId), cancellationToken)
             .ConfigureAwait(false);
 
         if (linkedUser is null)
@@ -84,9 +86,7 @@ public partial class SendDueRemindersUseCase(
             return false;
         }
 
-        var clubMember = await unitOfWork.ClubMembers
-            .ReadClubMemberByUserIdAsync(linkedUser.UserId)
-            .ConfigureAwait(false);
+        var clubMember = await members.ReadClubMemberByUserIdAsync(linkedUser.UserId).ConfigureAwait(false);
 
         if (clubMember?.ClubId is null)
         {
@@ -97,8 +97,7 @@ public partial class SendDueRemindersUseCase(
             .ReadTodaysActivitiesAsync(clubMember.ClubId.Value)
             .ConfigureAwait(false);
 
-        return todaysActivities.Any(a =>
-            a.UserId == linkedUser.UserId && a.XpReward == dailyMissionXpReward);
+        return todaysActivities.Any(a => a.UserId == linkedUser.UserId && a.XpReward == dailyMissionXpReward);
     }
 
     [LoggerMessage(LogLevel.Information, "Sending {Count} daily mission reminders.")]

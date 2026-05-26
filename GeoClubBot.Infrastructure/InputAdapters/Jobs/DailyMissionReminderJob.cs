@@ -1,20 +1,21 @@
 using Constants;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using QuartzExtensions;
-using UseCases.InputPorts.DailyMissionReminder;
+using UseCases.UseCases.DailyMissionReminder;
 
 namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.DailyMissionReminderCronScheduleConfigurationKey)]
-public class DailyMissionReminderJob(ISendDueRemindersUseCase sendDueRemindersUseCase, ILogger<DailyMissionReminderJob> logger) : IJob
+public class DailyMissionReminderJob(ISender mediator, ILogger<DailyMissionReminderJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
         try
         {
-            await sendDueRemindersUseCase.SendDueRemindersAsync().ConfigureAwait(false);
+            await mediator.Send(new SendDueRemindersCommand(), context.CancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

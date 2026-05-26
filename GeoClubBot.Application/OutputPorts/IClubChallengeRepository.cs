@@ -4,9 +4,9 @@ namespace UseCases.OutputPorts;
 
 public interface IClubChallengeRepository
 {
-    List<ClubChallengeLink> CreateLatestClubChallengeLinks(ICollection<ClubChallengeLink> links);
-    
+    void AddLatestClubChallengeLinks(IEnumerable<ClubChallengeLink> links);
+
     Task<List<ClubChallengeLink>> ReadLatestClubChallengeLinksAsync();
-    
-    void DeleteLatestClubChallengeLinks(ICollection<ClubChallengeLink> links);
+
+    void DeleteLatestClubChallengeLinks(IEnumerable<ClubChallengeLink> links);
 }

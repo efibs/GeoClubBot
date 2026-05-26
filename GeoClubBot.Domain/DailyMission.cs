@@ -1,26 +1,57 @@
 namespace Entities;
 
-public class DailyMission
+public class DailyMission : BaseEntity
 {
-    public int Id { get; set; }
+    public int Id { get; private set; }
 
-    public required Guid MissionId { get; set; }
+    public Guid MissionId { get; private set; }
 
-    public required string Type { get; set; }
+    public string Type { get; private set; } = string.Empty;
 
-    public required string GameMode { get; set; }
+    public string GameMode { get; private set; } = string.Empty;
 
-    public required int CurrentProgress { get; set; }
+    public int CurrentProgress { get; private set; }
 
-    public required int TargetProgress { get; set; }
+    public int TargetProgress { get; private set; }
 
-    public required bool Completed { get; set; }
+    public bool Completed { get; private set; }
 
-    public required DateTimeOffset EndDate { get; set; }
+    public DateTimeOffset EndDate { get; private set; }
 
-    public required int RewardAmount { get; set; }
+    public int RewardAmount { get; private set; }
 
-    public required string RewardType { get; set; }
+    public string RewardType { get; private set; } = string.Empty;
 
-    public required DateTimeOffset FetchedAtUtc { get; set; }
+    public DateTimeOffset FetchedAtUtc { get; private set; }
+
+    public static DailyMission Create(
+        Guid missionId,
+        string type,
+        string gameMode,
+        int currentProgress,
+        int targetProgress,
+        bool completed,
+        DateTimeOffset endDate,
+        int rewardAmount,
+        string rewardType,
+        DateTimeOffset fetchedAtUtc)
+    {
+        return new DailyMission
+        {
+            MissionId = missionId,
+            Type = type,
+            GameMode = gameMode,
+            CurrentProgress = currentProgress,
+            TargetProgress = targetProgress,
+            Completed = completed,
+            EndDate = endDate,
+            RewardAmount = rewardAmount,
+            RewardType = rewardType,
+            FetchedAtUtc = fetchedAtUtc
+        };
+    }
+
+    private DailyMission()
+    {
+    }
 }

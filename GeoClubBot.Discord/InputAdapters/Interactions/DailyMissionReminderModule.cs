@@ -3,16 +3,13 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.DailyMissionReminder;
+using UseCases.UseCases.DailyMissionReminder;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
 [Group("daily-reminder", "Commands for managing daily mission reminders")]
 public class DailyMissionReminderModule(
-    ISetDailyMissionReminderUseCase setDailyMissionReminderUseCase,
-    IStopDailyMissionReminderUseCase stopDailyMissionReminderUseCase,
-    IGetDailyMissionReminderStatusUseCase getDailyMissionReminderStatusUseCase,
     ISender mediator,
     ILogger<DailyMissionReminderModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
@@ -22,7 +19,7 @@ public class DailyMissionReminderModule(
         [Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
         [Summary(description: "Custom reminder message")] string? message = null) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
                 if (!TimeOnly.TryParseExact(time, "HH:mm", out var localTime))
                 {
@@ -47,8 +44,8 @@ public class DailyMissionReminderModule(
                     }
                 }
 
-                await setDailyMissionReminderUseCase
-                    .SetReminderAsync(Context.User.Id, localTime, timezone, message)
+                await Mediator
+                    .Send(new SetDailyMissionReminderCommand(Context.User.Id, localTime, timezone, message), ct)
                     .ConfigureAwait(false);
 
                 var tzDisplay = timezone ?? "UTC";
@@ -62,10 +59,10 @@ public class DailyMissionReminderModule(
     [SlashCommand("stop", "Stop your daily mission reminder")]
     public Task StopReminderAsync() =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var stopped = await stopDailyMissionReminderUseCase
-                    .StopReminderAsync(Context.User.Id)
+                var stopped = await Mediator
+                    .Send(new StopDailyMissionReminderCommand(Context.User.Id), ct)
                     .ConfigureAwait(false);
 
                 await FollowupAsync(
@@ -81,10 +78,10 @@ public class DailyMissionReminderModule(
     [SlashCommand("status", "Check the status of your daily mission reminder")]
     public Task StatusAsync() =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var reminder = await getDailyMissionReminderStatusUseCase
-                    .GetStatusAsync(Context.User.Id)
+                var reminder = await Mediator
+                    .Send(new GetDailyMissionReminderStatusQuery(Context.User.Id), ct)
                     .ConfigureAwait(false);
 
                 if (reminder == null)

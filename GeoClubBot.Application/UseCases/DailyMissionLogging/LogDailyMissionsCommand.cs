@@ -2,21 +2,24 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Configuration;
 using Entities;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using UseCases.InputPorts.DailyMissionLogging;
+using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.DailyMissionLogging;
 
-public partial class LogDailyMissionsUseCase(
+public sealed record LogDailyMissionsCommand : ICommand;
+
+public sealed partial class LogDailyMissionsHandler(
     IGeoGuessrClientFactory geoGuessrClientFactory,
-    IUnitOfWork unitOfWork,
+    IDailyMissionRepository missions,
     IDiscordMessageAccess discordMessageAccess,
     IOptions<DailyMissionLoggingConfiguration> config,
-    ILogger<LogDailyMissionsUseCase> logger) : ILogDailyMissionsUseCase
+    ILogger<LogDailyMissionsHandler> logger) : IRequestHandler<LogDailyMissionsCommand, Unit>
 {
     private static readonly Regex DatePlaceholderRegex =
         new(@"\{\{date:([^}]+)\}\}", RegexOptions.Compiled);
@@ -38,7 +41,7 @@ public partial class LogDailyMissionsUseCase(
         ["UnrankedTeamDuels"] = "Unranked Team Duels"
     };
 
-    public async Task LogDailyMissionsAsync()
+    public async Task<Unit> Handle(LogDailyMissionsCommand request, CancellationToken cancellationToken)
     {
         var missionsClient = geoGuessrClientFactory.CreateMissionsClient();
 
@@ -50,29 +53,26 @@ public partial class LogDailyMissionsUseCase(
         catch (Exception ex)
         {
             LogFetchFailed(ex);
-            return;
+            return Unit.Value;
         }
 
         var fetchedAt = DateTimeOffset.UtcNow;
 
-        var entities = response.Missions.Select(m => new DailyMission
-        {
-            MissionId = m.Id,
-            Type = m.Type,
-            GameMode = m.GameMode,
-            CurrentProgress = m.CurrentProgress,
-            TargetProgress = m.TargetProgress,
-            Completed = m.Completed,
-            EndDate = m.EndDate,
-            RewardAmount = m.RewardAmount,
-            RewardType = m.RewardType,
-            FetchedAtUtc = fetchedAt
-        }).ToList();
+        var entities = response.Missions.Select(m => DailyMission.Create(
+            m.Id,
+            m.Type,
+            m.GameMode,
+            m.CurrentProgress,
+            m.TargetProgress,
+            m.Completed,
+            m.EndDate,
+            m.RewardAmount,
+            m.RewardType,
+            fetchedAt)).ToList();
 
         if (entities.Count > 0)
         {
-            unitOfWork.DailyMissions.AddRange(entities);
-            await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+            missions.AddRange(entities);
         }
 
         LogFetched(response.Missions.Count);
@@ -83,11 +83,13 @@ public partial class LogDailyMissionsUseCase(
         var readableMessage = RenderTemplate(config.Value.ReadableFormat, missionText);
         var lookupMessage = RenderTemplate(config.Value.LookupFormat, missionText);
 
-        await _trySendAsync(readableMessage, config.Value.ReadableChannelId, "readable").ConfigureAwait(false);
-        await _trySendAsync(lookupMessage, config.Value.LookupChannelId, "lookup").ConfigureAwait(false);
+        await TrySendAsync(readableMessage, config.Value.ReadableChannelId, "readable").ConfigureAwait(false);
+        await TrySendAsync(lookupMessage, config.Value.LookupChannelId, "lookup").ConfigureAwait(false);
+
+        return Unit.Value;
     }
 
-    private async Task _trySendAsync(string message, ulong channelId, string channelLabel)
+    private async Task TrySendAsync(string message, ulong channelId, string channelLabel)
     {
         try
         {
@@ -110,11 +112,11 @@ public partial class LogDailyMissionsUseCase(
             "PlayGames" => $"Play {mission.TargetProgress} {gameModeDisplay}",
             "Score" => $"Score {mission.TargetProgress} points in {gameModeDisplay}",
             "WinGames" => $"Win {mission.TargetProgress} {gameModeDisplay}",
-            _ => _renderFallback(mission, gameModeDisplay)
+            _ => RenderFallback(mission, gameModeDisplay)
         };
     }
 
-    private string _renderFallback(DailyMissionDto mission, string gameModeDisplay)
+    private string RenderFallback(DailyMissionDto mission, string gameModeDisplay)
     {
         LogUnknownMissionType(mission.Type, mission.GameMode);
         return $"{mission.Type} - {gameModeDisplay}";

@@ -4,7 +4,7 @@ namespace UseCases.OutputPorts;
 
 public interface IDailyMissionReminderRepository
 {
-    DailyMissionReminder CreateReminder(DailyMissionReminder reminder);
+    void AddReminder(DailyMissionReminder reminder);
 
     Task<DailyMissionReminder?> ReadReminderAsync(ulong discordUserId);
 

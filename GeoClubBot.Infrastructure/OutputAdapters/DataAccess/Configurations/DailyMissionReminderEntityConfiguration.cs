@@ -14,8 +14,7 @@ public class DailyMissionReminderEntityConfiguration : IEntityTypeConfiguration<
             .ValueGeneratedNever()
             .IsRequired();
 
-        builder.Property(x => x.ReminderTimeUtc)
-            .IsRequired();
+        builder.Property(x => x.ReminderTimeUtc).IsRequired();
 
         builder.Property(x => x.TimeZoneId)
             .HasMaxLength(StringLengthConstants.TimeZoneIdMaxLength)
@@ -25,8 +24,10 @@ public class DailyMissionReminderEntityConfiguration : IEntityTypeConfiguration<
             .HasMaxLength(StringLengthConstants.DailyMissionReminderCustomMessageMaxLength)
             .IsRequired(false);
 
-        builder.Property(x => x.LastSentDateUtc)
-            .IsRequired(false);
+        builder.Property(x => x.LastSentDateUtc).IsRequired(false);
+
+        builder.UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Ignore(x => x.DomainEvents);
 
         builder.HasIndex(x => x.ReminderTimeUtc);
     }

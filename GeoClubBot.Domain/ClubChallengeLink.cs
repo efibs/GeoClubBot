@@ -1,12 +1,26 @@
 namespace Entities;
 
-public class ClubChallengeLink
+public class ClubChallengeLink : BaseEntity
 {
-    public int Id { get; set; }
+    public int Id { get; private set; }
 
-    public required string Difficulty { get; set; }
+    public string Difficulty { get; private set; } = string.Empty;
 
-    public required int RolePriority { get; set; }
-    
-    public required string ChallengeId { get; set; }
+    public int RolePriority { get; private set; }
+
+    public string ChallengeId { get; private set; } = string.Empty;
+
+    public static ClubChallengeLink Create(string difficulty, int rolePriority, string challengeId)
+    {
+        return new ClubChallengeLink
+        {
+            Difficulty = difficulty,
+            RolePriority = rolePriority,
+            ChallengeId = challengeId
+        };
+    }
+
+    private ClubChallengeLink()
+    {
+    }
 }

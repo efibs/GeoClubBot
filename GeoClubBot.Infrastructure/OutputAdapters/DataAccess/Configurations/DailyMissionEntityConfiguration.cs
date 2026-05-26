@@ -13,8 +13,7 @@ public class DailyMissionEntityConfiguration : IEntityTypeConfiguration<DailyMis
         builder.Property(x => x.Id)
             .ValueGeneratedOnAdd();
 
-        builder.Property(x => x.MissionId)
-            .IsRequired();
+        builder.Property(x => x.MissionId).IsRequired();
 
         builder.Property(x => x.Type)
             .IsRequired()
@@ -34,6 +33,9 @@ public class DailyMissionEntityConfiguration : IEntityTypeConfiguration<DailyMis
         builder.Property(x => x.EndDate).IsRequired();
         builder.Property(x => x.RewardAmount).IsRequired();
         builder.Property(x => x.FetchedAtUtc).IsRequired();
+
+        builder.UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Ignore(x => x.DomainEvents);
 
         builder.HasIndex(x => x.MissionId);
         builder.HasIndex(x => x.FetchedAtUtc);

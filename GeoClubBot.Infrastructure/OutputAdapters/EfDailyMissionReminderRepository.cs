@@ -7,10 +7,9 @@ namespace Infrastructure.OutputAdapters;
 
 public class EfDailyMissionReminderRepository(GeoClubBotDbContext dbContext) : IDailyMissionReminderRepository
 {
-    public DailyMissionReminder CreateReminder(DailyMissionReminder reminder)
+    public void AddReminder(DailyMissionReminder reminder)
     {
         dbContext.Add(reminder);
-        return reminder;
     }
 
     public async Task<DailyMissionReminder?> ReadReminderAsync(ulong discordUserId)
