@@ -9,7 +9,6 @@ using Microsoft.Extensions.Logging;
 using PuppeteerSharp;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
-using UseCases.InputPorts.AI;
 using UseCases.OutputPorts.AI;
 using Match = Qdrant.Client.Grpc.Match;
 
@@ -25,7 +24,7 @@ public class SectionRecord
 public partial class PlonkItGuideVectorStore(
     QdrantClient client,
     VllmEmbeddingService embeddingService,
-    IGetPlonkItGuideSectionEmbeddingTextUseCase getPlonkItGuideSectionEmbeddingTextUseCase,
+    IPlonkItGuideEmbeddingTextProvider embeddingTextProvider,
     ILogger<PlonkItGuideVectorStore> logger,
     IConfiguration config,
     string collectionName = "plonkit-guide") : IPlonkItGuideVectorStore
@@ -282,7 +281,7 @@ public partial class PlonkItGuideVectorStore(
 
     private async Task<bool> _testConnectionsAsync()
     {
-        var llmCategorizerConnectionExists = await getPlonkItGuideSectionEmbeddingTextUseCase
+        var llmCategorizerConnectionExists = await embeddingTextProvider
             .TestConnectionAsync()
             .ConfigureAwait(false);
 
@@ -426,7 +425,7 @@ public partial class PlonkItGuideVectorStore(
 
                     Interlocked.Increment(ref index);
 
-                    var embeddingText = await getPlonkItGuideSectionEmbeddingTextUseCase
+                    var embeddingText = await embeddingTextProvider
                         .GetEmbeddingTextAsync(guideTitle, innerDiv!.First().InnerText, continents)
                         .ConfigureAwait(false);
 

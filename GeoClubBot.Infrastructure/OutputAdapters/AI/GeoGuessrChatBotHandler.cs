@@ -1,16 +1,17 @@
 using System.Net;
 using Constants;
+using MediatR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using UseCases.InputPorts.AI;
 using UseCases.OutputPorts.Discord;
+using UseCases.UseCases.AI;
 
 namespace Infrastructure.OutputAdapters.AI;
 
-public partial class GeoGuessrChatBotUseCase : IGeoGuessrChatBotUseCase
+public partial class GeoGuessrChatBotHandler : IRequestHandler<GetAiResponseQuery, string?>
 {
     private const string SystemName = "Dragon";
     private const string AvailableCountriesPlaceholder = "{{AvailableCountries}}";
@@ -44,7 +45,8 @@ You have access to the **PlonkIt Guide**, a trusted source of GeoGuessr metas fo
 Always cite your sources as **clickable links** (masked Markdown links). masked Markdown links look like this: [text](https://www.example.com)
 ";
 
-    public GeoGuessrChatBotUseCase(ILogger<GeoGuessrChatBotUseCase> logger,
+    public GeoGuessrChatBotHandler(
+        ILogger<GeoGuessrChatBotHandler> logger,
         IDiscordSelfUserAccess discordSelfUserAccess,
         PlonkItGuidePlugin plonkItGuidePlugIn,
         IConfiguration config)
@@ -64,8 +66,8 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         LogEmbeddingEndpoint(embeddingEndpoint);
         LogEmbeddingModel(embeddingModelName);
 
-        var requestTimeoutSeconds = config.GetValue<int>(ConfigKeys.LlmRequestTimeoutSecondsConfigurationKey, 60);
-        var overallTimeoutSeconds = config.GetValue<int>(ConfigKeys.LlmOverallTimeoutSecondsConfigurationKey, 180);
+        var requestTimeoutSeconds = config.GetValue(ConfigKeys.LlmRequestTimeoutSecondsConfigurationKey, 60);
+        var overallTimeoutSeconds = config.GetValue(ConfigKeys.LlmOverallTimeoutSecondsConfigurationKey, 180);
         _requestTimeout = TimeSpan.FromSeconds(requestTimeoutSeconds);
         _overallTimeout = TimeSpan.FromSeconds(overallTimeoutSeconds);
 
@@ -81,11 +83,11 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
             .AddFromObject(plonkItGuidePlugIn, "PlonkIt_Guide");
     }
 
-    public async Task<string?> GetAiResponseAsync(string prompt, Func<Task> startTypingAsync)
+    public async Task<string?> Handle(GetAiResponseQuery request, CancellationToken cancellationToken)
     {
         var semaphoreClaimed = await _plonkItGuidePlugIn
             .RebuildStoreLock
-            .WaitAsync(TimeSpan.FromSeconds(10))
+            .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)
             .ConfigureAwait(false);
 
         if (semaphoreClaimed == false)
@@ -93,30 +95,31 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
             return "The internal PlonkIt Guide is currently being updated. Try again later.";
         }
 
-        using var cts = new CancellationTokenSource(_overallTimeout);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(_overallTimeout);
+
         try
         {
-            LogHandlingMessageUsingAiPrompt(prompt);
+            LogHandlingMessageUsingAiPrompt(request.Prompt);
 
-            var message = prompt.Replace($"<@{_discordSelfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
+            var message = request.Prompt.Replace($"<@{_discordSelfUserAccess.GetSelfUserId()}>", $"@{SystemName}");
 
             var availableCountries = await _plonkItGuidePlugIn.GetCountries().ConfigureAwait(false);
-
             var formattedSystemPrompt = SystemPrompt.Replace(AvailableCountriesPlaceholder, availableCountries);
 
             ChatHistory history = [];
             history.AddSystemMessage(formattedSystemPrompt);
             history.AddUserMessage(message);
 
-            OpenAIPromptExecutionSettings promtExecutionSettings = new()
+            OpenAIPromptExecutionSettings promptExecutionSettings = new()
             {
                 ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
                 Temperature = 0.1
             };
 
             var chatSvc = _kernel.GetRequiredService<IChatCompletionService>();
-            await startTypingAsync().ConfigureAwait(false);
-            var response = await chatSvc.GetChatMessageContentAsync(history, promtExecutionSettings, _kernel, cts.Token)
+            await request.StartTypingAsync().ConfigureAwait(false);
+            var response = await chatSvc.GetChatMessageContentAsync(history, promptExecutionSettings, _kernel, cts.Token)
                 .ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(response.Content))
@@ -128,12 +131,12 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
             _logger.LogDebug("Handling done.");
             return response.Content;
         }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        catch (OperationCanceledException) when (cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogError("AI overall timeout of {timeout}s reached.", _overallTimeout.TotalSeconds);
             return $"AI response timed out (overall limit of {_overallTimeout.TotalSeconds}s reached). Try again later.";
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogError("AI per-request timeout of {timeout}s reached.", _requestTimeout.TotalSeconds);
             return $"AI response timed out (request limit of {_requestTimeout.TotalSeconds}s reached). Try again later.";
@@ -157,7 +160,7 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 
     private readonly Kernel _kernel;
     private readonly IDiscordSelfUserAccess _discordSelfUserAccess;
-    private readonly ILogger<GeoGuessrChatBotUseCase> _logger;
+    private readonly ILogger<GeoGuessrChatBotHandler> _logger;
     private readonly PlonkItGuidePlugin _plonkItGuidePlugIn;
     private readonly TimeSpan _requestTimeout;
     private readonly TimeSpan _overallTimeout;

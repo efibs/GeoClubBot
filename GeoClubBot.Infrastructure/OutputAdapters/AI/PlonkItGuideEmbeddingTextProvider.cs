@@ -4,11 +4,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using UseCases.InputPorts.AI;
 
 namespace Infrastructure.OutputAdapters.AI;
 
-public class GetPlonkItGuideSectionEmbeddingTextUseCase : IGetPlonkItGuideSectionEmbeddingTextUseCase
+public class PlonkItGuideEmbeddingTextProvider : IPlonkItGuideEmbeddingTextProvider
 {
     private const string CountryPlaceholder = "{{country}}";
     private static readonly List<string> Categories = [
@@ -43,7 +42,7 @@ Text: {{$input}}
 Return only the category.
 ";
 
-    public GetPlonkItGuideSectionEmbeddingTextUseCase(ILogger<GetPlonkItGuideSectionEmbeddingTextUseCase> logger, IConfiguration config)
+    public PlonkItGuideEmbeddingTextProvider(ILogger<PlonkItGuideEmbeddingTextProvider> logger, IConfiguration config)
     {
         _logger = logger;
 
@@ -68,7 +67,6 @@ Return only the category.
         try
         {
             var response = await client.GetAsync(_llmEndpoint + "/health").ConfigureAwait(false);
-
             return response.IsSuccessStatusCode;
         }
         catch
@@ -123,12 +121,11 @@ Return only the category.
         textBuilder.AppendLine();
         textBuilder.Append(sectionContent);
 
-        var text = textBuilder.ToString();
-        return text;
+        return textBuilder.ToString();
     }
 
     private readonly Kernel _categorizeKernel;
     private readonly KernelFunction _categorizeFunction;
-    private readonly ILogger<GetPlonkItGuideSectionEmbeddingTextUseCase> _logger;
+    private readonly ILogger<PlonkItGuideEmbeddingTextProvider> _logger;
     private readonly string _llmEndpoint;
 }
