@@ -9,10 +9,8 @@ public class GeoGuessrAccountLinkingRequestConfiguration : IEntityTypeConfigurat
 {
     public void Configure(EntityTypeBuilder<GeoGuessrAccountLinkingRequest> builder)
     {
-        // Configure the composite primary key
         builder.HasKey(x => new { x.DiscordUserId, x.GeoGuessrUserId });
-        
-        // Set the key properties to not be database generated
+
         builder.Property(x => x.DiscordUserId)
             .IsRequired()
             .ValueGeneratedNever();
@@ -20,10 +18,12 @@ public class GeoGuessrAccountLinkingRequestConfiguration : IEntityTypeConfigurat
             .IsRequired()
             .HasMaxLength(StringLengthConstants.GeoGuessrUserIdLength)
             .ValueGeneratedNever();
-        
-        // Configure the one time password property
+
         builder.Property(x => x.OneTimePassword)
             .IsRequired()
             .HasMaxLength(StringLengthConstants.AccountLinkingRequestOneTimePasswordLength);
+
+        builder.UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Ignore(x => x.DomainEvents);
     }
 }

@@ -3,17 +3,14 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
 [Group("user-info", "Commands for getting information about a user")]
 public class UserInfoModule(
-    IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
-    IGetDiscordUserByNicknameUseCase getDiscordUserByNicknameUseCase,
-    IGetGeoGuessrProfileUseCase getGeoGuessrProfileUseCase,
     ISender mediator,
     ILogger<UserInfoModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
@@ -21,10 +18,10 @@ public class UserInfoModule(
     [UserCommand("gg-nickname")]
     public Task GetGeoGuessrNicknameAsync(IGuildUser user) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var linkedGeoGuessrAccount = await getLinkedGeoGuessrUserUseCase
-                    .GetLinkedGeoGuessrUserAsync(user.Id)
+                var linkedGeoGuessrAccount = await Mediator
+                    .Send(new GetLinkedGeoGuessrUserQuery(user.Id), ct)
                     .ConfigureAwait(false);
 
                 if (linkedGeoGuessrAccount == null)
@@ -45,10 +42,10 @@ public class UserInfoModule(
     [UserCommand("gg-profile")]
     public Task GetGeoGuessrProfileAsync(IGuildUser user) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var profile = await getGeoGuessrProfileUseCase
-                    .GetGeoGuessrProfileAsync(user.Id)
+                var profile = await Mediator
+                    .Send(new GetGeoGuessrProfileQuery(user.Id), ct)
                     .ConfigureAwait(false);
 
                 if (profile is null)
@@ -67,10 +64,10 @@ public class UserInfoModule(
     [SlashCommand("discord-user", "Get the Discord user for a GeoGuessr nickname")]
     public Task GetDiscordUserAsync(string nickname) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var discordUserId = await getDiscordUserByNicknameUseCase
-                    .GetDiscordUserIdByNicknameAsync(nickname)
+                var discordUserId = await Mediator
+                    .Send(new GetDiscordUserByNicknameQuery(nickname), ct)
                     .ConfigureAwait(false);
 
                 if (discordUserId == null)

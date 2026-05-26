@@ -4,7 +4,7 @@ using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMemberActivity;
-using UseCases.InputPorts.GeoGuessrAccountLinking;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
@@ -12,17 +12,16 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [Group("my-activity", "Commands about your activity as a club member")]
 public class MyActivityModule(
     IGetActivityThisWeekUseCase getActivityThisWeekUseCase,
-    IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
     ISender mediator,
     ILogger<MyActivityModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
     [SlashCommand("current-week", "Prints your daily mission activity this week")]
     public Task CurrentWeek() =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var geoGuessrUser = await getLinkedGeoGuessrUserUseCase
-                    .GetLinkedGeoGuessrUserAsync(Context.User.Id)
+                var geoGuessrUser = await Mediator
+                    .Send(new GetLinkedGeoGuessrUserQuery(Context.User.Id), ct)
                     .ConfigureAwait(false);
 
                 if (geoGuessrUser is null)

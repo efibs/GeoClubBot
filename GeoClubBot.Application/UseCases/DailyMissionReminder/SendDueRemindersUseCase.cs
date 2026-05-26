@@ -1,18 +1,19 @@
 using Configuration;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.InputPorts.DailyMissionReminder;
-using UseCases.InputPorts.GeoGuessrAccountLinking;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace UseCases.UseCases.DailyMissionReminder;
 
 public partial class SendDueRemindersUseCase(
     IUnitOfWork unitOfWork,
     IDiscordDirectMessageAccess directMessageAccess,
-    IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
+    ISender mediator,
     IGeoGuessrActivityReader activityReader,
     IOptions<DailyMissionReminderConfiguration> config,
     ILogger<SendDueRemindersUseCase> logger) : ISendDueRemindersUseCase
@@ -74,8 +75,8 @@ public partial class SendDueRemindersUseCase(
 
     private async Task<bool> _hasUserCompletedDailyMissionTodayAsync(ulong discordUserId, int dailyMissionXpReward)
     {
-        var linkedUser = await getLinkedGeoGuessrUserUseCase
-            .GetLinkedGeoGuessrUserAsync(discordUserId)
+        var linkedUser = await mediator
+            .Send(new GetLinkedGeoGuessrUserQuery(discordUserId))
             .ConfigureAwait(false);
 
         if (linkedUser is null)

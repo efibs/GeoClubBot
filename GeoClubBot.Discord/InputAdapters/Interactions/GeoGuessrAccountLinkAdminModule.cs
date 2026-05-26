@@ -6,7 +6,7 @@ using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.GeoGuessrAccountLinking;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
@@ -14,19 +14,16 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [DefaultMemberPermissions(GuildPermission.Administrator)]
 [Group("gg-account-link-admin", "Commands for linking Discord accounts to GeoGuessr accounts")]
 public class GeoGuessrAccountLinkAdminModule(
-    ICompleteAccountLinkingUseCase completeAccountLinkingUseCase,
-    IUnlinkAccountsUseCase unlinkAccountsUseCase,
-    ICancelAccountLinkingUseCase cancelAccountLinkingUseCase,
     ISender mediator,
     ILogger<GeoGuessrAccountLinkAdminModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
     [SlashCommand("complete", "Complete the account linking process")]
     public Task CompleteAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId, string oneTimePassword) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var result = await completeAccountLinkingUseCase
-                    .CompleteLinkingAsync(discordUser.Id, geoGuessrUserId, oneTimePassword)
+                var result = await Mediator
+                    .Send(new CompleteAccountLinkingCommand(discordUser.Id, geoGuessrUserId, oneTimePassword), ct)
                     .ConfigureAwait(false);
 
                 await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, null).ConfigureAwait(false);
@@ -37,10 +34,10 @@ public class GeoGuessrAccountLinkAdminModule(
     [SlashCommand("cancel", "Cancel the account linking process")]
     public Task CancelAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var result = await cancelAccountLinkingUseCase
-                    .CancelAccountLinkingAsync(discordUser.Id, geoGuessrUserId)
+                var result = await Mediator
+                    .Send(new CancelAccountLinkingCommand(discordUser.Id, geoGuessrUserId), ct)
                     .ConfigureAwait(false);
 
                 await _handleLinkingCanceledByAdminAsync(result, discordUser, null).ConfigureAwait(false);
@@ -51,10 +48,10 @@ public class GeoGuessrAccountLinkAdminModule(
     [SlashCommand("unlink", "Unlink the accounts of a user")]
     public Task UnlinkAccountsSlashCommandAsync(IUser discordUser, string geoGuessrUserId) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var successful = await unlinkAccountsUseCase
-                    .UnlinkAccountsAsync(discordUser.Id, geoGuessrUserId)
+                var successful = await Mediator
+                    .Send(new UnlinkAccountsCommand(discordUser.Id, geoGuessrUserId), ct)
                     .ConfigureAwait(false);
 
                 await FollowupAsync(
@@ -90,12 +87,12 @@ public class GeoGuessrAccountLinkAdminModule(
     [ModalInteraction($"{ComponentIds.GeoGuessrAccountLinkingCompleteModalId}:*,*,*", true)]
     public Task CompleteLinkingPasswordSubmitted(string discordUserIdString, string geoGuessrUserId, string messageIdString, CompleteAccountLinkModal modal) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
                 var discordUserId = ulong.Parse(discordUserIdString);
 
-                var result = await completeAccountLinkingUseCase
-                    .CompleteLinkingAsync(discordUserId, geoGuessrUserId, modal.OneTimePassword)
+                var result = await Mediator
+                    .Send(new CompleteAccountLinkingCommand(discordUserId, geoGuessrUserId, modal.OneTimePassword), ct)
                     .ConfigureAwait(false);
 
                 var discordUser = Context.Guild.GetUser(discordUserId);
@@ -125,7 +122,7 @@ public class GeoGuessrAccountLinkAdminModule(
     [ModalInteraction($"{ComponentIds.GeoGuessrAccountLinkingCancelModalId}:*,*,*", true)]
     public Task CancelLinkingSubmitted(string discordUserIdString, string geoGuessrUserId, string messageIdString, CancelAccountLinkModal modal) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
                 if (modal.ConfirmText != "Confirm")
                 {
@@ -135,8 +132,8 @@ public class GeoGuessrAccountLinkAdminModule(
 
                 var discordUserId = ulong.Parse(discordUserIdString);
 
-                var result = await cancelAccountLinkingUseCase
-                    .CancelAccountLinkingAsync(discordUserId, geoGuessrUserId)
+                var result = await Mediator
+                    .Send(new CancelAccountLinkingCommand(discordUserId, geoGuessrUserId), ct)
                     .ConfigureAwait(false);
 
                 var discordUser = Context.Guild.GetUser(discordUserId);
@@ -149,7 +146,7 @@ public class GeoGuessrAccountLinkAdminModule(
     {
         try
         {
-            if (successful == false)
+            if (!successful)
             {
                 await FollowupAsync("Account linking failed: Wrong password. Please try again.", ephemeral: true).ConfigureAwait(false);
                 return;
@@ -185,7 +182,7 @@ public class GeoGuessrAccountLinkAdminModule(
     {
         try
         {
-            if (successful == false)
+            if (!successful)
             {
                 await FollowupAsync("There was no account linking process for the given accounts.", ephemeral: true).ConfigureAwait(false);
                 return;

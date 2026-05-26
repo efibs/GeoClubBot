@@ -7,17 +7,13 @@ using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.GeoGuessrAccountLinking;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
 [Group("gg-account", "Commands for linking Discord accounts to GeoGuessr accounts")]
 public class GeoGuessrAccountLinkPublicModule(
-    IGetLinkedDiscordUserIdUseCase getLinkedDiscordUserIdUseCase,
-    IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
-    IStartAccountLinkingProcessUseCase startAccountLinkingProcessUseCase,
-    IGetOpenAccountLinkingRequestUseCase getOpenAccountLinkingRequestUseCase,
     ISender mediator,
     ILogger<GeoGuessrAccountLinkPublicModule> logger,
     IConfiguration config) : ClubBotInteractionModule(mediator, logger)
@@ -25,13 +21,11 @@ public class GeoGuessrAccountLinkPublicModule(
     [SlashCommand("link", "Link your Discord account to a GeoGuessr account")]
     public Task StartLinkingProcessAsync([Summary(description: "The link to your profile")] string shareProfileLink) =>
         ExecuteAsync(
-            async _ =>
+            async ct =>
             {
                 var executingUser = Context.User as SocketGuildUser;
 
-                var parseSuccessful = _tryParseUserIdFromProfileLink(shareProfileLink, out var geoGuessrUserId);
-
-                if (parseSuccessful == false || geoGuessrUserId == null)
+                if (!_tryParseUserIdFromProfileLink(shareProfileLink, out var geoGuessrUserId) || geoGuessrUserId is null)
                 {
                     await FollowupAsync("Account link failed: The profile link was in the wrong format.\n\n" +
                                         "The link should look something like this: https://www.geoguessr.com/user/62c353a29d0d57e7b9a3383f. " +
@@ -41,8 +35,8 @@ public class GeoGuessrAccountLinkPublicModule(
                     return;
                 }
 
-                var linkedDiscordUserId = await getLinkedDiscordUserIdUseCase
-                    .GetLinkedDiscordUserIdAsync(geoGuessrUserId)
+                var linkedDiscordUserId = await Mediator
+                    .Send(new GetLinkedDiscordUserIdQuery(geoGuessrUserId), ct)
                     .ConfigureAwait(false);
 
                 if (linkedDiscordUserId.HasValue)
@@ -54,8 +48,8 @@ public class GeoGuessrAccountLinkPublicModule(
                     return;
                 }
 
-                var linkedGeoGuessrUser = await getLinkedGeoGuessrUserUseCase
-                    .GetLinkedGeoGuessrUserAsync(executingUser!.Id)
+                var linkedGeoGuessrUser = await Mediator
+                    .Send(new GetLinkedGeoGuessrUserQuery(executingUser!.Id), ct)
                     .ConfigureAwait(false);
 
                 if (linkedGeoGuessrUser != null)
@@ -67,8 +61,8 @@ public class GeoGuessrAccountLinkPublicModule(
                     return;
                 }
 
-                var linkingRequest = await getOpenAccountLinkingRequestUseCase
-                    .GetOpenAccountLinkingRequestForDiscordUserIdAsync(executingUser.Id)
+                var linkingRequest = await Mediator
+                    .Send(new GetOpenAccountLinkingRequestQuery(executingUser.Id), ct)
                     .ConfigureAwait(false);
 
                 if (linkingRequest is not null)
@@ -92,11 +86,11 @@ public class GeoGuessrAccountLinkPublicModule(
                     return;
                 }
 
-                var oneTimePassword = await startAccountLinkingProcessUseCase
-                    .StartLinkingProcessAsync(executingUser.Id, geoGuessrUserId)
+                var oneTimePassword = await Mediator
+                    .Send(new StartAccountLinkingCommand(executingUser.Id, geoGuessrUserId), ct)
                     .ConfigureAwait(false);
 
-                if (oneTimePassword == null)
+                if (oneTimePassword is null)
                 {
                     await FollowupAsync("Account link failed: Linking process already started. " +
                                         "If you have not received a one time password, then please contact an admin. " +
@@ -121,14 +115,13 @@ public class GeoGuessrAccountLinkPublicModule(
     {
         userId = null;
 
-        if (ShareProfileLinkCheckerRegex.IsMatch(profileLink) == false)
+        if (!ShareProfileLinkCheckerRegex.IsMatch(profileLink))
         {
             return false;
         }
 
         var splitIndex = profileLink.LastIndexOf('/');
-        userId = profileLink.Substring(splitIndex + 1);
-
+        userId = profileLink[(splitIndex + 1)..];
         return true;
     }
 

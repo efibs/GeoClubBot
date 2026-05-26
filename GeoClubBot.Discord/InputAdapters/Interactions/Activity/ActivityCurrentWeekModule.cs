@@ -4,7 +4,7 @@ using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.InputPorts.ClubMemberActivity;
-using UseCases.InputPorts.GeoGuessrAccountLinking;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
@@ -12,8 +12,6 @@ public partial class ActivityModule
 {
     public partial class ActivityCurrentWeekModule(
         IGetActivityThisWeekUseCase getActivityThisWeekUseCase,
-        IGetLinkedGeoGuessrUserUseCase getLinkedGeoGuessrUserUseCase,
-        IGetGeoGuessrUserByNicknameUseCase getGeoGuessrUserByNicknameUseCase,
         ISender mediator,
         ILogger<ActivityCurrentWeekModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
@@ -21,10 +19,10 @@ public partial class ActivityModule
         public Task CurrentWeekByNicknameAsync(
             [Summary(description: "The GeoGuessr nickname of the member")] string nickname) =>
             ExecuteAsync(
-                async _ =>
+                async ct =>
                 {
-                    var geoGuessrUser = await getGeoGuessrUserByNicknameUseCase
-                        .GetGeoGuessrUserByNicknameAsync(nickname)
+                    var geoGuessrUser = await Mediator
+                        .Send(new GetGeoGuessrUserByNicknameQuery(nickname), ct)
                         .ConfigureAwait(false);
 
                     if (geoGuessrUser is null)
@@ -49,10 +47,10 @@ public partial class ActivityModule
         [DefaultMemberPermissions(GuildPermission.Administrator)]
         public Task CurrentWeekByUserAsync(IGuildUser user) =>
             ExecuteAsync(
-                async _ =>
+                async ct =>
                 {
-                    var geoGuessrUser = await getLinkedGeoGuessrUserUseCase
-                        .GetLinkedGeoGuessrUserAsync(user.Id)
+                    var geoGuessrUser = await Mediator
+                        .Send(new GetLinkedGeoGuessrUserQuery(user.Id), ct)
                         .ConfigureAwait(false);
 
                     if (geoGuessrUser is null)
