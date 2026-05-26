@@ -45,7 +45,7 @@ public sealed class CompleteAccountLinkingHandler(
         var ensured = await mediator
             .Send(new ReadOrSyncGeoGuessrUserByUserIdQuery(request.GeoGuessrUserId), cancellationToken)
             .ConfigureAwait(false);
-        if (ensured is null)
+        if (ensured.IsFailure)
         {
             throw new InvalidOperationException($"User with id {request.GeoGuessrUserId} does not exist.");
         }

@@ -32,11 +32,11 @@ public partial class ActivityModule
                 return;
             }
 
-            var excuseGuid = await Mediator
+            var result = await Mediator
                 .Send(new AddExcuseCommand(memberNickname, from, to))
                 .ConfigureAwait(false);
 
-            if (excuseGuid == null)
+            if (result.IsFailure)
             {
                 await RespondAsync($"Excuse could not be added for player '{memberNickname}'. Is the nickname wrong?",
                     ephemeral: true).ConfigureAwait(false);
@@ -44,7 +44,7 @@ public partial class ActivityModule
             else
             {
                 await RespondAsync(
-                    $"Excuse with id {excuseGuid} for the time range **{from:D}** to **{to:D}** was added to player " +
+                    $"Excuse with id {result.Value} for the time range **{from:D}** to **{to:D}** was added to player " +
                     $"**{memberNickname}**.").ConfigureAwait(false);
             }
         }

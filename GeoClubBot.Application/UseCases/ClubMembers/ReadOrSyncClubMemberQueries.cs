@@ -6,39 +6,43 @@ using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
+using Utilities;
 
 namespace UseCases.UseCases.ClubMembers;
 
-public sealed record ReadOrSyncClubMemberByNicknameQuery(string Nickname) : IQuery<ClubMember?>;
+public sealed record ReadOrSyncClubMemberByNicknameQuery(string Nickname) : IQuery<Result<ClubMember>>;
 
-public sealed record ReadOrSyncClubMemberByUserIdQuery(string UserId) : IQuery<ClubMember?>;
+public sealed record ReadOrSyncClubMemberByUserIdQuery(string UserId) : IQuery<Result<ClubMember>>;
 
 public sealed class ReadOrSyncClubMemberHandler(
     IClubMemberRepository members,
     IGeoGuessrClientFactory geoGuessrClientFactory,
     ISender mediator,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
-    : IRequestHandler<ReadOrSyncClubMemberByNicknameQuery, ClubMember?>,
-      IRequestHandler<ReadOrSyncClubMemberByUserIdQuery, ClubMember?>
+    : IRequestHandler<ReadOrSyncClubMemberByNicknameQuery, Result<ClubMember>>,
+      IRequestHandler<ReadOrSyncClubMemberByUserIdQuery, Result<ClubMember>>
 {
-    public Task<ClubMember?> Handle(ReadOrSyncClubMemberByNicknameQuery request, CancellationToken cancellationToken) =>
+    public Task<Result<ClubMember>> Handle(ReadOrSyncClubMemberByNicknameQuery request, CancellationToken cancellationToken) =>
         ReadOrSyncAsync(
             request.Nickname,
             members.ReadClubMemberByNicknameAsync,
             m => m.User.Nickname == request.Nickname,
+            $"Club member with nickname '{request.Nickname}' was not found.",
             cancellationToken);
 
-    public Task<ClubMember?> Handle(ReadOrSyncClubMemberByUserIdQuery request, CancellationToken cancellationToken) =>
+    public Task<Result<ClubMember>> Handle(ReadOrSyncClubMemberByUserIdQuery request, CancellationToken cancellationToken) =>
         ReadOrSyncAsync(
             request.UserId,
             members.ReadClubMemberByUserIdAsync,
             m => m.User.UserId == request.UserId,
+            $"Club member with user id '{request.UserId}' was not found.",
             cancellationToken);
 
-    private async Task<ClubMember?> ReadOrSyncAsync<TLookup>(
+    private async Task<Result<ClubMember>> ReadOrSyncAsync<TLookup>(
         TLookup lookupValue,
         Func<TLookup, Task<ClubMember?>> retriever,
         Func<ClubMember, bool> apiMemberPredicate,
+        string notFoundMessage,
         CancellationToken cancellationToken)
     {
         var clubMember = await retriever(lookupValue).ConfigureAwait(false);
@@ -70,6 +74,6 @@ public sealed class ReadOrSyncClubMemberHandler(
             return match;
         }
 
-        return null;
+        return Error.NotFound("club_member.not_found", notFoundMessage);
     }
 }

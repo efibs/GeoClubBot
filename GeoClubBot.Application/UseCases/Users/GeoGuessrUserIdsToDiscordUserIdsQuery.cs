@@ -14,13 +14,13 @@ public sealed class GeoGuessrUserIdsToDiscordUserIdsHandler(ISender mediator)
 
         foreach (var userId in request.GeoGuessrUserIds)
         {
-            var user = await mediator
+            var result = await mediator
                 .Send(new ReadOrSyncGeoGuessrUserByUserIdQuery(userId), cancellationToken)
                 .ConfigureAwait(false);
 
-            if (user?.DiscordUserId is not null)
+            if (result.IsSuccess && result.Value.DiscordUserId is not null)
             {
-                discordUserIds.Add(user.DiscordUserId.Value);
+                discordUserIds.Add(result.Value.DiscordUserId.Value);
             }
         }
 

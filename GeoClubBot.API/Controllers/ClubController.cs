@@ -1,11 +1,13 @@
 using Configuration;
 using GeoClubBot.DTOs;
 using GeoClubBot.DTOs.Assemblers;
+using GeoClubBot.Middleware;
 using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts;
+using Utilities;
 
 namespace GeoClubBot.Controllers;
 
@@ -16,30 +18,13 @@ public class ClubController(IOptions<GeoGuessrConfiguration> geoGuessrConfig) : 
     [HttpGet]
     public async Task<ActionResult<ClubDto>> ReadClub(IClubRepository clubRepository, CancellationToken cancellationToken)
     {
-        try
-        {
-            // Read the club
-            var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
+        var club = await clubRepository.ReadClubByIdAsync(_clubId).ConfigureAwait(false);
 
-            // If the club was not found
-            if (club == null)
-            {
-                return NotFound();
-            }
+        var result = club is null
+            ? Result<ClubDto>.Failure(Error.NotFound("club.not_found", $"Club with id {_clubId} was not found."))
+            : Result<ClubDto>.Success(ClubDtoAssembler.AssembleDto(club));
 
-            // Assemble the dto
-            var dto = ClubDtoAssembler.AssembleDto(club);
-
-            return Ok(dto);
-        }
-        catch (Exception ex)
-        {
-#if DEBUG
-            return StatusCode(StatusCodes.Status500InternalServerError, ex.Message + "\n" + ex.StackTrace);
-#else
-            return StatusCode(StatusCodes.Status500InternalServerError);
-#endif
-        }
+        return result.ToActionResult(this);
     }
 
 #if DEBUG
@@ -48,17 +33,9 @@ public class ClubController(IOptions<GeoGuessrConfiguration> geoGuessrConfig) : 
         IHubContext<ClubNotificationHub, IClubNotificationClient> hubContext,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            // Send the event
-            await hubContext.Clients.All.ClubLevelUp(newLevel).ConfigureAwait(false);
+        await hubContext.Clients.All.ClubLevelUp(newLevel).ConfigureAwait(false);
 
-            return Accepted();
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, ex.Message + "\n" + ex.StackTrace);
-        }
+        return Accepted();
     }
 #endif
 

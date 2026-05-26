@@ -22,20 +22,20 @@ public partial class ActivityModule
         {
             strikeDate = DateTime.SpecifyKind(strikeDate, DateTimeKind.Utc);
 
-            var strikeId = await Mediator
+            var result = await Mediator
                 .Send(new AddStrikeCommand(memberNickname, strikeDate))
                 .ConfigureAwait(false);
 
-            if (strikeId == null)
+            if (result.IsFailure)
             {
-                await RespondAsync($"Excuse could not be added for player '{memberNickname}'. Is the nickname wrong?",
+                await RespondAsync($"Strike could not be added for player '{memberNickname}'. Is the nickname wrong?",
                     ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
                 await RespondAsync(
-                    $"Strike with id {strikeId} was added to player **{memberNickname}** (expires: {(strikeDate + expirationTimeSpan):d}).")
+                    $"Strike with id {result.Value} was added to player **{memberNickname}** (expires: {(strikeDate + expirationTimeSpan):d}).")
                     .ConfigureAwait(false);
             }
         }

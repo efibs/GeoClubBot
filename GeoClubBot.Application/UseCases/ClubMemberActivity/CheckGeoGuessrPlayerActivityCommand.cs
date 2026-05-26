@@ -170,15 +170,17 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         int maxNumStrikes,
         CancellationToken cancellationToken)
     {
-        var clubMember = await mediator
+        var memberResult = await mediator
             .Send(new ReadOrSyncClubMemberByUserIdQuery(member.User.UserId), cancellationToken)
             .ConfigureAwait(false);
 
-        if (clubMember is null)
+        if (memberResult.IsFailure)
         {
             LogClubMemberCouldNotBeFound(logger, member.User.UserId);
             return null;
         }
+
+        var clubMember = memberResult.Value;
 
         var latestActivity = latestActivities.GetValueOrDefault(clubMember.UserId);
         var xpSinceLastUpdate = member.Xp - (latestActivity?.Xp ?? 0);

@@ -1,19 +1,22 @@
 using Entities;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using Utilities;
 
 namespace UseCases.UseCases.Users;
 
-public sealed record ReadOrSyncGeoGuessrUserByUserIdQuery(string UserId) : IQuery<GeoGuessrUser?>;
+public sealed record ReadOrSyncGeoGuessrUserByUserIdQuery(string UserId) : IQuery<Result<GeoGuessrUser>>;
 
-public sealed class ReadOrSyncGeoGuessrUserByUserIdHandler(
+public sealed partial class ReadOrSyncGeoGuessrUserByUserIdHandler(
     IGeoGuessrUserRepository users,
-    IGeoGuessrClientFactory geoGuessrClientFactory)
-    : IRequestHandler<ReadOrSyncGeoGuessrUserByUserIdQuery, GeoGuessrUser?>
+    IGeoGuessrClientFactory geoGuessrClientFactory,
+    ILogger<ReadOrSyncGeoGuessrUserByUserIdHandler> logger)
+    : IRequestHandler<ReadOrSyncGeoGuessrUserByUserIdQuery, Result<GeoGuessrUser>>
 {
-    public async Task<GeoGuessrUser?> Handle(ReadOrSyncGeoGuessrUserByUserIdQuery request, CancellationToken cancellationToken)
+    public async Task<Result<GeoGuessrUser>> Handle(ReadOrSyncGeoGuessrUserByUserIdQuery request, CancellationToken cancellationToken)
     {
         var existing = await users.ReadUserByUserIdAsync(request.UserId).ConfigureAwait(false);
         if (existing is not null)
@@ -30,10 +33,20 @@ public sealed class ReadOrSyncGeoGuessrUserByUserIdHandler(
             users.AddUser(created);
             return created;
         }
-        catch
+        catch (Exception ex)
         {
-            // GeoGuessr API surfaces missing users as exceptions; swallow and return null.
-            return null;
+            // GeoGuessr API surfaces missing users as exceptions. Log the underlying cause and
+            // return a typed NotFound so callers can distinguish "doesn't exist" from genuine errors.
+            LogUserLookupFailed(logger, ex, request.UserId);
+            return Error.NotFound(
+                "geoguessr_user.not_found",
+                $"GeoGuessr user '{request.UserId}' could not be found.");
         }
     }
+
+    [LoggerMessage(LogLevel.Debug, "GeoGuessr user lookup for id '{userId}' failed; treating as not-found.")]
+    static partial void LogUserLookupFailed(
+        ILogger<ReadOrSyncGeoGuessrUserByUserIdHandler> logger,
+        Exception exception,
+        string userId);
 }
