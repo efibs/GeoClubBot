@@ -1,13 +1,12 @@
 using Entities.Events;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
-    IDeleteMemberPrivateChannelUseCase useCase,
+    ISender mediator,
     IUnitOfWork unitOfWork,
     ILogger<HandlePlayerLeftClubForPrivateChannelUseCase> logger) : INotificationHandler<PlayerLeftClubEvent>
 {
@@ -31,7 +30,9 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
                 return;
             }
 
-            await useCase.DeletePrivateChannelAsync(clubMember).ConfigureAwait(false);
+            await mediator
+                .Send(new DeleteMemberPrivateChannelCommand(clubMember), cancellationToken)
+                .ConfigureAwait(false);
 
             await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
         }

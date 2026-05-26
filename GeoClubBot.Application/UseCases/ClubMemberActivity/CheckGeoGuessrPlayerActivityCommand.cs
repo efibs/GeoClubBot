@@ -3,7 +3,7 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
@@ -13,106 +13,86 @@ using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public partial class CheckGeoGuessrPlayerActivityUseCase(
+public sealed record CheckGeoGuessrPlayerActivityCommand(Guid ClubId)
+    : ICommand<List<ClubMemberActivityStatus>>;
+
+public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     IGeoGuessrClientFactory geoGuessrClientFactory,
-    IUnitOfWork unitOfWork,
+    IStrikesRepository strikes,
+    IExcusesRepository excuses,
+    IClubRepository clubs,
+    IHistoryRepository history,
     IActivityStatusMessageSender activityStatusMessageSender,
     ISender mediator,
-    ICalculateAverageXpUseCase calculateAverageXpUseCase,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
-    ILogger<CheckGeoGuessrPlayerActivityUseCase> logger) : ICheckGeoGuessrPlayerActivityUseCase
+    ILogger<CheckGeoGuessrPlayerActivityHandler> logger)
+    : IRequestHandler<CheckGeoGuessrPlayerActivityCommand, List<ClubMemberActivityStatus>>
 {
-    public async Task<List<ClubMemberActivityStatus>> CheckPlayerActivityAsync(Guid clubId)
+    public async Task<List<ClubMemberActivityStatus>> Handle(CheckGeoGuessrPlayerActivityCommand request, CancellationToken cancellationToken)
     {
-        // Resolve per-club activity settings (with fallback to global defaults)
+        var clubId = request.ClubId;
         var clubEntry = geoGuessrConfig.Value.GetClub(clubId);
         var defaults = activityCheckerConfig.Value;
         var xpRequirement = clubEntry.GetMinXP(defaults);
         var gracePeriod = TimeSpan.FromDays(clubEntry.GetGracePeriodDays(defaults));
         var maxNumStrikes = clubEntry.GetMaxNumStrikes(defaults);
 
-        // Check the strikes for decayed strikes and remove them
-        await mediator.Send(new CheckStrikeDecayCommand()).ConfigureAwait(false);
+        await mediator.Send(new CheckStrikeDecayCommand(), cancellationToken).ConfigureAwait(false);
 
-        // Log debug message
         logger.LogDebug("Checking player activity for club {ClubId}...", clubId);
 
-        // Get the client for this club
         var client = geoGuessrClientFactory.CreateClient(clubId);
-
-        // Get the current members of the club
-        var response = await client
-            .ReadClubMembersAsync(clubId).ConfigureAwait(false);
-
-        // Assemble the entities
+        var response = await client.ReadClubMembersAsync(clubId).ConfigureAwait(false);
         var members = ClubMemberAssembler.AssembleEntities(response, clubId);
 
-        // Save the club members and commit so subsequent AsNoTracking queries can find them
         var snapshots = members
             .Select(m => new ClubMemberSyncSnapshot(m.UserId, m.User.Nickname, clubId, m.Xp, m.JoinedAt))
             .ToList();
-        await mediator.Send(new SaveClubMembersCommand(snapshots)).ConfigureAwait(false);
-        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+        await mediator.Send(new SaveClubMembersCommand(snapshots), cancellationToken).ConfigureAwait(false);
 
-        // Get the latest activities for this club
-        var latestHistoryEntries = await unitOfWork.History
+        var latestHistoryEntries = await history
             .ReadLatestHistoryEntriesByClubIdAsync(clubId)
             .ConfigureAwait(false);
 
-        // Get the excuses
-        var excuses = await unitOfWork.Excuses
-            .ReadExcusesAsync()
-            .ConfigureAwait(false);
+        var allExcuses = await excuses.ReadExcusesAsync().ConfigureAwait(false);
 
-        // Get the last activity check time
         var lastActivityCheckTime = latestHistoryEntries.Any()
             ? latestHistoryEntries.Select(a => a.Timestamp).Max()
             : DateTimeOffset.MinValue;
 
-        // Log info
         logger.LogInformation("Last activity check was on {LastActivityCheckTime:F}", lastActivityCheckTime);
-        
-        // Get the current date
+
         var now = DateTimeOffset.UtcNow;
 
-        // Create the new latest activity for the players
         var newLatestHistoryEntries = members.ToDictionary(
             m => m.User.UserId,
             m => ClubMemberHistoryEntry.Create(m.User.UserId, clubId, m.Xp, now));
 
-        // Save the new activity
-        unitOfWork.History.CreateHistoryEntries(newLatestHistoryEntries.Values);
+        history.CreateHistoryEntries(newLatestHistoryEntries.Values);
 
-        // Build the new statuses
-        var newStatuses =
-            await _calculateStatusesAsync(members, latestHistoryEntries, excuses, lastActivityCheckTime, now,
-                    xpRequirement, gracePeriod, maxNumStrikes)
-                .ConfigureAwait(false);
+        var newStatuses = await CalculateStatusesAsync(
+                members, latestHistoryEntries, allExcuses, lastActivityCheckTime, now,
+                xpRequirement, gracePeriod, maxNumStrikes, cancellationToken)
+            .ConfigureAwait(false);
 
-        // Save changes
-        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
-
-        // Read the club name for the activity report header
-        var club = await unitOfWork.Clubs.ReadClubByIdAsync(clubId).ConfigureAwait(false);
+        var club = await clubs.ReadClubByIdAsync(clubId).ConfigureAwait(false);
         var clubName = club?.Name ?? clubId.ToString();
 
-        // Send the update message
         await activityStatusMessageSender
             .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement)
             .ConfigureAwait(false);
 
-        // Send average XP section if configured
         var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);
         var averageXpBottomN = clubEntry.GetAverageXpBottomN(defaults);
 
         if (averageXpTopN.HasValue || averageXpBottomN.HasValue)
         {
             var historyDepth = clubEntry.GetAverageXpHistoryDepth(defaults);
-            var averageXpResults = await calculateAverageXpUseCase
-                .CalculateAverageXpAsync(clubId, historyDepth).ConfigureAwait(false);
+            var averageXpResults = await mediator
+                .Send(new CalculateAverageXpQuery(clubId, historyDepth), cancellationToken)
+                .ConfigureAwait(false);
 
-            // Top members sorted by average XP descending, ties broken by earlier join date (longer in club wins)
             var topMembers = averageXpTopN.HasValue
                 ? averageXpResults
                     .OrderByDescending(m => m.AverageXp)
@@ -120,7 +100,6 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
                     .Take(averageXpTopN.Value).ToList()
                 : [];
 
-            // Bottom members sorted by average XP ascending, ties broken by later join date (longer in club ranks higher)
             var topNicknames = topMembers.Select(m => m.Nickname).ToHashSet();
             var bottomMembers = averageXpBottomN.HasValue
                 ? averageXpResults
@@ -139,45 +118,40 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
             }
         }
 
-        // Log debug message
         logger.LogDebug("Checking player activity for club {ClubId} done.", clubId);
 
         return newStatuses;
     }
 
-    private async Task<List<ClubMemberActivityStatus>> _calculateStatusesAsync(
+    private async Task<List<ClubMemberActivityStatus>> CalculateStatusesAsync(
         List<ClubMember> members,
         IEnumerable<ClubMemberHistoryEntry> latestHistoryEntries,
-        IEnumerable<ClubMemberExcuse> excuses,
+        IEnumerable<ClubMemberExcuse> excusesList,
         DateTimeOffset lastActivityCheckTime,
         DateTimeOffset now,
         int xpRequirement,
         TimeSpan gracePeriod,
-        int maxNumStrikes)
+        int maxNumStrikes,
+        CancellationToken cancellationToken)
     {
         var statuses = new List<ClubMemberActivityStatus>(members.Count);
 
-        // Convert the latest history entries to dictionary
-        var latestHistoryEntriesDict = latestHistoryEntries
-            .ToDictionary(e => e.UserId, e => e);
+        var latestHistoryEntriesDict = latestHistoryEntries.ToDictionary(e => e.UserId, e => e);
 
-        // Convert excuses to dictionary
-        var excusesDict = excuses
+        var excusesDict = excusesList
             .GroupBy(e => e.UserId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        // Build the time range of the check interval
         var checkTimeRange = new TimeRange(lastActivityCheckTime, now);
 
-        // For every member
         foreach (var member in members)
         {
-            // Calculate his new status
-            var newStatus = await _calculateStatusAsync(member, latestHistoryEntriesDict, excusesDict, checkTimeRange,
-                    xpRequirement, gracePeriod, maxNumStrikes)
+            var newStatus = await CalculateStatusAsync(
+                    member, latestHistoryEntriesDict, excusesDict, checkTimeRange,
+                    xpRequirement, gracePeriod, maxNumStrikes, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (newStatus != null)
+            if (newStatus is not null)
             {
                 statuses.Add(newStatus);
             }
@@ -186,57 +160,47 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         return statuses;
     }
 
-    private async Task<ClubMemberActivityStatus?> _calculateStatusAsync(
+    private async Task<ClubMemberActivityStatus?> CalculateStatusAsync(
         ClubMember member,
         Dictionary<string, ClubMemberHistoryEntry> latestActivities,
-        Dictionary<string, List<ClubMemberExcuse>> excuses,
+        Dictionary<string, List<ClubMemberExcuse>> excusesDict,
         TimeRange checkTimeRange,
         int xpRequirement,
         TimeSpan gracePeriod,
-        int maxNumStrikes)
+        int maxNumStrikes,
+        CancellationToken cancellationToken)
     {
-        // Read the member from the database
         var clubMember = await mediator
-            .Send(new ReadOrSyncClubMemberByUserIdQuery(member.User.UserId))
+            .Send(new ReadOrSyncClubMemberByUserIdQuery(member.User.UserId), cancellationToken)
             .ConfigureAwait(false);
 
-        // If the club member could not be retrieved
-        if (clubMember == null)
+        if (clubMember is null)
         {
-            // Log warning
             LogClubMemberCouldNotBeFound(logger, member.User.UserId);
             return null;
         }
 
-        // Get the latest activity of the player
         var latestActivity = latestActivities.GetValueOrDefault(clubMember.UserId);
-
-        // Calculate the xp since the last update
         var xpSinceLastUpdate = member.Xp - (latestActivity?.Xp ?? 0);
 
-        // Calculate the players target respecting excuses and joined time
-        var (target, individualTargetReason) = _calculateIndividualTarget(member, checkTimeRange, excuses,
-            xpRequirement, gracePeriod);
+        var (target, individualTargetReason) = CalculateIndividualTarget(
+            member, checkTimeRange, excusesDict, xpRequirement, gracePeriod);
 
-        // Calculate if the player achieved the target.
         var targetAchieved = xpSinceLastUpdate >= target;
 
-        // Read the number of strikes of the player
-        var numStrikes = await unitOfWork.Strikes.ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId)
+        var numStrikes = await strikes
+            .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId)
             .ConfigureAwait(false) ?? 0;
 
-        // If the player did not meet the requirement and was not excused
         if (!targetAchieved)
         {
-            // Add the strike
-            _addStrike(clubMember.UserId, checkTimeRange.To);
-
-            // Increase the number of strikes
+            var newStrike = ClubMemberStrike.Create(clubMember.UserId, checkTimeRange.To);
+            strikes.CreateStrike(newStrike);
             numStrikes++;
         }
 
-        // Create the status object
-        return new ClubMemberActivityStatus(clubMember.User.Nickname,
+        return new ClubMemberActivityStatus(
+            clubMember.User.Nickname,
             clubMember.UserId,
             targetAchieved,
             xpSinceLastUpdate,
@@ -246,13 +210,7 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
             individualTargetReason);
     }
 
-    private void _addStrike(string memberUserId, DateTimeOffset now)
-    {
-        var newStrike = ClubMemberStrike.Create(memberUserId, now);
-        unitOfWork.Strikes.CreateStrike(newStrike);
-    }
-
-    private static (int IndividualTarget, string? IndividualTargetReason) _calculateIndividualTarget(
+    private static (int IndividualTarget, string? IndividualTargetReason) CalculateIndividualTarget(
         ClubMember member,
         TimeRange checkTimeRange,
         Dictionary<string, List<ClubMemberExcuse>> excuses,
@@ -263,87 +221,59 @@ public partial class CheckGeoGuessrPlayerActivityUseCase(
         var isExcused = false;
         var joinedInGracePeriod = false;
 
-        // The list of all time ranges where the player is excused
         var blockingTimeRanges = new List<TimeRange>();
 
-        // If the member joined since the last activity check
         if (checkTimeRange.Contains(member.JoinedAt))
         {
-            // Add the not in club time range
             blockingTimeRanges.Add(checkTimeRange with { To = member.JoinedAt });
             isNew = true;
 
-            // Get the time he is in the club
             var timeInClub = checkTimeRange.To - member.JoinedAt;
-
-            // If he joined in the grace period
             if (timeInClub < gracePeriod)
             {
                 joinedInGracePeriod = true;
             }
         }
 
-        // Try to get the excuses of the player
         excuses.TryGetValue(member.User.UserId, out var memberExcuses);
         memberExcuses ??= [];
 
-        // Calculate the intersections between the check time range and the
-        // excuses
         var excuseIntersections = memberExcuses
             .Select(e => new TimeRange(e.From, e.To))
             .Where(e => checkTimeRange.Intersects(e))
             .Select(e => checkTimeRange & e)
             .ToList();
 
-        // If there are excuses
         if (excuseIntersections.Any())
         {
             isExcused = true;
         }
 
-        // Add the excuses
         blockingTimeRanges.AddRange(excuseIntersections);
 
-        // Calculate the free percent
         var freePercent = checkTimeRange.CalculateFreePercent(blockingTimeRanges);
 
-        // Build the individual target reason
-        var individualTargetReason = _buildTargetReasons(isNew, isExcused, joinedInGracePeriod);
+        var individualTargetReason = BuildTargetReasons(isNew, isExcused, joinedInGracePeriod);
 
-        // Get the final individual target
         var individualTarget = joinedInGracePeriod ? 0 : (int)Math.Floor(freePercent * xpRequirement);
 
         return (individualTarget, individualTargetReason);
     }
 
-    private static string? _buildTargetReasons(bool isNew, bool isExcused, bool joinedInGracePeriod)
+    private static string? BuildTargetReasons(bool isNew, bool isExcused, bool joinedInGracePeriod)
     {
         if (!isNew && !isExcused)
         {
             return null;
         }
 
-        var individualTargetReasons = new List<string>();
-        if (isNew)
-        {
-            individualTargetReasons.Add("New member");
-        }
-
-        if (isExcused)
-        {
-            individualTargetReasons.Add("Excused");
-        }
-
-        if (joinedInGracePeriod)
-        {
-            individualTargetReasons.Add("Joined in grace period");
-        }
-
-        var individualTargetReason = string.Join(", ", individualTargetReasons);
-
-        return individualTargetReason;
+        var reasons = new List<string>();
+        if (isNew) reasons.Add("New member");
+        if (isExcused) reasons.Add("Excused");
+        if (joinedInGracePeriod) reasons.Add("Joined in grace period");
+        return string.Join(", ", reasons);
     }
 
     [LoggerMessage(LogLevel.Error, "Club member {memberUserId} could not be found.")]
-    static partial void LogClubMemberCouldNotBeFound(ILogger<CheckGeoGuessrPlayerActivityUseCase> logger, string memberUserId);
+    static partial void LogClubMemberCouldNotBeFound(ILogger<CheckGeoGuessrPlayerActivityHandler> logger, string memberUserId);
 }

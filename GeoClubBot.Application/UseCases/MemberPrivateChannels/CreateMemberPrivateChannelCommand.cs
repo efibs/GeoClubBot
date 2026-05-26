@@ -1,77 +1,74 @@
 using Constants;
 using Entities;
+using MediatR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.MemberPrivateChannels;
+using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
-public partial class CreateMemberPrivateChannelUseCase(
-    IUnitOfWork unitOfWork,
+public sealed record CreateMemberPrivateChannelCommand(ClubMember ClubMember) : ICommand<ulong?>;
+
+public sealed partial class CreateMemberPrivateChannelHandler(
+    IClubMemberRepository clubMembers,
     IDiscordTextChannelAccess discordTextChannelAccess,
     IDiscordMessageAccess discordMessageAccess,
     IConfiguration config,
-    ILogger<CreateMemberPrivateChannelUseCase> logger)
-    : ICreateMemberPrivateChannelUseCase
+    ILogger<CreateMemberPrivateChannelHandler> logger)
+    : IRequestHandler<CreateMemberPrivateChannelCommand, ulong?>
 {
-    public async Task<ulong?> CreatePrivateChannelAsync(ClubMember clubMember)
+    private readonly ulong _privateTextChannelCategoryId =
+        config.GetValue<ulong>(ConfigKeys.MemberPrivateChannelsCategoryIdConfigurationKey);
+
+    private readonly string _privateChannelsDescription =
+        config.GetValue<string>(ConfigKeys.MemberPrivateChannelsDescriptionConfigurationKey)!;
+
+    public async Task<ulong?> Handle(CreateMemberPrivateChannelCommand request, CancellationToken cancellationToken)
     {
-        // Log info
+        var clubMember = request.ClubMember;
         LogCreatingPrivateChannel(logger, clubMember.User.Nickname);
-        
-        // Get the text channel name
+
         var textChannelName = $"{clubMember.User.Nickname.ToLowerInvariant()}-private-channel";
-        
-        // Create the text channel
-        var textChannelId = await discordTextChannelAccess.CreatePrivateTextChannelAsync(_privateTextChannelCategoryId, 
-                textChannelName, 
+
+        var textChannelId = await discordTextChannelAccess.CreatePrivateTextChannelAsync(
+                _privateTextChannelCategoryId,
+                textChannelName,
                 _privateChannelsDescription,
                 [clubMember.User.DiscordUserId!.Value],
                 null)
             .ConfigureAwait(false);
-        
-        // If the creation failed
-        if (textChannelId == null)
+
+        if (textChannelId is null)
         {
-            // Log warning
             LogPrivateTextChannelCouldNotBeCreatedForClubMember(logger, clubMember.User.Nickname);
             return null;
         }
-        
-        // Send the welcome message
-        await _sendWelcomeMessageAsync(clubMember, textChannelId.Value).ConfigureAwait(false);
-        
-        // Save the private text channel id on the club member
-        var trackedMember = await unitOfWork.ClubMembers
+
+        await SendWelcomeMessageAsync(clubMember, textChannelId.Value).ConfigureAwait(false);
+
+        var trackedMember = await clubMembers
             .ReadForUpdateByUserIdAsync(clubMember.UserId)
             .ConfigureAwait(false);
         trackedMember?.SetPrivateTextChannelId(textChannelId.Value);
-        
+
         return textChannelId;
     }
 
-    private async Task _sendWelcomeMessageAsync(ClubMember clubMember, ulong textChannelId)
+    private async Task SendWelcomeMessageAsync(ClubMember clubMember, ulong textChannelId)
     {
-        // Build the message body
         var messageBody = $"Welcome <@{clubMember.User.DiscordUserId!.Value}>! This is your " +
                           "private space to talk to our admins. Only you and the admins can see the messages in this " +
                           "text channel. Use this channel for example to talk about when you need an excuse for the " +
                           "club XP rule or any other concerns you might have.";
-        
-        // Send the message
+
         await discordMessageAccess.SendMessageAsync(messageBody, textChannelId).ConfigureAwait(false);
     }
-    
-    private readonly ulong _privateTextChannelCategoryId =
-        config.GetValue<ulong>(ConfigKeys.MemberPrivateChannelsCategoryIdConfigurationKey);
-    private readonly string _privateChannelsDescription = 
-        config.GetValue<string>(ConfigKeys.MemberPrivateChannelsDescriptionConfigurationKey)!;
 
     [LoggerMessage(LogLevel.Warning, "Private text channel could not be created for club member '{clubMemberNickname}'")]
-    static partial void LogPrivateTextChannelCouldNotBeCreatedForClubMember(ILogger<CreateMemberPrivateChannelUseCase> logger, string clubMemberNickname);
-    
+    static partial void LogPrivateTextChannelCouldNotBeCreatedForClubMember(ILogger<CreateMemberPrivateChannelHandler> logger, string clubMemberNickname);
+
     [LoggerMessage(LogLevel.Information, "Creating private text channel for club member '{clubMemberNickname}'...")]
-    static partial void LogCreatingPrivateChannel(ILogger<CreateMemberPrivateChannelUseCase> logger, string clubMemberNickname);
+    static partial void LogCreatingPrivateChannel(ILogger<CreateMemberPrivateChannelHandler> logger, string clubMemberNickname);
 }

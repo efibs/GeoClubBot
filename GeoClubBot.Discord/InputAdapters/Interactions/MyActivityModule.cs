@@ -3,7 +3,7 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -11,7 +11,6 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [CommandContextType(InteractionContextType.Guild)]
 [Group("my-activity", "Commands about your activity as a club member")]
 public class MyActivityModule(
-    IGetActivityThisWeekUseCase getActivityThisWeekUseCase,
     ISender mediator,
     ILogger<MyActivityModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
@@ -32,8 +31,8 @@ public class MyActivityModule(
                     return;
                 }
 
-                var activity = await getActivityThisWeekUseCase
-                    .GetCurrentWeekActivityForMemberAsync(geoGuessrUser.UserId)
+                var activity = await Mediator
+                    .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
                     .ConfigureAwait(false);
 
                 // Build two-row progress display: day labels + emoji per day

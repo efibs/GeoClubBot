@@ -5,24 +5,20 @@ using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.UseCases.ClubMemberActivity;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 public partial class ActivityModule
 {
     public partial class ActivityStatisticsModule(
-        IPlayerStatisticsUseCase playerStatisticsUseCase,
-        IRenderPlayerActivityUseCase renderPlayerActivityUseCase,
-        IClubStatisticsUseCase clubStatisticsUseCase,
-        IGetActivityLeaderboardUseCase getActivityLeaderboardUseCase,
         ISender mediator,
         ILogger<ActivityStatisticsModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
         [SlashCommand("player", "Read the statistics of a player")]
         public async Task ReadPlayerStatisticsAsync(string memberNickname)
         {
-            var stats = await playerStatisticsUseCase.GetPlayerStatisticsAsync(memberNickname).ConfigureAwait(false);
+            var stats = await Mediator.Send(new PlayerStatisticsQuery(memberNickname)).ConfigureAwait(false);
 
             if (stats == null)
             {
@@ -55,7 +51,7 @@ public partial class ActivityModule
         [SlashCommand("club", "Read the statistics of the club")]
         public async Task ReadClubStatisticsAsync()
         {
-            var stats = await clubStatisticsUseCase.GetClubStatisticsAsync().ConfigureAwait(false);
+            var stats = await Mediator.Send(new ClubStatisticsQuery()).ConfigureAwait(false);
 
             if (stats == null)
             {
@@ -87,10 +83,10 @@ public partial class ActivityModule
             [MinValue(1)] [Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries,
             [Summary(description: "[optional] The clubs name")] string? clubName = null) =>
             ExecuteAsync(
-                async _ =>
+                async ct =>
                 {
-                    using var plot = await renderPlayerActivityUseCase
-                        .RenderPlayerActivityAsync(memberNickname, maxNumEntries, clubName)
+                    using var plot = await Mediator
+                        .Send(new RenderPlayerActivityQuery(memberNickname, maxNumEntries, clubName), ct)
                         .ConfigureAwait(false);
 
                     if (plot == null)
@@ -110,12 +106,12 @@ public partial class ActivityModule
             [Summary(description: "[optional] The clubs name")] string? clubName = null,
             [MinValue(1)] [Summary(description: "[optional] The number of intervals to include in the average")] int periods = 4) =>
             ExecuteAsync(
-                async _ =>
+                async ct =>
                 {
                     var inputClubName = clubName;
 
-                    var (leaderboard, resolvedClubName) = await getActivityLeaderboardUseCase
-                        .GetActivityLeaderboardAsync(clubName, periods)
+                    var (leaderboard, resolvedClubName) = await Mediator
+                        .Send(new GetActivityLeaderboardQuery(clubName, periods), ct)
                         .ConfigureAwait(false);
 
                     if (resolvedClubName is null)

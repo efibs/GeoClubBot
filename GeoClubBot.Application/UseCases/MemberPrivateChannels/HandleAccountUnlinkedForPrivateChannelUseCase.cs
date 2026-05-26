@@ -1,13 +1,12 @@
 using Entities.Events;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.MemberPrivateChannels;
 using UseCases.OutputPorts;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
-    IDeleteMemberPrivateChannelUseCase deleteMemberPrivateChannelUseCase,
+    ISender mediator,
     IUnitOfWork unitOfWork,
     ILogger<HandleAccountUnlinkedForPrivateChannelUseCase> logger)
     : INotificationHandler<AccountUnlinkedEvent>
@@ -22,8 +21,8 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
                 .ReadClubMemberByUserIdAsync(notification.UserId)
                 .ConfigureAwait(false);
 
-            var successful = await deleteMemberPrivateChannelUseCase
-                .DeletePrivateChannelAsync(clubMember)
+            var successful = await mediator
+                .Send(new DeleteMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
 
             if (!successful)

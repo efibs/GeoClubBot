@@ -4,51 +4,50 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.Abstractions;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.Users;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
-public class ClubMemberActivityRewardUseCase(
+public sealed record ClubMemberActivityRewardCommand(List<ClubMemberActivityStatus> Statuses) : ICommand;
+
+public sealed class ClubMemberActivityRewardHandler(
     ISender mediator,
     IDiscordServerRolesAccess discordServerRolesAccess,
     IDiscordMessageAccess discordMessageAccess,
-    ILogger<ClubMemberActivityRewardUseCase> logger,
-    IOptions<ActivityRewardConfiguration> config) : IClubMemberActivityRewardUseCase
+    ILogger<ClubMemberActivityRewardHandler> logger,
+    IOptions<ActivityRewardConfiguration> config) : IRequestHandler<ClubMemberActivityRewardCommand, Unit>
 {
-    public async Task RewardMemberActivityAsync(List<ClubMemberActivityStatus> statuses)
+    public async Task<Unit> Handle(ClubMemberActivityRewardCommand request, CancellationToken cancellationToken)
     {
         logger.LogDebug("Starting reward member activity");
-        
-        // Group statuses by xp and then sort by xp to get the leaderboard
-        var leaderboard = statuses
+
+        var leaderboard = request.Statuses
             .Where(s => s.XpSinceLastUpdate > 0)
             .GroupBy(s => s.XpSinceLastUpdate)
             .OrderByDescending(g => g.Key)
             .Take(3)
             .ToList();
-        
-        // Send the mention
-        var mvpPlayerUserIds = await _mentionMvpsAsync(leaderboard).ConfigureAwait(false);
-        
-        // Update the roles
-        await _updateRolesAsync(mvpPlayerUserIds).ConfigureAwait(false);
+
+        var mvpPlayerUserIds = await MentionMvpsAsync(leaderboard).ConfigureAwait(false);
+
+        await UpdateRolesAsync(mvpPlayerUserIds, cancellationToken).ConfigureAwait(false);
+
+        return Unit.Value;
     }
 
-    private async Task<List<string>> _mentionMvpsAsync(List<IGrouping<int, ClubMemberActivityStatus>> leaderboard)
+    private async Task<List<string>> MentionMvpsAsync(List<IGrouping<int, ClubMemberActivityStatus>> leaderboard)
     {
         IEnumerable<string> mvpPlayerUserIds = [];
-        
+
         try
         {
-            // If there are no players to mention
             if (leaderboard.Count == 0)
             {
                 return [];
             }
 
-            // The builder for the message
             var msgBuilder = new StringBuilder("# The new MVP's of the club are here! :partying_face:\n");
             msgBuilder.AppendLine("The club members that achieved the most club XP since last time are:");
 
@@ -72,15 +71,12 @@ public class ClubMemberActivityRewardUseCase(
                 }
 
                 msgBuilder.AppendLine();
-
                 place++;
             }
 
-            // Build the message
-            var msg = msgBuilder.ToString();
-
-            // Send the message
-            await discordMessageAccess.SendMessageAsync(msg, config.Value.TextChannelId).ConfigureAwait(false);
+            await discordMessageAccess
+                .SendMessageAsync(msgBuilder.ToString(), config.Value.TextChannelId)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -90,26 +86,24 @@ public class ClubMemberActivityRewardUseCase(
         return mvpPlayerUserIds.ToList();
     }
 
-    private async Task _updateRolesAsync(IEnumerable<string> mvpPlayerUserIds)
+    private async Task UpdateRolesAsync(IEnumerable<string> mvpPlayerUserIds, CancellationToken cancellationToken)
     {
-        // Get the discord user ids for the mvps
         var discordUserIds = await mediator
-            .Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(mvpPlayerUserIds))
+            .Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(mvpPlayerUserIds), cancellationToken)
             .ConfigureAwait(false);
-        
-        // Get the members that already have the mvp role
-        var membersWithMvpRole = await discordServerRolesAccess.ReadMembersWithRoleAsync(config.Value.MvpRoleId).ConfigureAwait(false);
-        
-        // Get the members that need the mvp role
+
+        var membersWithMvpRole = await discordServerRolesAccess
+            .ReadMembersWithRoleAsync(config.Value.MvpRoleId)
+            .ConfigureAwait(false);
+
         var membersToAddMvpRole = discordUserIds.Except(membersWithMvpRole);
-        
-        // Get the members that are no longer mvp
         var membersToRemoveMvpRole = membersWithMvpRole.Except(discordUserIds);
-        
-        // Distribute the roles
-        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(membersToAddMvpRole, config.Value.MvpRoleId).ConfigureAwait(false);
-        
-        // Remove the roles
-        await discordServerRolesAccess.RemoveRoleFromPlayersAsync(membersToRemoveMvpRole, config.Value.MvpRoleId).ConfigureAwait(false);
+
+        await discordServerRolesAccess
+            .AddRoleToMembersByUserIdsAsync(membersToAddMvpRole, config.Value.MvpRoleId)
+            .ConfigureAwait(false);
+        await discordServerRolesAccess
+            .RemoveRoleFromPlayersAsync(membersToRemoveMvpRole, config.Value.MvpRoleId)
+            .ConfigureAwait(false);
     }
 }

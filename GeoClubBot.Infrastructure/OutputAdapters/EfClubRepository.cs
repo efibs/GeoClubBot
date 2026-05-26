@@ -48,6 +48,13 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
         return club;
     }
 
+    public async Task<Club?> ReadForUpdateByIdAsync(Guid clubId)
+    {
+        return await dbContext.Clubs
+            .FirstOrDefaultAsync(c => c.ClubId == clubId)
+            .ConfigureAwait(false);
+    }
+
     public async Task<Club?> ReadClubByNameAsync(string clubName)
     {
         // Try to find the club

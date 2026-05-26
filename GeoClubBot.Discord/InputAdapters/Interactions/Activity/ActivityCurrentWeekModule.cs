@@ -3,7 +3,7 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using UseCases.InputPorts.ClubMemberActivity;
+using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -11,7 +11,6 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 public partial class ActivityModule
 {
     public partial class ActivityCurrentWeekModule(
-        IGetActivityThisWeekUseCase getActivityThisWeekUseCase,
         ISender mediator,
         ILogger<ActivityCurrentWeekModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
@@ -32,8 +31,8 @@ public partial class ActivityModule
                         return;
                     }
 
-                    var activity = await getActivityThisWeekUseCase
-                        .GetCurrentWeekActivityForMemberAsync(geoGuessrUser.UserId)
+                    var activity = await Mediator
+                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
                         .ConfigureAwait(false);
 
                     await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
@@ -60,8 +59,8 @@ public partial class ActivityModule
                         return;
                     }
 
-                    var activity = await getActivityThisWeekUseCase
-                        .GetCurrentWeekActivityForMemberAsync(geoGuessrUser.UserId)
+                    var activity = await Mediator
+                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
                         .ConfigureAwait(false);
 
                     await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())

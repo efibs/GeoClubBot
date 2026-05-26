@@ -1,7 +1,7 @@
 using Configuration;
 using MediatR;
 using Microsoft.Extensions.Options;
-using UseCases.InputPorts.Club;
+using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
@@ -9,18 +9,18 @@ using UseCases.UseCases.ClubMembers;
 
 namespace UseCases.UseCases.Club;
 
-public class SyncClubsUseCase(
+public sealed record SyncClubsCommand : ICommand;
+
+public sealed class SyncClubsHandler(
     IGeoGuessrClientFactory geoGuessrClientFactory,
-    IUnitOfWork unitOfWork,
-    ISetClubLevelStatusUseCase setClubLevelStatusUseCase,
+    IClubRepository clubs,
+    IClubMemberRepository clubMembers,
     ISender mediator,
-    IOptions<GeoGuessrConfiguration> geoGuessrConfig) : ISyncClubsUseCase
+    IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IRequestHandler<SyncClubsCommand, Unit>
 {
-    public async Task SyncClubsAsync()
+    public async Task<Unit> Handle(SyncClubsCommand request, CancellationToken cancellationToken)
     {
         var apiSnapshots = new List<ClubMemberSyncSnapshot>();
-        var dbMemberUserIds = new HashSet<string>();
-        var apiMemberUserIds = new HashSet<string>();
 
         foreach (var configClub in geoGuessrConfig.Value.Clubs)
         {
@@ -30,20 +30,18 @@ public class SyncClubsUseCase(
             var clubDto = await client.ReadClubAsync(clubId).ConfigureAwait(false);
             var club = ClubAssembler.AssembleEntity(clubDto);
 
-            await unitOfWork.Clubs.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
+            await clubs.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
 
             if (clubId == geoGuessrConfig.Value.MainClub.ClubId)
             {
-                await setClubLevelStatusUseCase.SetClubLevelStatusAsync(club.Level).ConfigureAwait(false);
+                await mediator.Send(new SetClubLevelStatusCommand(club.Level), cancellationToken).ConfigureAwait(false);
             }
 
-            var dbMembers = await unitOfWork.ClubMembers
+            var dbMembers = await clubMembers
                 .ReadClubMembersByClubIdAsync(clubId)
                 .ConfigureAwait(false);
             foreach (var dbMember in dbMembers)
             {
-                dbMemberUserIds.Add(dbMember.UserId);
-
                 // Default snapshot puts the member outside the club; if the API still has
                 // them, the entry will be replaced below.
                 apiSnapshots.Add(new ClubMemberSyncSnapshot(
@@ -51,19 +49,13 @@ public class SyncClubsUseCase(
             }
 
             var apiMembers = ClubMemberAssembler.AssembleEntities(clubDto.Members, clubDto.ClubId);
-            foreach (var apiMember in apiMembers)
-            {
-                apiMemberUserIds.Add(apiMember.UserId);
-            }
-
-            // Override the "left" placeholders with real API snapshots for members still present.
             apiSnapshots.RemoveAll(s => apiMembers.Any(m => m.UserId == s.UserId));
             apiSnapshots.AddRange(apiMembers.Select(m =>
                 new ClubMemberSyncSnapshot(m.UserId, m.User.Nickname, clubId, m.Xp, m.JoinedAt)));
         }
 
-        await mediator.Send(new SaveClubMembersCommand(apiSnapshots)).ConfigureAwait(false);
+        await mediator.Send(new SaveClubMembersCommand(apiSnapshots), cancellationToken).ConfigureAwait(false);
 
-        await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+        return Unit.Value;
     }
 }

@@ -1,20 +1,21 @@
 using Constants;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using QuartzExtensions;
-using UseCases.InputPorts.Club;
+using UseCases.UseCases.Club;
 
 namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.ClubLevelCheckerCronScheduleConfigurationKey)]
-public class CheckClubLevelJob(ICheckClubLevelUseCase useCase, ILogger<CheckClubLevelJob> logger) : IJob
+public class CheckClubLevelJob(ISender mediator, ILogger<CheckClubLevelJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
         try
         {
-            await useCase.CheckClubLevelAsync().ConfigureAwait(false);
+            await mediator.Send(new CheckClubLevelCommand(), context.CancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

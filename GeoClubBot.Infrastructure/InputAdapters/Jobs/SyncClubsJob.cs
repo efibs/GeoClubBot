@@ -1,20 +1,21 @@
 using Constants;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using QuartzExtensions;
-using UseCases.InputPorts.Club;
+using UseCases.UseCases.Club;
 
 namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.GeoGuessrClubSyncScheduleConfigurationKey)]
-public class SyncClubsJob(ISyncClubsUseCase useCase, ILogger<SyncClubsJob> logger) : IJob
+public class SyncClubsJob(ISender mediator, ILogger<SyncClubsJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
         try
         {
-            await useCase.SyncClubsAsync().ConfigureAwait(false);
+            await mediator.Send(new SyncClubsCommand(), context.CancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

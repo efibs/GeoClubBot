@@ -35,6 +35,16 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
         return club;
     }
 
+    public Task<Club?> ReadForUpdateByIdAsync(Guid clubId)
+    {
+        // Caller intends to mutate; bypass the cache and return a tracked entity.
+        // The mutation is invalidated implicitly on the next CreateOrUpdateClubAsync,
+        // but since the level mutation goes through SaveChanges, we also invalidate here
+        // so stale reads don't outlive the change.
+        cache.Remove(ByIdKey(clubId));
+        return inner.ReadForUpdateByIdAsync(clubId);
+    }
+
     public async Task<Club?> ReadClubByNameAsync(string clubName)
     {
         var key = ByNameKey(clubName);
