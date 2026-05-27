@@ -21,13 +21,13 @@ public partial class CachingGeoGuessrActivityReader(
         {
             entry.AbsoluteExpirationRelativeToNow = config.Value.ActivityCacheTimeToLive;
             LogCacheMiss(clubId);
-            return await _fetchTodaysActivitiesAsync(clubId, today, cancellationToken).ConfigureAwait(false);
+            return await FetchTodaysActivitiesAsync(clubId, today, cancellationToken).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         return cached ?? [];
     }
 
-    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> _fetchTodaysActivitiesAsync(Guid clubId, DateTime today, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> FetchTodaysActivitiesAsync(Guid clubId, DateTime today, CancellationToken cancellationToken)
     {
         var client = clientFactory.CreateActivityClient();
         var todaysActivities = new List<ReadClubActivitiesItemDto>();
@@ -76,13 +76,13 @@ public partial class CachingGeoGuessrActivityReader(
         {
             entry.AbsoluteExpirationRelativeToNow = config.Value.ActivityCacheTimeToLive;
             LogCacheMiss(clubId);
-            return await _fetchActivitiesSinceAsync(clubId, since, cancellationToken).ConfigureAwait(false);
+            return await FetchActivitiesSinceAsync(clubId, since, cancellationToken).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         return cached ?? [];
     }
 
-    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> _fetchActivitiesSinceAsync(Guid clubId, DateTimeOffset since, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> FetchActivitiesSinceAsync(Guid clubId, DateTimeOffset since, CancellationToken cancellationToken)
     {
         var client = clientFactory.CreateActivityClient();
         var activities = new List<ReadClubActivitiesItemDto>();

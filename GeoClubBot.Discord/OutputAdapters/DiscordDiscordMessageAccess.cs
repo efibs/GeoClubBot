@@ -56,7 +56,7 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
         }
         
         // Build the message content
-        var msg = await _buildSelfRoleMessageContent(selfRoleSettings, server).ConfigureAwait(false);
+        var msg = await BuildSelfRoleMessageContent(selfRoleSettings, server).ConfigureAwait(false);
         
         // Build the button component
         var button = new ComponentBuilder()
@@ -90,7 +90,7 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
         }
         
         // Build the message content
-        var msg = await _buildSelfRoleMessageContent(selfRoleSettings, server).ConfigureAwait(false);
+        var msg = await BuildSelfRoleMessageContent(selfRoleSettings, server).ConfigureAwait(false);
 
         // Get the message
         var message = await channel.GetMessageAsync(messageId).ConfigureAwait(false);
@@ -147,7 +147,7 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
         await message.DeleteAsync().ConfigureAwait(false);
     }
 
-    private static async Task<string> _buildSelfRoleMessageContent(IEnumerable<SelfRoleSetting> selfRoleSettings, SocketGuild server)
+    private static async Task<string> BuildSelfRoleMessageContent(IEnumerable<SelfRoleSetting> selfRoleSettings, SocketGuild server)
     {
         // Build the message
         var msgBuilder = new StringBuilder("# Select the roles you would like to have\nThe available roles are:\n");

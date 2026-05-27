@@ -43,17 +43,17 @@ public partial class ActivityModule
         [SlashCommand("read", "Read the strikes a player currently has")]
         public async Task ReadStrikesAsync(string memberNickname)
         {
-            var strikeStatus = await Mediator
+            var result = await Mediator
                 .Send(new ReadMemberStrikesQuery(memberNickname))
                 .ConfigureAwait(false);
 
-            if (strikeStatus == null)
+            if (result.IsFailure)
             {
-                await RespondAsync($"There is no player with the nickname {memberNickname} currently being tracked. " +
-                                   $"Either the nickname is incorrect or the member just joined and is not yet being tracked.",
-                    ephemeral: true).ConfigureAwait(false);
+                await RespondAsync(FriendlyMessageFor(result.Error), ephemeral: true).ConfigureAwait(false);
                 return;
             }
+
+            var strikeStatus = result.Value;
 
             if (strikeStatus.Strikes.Count == 0)
             {
@@ -161,20 +161,20 @@ public partial class ActivityModule
                 return;
             }
 
-            var strike = await Mediator.Send(new RevokeStrikeCommand(strikeIdGuid)).ConfigureAwait(false);
+            var result = await Mediator.Send(new RevokeStrikeCommand(strikeIdGuid)).ConfigureAwait(false);
 
-            if (strike != null)
+            if (result.IsFailure)
             {
-                var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
-                var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
-                await RespondAsync(
-                    $"Strike for player **{nickname}** from {strike.Timestamp:d} (expires: {(strike.Timestamp + expirationTimeSpan):d}, id: {strikeId}) was successfully revoked.")
-                    .ConfigureAwait(false);
+                await RespondAsync(FriendlyMessageFor(result.Error), ephemeral: true).ConfigureAwait(false);
+                return;
             }
-            else
-            {
-                await RespondAsync($"Strike with id {strikeId} could not be revoked.", ephemeral: true).ConfigureAwait(false);
-            }
+
+            var strike = result.Value;
+            var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
+            var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+            await RespondAsync(
+                $"Strike for player **{nickname}** from {strike.Timestamp:d} (expires: {(strike.Timestamp + expirationTimeSpan):d}, id: {strikeId}) was successfully revoked.")
+                .ConfigureAwait(false);
         }
 
         [SlashCommand("unrevoke", "Remove a revocation of a strike")]
@@ -186,20 +186,20 @@ public partial class ActivityModule
                 return;
             }
 
-            var strike = await Mediator.Send(new UnrevokeStrikeCommand(strikeIdGuid)).ConfigureAwait(false);
+            var result = await Mediator.Send(new UnrevokeStrikeCommand(strikeIdGuid)).ConfigureAwait(false);
 
-            if (strike != null)
+            if (result.IsFailure)
             {
-                var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
-                var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
-                await RespondAsync(
-                    $"Revocation of strike for player **{nickname}** from {strike.Timestamp:d} (expires: {(strike.Timestamp + expirationTimeSpan):d}, id: {strikeId}) was successfully removed.")
-                    .ConfigureAwait(false);
+                await RespondAsync(FriendlyMessageFor(result.Error), ephemeral: true).ConfigureAwait(false);
+                return;
             }
-            else
-            {
-                await RespondAsync($"Revocation of strike with id {strikeId} could not be removed.", ephemeral: true).ConfigureAwait(false);
-            }
+
+            var strike = result.Value;
+            var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
+            var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+            await RespondAsync(
+                $"Revocation of strike for player **{nickname}** from {strike.Timestamp:d} (expires: {(strike.Timestamp + expirationTimeSpan):d}, id: {strikeId}) was successfully removed.")
+                .ConfigureAwait(false);
         }
     }
 }

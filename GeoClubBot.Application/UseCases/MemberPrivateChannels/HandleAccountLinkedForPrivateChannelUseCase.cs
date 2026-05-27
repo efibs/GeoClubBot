@@ -7,7 +7,7 @@ namespace UseCases.UseCases.MemberPrivateChannels;
 
 public partial class HandleAccountLinkedForPrivateChannelUseCase(
     ISender mediator,
-    IUnitOfWork unitOfWork,
+    IClubMemberRepository clubMembers,
     ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger)
     : INotificationHandler<AccountLinkedEvent>
 {
@@ -17,7 +17,7 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
         {
             // Avoid duplicate channel creation: if the user was just synced, the PlayerJoinedClubEvent
             // will pick this up. Only handle existing members here.
-            var clubMember = await unitOfWork.ClubMembers
+            var clubMember = await clubMembers
                 .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -36,8 +36,6 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
             await mediator
                 .Send(new CreateMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
-
-            await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {

@@ -9,17 +9,17 @@ public class UserLeftService(DiscordSocketClient client, IOptions<DiscordConfigu
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        client.UserLeft += _onUserLeftAsync;
+        client.UserLeft += OnUserLeftAsync;
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        client.UserLeft -= _onUserLeftAsync;
+        client.UserLeft -= OnUserLeftAsync;
         return Task.CompletedTask;
     }
 
-    private async Task _onUserLeftAsync(SocketGuild guild, SocketUser user)
+    private async Task OnUserLeftAsync(SocketGuild guild, SocketUser user)
     {
         if (guild.Id != config.Value.ServerId)
         {

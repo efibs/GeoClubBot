@@ -21,16 +21,16 @@ public class AiBotService(
 
         await botReadyService.DiscordSocketClientReady.ConfigureAwait(false);
 
-        client.MessageReceived += _onMessageReceived;
+        client.MessageReceived += OnMessageReceived;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        client.MessageReceived -= _onMessageReceived;
+        client.MessageReceived -= OnMessageReceived;
         return Task.CompletedTask;
     }
 
-    private Task _onMessageReceived(SocketMessage socketMessage)
+    private Task OnMessageReceived(SocketMessage socketMessage)
     {
         if (!socketMessage.MentionedUserIds.Contains(client.CurrentUser.Id) ||
             socketMessage is not SocketUserMessage { ReferencedMessage: null } socketUserMessage)
@@ -38,12 +38,12 @@ public class AiBotService(
             return Task.CompletedTask;
         }
 
-        Task.Run(async () => await _handleMessageAsync(socketUserMessage).ConfigureAwait(false));
+        Task.Run(async () => await HandleMessageAsync(socketUserMessage).ConfigureAwait(false));
 
         return Task.CompletedTask;
     }
 
-    private async Task _handleMessageAsync(IUserMessage socketMessage)
+    private async Task HandleMessageAsync(IUserMessage socketMessage)
     {
         var response = await mediator
             .Send(new GetAiResponseQuery(socketMessage.Content, () => socketMessage.Channel.TriggerTypingAsync()))

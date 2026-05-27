@@ -26,7 +26,7 @@ public class GeoGuessrAccountLinkAdminModule(
                     .Send(new CompleteAccountLinkingCommand(discordUser.Id, geoGuessrUserId, oneTimePassword), ct)
                     .ConfigureAwait(false);
 
-                await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, null).ConfigureAwait(false);
+                await HandleLinkingEndedAsync(result.Successful, result.User, discordUser, null).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to complete linking process (internal error).");
@@ -40,7 +40,7 @@ public class GeoGuessrAccountLinkAdminModule(
                     .Send(new CancelAccountLinkingCommand(discordUser.Id, geoGuessrUserId), ct)
                     .ConfigureAwait(false);
 
-                await _handleLinkingCanceledByAdminAsync(result, discordUser, null).ConfigureAwait(false);
+                await HandleLinkingCanceledByAdminAsync(result, discordUser, null).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to cancel linking process (internal error).");
@@ -96,7 +96,7 @@ public class GeoGuessrAccountLinkAdminModule(
                     .ConfigureAwait(false);
 
                 var discordUser = Context.Guild.GetUser(discordUserId);
-                await _handleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString).ConfigureAwait(false);
+                await HandleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to complete linking process (internal error).");
@@ -137,12 +137,12 @@ public class GeoGuessrAccountLinkAdminModule(
                     .ConfigureAwait(false);
 
                 var discordUser = Context.Guild.GetUser(discordUserId);
-                await _handleLinkingCanceledByAdminAsync(result, discordUser, messageIdString).ConfigureAwait(false);
+                await HandleLinkingCanceledByAdminAsync(result, discordUser, messageIdString).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to cancel linking process (internal error).");
 
-    private async Task _handleLinkingEndedAsync(bool successful, GeoGuessrUser? geoGuessrUser, IUser discordUser, string? messageIdString)
+    private async Task HandleLinkingEndedAsync(bool successful, GeoGuessrUser? geoGuessrUser, IUser discordUser, string? messageIdString)
     {
         try
         {
@@ -178,7 +178,7 @@ public class GeoGuessrAccountLinkAdminModule(
         }
     }
 
-    private async Task _handleLinkingCanceledByAdminAsync(bool successful, IUser discordUser, string? messageIdString)
+    private async Task HandleLinkingCanceledByAdminAsync(bool successful, IUser discordUser, string? messageIdString)
     {
         try
         {

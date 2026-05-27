@@ -7,12 +7,12 @@ public class DiscordBotReadyService
     public DiscordBotReadyService(DiscordSocketClient client)
     {
         // Attach the ready callback
-        client.Ready += _onDiscordSocketClientReady;
+        client.Ready += OnDiscordSocketClientReady;
     }
 
     public Task DiscordSocketClientReady => _discordSocketClientReadyCompletionSource.Task;
 
-    private Task _onDiscordSocketClientReady()
+    private Task OnDiscordSocketClientReady()
     {
         _discordSocketClientReadyCompletionSource.SetResult();
         return Task.CompletedTask;

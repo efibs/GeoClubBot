@@ -7,7 +7,7 @@ namespace UseCases.UseCases.MemberPrivateChannels;
 
 public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
     ISender mediator,
-    IUnitOfWork unitOfWork,
+    IClubMemberRepository clubMembers,
     ILogger<HandlePlayerLeftClubForPrivateChannelUseCase> logger) : INotificationHandler<PlayerLeftClubEvent>
 {
     public async Task Handle(PlayerLeftClubEvent notification, CancellationToken cancellationToken)
@@ -21,7 +21,7 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
                 return;
             }
 
-            var clubMember = await unitOfWork.ClubMembers
+            var clubMember = await clubMembers
                 .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -33,8 +33,6 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
             await mediator
                 .Send(new DeleteMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
-
-            await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {

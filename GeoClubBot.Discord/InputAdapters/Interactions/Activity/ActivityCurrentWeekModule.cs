@@ -35,7 +35,7 @@ public partial class ActivityModule
                         .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
                         .ConfigureAwait(false);
 
-                    await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
+                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
                         .ConfigureAwait(false);
                 },
                 ephemeral: true,
@@ -63,13 +63,13 @@ public partial class ActivityModule
                         .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
                         .ConfigureAwait(false);
 
-                    await FollowupAsync(embed: _buildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
+                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
                         .ConfigureAwait(false);
                 },
                 ephemeral: true,
                 failureMessage: "Failed to retrieve the current week activity (internal error). Please try again later. If the issue persists, please contact an admin.");
 
-        private static EmbedBuilder _buildWeekActivityEmbed(Entities.ClubMemberWeekActivity activity, string nickname)
+        private static EmbedBuilder BuildWeekActivityEmbed(Entities.ClubMemberWeekActivity activity, string nickname)
         {
             var labelRow = string.Join(" ", activity.DailyMissions.Select(d => d.Date.DayOfWeek switch
             {

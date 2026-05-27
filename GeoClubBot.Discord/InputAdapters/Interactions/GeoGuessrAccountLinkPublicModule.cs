@@ -25,7 +25,7 @@ public class GeoGuessrAccountLinkPublicModule(
             {
                 var executingUser = Context.User as SocketGuildUser;
 
-                if (!_tryParseUserIdFromProfileLink(shareProfileLink, out var geoGuessrUserId) || geoGuessrUserId is null)
+                if (!TryParseUserIdFromProfileLink(shareProfileLink, out var geoGuessrUserId) || geoGuessrUserId is null)
                 {
                     await FollowupAsync("Account link failed: The profile link was in the wrong format.\n\n" +
                                         "The link should look something like this: https://www.geoguessr.com/user/62c353a29d0d57e7b9a3383f. " +
@@ -106,12 +106,12 @@ public class GeoGuessrAccountLinkPublicModule(
                                     $"Here is your one time password: **{oneTimePassword}**\n\n" +
                                     "The admin will then complete your request and you will get notified.", ephemeral: true).ConfigureAwait(false);
 
-                await _sendAdminAccountLinkingStartedMessageAsync(executingUser, geoGuessrUserId).ConfigureAwait(false);
+                await SendAdminAccountLinkingStartedMessageAsync(executingUser, geoGuessrUserId).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Account link failed: Internal error. Try again later. If the problem persists, please contact an admin.");
 
-    private bool _tryParseUserIdFromProfileLink(string profileLink, out string? userId)
+    private bool TryParseUserIdFromProfileLink(string profileLink, out string? userId)
     {
         userId = null;
 
@@ -125,7 +125,7 @@ public class GeoGuessrAccountLinkPublicModule(
         return true;
     }
 
-    private async Task _sendAdminAccountLinkingStartedMessageAsync(SocketGuildUser executingUser, string geoGuessrUserId)
+    private async Task SendAdminAccountLinkingStartedMessageAsync(SocketGuildUser executingUser, string geoGuessrUserId)
     {
         var adminTextChannel = Context.Guild.GetTextChannel(_accountLinkingAdminChannelId);
 

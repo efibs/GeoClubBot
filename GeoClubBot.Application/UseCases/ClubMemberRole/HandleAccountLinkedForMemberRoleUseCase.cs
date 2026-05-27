@@ -9,7 +9,7 @@ using UseCases.OutputPorts.Discord;
 namespace UseCases.UseCases.ClubMemberRole;
 
 public class HandleAccountLinkedForMemberRoleUseCase(
-    IUnitOfWork unitOfWork,
+    IClubMemberRepository clubMembers,
     IDiscordServerRolesAccess rolesAccess,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     ILogger<HandleAccountLinkedForMemberRoleUseCase> logger)
@@ -21,7 +21,7 @@ public class HandleAccountLinkedForMemberRoleUseCase(
         {
             // Do not sync the member here to avoid duplicate role-add when the corresponding
             // PlayerJoinedClubEvent fires for a freshly-synced user.
-            var clubMember = await unitOfWork.ClubMembers
+            var clubMember = await clubMembers
                 .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 

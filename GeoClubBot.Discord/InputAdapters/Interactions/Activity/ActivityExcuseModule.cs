@@ -75,21 +75,20 @@ public partial class ActivityModule
                 return;
             }
 
-            var updatedExcuse = await Mediator
+            var result = await Mediator
                 .Send(new UpdateExcuseCommand(excuseIdGuid, from, to))
                 .ConfigureAwait(false);
 
-            if (updatedExcuse == null)
+            if (result.IsFailure)
             {
-                await RespondAsync($"Excuse '{excuseIdGuid}' does not exist.",
-                    ephemeral: true).ConfigureAwait(false);
+                await RespondAsync(FriendlyMessageFor(result.Error), ephemeral: true).ConfigureAwait(false);
+                return;
             }
-            else
-            {
-                await RespondAsync(
-                    $"Excuse with id {excuseIdGuid} was updated to the time range **{updatedExcuse.From:D}** to **{updatedExcuse.To:D}**.")
-                    .ConfigureAwait(false);
-            }
+
+            var updatedExcuse = result.Value;
+            await RespondAsync(
+                $"Excuse with id {excuseIdGuid} was updated to the time range **{updatedExcuse.From:D}** to **{updatedExcuse.To:D}**.")
+                .ConfigureAwait(false);
         }
 
         [SlashCommand("remove", "Remove an excuse for a player given its id")]

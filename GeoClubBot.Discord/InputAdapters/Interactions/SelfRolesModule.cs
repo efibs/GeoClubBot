@@ -19,25 +19,25 @@ public class SelfRolesModule(ISender mediator, ILogger<SelfRolesModule> logger, 
     [SlashCommand("select", "Select the roles you would like to have")]
     public Task SelectSelfRolesSlashCommandAsync() =>
         ExecuteAsync(
-            _ => _handleSelectSelfRolesStartedAsync(),
+            _ => HandleSelectSelfRolesStartedAsync(),
             ephemeral: true,
             failureMessage: "Failed to open self role selection. Please try again later. If the issue persists, please contact an admin.");
 
     [ComponentInteraction(ComponentIds.SelfRolesSelectButtonId, ignoreGroupNames: true)]
     public Task SelectSelfRolesButtonPressedAsync() =>
         ExecuteAsync(
-            _ => _handleSelectSelfRolesStartedAsync(),
+            _ => HandleSelectSelfRolesStartedAsync(),
             ephemeral: true,
             failureMessage: "Failed to open self role selection. Please try again later. If the issue persists, please contact an admin.");
 
     [ComponentInteraction($"{ComponentIds.SelfRolesSelectMenuId}:*", ignoreGroupNames: true)]
     public Task HandleSelfRolesSelectionAsync(string userId, string[] selectedRoleIdStrings) =>
         ExecuteAsync(
-            _ => _handleSelectionAsync(userId, selectedRoleIdStrings),
+            _ => HandleSelectionAsync(userId, selectedRoleIdStrings),
             ephemeral: true,
             failureMessage: "Failed to update self roles. Please try again later. If the issue persists, please contact an admin.");
 
-    private async Task _handleSelectionAsync(string userId, string[] selectedRoleIdStrings)
+    private async Task HandleSelectionAsync(string userId, string[] selectedRoleIdStrings)
     {
         if (Context.User.Id.ToString() != userId)
         {
@@ -81,7 +81,7 @@ public class SelfRolesModule(ISender mediator, ILogger<SelfRolesModule> logger, 
         await FollowupAsync(msgBuilder.ToString(), ephemeral: true).ConfigureAwait(false);
     }
 
-    private async Task _handleSelectSelfRolesStartedAsync()
+    private async Task HandleSelectSelfRolesStartedAsync()
     {
         var user = Context.Interaction.User as SocketGuildUser
             ?? throw new InvalidOperationException("User is not a SocketGuildUser");

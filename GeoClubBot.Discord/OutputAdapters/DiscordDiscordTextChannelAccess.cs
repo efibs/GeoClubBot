@@ -28,7 +28,7 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
             options.Topic = description;
             
             // Get the overwrites
-            var overwrites = _getOverwrites(guild, allowedDiscordUserIds, allowedRoleIds);
+            var overwrites = GetOverwrites(guild, allowedDiscordUserIds, allowedRoleIds);
             
             // Set to private
             options.PermissionOverwrites = overwrites;
@@ -115,7 +115,7 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
         return latestMessage?.Id;
     }
 
-    private List<Overwrite> _getOverwrites(SocketGuild guild, IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds)
+    private List<Overwrite> GetOverwrites(SocketGuild guild, IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds)
     {
         // Get the overwrites for the allowed users
         var allowedUsersOverwrites = allowedDiscordUserIds?

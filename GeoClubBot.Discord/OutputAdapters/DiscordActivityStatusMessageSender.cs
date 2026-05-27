@@ -40,7 +40,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
 
         // Build the message first part of the message
         var messageString =
-            _buildStatusUpdateMessageBeginningString(
+            BuildStatusUpdateMessageBeginningString(
                 playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList(), clubName, minXP);
 
         // Send the message
@@ -57,7 +57,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
             var playersChunk = playersWithFailedRequirement.Skip(skipCount).Take(MaxNumPlayersPerMessage).ToList();
 
             // Append the players to the string builder
-            _appendPlayers(builder, playersChunk);
+            AppendPlayers(builder, playersChunk);
 
             // Send the message
             await channel.SendMessageAsync(builder.ToString()).ConfigureAwait(false);
@@ -75,14 +75,14 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         if (playersWithIndividualTargets.Any())
         {
             // Build the messages for the players with individual targets
-            var playersWithIndividualTargetsMessage = _buildIndividualTargetPlayersMessage(playersWithIndividualTargets);
+            var playersWithIndividualTargetsMessage = BuildIndividualTargetPlayersMessage(playersWithIndividualTargets);
             
             // Send the message
             await channel.SendMessageAsync(playersWithIndividualTargetsMessage).ConfigureAwait(false);
         }
     }
 
-    private string _buildStatusUpdateMessageBeginningString(List<ClubMemberActivityStatus> players, string clubName, int minXP)
+    private string BuildStatusUpdateMessageBeginningString(List<ClubMemberActivityStatus> players, string clubName, int minXP)
     {
         // Create a string builder
         var builder = new StringBuilder($"**======= Activity status update - {clubName} =======**\n\n");
@@ -99,12 +99,12 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         }
 
         // Append the players
-        _appendPlayers(builder, players);
+        AppendPlayers(builder, players);
 
         return builder.ToString();
     }
 
-    private void _appendPlayers(StringBuilder builder, List<ClubMemberActivityStatus> players)
+    private void AppendPlayers(StringBuilder builder, List<ClubMemberActivityStatus> players)
     {
         // For every player that failed the requirement
         foreach (var player in players)
@@ -210,7 +210,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         }
     }
 
-    private string _buildIndividualTargetPlayersMessage(List<ClubMemberActivityStatus> playersWithIndividualTarget)
+    private string BuildIndividualTargetPlayersMessage(List<ClubMemberActivityStatus> playersWithIndividualTarget)
     {
         // Create the builder
         var builder = new StringBuilder("​\nPlayers that have an individual target:");

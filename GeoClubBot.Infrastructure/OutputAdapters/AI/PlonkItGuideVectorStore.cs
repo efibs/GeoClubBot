@@ -46,7 +46,7 @@ public partial class PlonkItGuideVectorStore(
 
             if (!exists)
             {
-                var connectionExists = await _testConnectionsAsync().ConfigureAwait(false);
+                var connectionExists = await TestConnectionsAsync().ConfigureAwait(false);
 
                 if (connectionExists == false)
                 {
@@ -63,7 +63,7 @@ public partial class PlonkItGuideVectorStore(
                     }
                 ).ConfigureAwait(false);
 
-                await foreach (var statusUpdate in _initPlonkItStoreAsync().ConfigureAwait(false))
+                await foreach (var statusUpdate in InitPlonkItStoreAsync().ConfigureAwait(false))
                 {
                     logger.LogDebug(statusUpdate);
                 }
@@ -83,7 +83,7 @@ public partial class PlonkItGuideVectorStore(
 
     public async IAsyncEnumerable<string> RebuildStoreAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var connectionExists = await _testConnectionsAsync().ConfigureAwait(false);
+        var connectionExists = await TestConnectionsAsync().ConfigureAwait(false);
 
         if (connectionExists == false)
         {
@@ -112,7 +112,7 @@ public partial class PlonkItGuideVectorStore(
                 }
             ).ConfigureAwait(false);
 
-            await foreach (var statusUpdate in _initPlonkItStoreAsync().ConfigureAwait(false))
+            await foreach (var statusUpdate in InitPlonkItStoreAsync().ConfigureAwait(false))
             {
                 yield return statusUpdate;
             }
@@ -279,7 +279,7 @@ public partial class PlonkItGuideVectorStore(
 
     #region Private methods
 
-    private async Task<bool> _testConnectionsAsync()
+    private async Task<bool> TestConnectionsAsync()
     {
         var llmCategorizerConnectionExists = await embeddingTextProvider
             .TestConnectionAsync()
@@ -302,7 +302,7 @@ public partial class PlonkItGuideVectorStore(
         return true;
     }
 
-    private async Task _addSectionAsync(string text, string textForEmbedding, string source, string country)
+    private async Task AddSectionAsync(string text, string textForEmbedding, string source, string country)
     {
         LogAddingSectionForCountry(logger, country);
 
@@ -329,7 +329,7 @@ public partial class PlonkItGuideVectorStore(
         await client.UpsertAsync(collectionName, [point]).ConfigureAwait(false);
     }
 
-    private async IAsyncEnumerable<string> _initPlonkItStoreAsync()
+    private async IAsyncEnumerable<string> InitPlonkItStoreAsync()
     {
         yield return "Reading guides...";
 
@@ -353,7 +353,7 @@ public partial class PlonkItGuideVectorStore(
             var guideStatus = $"[{idx++ * 100.0M / guides.Data.Count:F2}%] Fetching '{guide.Title}': ";
 
             var statusUpdates =
-                _fetchPlonkItCountryPageAsync($"https://www.plonkit.net/{guide.Slug}", guide.Title, guide.Cat);
+                FetchPlonkItCountryPageAsync($"https://www.plonkit.net/{guide.Slug}", guide.Title, guide.Cat);
 
             await foreach (var statusUpdate in statusUpdates.ConfigureAwait(false))
             {
@@ -364,11 +364,11 @@ public partial class PlonkItGuideVectorStore(
         yield return "Initializing PlonkIt Guide done.";
     }
 
-    private async IAsyncEnumerable<string> _fetchPlonkItCountryPageAsync(string url, string guideTitle, ICollection<string> continents)
+    private async IAsyncEnumerable<string> FetchPlonkItCountryPageAsync(string url, string guideTitle, ICollection<string> continents)
     {
         yield return "Fetching Page...";
 
-        var pageContent = await _fetchPageContentsAsync(url).ConfigureAwait(false);
+        var pageContent = await FetchPageContentsAsync(url).ConfigureAwait(false);
 
         if (pageContent == null)
         {
@@ -429,7 +429,7 @@ public partial class PlonkItGuideVectorStore(
                         .GetEmbeddingTextAsync(guideTitle, innerDiv!.First().InnerText, continents)
                         .ConfigureAwait(false);
 
-                    await _addSectionAsync(content, embeddingText, source, country).ConfigureAwait(false);
+                    await AddSectionAsync(content, embeddingText, source, country).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
@@ -448,14 +448,14 @@ public partial class PlonkItGuideVectorStore(
         await producer.ConfigureAwait(false);
     }
 
-    private async Task<string?> _fetchPageContentsAsync(string url)
+    private async Task<string?> FetchPageContentsAsync(string url)
     {
         var retryCount = 0;
 
         tryAgain:
         try
         {
-            var browser = await _getBrowserAsync().ConfigureAwait(false);
+            var browser = await GetBrowserAsync().ConfigureAwait(false);
             var page = await browser.NewPageAsync().ConfigureAwait(false);
 
             await page.GoToAsync(url, new NavigationOptions
@@ -485,7 +485,7 @@ public partial class PlonkItGuideVectorStore(
         return null;
     }
 
-    private async Task<IBrowser> _getBrowserAsync()
+    private async Task<IBrowser> GetBrowserAsync()
     {
         if (_browser != null) return _browser;
         var browserFetcher = new BrowserFetcher();

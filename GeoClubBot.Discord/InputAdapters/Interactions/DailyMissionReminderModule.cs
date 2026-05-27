@@ -92,7 +92,7 @@ public class DailyMissionReminderModule(
                 }
 
                 // Convert UTC time back to local for display
-                var displayTime = _convertToLocal(reminder.ReminderTimeUtc, reminder.TimeZoneId);
+                var displayTime = ConvertToLocal(reminder.ReminderTimeUtc, reminder.TimeZoneId);
                 var tzDisplay = reminder.TimeZoneId ?? "UTC";
                 var messageDisplay = string.IsNullOrWhiteSpace(reminder.CustomMessage) ? "Default" : reminder.CustomMessage;
                 var lastSentDisplay = reminder.LastSentDateUtc?.ToString("yyyy-MM-dd") ?? "Never";
@@ -108,7 +108,7 @@ public class DailyMissionReminderModule(
             ephemeral: true,
             failureMessage: "Failed to check the daily reminder status. Please try again later.");
 
-    private static TimeOnly _convertToLocal(TimeOnly utcTime, string? timeZoneId)
+    private static TimeOnly ConvertToLocal(TimeOnly utcTime, string? timeZoneId)
     {
         if (string.IsNullOrWhiteSpace(timeZoneId))
         {

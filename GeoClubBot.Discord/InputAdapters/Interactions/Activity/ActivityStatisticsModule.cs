@@ -121,7 +121,7 @@ public partial class ActivityModule
                         return;
                     }
 
-                    var message = _buildLeaderboardMessage(leaderboard!, inputClubName!, periods);
+                    var message = BuildLeaderboardMessage(leaderboard!, inputClubName!, periods);
 
                     await FollowupAsync(message, ephemeral: true)
                         .ConfigureAwait(false);
@@ -129,7 +129,7 @@ public partial class ActivityModule
                 ephemeral: true,
                 failureMessage: "Failed to fetch average leaderboard. Please try again later.");
 
-        private static string _buildLeaderboardMessage(List<ClubMemberAverageXp> leaderboard, string clubName, int historyDepth)
+        private static string BuildLeaderboardMessage(List<ClubMemberAverageXp> leaderboard, string clubName, int historyDepth)
         {
             if (leaderboard.Count > 0)
             {

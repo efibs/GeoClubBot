@@ -8,7 +8,7 @@ using UseCases.OutputPorts.Discord;
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
-    IUnitOfWork unitOfWork,
+    IClubMemberRepository clubMembers,
     IDiscordTextChannelAccess discordTextChannelAccess,
     ILogger<HandleUserNicknameChangedForPrivateChannelUseCase> logger)
     : INotificationHandler<UserUpdatedEvent>
@@ -27,7 +27,7 @@ public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
                 return;
             }
 
-            var clubMember = await unitOfWork.ClubMembers
+            var clubMember = await clubMembers
                 .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 

@@ -18,11 +18,11 @@ public partial class InteractionHandler
         _logger = logger;
         _config = config.Value;
 
-        client.Ready += _createSlashCommandsAsync;
-        client.InteractionCreated += _handleInteractionAsync;
+        client.Ready += CreateSlashCommandsAsync;
+        client.InteractionCreated += HandleInteractionAsync;
     }
 
-    private async Task _createSlashCommandsAsync()
+    private async Task CreateSlashCommandsAsync()
     {
         try
         {
@@ -44,7 +44,7 @@ public partial class InteractionHandler
         }
     }
 
-    private async Task _handleInteractionAsync(SocketInteraction interaction)
+    private async Task HandleInteractionAsync(SocketInteraction interaction)
     {
         // Log debug
         LogHandlingInteractionOnGuildInChannel(interaction.GuildId, interaction.ChannelId);

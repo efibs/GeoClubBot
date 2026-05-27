@@ -9,17 +9,17 @@ public class UserJoinedService(DiscordSocketClient client, IConfiguration config
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        client.UserJoined += _onUserJoinedAsync;
+        client.UserJoined += OnUserJoinedAsync;
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        client.UserJoined -= _onUserJoinedAsync;
+        client.UserJoined -= OnUserJoinedAsync;
         return Task.CompletedTask;
     }
 
-    private async Task _onUserJoinedAsync(SocketGuildUser user)
+    private async Task OnUserJoinedAsync(SocketGuildUser user)
     {
         // If this is not the configured server
         if (user.Guild.Id != _serverId)
@@ -34,12 +34,12 @@ public class UserJoinedService(DiscordSocketClient client, IConfiguration config
         var welcomeChannel = guild.GetTextChannel(_welcomeTextChannelId);
         
         // Get the message content
-        var messageContent = _buildMessage(user, guild);
+        var messageContent = BuildMessage(user, guild);
 
         await welcomeChannel.SendMessageAsync(messageContent).ConfigureAwait(false);
     }
 
-    private string _buildMessage(SocketGuildUser user, SocketGuild guild)
+    private string BuildMessage(SocketGuildUser user, SocketGuild guild)
     {
         // Replace the user placeholder with a mention to the user
         var messageText = _welcomeMessageTemplate.Replace("{{User}}", user.Mention);
