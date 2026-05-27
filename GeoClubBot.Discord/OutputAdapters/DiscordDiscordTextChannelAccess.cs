@@ -10,7 +10,7 @@ namespace GeoClubBot.Discord.OutputAdapters;
 public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOptions<DiscordConfiguration> config) : IDiscordTextChannelAccess
 {
     public async Task<ulong?> CreatePrivateTextChannelAsync(ulong categoryId, string name, string description,
-        IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds)
+        IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
@@ -37,7 +37,7 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
         return createdTextChannel?.Id;
     }
 
-    public async Task UpdateTextChannelAsync(TextChannel newTextChannel)
+    public async Task UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
@@ -64,7 +64,7 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
         }).ConfigureAwait(false);
     }
     
-    public async Task<bool> DeleteTextChannelAsync(ulong textChannelId)
+    public async Task<bool> DeleteTextChannelAsync(ulong textChannelId, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
@@ -85,7 +85,7 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
         return true;
     }
 
-    public async Task<ulong?> ReadLastMessageOfUserAsync(ulong userId, ulong channelId, int numMessageSearchlimit)
+    public async Task<ulong?> ReadLastMessageOfUserAsync(ulong userId, ulong channelId, int numMessageSearchlimit, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);

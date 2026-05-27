@@ -12,42 +12,42 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
         dbContext.Add(user);
     }
 
-    public async Task<GeoGuessrUser?> ReadUserByUserIdAsync(string userId)
+    public async Task<GeoGuessrUser?> ReadUserByUserIdAsync(string userId, CancellationToken cancellationToken = default)
     {
         return await dbContext.GeoGuessrUsers
             .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.UserId == userId)
+            .FirstOrDefaultAsync(u => u.UserId == userId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<GeoGuessrUser?> ReadForUpdateByUserIdAsync(string userId)
+    public async Task<GeoGuessrUser?> ReadForUpdateByUserIdAsync(string userId, CancellationToken cancellationToken = default)
     {
         return await dbContext.GeoGuessrUsers
-            .FirstOrDefaultAsync(u => u.UserId == userId)
+            .FirstOrDefaultAsync(u => u.UserId == userId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<GeoGuessrUser?> ReadUserByDiscordUserIdAsync(ulong discordUserId)
+    public async Task<GeoGuessrUser?> ReadUserByDiscordUserIdAsync(ulong discordUserId, CancellationToken cancellationToken = default)
     {
         return await dbContext.GeoGuessrUsers
             .AsNoTracking()
-            .SingleOrDefaultAsync(u => u.DiscordUserId == discordUserId)
+            .SingleOrDefaultAsync(u => u.DiscordUserId == discordUserId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<GeoGuessrUser?> ReadForUpdateByDiscordUserIdAsync(ulong discordUserId)
+    public async Task<GeoGuessrUser?> ReadForUpdateByDiscordUserIdAsync(ulong discordUserId, CancellationToken cancellationToken = default)
     {
         return await dbContext.GeoGuessrUsers
-            .SingleOrDefaultAsync(u => u.DiscordUserId == discordUserId)
+            .SingleOrDefaultAsync(u => u.DiscordUserId == discordUserId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<List<GeoGuessrUser>> ReadAllLinkedUsersAsync()
+    public async Task<List<GeoGuessrUser>> ReadAllLinkedUsersAsync(CancellationToken cancellationToken = default)
     {
         return await dbContext.GeoGuessrUsers
             .AsNoTracking()
             .Where(u => u.DiscordUserId.HasValue)
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 }

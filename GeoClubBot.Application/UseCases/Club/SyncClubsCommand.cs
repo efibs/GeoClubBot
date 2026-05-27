@@ -27,10 +27,10 @@ public sealed class SyncClubsHandler(
             var clubId = configClub.ClubId;
             var client = geoGuessrClientFactory.CreateClient(clubId);
 
-            var clubDto = await client.ReadClubAsync(clubId).ConfigureAwait(false);
+            var clubDto = await client.ReadClubAsync(clubId, cancellationToken).ConfigureAwait(false);
             var club = ClubAssembler.AssembleEntity(clubDto);
 
-            await clubs.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
+            await clubs.CreateOrUpdateClubAsync(club, cancellationToken).ConfigureAwait(false);
 
             if (clubId == geoGuessrConfig.Value.MainClub.ClubId)
             {
@@ -38,7 +38,7 @@ public sealed class SyncClubsHandler(
             }
 
             var dbMembers = await clubMembers
-                .ReadClubMembersByClubIdAsync(clubId)
+                .ReadClubMembersByClubIdAsync(clubId, cancellationToken)
                 .ConfigureAwait(false);
             foreach (var dbMember in dbMembers)
             {

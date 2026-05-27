@@ -2,7 +2,7 @@ namespace UseCases.OutputPorts.AI;
 
 public interface IPlonkItGuideVectorStore
 {
-    Task InitializeAsync();
+    Task InitializeAsync(CancellationToken cancellationToken = default);
 
-    IAsyncEnumerable<string> RebuildStoreAsync();
+    IAsyncEnumerable<string> RebuildStoreAsync(CancellationToken cancellationToken = default);
 }

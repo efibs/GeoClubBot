@@ -10,5 +10,5 @@ public sealed class ReadAllStrikesHandler(IStrikesRepository strikes)
     : MediatR.IRequestHandler<ReadAllStrikesQuery, List<ClubMemberStrike>>
 {
     public Task<List<ClubMemberStrike>> Handle(ReadAllStrikesQuery request, CancellationToken cancellationToken) =>
-        strikes.ReadAllStrikesAsync();
+        strikes.ReadAllStrikesAsync(cancellationToken);
 }

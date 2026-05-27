@@ -24,9 +24,9 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         }
 
         await ExecuteAsync(
-            async _ =>
+            async ct =>
             {
-                var statusUpdates = _plonkItGuideVectorStore.RebuildStoreAsync();
+                var statusUpdates = _plonkItGuideVectorStore.RebuildStoreAsync(ct);
 
                 var index = 0;
                 await foreach (var statusUpdate in statusUpdates.ConfigureAwait(false))

@@ -42,7 +42,7 @@ public sealed partial class ActivityQueriesHandler(
 
     public async Task<DateTimeOffset?> Handle(GetLastCheckTimeQuery request, CancellationToken cancellationToken)
     {
-        var club = await clubs.ReadClubByIdAsync(_mainClubId).ConfigureAwait(false);
+        var club = await clubs.ReadClubByIdAsync(_mainClubId, cancellationToken).ConfigureAwait(false);
         if (club is null)
         {
             LogClubNotFound(logger, _mainClubId);
@@ -61,7 +61,7 @@ public sealed partial class ActivityQueriesHandler(
             .ToList();
 
         var clubMember = await clubMembers
-            .ReadClubMemberByUserIdAsync(request.UserId)
+            .ReadClubMemberByUserIdAsync(request.UserId, cancellationToken)
             .ConfigureAwait(false);
 
         if (clubMember?.ClubId is null)
@@ -74,7 +74,7 @@ public sealed partial class ActivityQueriesHandler(
         }
 
         var weekActivities = await activityReader
-            .ReadActivitiesSinceAsync(clubMember.ClubId.Value, startOfWeekUtc)
+            .ReadActivitiesSinceAsync(clubMember.ClubId.Value, startOfWeekUtc, cancellationToken)
             .ConfigureAwait(false);
 
         var memberActivities = weekActivities.Where(a => a.UserId == request.UserId).ToList();
@@ -101,13 +101,13 @@ public sealed partial class ActivityQueriesHandler(
 
     public async Task<ClubStatistics?> Handle(ClubStatisticsQuery request, CancellationToken cancellationToken)
     {
-        var club = await clubs.ReadClubByIdAsync(_mainClubId).ConfigureAwait(false);
+        var club = await clubs.ReadClubByIdAsync(_mainClubId, cancellationToken).ConfigureAwait(false);
         if (club is null)
         {
             return null;
         }
 
-        var entries = await history.ReadHistoryEntriesAsync(club.ClubId).ConfigureAwait(false);
+        var entries = await history.ReadHistoryEntriesAsync(club.ClubId, cancellationToken).ConfigureAwait(false);
 
         var averagePointsEarned = entries
             .GroupBy(e => e.UserId)
@@ -137,7 +137,7 @@ public sealed partial class ActivityQueriesHandler(
     public async Task<PlayerStatistics?> Handle(PlayerStatisticsQuery request, CancellationToken cancellationToken)
     {
         var clubMember = await clubMembers
-            .ReadClubMemberByNicknameAsync(request.Nickname)
+            .ReadClubMemberByNicknameAsync(request.Nickname, cancellationToken)
             .ConfigureAwait(false);
 
         if (clubMember?.ClubId is null)
@@ -146,7 +146,7 @@ public sealed partial class ActivityQueriesHandler(
         }
 
         var entries = await history
-            .ReadHistoryEntriesByPlayerNicknameAsync(request.Nickname, clubMember.ClubId.Value)
+            .ReadHistoryEntriesByPlayerNicknameAsync(request.Nickname, clubMember.ClubId.Value, cancellationToken)
             .ConfigureAwait(false);
 
         if (entries is null)

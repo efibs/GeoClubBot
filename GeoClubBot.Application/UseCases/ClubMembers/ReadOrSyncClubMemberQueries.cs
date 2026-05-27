@@ -25,7 +25,7 @@ public sealed class ReadOrSyncClubMemberHandler(
     public Task<Result<ClubMember>> Handle(ReadOrSyncClubMemberByNicknameQuery request, CancellationToken cancellationToken) =>
         ReadOrSyncAsync(
             request.Nickname,
-            members.ReadClubMemberByNicknameAsync,
+            (value, ct) => members.ReadClubMemberByNicknameAsync(value, ct),
             m => m.User.Nickname == request.Nickname,
             $"Club member with nickname '{request.Nickname}' was not found.",
             cancellationToken);
@@ -33,19 +33,19 @@ public sealed class ReadOrSyncClubMemberHandler(
     public Task<Result<ClubMember>> Handle(ReadOrSyncClubMemberByUserIdQuery request, CancellationToken cancellationToken) =>
         ReadOrSyncAsync(
             request.UserId,
-            members.ReadClubMemberByUserIdAsync,
+            (value, ct) => members.ReadClubMemberByUserIdAsync(value, ct),
             m => m.User.UserId == request.UserId,
             $"Club member with user id '{request.UserId}' was not found.",
             cancellationToken);
 
     private async Task<Result<ClubMember>> ReadOrSyncAsync<TLookup>(
         TLookup lookupValue,
-        Func<TLookup, Task<ClubMember?>> retriever,
+        Func<TLookup, CancellationToken, Task<ClubMember?>> retriever,
         Func<ClubMember, bool> apiMemberPredicate,
         string notFoundMessage,
         CancellationToken cancellationToken)
     {
-        var clubMember = await retriever(lookupValue).ConfigureAwait(false);
+        var clubMember = await retriever(lookupValue, cancellationToken).ConfigureAwait(false);
         if (clubMember is not null)
         {
             return clubMember;
@@ -54,7 +54,7 @@ public sealed class ReadOrSyncClubMemberHandler(
         foreach (var club in geoGuessrConfig.Value.Clubs)
         {
             var client = geoGuessrClientFactory.CreateClient(club.ClubId);
-            var apiResponse = await client.ReadClubMembersAsync(club.ClubId).ConfigureAwait(false);
+            var apiResponse = await client.ReadClubMembersAsync(club.ClubId, cancellationToken).ConfigureAwait(false);
             var apiMembers = ClubMemberAssembler.AssembleEntities(apiResponse, club.ClubId);
 
             var match = apiMembers.FirstOrDefault(apiMemberPredicate);

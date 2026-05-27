@@ -21,9 +21,9 @@ public sealed class DistributeDailyChallengeRolesHandler(
 
     public async Task<Unit> Handle(DistributeDailyChallengeRolesCommand request, CancellationToken cancellationToken)
     {
-        await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_firstRoleId).ConfigureAwait(false);
-        await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_secondRoleId).ConfigureAwait(false);
-        await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_thirdRoleId).ConfigureAwait(false);
+        await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_firstRoleId, cancellationToken).ConfigureAwait(false);
+        await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_secondRoleId, cancellationToken).ConfigureAwait(false);
+        await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_thirdRoleId, cancellationToken).ConfigureAwait(false);
 
         var firstPlayersUserIds = new HashSet<string>();
         var secondPlayersUserIds = new HashSet<string>();
@@ -62,9 +62,9 @@ public sealed class DistributeDailyChallengeRolesHandler(
         var secondPlayers = await mediator.Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(secondPlayersUserIds), cancellationToken).ConfigureAwait(false);
         var thirdPlayers = await mediator.Send(new GeoGuessrUserIdsToDiscordUserIdsQuery(thirdPlayersUserIds), cancellationToken).ConfigureAwait(false);
 
-        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(firstPlayers, _firstRoleId).ConfigureAwait(false);
-        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(secondPlayers, _secondRoleId).ConfigureAwait(false);
-        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(thirdPlayers, _thirdRoleId).ConfigureAwait(false);
+        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(firstPlayers, _firstRoleId, cancellationToken).ConfigureAwait(false);
+        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(secondPlayers, _secondRoleId, cancellationToken).ConfigureAwait(false);
+        await discordServerRolesAccess.AddRoleToMembersByUserIdsAsync(thirdPlayers, _thirdRoleId, cancellationToken).ConfigureAwait(false);
 
         return Unit.Value;
     }

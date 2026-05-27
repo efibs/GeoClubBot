@@ -6,7 +6,7 @@ namespace GeoClubBot.MockGeoGuessr.Client;
 
 public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrClient
 {
-    public Task<List<ClubMemberDto>> ReadClubMembersAsync(Guid clubId)
+    public Task<List<ClubMemberDto>> ReadClubMembersAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         if (dataStore.ClubMembers.TryGetValue(clubId, out var members))
             return Task.FromResult(members.Values.ToList());
@@ -14,7 +14,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         return Task.FromResult(new List<ClubMemberDto>());
     }
 
-    public Task<ClubDto> ReadClubAsync(Guid clubId)
+    public Task<ClubDto> ReadClubAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         if (!dataStore.Clubs.TryGetValue(clubId, out var club))
             throw new HttpRequestException($"Club {clubId} not found", null, HttpStatusCode.NotFound);
@@ -28,7 +28,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         return Task.FromResult(club);
     }
 
-    public Task<UserDto> ReadUserAsync(string userId)
+    public Task<UserDto> ReadUserAsync(string userId, CancellationToken cancellationToken = default)
     {
         if (!dataStore.Users.TryGetValue(userId, out var user))
             throw new HttpRequestException($"User {userId} not found", null, HttpStatusCode.NotFound);
@@ -36,7 +36,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         return Task.FromResult(user);
     }
 
-    public Task<PostChallengeResponseDto> CreateChallengeAsync(PostChallengeRequestDto request)
+    public Task<PostChallengeResponseDto> CreateChallengeAsync(PostChallengeRequestDto request, CancellationToken cancellationToken = default)
     {
         var token = dataStore.GenerateChallengeToken();
         dataStore.Challenges[token] = request;
@@ -45,7 +45,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         return Task.FromResult(new PostChallengeResponseDto { Token = token });
     }
 
-    public Task<ChallengeResultHighscoresDto> ReadHighscoresAsync(string challengeId, ReadHighscoresQueryParams @params)
+    public Task<ChallengeResultHighscoresDto> ReadHighscoresAsync(string challengeId, ReadHighscoresQueryParams @params, CancellationToken cancellationToken = default)
     {
         var items = new List<ChallengeResultItemDto>();
 
@@ -55,7 +55,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         return Task.FromResult(new ChallengeResultHighscoresDto { Items = items });
     }
 
-    public Task<DailyMissionsResponseDto> ReadDailyMissionsAsync()
+    public Task<DailyMissionsResponseDto> ReadDailyMissionsAsync(CancellationToken cancellationToken = default)
     {
         List<DailyMissionDto> snapshot;
         lock (dataStore.DailyMissions)
@@ -70,7 +70,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         });
     }
 
-    public Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params)
+    public Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default)
     {
         var response = new ReadClubActivitiesResponseDto
         {

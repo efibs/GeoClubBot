@@ -27,7 +27,7 @@ public sealed class UpdateSelfRolesMessageHandler(
         var ownUserId = discordSelfUserAccess.GetSelfUserId();
 
         var oldMessageId = await discordTextChannelAccess
-            .ReadLastMessageOfUserAsync(ownUserId, _textChannelId, 100)
+            .ReadLastMessageOfUserAsync(ownUserId, _textChannelId, 100, cancellationToken)
             .ConfigureAwait(false);
 
         var oldMessageExists = oldMessageId.HasValue;
@@ -37,17 +37,17 @@ public sealed class UpdateSelfRolesMessageHandler(
         {
             case (false, true):
                 await discordMessageAccess
-                    .SendSelfRolesMessageAsync(_textChannelId, _selfRoleSettings)
+                    .SendSelfRolesMessageAsync(_textChannelId, _selfRoleSettings, cancellationToken)
                     .ConfigureAwait(false);
                 break;
             case (true, true):
                 await discordMessageAccess
-                    .UpdateSelfRolesMessageAsync(_textChannelId, oldMessageId!.Value, _selfRoleSettings)
+                    .UpdateSelfRolesMessageAsync(_textChannelId, oldMessageId!.Value, _selfRoleSettings, cancellationToken)
                     .ConfigureAwait(false);
                 break;
             case (true, false):
                 await discordMessageAccess
-                    .DeleteMessageAsync(oldMessageId!.Value, _textChannelId)
+                    .DeleteMessageAsync(oldMessageId!.Value, _textChannelId, cancellationToken)
                     .ConfigureAwait(false);
                 break;
         }

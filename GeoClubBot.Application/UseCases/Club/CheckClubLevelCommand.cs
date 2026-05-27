@@ -25,7 +25,7 @@ public sealed partial class CheckClubLevelHandler(
         var mainClubId = geoGuessrConfig.Value.MainClub.ClubId;
 
         await tracker
-            .EnsureInitializedAsync(clubs, configuredClubs.Select(c => c.ClubId))
+            .EnsureInitializedAsync(clubs, configuredClubs.Select(c => c.ClubId), cancellationToken)
             .ConfigureAwait(false);
 
         logger.LogDebug("Checking club levels...");
@@ -33,7 +33,7 @@ public sealed partial class CheckClubLevelHandler(
         foreach (var clubEntry in configuredClubs)
         {
             var client = geoGuessrClientFactory.CreateClient(clubEntry.ClubId);
-            var clubDto = await client.ReadClubAsync(clubEntry.ClubId).ConfigureAwait(false);
+            var clubDto = await client.ReadClubAsync(clubEntry.ClubId, cancellationToken).ConfigureAwait(false);
             var newLevel = clubDto.Level;
 
             var lastLevel = tracker.TryGet(clubEntry.ClubId);
@@ -52,7 +52,7 @@ public sealed partial class CheckClubLevelHandler(
             // Skip the "level up" notification when we're just seeding the tracker for the first time.
             if (lastLevel is not null)
             {
-                var tracked = await clubs.ReadForUpdateByIdAsync(clubEntry.ClubId).ConfigureAwait(false);
+                var tracked = await clubs.ReadForUpdateByIdAsync(clubEntry.ClubId, cancellationToken).ConfigureAwait(false);
                 if (tracked is null)
                 {
                     LogFailedToUpdateClubLevelClubDoesNotExits(clubEntry.ClubId);
@@ -63,7 +63,7 @@ public sealed partial class CheckClubLevelHandler(
 
                     foreach (var notifier in notifiers)
                     {
-                        await notifier.SendClubLevelUpEvent(tracked).ConfigureAwait(false);
+                        await notifier.SendClubLevelUpEvent(tracked, cancellationToken).ConfigureAwait(false);
                     }
                 }
             }

@@ -15,7 +15,7 @@ public class UnitOfWorkBehavior<TRequest, TResponse>(IUnitOfWork unitOfWork)
         if (IsCommand)
         {
             // SaveChangesAsync dispatches domain events that entities collected during the handler.
-            await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+            await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
 
         return response;

@@ -12,7 +12,7 @@ public sealed class ReadMemberStrikesHandler(IStrikesRepository strikes)
     public async Task<ClubMemberStrikeStatus?> Handle(ReadMemberStrikesQuery request, CancellationToken cancellationToken)
     {
         var memberStrikes = await strikes
-            .ReadStrikesByMemberNicknameAsync(request.MemberNickname)
+            .ReadStrikesByMemberNicknameAsync(request.MemberNickname, cancellationToken)
             .ConfigureAwait(false);
 
         if (memberStrikes is null)

@@ -11,7 +11,7 @@ namespace GeoClubBot.Discord.OutputAdapters;
 
 public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<DiscordConfiguration> config) : IDiscordMessageAccess
 {
-    public async Task SendMessageAsync(string message, ulong channelId)
+    public async Task SendMessageAsync(string message, ulong channelId, CancellationToken cancellationToken = default)
     {
         // Get the server
         var server = client.GetGuild(config.Value.ServerId);
@@ -35,7 +35,7 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
         await channel.SendMessageAsync(message).ConfigureAwait(false);
     }
 
-    public async Task SendSelfRolesMessageAsync(ulong channelId, IEnumerable<SelfRoleSetting> selfRoleSettings)
+    public async Task SendSelfRolesMessageAsync(ulong channelId, IEnumerable<SelfRoleSetting> selfRoleSettings, CancellationToken cancellationToken = default)
     {
         // Get the server
         var server = client.GetGuild(config.Value.ServerId);
@@ -69,7 +69,7 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
             .ConfigureAwait(false);
     }
 
-    public async Task UpdateSelfRolesMessageAsync(ulong channelId, ulong messageId, IEnumerable<SelfRoleSetting> selfRoleSettings)
+    public async Task UpdateSelfRolesMessageAsync(ulong channelId, ulong messageId, IEnumerable<SelfRoleSetting> selfRoleSettings, CancellationToken cancellationToken = default)
     {
         // Get the server
         var server = client.GetGuild(config.Value.ServerId);
@@ -114,7 +114,7 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
             .ConfigureAwait(false);
     }
 
-    public async Task DeleteMessageAsync(ulong messageId, ulong channelId)
+    public async Task DeleteMessageAsync(ulong messageId, ulong channelId, CancellationToken cancellationToken = default)
     {
         // Get the server
         var server = client.GetGuild(config.Value.ServerId);

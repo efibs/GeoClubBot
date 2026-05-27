@@ -27,7 +27,7 @@ public sealed partial class DailyMissionReminderHandlers(
     {
         var utcTime = ConvertToUtc(request.LocalTime, request.TimeZoneId);
 
-        var existing = await reminders.ReadReminderForUpdateAsync(request.DiscordUserId).ConfigureAwait(false);
+        var existing = await reminders.ReadReminderForUpdateAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
 
         if (existing is not null)
         {
@@ -47,7 +47,7 @@ public sealed partial class DailyMissionReminderHandlers(
 
     public async Task<bool> Handle(StopDailyMissionReminderCommand request, CancellationToken cancellationToken)
     {
-        var existing = await reminders.ReadReminderForUpdateAsync(request.DiscordUserId).ConfigureAwait(false);
+        var existing = await reminders.ReadReminderForUpdateAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
 
         if (existing is null)
         {
@@ -61,7 +61,7 @@ public sealed partial class DailyMissionReminderHandlers(
     }
 
     public Task<DomainDailyMissionReminder?> Handle(GetDailyMissionReminderStatusQuery request, CancellationToken cancellationToken) =>
-        reminders.ReadReminderAsync(request.DiscordUserId);
+        reminders.ReadReminderAsync(request.DiscordUserId, cancellationToken);
 
     private static TimeOnly ConvertToUtc(TimeOnly localTime, string? timeZoneId)
     {

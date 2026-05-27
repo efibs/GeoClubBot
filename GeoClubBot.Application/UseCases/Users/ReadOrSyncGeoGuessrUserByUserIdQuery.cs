@@ -18,7 +18,7 @@ public sealed partial class ReadOrSyncGeoGuessrUserByUserIdHandler(
 {
     public async Task<Result<GeoGuessrUser>> Handle(ReadOrSyncGeoGuessrUserByUserIdQuery request, CancellationToken cancellationToken)
     {
-        var existing = await users.ReadUserByUserIdAsync(request.UserId).ConfigureAwait(false);
+        var existing = await users.ReadUserByUserIdAsync(request.UserId, cancellationToken).ConfigureAwait(false);
         if (existing is not null)
         {
             return existing;
@@ -27,7 +27,7 @@ public sealed partial class ReadOrSyncGeoGuessrUserByUserIdHandler(
         try
         {
             var client = geoGuessrClientFactory.CreateUserProfileClient();
-            var dto = await client.ReadUserAsync(request.UserId).ConfigureAwait(false);
+            var dto = await client.ReadUserAsync(request.UserId, cancellationToken).ConfigureAwait(false);
 
             var created = GeoGuessrUser.Create(dto.Id, dto.Nick);
             users.AddUser(created);

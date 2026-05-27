@@ -18,7 +18,7 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
             // Avoid duplicate channel creation: if the user was just synced, the PlayerJoinedClubEvent
             // will pick this up. Only handle existing members here.
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(notification.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
             if (clubMember?.ClubId is null)
@@ -37,7 +37,7 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
                 .Send(new CreateMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
 
-            await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+            await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {

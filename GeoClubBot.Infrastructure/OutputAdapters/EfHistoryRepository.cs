@@ -9,88 +9,69 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
 {
     public List<ClubMemberHistoryEntry> CreateHistoryEntries(ICollection<ClubMemberHistoryEntry> entries)
     {
-        // Add the entities
         dbContext.AddRange(entries);
-        
         return entries.ToList();
     }
 
-    public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync(Guid clubId)
+    public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
-        // Read the entries
-        var entries = await dbContext.ClubMemberHistoryEntries
+        return await dbContext.ClubMemberHistoryEntries
             .Where(e => e.ClubId == clubId)
             .AsNoTracking()
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-
-        return entries;
     }
 
-    public async Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname, Guid clubId)
+    public async Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname, Guid clubId, CancellationToken cancellationToken = default)
     {
-        // Get if the player is tracked
         var playerExists = await dbContext.ClubMembers
             .Include(m => m.User)
-            .AnyAsync(m => m.User!.Nickname == playerNickname)
+            .AnyAsync(m => m.User!.Nickname == playerNickname, cancellationToken)
             .ConfigureAwait(false);
-        
-        // If the player is not tracked
+
         if (!playerExists)
         {
             return null;
         }
-        
-        // Read the entries
-        var entries = await dbContext.ClubMemberHistoryEntries
+
+        return await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
             .Include(e => e.ClubMember)
             .ThenInclude(m => m!.User)
             .Where(e => e.ClubMember!.User!.Nickname == playerNickname && e.ClubId == clubId)
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-
-        return entries;
     }
 
-    public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId)
+    public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
-        // Read the latest entries for members of this club
-        var latestEntries = await dbContext.ClubMemberHistoryEntries
+        return await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
             .Where(e => e.ClubId == clubId)
             .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries
                 .Where(ei => ei.UserId == e.UserId)
                 .Max(ei => ei.Timestamp))
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-
-        return latestEntries;
     }
 
-    public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesByClubIdAsync(Guid clubId)
+    public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
-        // Read all history entries for members of this club
-        var entries = await dbContext.ClubMemberHistoryEntries
+        return await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
             .Include(e => e.ClubMember)
             .ThenInclude(m => m!.User)
             .Where(e => e.ClubId == clubId)
             .OrderByDescending(e => e.Timestamp)
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-
-        return entries;
     }
 
-    public async Task<int> DeleteHistoryEntriesBeforeAsync(DateTimeOffset threshold)
+    public async Task<int> DeleteHistoryEntriesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default)
     {
-        // Delete the entries
-        var numDeleted = await dbContext.ClubMemberHistoryEntries
+        return await dbContext.ClubMemberHistoryEntries
             .Where(e => e.Timestamp < threshold)
-            .ExecuteDeleteAsync()
+            .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
-
-        return numDeleted;
     }
 }

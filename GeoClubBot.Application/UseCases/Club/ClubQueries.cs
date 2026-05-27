@@ -26,10 +26,10 @@ public sealed class ClubQueriesHandler(
     {
         if (string.IsNullOrWhiteSpace(request.ClubName))
         {
-            return await clubs.ReadClubByIdAsync(_defaultClubId).ConfigureAwait(false);
+            return await clubs.ReadClubByIdAsync(_defaultClubId, cancellationToken).ConfigureAwait(false);
         }
 
-        return await clubs.ReadClubByNameAsync(request.ClubName).ConfigureAwait(false);
+        return await clubs.ReadClubByNameAsync(request.ClubName, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<GetClubTodaysXpResult> Handle(GetClubTodaysXpQuery request, CancellationToken cancellationToken)
@@ -37,11 +37,11 @@ public sealed class ClubQueriesHandler(
         Entities.Club? club;
         if (string.IsNullOrWhiteSpace(request.ClubName))
         {
-            club = await clubs.ReadClubByIdAsync(_defaultClubId).ConfigureAwait(false);
+            club = await clubs.ReadClubByIdAsync(_defaultClubId, cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            club = await clubs.ReadClubByNameAsync(request.ClubName).ConfigureAwait(false);
+            club = await clubs.ReadClubByNameAsync(request.ClubName, cancellationToken).ConfigureAwait(false);
         }
 
         if (club is null)
@@ -50,7 +50,7 @@ public sealed class ClubQueriesHandler(
         }
 
         var activities = await activityReader
-            .ReadTodaysActivitiesAsync(club.ClubId)
+            .ReadTodaysActivitiesAsync(club.ClubId, cancellationToken)
             .ConfigureAwait(false);
 
         // Weekly missions are identified by the 1000 XP reward; everything else is a daily activity.

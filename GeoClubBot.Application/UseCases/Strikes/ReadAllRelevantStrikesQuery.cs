@@ -25,13 +25,13 @@ public sealed class ReadAllRelevantStrikesHandler(
             var client = geoGuessrClientFactory.CreateClient(club.ClubId);
 
             var clubMembers = await client
-                .ReadClubMembersAsync(club.ClubId)
+                .ReadClubMembersAsync(club.ClubId, cancellationToken)
                 .ConfigureAwait(false);
 
             // Batch-read the active strike counts for every member in one round-trip
             var userIds = clubMembers.Select(m => m.User.UserId).ToList();
             var activeStrikeCounts = await strikes
-                .ReadActiveStrikeCountsByMemberUserIdsAsync(userIds)
+                .ReadActiveStrikeCountsByMemberUserIdsAsync(userIds, cancellationToken)
                 .ConfigureAwait(false);
 
             foreach (var clubMember in clubMembers)

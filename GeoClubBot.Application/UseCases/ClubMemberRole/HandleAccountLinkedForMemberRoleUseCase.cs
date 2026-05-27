@@ -22,7 +22,7 @@ public class HandleAccountLinkedForMemberRoleUseCase(
             // Do not sync the member here to avoid duplicate role-add when the corresponding
             // PlayerJoinedClubEvent fires for a freshly-synced user.
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(notification.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
             if (clubMember?.ClubId is null)
@@ -37,7 +37,7 @@ public class HandleAccountLinkedForMemberRoleUseCase(
             }
 
             await rolesAccess
-                .AddRoleToMembersByUserIdsAsync([notification.DiscordUserId], roleId.Value)
+                .AddRoleToMembersByUserIdsAsync([notification.DiscordUserId], roleId.Value, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception e)

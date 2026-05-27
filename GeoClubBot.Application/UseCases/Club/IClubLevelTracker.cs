@@ -12,7 +12,7 @@ public interface IClubLevelTracker
     /// <summary>
     /// Seeds the tracker from the database on the first call. Subsequent calls are no-ops.
     /// </summary>
-    Task EnsureInitializedAsync(IClubRepository clubs, IEnumerable<Guid> clubIds);
+    Task EnsureInitializedAsync(IClubRepository clubs, IEnumerable<Guid> clubIds, CancellationToken cancellationToken = default);
 
     int? TryGet(Guid clubId);
 

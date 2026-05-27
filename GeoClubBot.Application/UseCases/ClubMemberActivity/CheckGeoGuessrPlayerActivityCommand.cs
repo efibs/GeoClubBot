@@ -43,7 +43,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         logger.LogDebug("Checking player activity for club {ClubId}...", clubId);
 
         var client = geoGuessrClientFactory.CreateClient(clubId);
-        var response = await client.ReadClubMembersAsync(clubId).ConfigureAwait(false);
+        var response = await client.ReadClubMembersAsync(clubId, cancellationToken).ConfigureAwait(false);
         var members = ClubMemberAssembler.AssembleEntities(response, clubId);
 
         var snapshots = members
@@ -52,10 +52,10 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         await mediator.Send(new SaveClubMembersCommand(snapshots), cancellationToken).ConfigureAwait(false);
 
         var latestHistoryEntries = await history
-            .ReadLatestHistoryEntriesByClubIdAsync(clubId)
+            .ReadLatestHistoryEntriesByClubIdAsync(clubId, cancellationToken)
             .ConfigureAwait(false);
 
-        var allExcuses = await excuses.ReadExcusesAsync().ConfigureAwait(false);
+        var allExcuses = await excuses.ReadExcusesAsync(cancellationToken).ConfigureAwait(false);
 
         var lastActivityCheckTime = latestHistoryEntries.Any()
             ? latestHistoryEntries.Select(a => a.Timestamp).Max()
@@ -76,11 +76,11 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
                 xpRequirement, gracePeriod, maxNumStrikes, cancellationToken)
             .ConfigureAwait(false);
 
-        var club = await clubs.ReadClubByIdAsync(clubId).ConfigureAwait(false);
+        var club = await clubs.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
         var clubName = club?.Name ?? clubId.ToString();
 
         await activityStatusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement)
+            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement, cancellationToken)
             .ConfigureAwait(false);
 
         var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);
@@ -113,7 +113,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
             if (topMembers.Count > 0 || bottomMembers.Count > 0)
             {
                 await activityStatusMessageSender
-                    .SendAverageXpMessageAsync(topMembers, bottomMembers, clubName, historyDepth)
+                    .SendAverageXpMessageAsync(topMembers, bottomMembers, clubName, historyDepth, cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -191,7 +191,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         var targetAchieved = xpSinceLastUpdate >= target;
 
         var numStrikes = await strikes
-            .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId)
+            .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId, cancellationToken)
             .ConfigureAwait(false) ?? 0;
 
         if (!targetAchieved)

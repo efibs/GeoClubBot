@@ -23,7 +23,7 @@ public sealed class UnlinkAccountsHandler(
     public async Task<bool> Handle(UnlinkAccountsCommand request, CancellationToken cancellationToken)
     {
         var user = await users
-            .ReadForUpdateByUserIdAsync(request.GeoGuessrUserId)
+            .ReadForUpdateByUserIdAsync(request.GeoGuessrUserId, cancellationToken)
             .ConfigureAwait(false);
 
         if (user is null || user.DiscordUserId != request.DiscordUserId)
@@ -40,7 +40,7 @@ public sealed class UnlinkAccountsHandler(
                 .Select(c => c.RoleId!.Value));
 
         await rolesAccess
-            .RemoveRolesFromUserAsync(request.DiscordUserId, rolesToRemove.ToArray())
+            .RemoveRolesFromUserAsync(request.DiscordUserId, rolesToRemove.ToArray(), cancellationToken)
             .ConfigureAwait(false);
 
         return true;

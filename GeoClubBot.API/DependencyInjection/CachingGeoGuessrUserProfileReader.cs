@@ -12,7 +12,7 @@ public partial class CachingGeoGuessrUserProfileReader(
     IOptions<GeoGuessrConfiguration> config,
     ILogger<CachingGeoGuessrUserProfileReader> logger) : IGeoGuessrUserProfileReader
 {
-    public async Task<UserDto?> ReadUserProfileAsync(string userId)
+    public async Task<UserDto?> ReadUserProfileAsync(string userId, CancellationToken cancellationToken = default)
     {
         var cacheKey = $"GeoGuessrUserProfile:{userId}";
 
@@ -21,7 +21,7 @@ public partial class CachingGeoGuessrUserProfileReader(
             entry.AbsoluteExpirationRelativeToNow = config.Value.UserProfileCacheTimeToLive;
             LogCacheMiss(userId);
             return await clientFactory.CreateUserProfileClient()
-                .ReadUserAsync(userId).ConfigureAwait(false);
+                .ReadUserAsync(userId, cancellationToken).ConfigureAwait(false);
         }).ConfigureAwait(false);
     }
 

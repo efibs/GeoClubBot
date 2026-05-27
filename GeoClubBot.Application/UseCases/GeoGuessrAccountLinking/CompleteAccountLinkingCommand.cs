@@ -27,7 +27,7 @@ public sealed class CompleteAccountLinkingHandler(
     public async Task<CompleteAccountLinkingResult> Handle(CompleteAccountLinkingCommand request, CancellationToken cancellationToken)
     {
         var linkingRequest = await requests
-            .ReadRequestAsync(request.DiscordUserId, request.GeoGuessrUserId)
+            .ReadRequestAsync(request.DiscordUserId, request.GeoGuessrUserId, cancellationToken)
             .ConfigureAwait(false);
 
         if (linkingRequest is null)
@@ -51,7 +51,7 @@ public sealed class CompleteAccountLinkingHandler(
         }
 
         var trackedUser = await users
-            .ReadForUpdateByUserIdAsync(request.GeoGuessrUserId)
+            .ReadForUpdateByUserIdAsync(request.GeoGuessrUserId, cancellationToken)
             .ConfigureAwait(false);
         if (trackedUser is null)
         {
@@ -66,7 +66,7 @@ public sealed class CompleteAccountLinkingHandler(
         // We call the role assignment outside the unit of work because it's an external side effect
         // — the persisted change must be in place first.
         await rolesAccess
-            .AddRoleToMembersByUserIdsAsync([request.DiscordUserId], _hasLinkedRoleId)
+            .AddRoleToMembersByUserIdsAsync([request.DiscordUserId], _hasLinkedRoleId, cancellationToken)
             .ConfigureAwait(false);
 
         return new CompleteAccountLinkingResult(true, trackedUser);

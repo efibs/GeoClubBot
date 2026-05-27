@@ -48,7 +48,7 @@ public sealed partial class LogDailyMissionsHandler(
         DailyMissionsResponseDto response;
         try
         {
-            response = await missionsClient.ReadDailyMissionsAsync().ConfigureAwait(false);
+            response = await missionsClient.ReadDailyMissionsAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -83,17 +83,17 @@ public sealed partial class LogDailyMissionsHandler(
         var readableMessage = RenderTemplate(config.Value.ReadableFormat, missionText);
         var lookupMessage = RenderTemplate(config.Value.LookupFormat, missionText);
 
-        await TrySendAsync(readableMessage, config.Value.ReadableChannelId, "readable").ConfigureAwait(false);
-        await TrySendAsync(lookupMessage, config.Value.LookupChannelId, "lookup").ConfigureAwait(false);
+        await TrySendAsync(readableMessage, config.Value.ReadableChannelId, "readable", cancellationToken).ConfigureAwait(false);
+        await TrySendAsync(lookupMessage, config.Value.LookupChannelId, "lookup", cancellationToken).ConfigureAwait(false);
 
         return Unit.Value;
     }
 
-    private async Task TrySendAsync(string message, ulong channelId, string channelLabel)
+    private async Task TrySendAsync(string message, ulong channelId, string channelLabel, CancellationToken cancellationToken)
     {
         try
         {
-            await discordMessageAccess.SendMessageAsync(message, channelId).ConfigureAwait(false);
+            await discordMessageAccess.SendMessageAsync(message, channelId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

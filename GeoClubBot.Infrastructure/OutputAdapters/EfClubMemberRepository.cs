@@ -14,58 +14,58 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         dbContext.Entry(clubMember).State = EntityState.Added;
     }
 
-    public async Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname)
+    public async Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
             .AsNoTracking()
             .Include(m => m.User)
-            .SingleOrDefaultAsync(m => m.User.Nickname == nickname)
+            .SingleOrDefaultAsync(m => m.User.Nickname == nickname, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId)
+    public async Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
             .AsNoTracking()
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.UserId == userId)
+            .FirstOrDefaultAsync(m => m.UserId == userId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<ClubMember?> ReadForUpdateByUserIdAsync(string userId)
+    public async Task<ClubMember?> ReadForUpdateByUserIdAsync(string userId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.UserId == userId)
+            .FirstOrDefaultAsync(m => m.UserId == userId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<List<ClubMember>> ReadClubMembersAsync()
+    public async Task<List<ClubMember>> ReadClubMembersAsync(CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
             .AsNoTracking()
             .Include(m => m.User)
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId)
+    public async Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
             .AsNoTracking()
             .Include(m => m.User)
             .Where(m => m.ClubId == clubId)
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync()
+    public async Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync(CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
             .Include(m => m.History)
             .Include(m => m.Strikes)
             .Where(m => !m.History.Any() && !m.Strikes.Any())
-            .ExecuteDeleteAsync()
+            .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 }

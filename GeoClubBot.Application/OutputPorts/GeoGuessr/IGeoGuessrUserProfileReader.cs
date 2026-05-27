@@ -2,5 +2,5 @@ namespace UseCases.OutputPorts.GeoGuessr;
 
 public interface IGeoGuessrUserProfileReader
 {
-    Task<UserDto?> ReadUserProfileAsync(string userId);
+    Task<UserDto?> ReadUserProfileAsync(string userId, CancellationToken cancellationToken = default);
 }

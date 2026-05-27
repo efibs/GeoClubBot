@@ -17,7 +17,7 @@ public class AiBotService(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // Initialize the qdrant storage in the background
-        _ = Task.Run(plonkItGuideVectorStore.InitializeAsync, cancellationToken);
+        _ = Task.Run(() => plonkItGuideVectorStore.InitializeAsync(cancellationToken), cancellationToken);
 
         await botReadyService.DiscordSocketClientReady.ConfigureAwait(false);
 

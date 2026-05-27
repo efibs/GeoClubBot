@@ -6,15 +6,15 @@ public interface IClubMemberRepository
 {
     void AddClubMember(ClubMember clubMember);
 
-    Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname);
+    Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname, CancellationToken cancellationToken = default);
 
-    Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId);
+    Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId, CancellationToken cancellationToken = default);
 
-    Task<ClubMember?> ReadForUpdateByUserIdAsync(string userId);
+    Task<ClubMember?> ReadForUpdateByUserIdAsync(string userId, CancellationToken cancellationToken = default);
 
-    Task<List<ClubMember>> ReadClubMembersAsync();
+    Task<List<ClubMember>> ReadClubMembersAsync(CancellationToken cancellationToken = default);
 
-    Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId);
+    Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
 
-    Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync();
+    Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync(CancellationToken cancellationToken = default);
 }

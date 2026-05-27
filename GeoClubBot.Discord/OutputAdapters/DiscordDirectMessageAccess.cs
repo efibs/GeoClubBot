@@ -7,7 +7,7 @@ namespace GeoClubBot.Discord.OutputAdapters;
 public partial class DiscordDirectMessageAccess(DiscordSocketClient client, ILogger<DiscordDirectMessageAccess> logger)
     : IDiscordDirectMessageAccess
 {
-    public async Task<bool> SendDirectMessageAsync(ulong discordUserId, string message)
+    public async Task<bool> SendDirectMessageAsync(ulong discordUserId, string message, CancellationToken cancellationToken = default)
     {
         try
         {

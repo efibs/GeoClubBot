@@ -4,5 +4,5 @@ namespace UseCases.OutputPorts;
 
 public interface IClubEventNotifier
 {
-    Task SendClubLevelUpEvent(Club club);
+    Task SendClubLevelUpEvent(Club club, CancellationToken cancellationToken = default);
 }

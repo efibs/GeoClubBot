@@ -32,36 +32,36 @@ public sealed class AccountLinkingQueriesHandler(
 {
     public async Task<ulong?> Handle(GetLinkedDiscordUserIdQuery request, CancellationToken cancellationToken)
     {
-        var user = await users.ReadUserByUserIdAsync(request.GeoGuessrUserId).ConfigureAwait(false);
+        var user = await users.ReadUserByUserIdAsync(request.GeoGuessrUserId, cancellationToken).ConfigureAwait(false);
         return user?.DiscordUserId;
     }
 
     public Task<GeoGuessrUser?> Handle(GetLinkedGeoGuessrUserQuery request, CancellationToken cancellationToken) =>
-        users.ReadUserByDiscordUserIdAsync(request.DiscordUserId);
+        users.ReadUserByDiscordUserIdAsync(request.DiscordUserId, cancellationToken);
 
     public Task<GeoGuessrAccountLinkingRequest?> Handle(GetOpenAccountLinkingRequestQuery request, CancellationToken cancellationToken) =>
-        requests.ReadRequestAsync(request.DiscordUserId);
+        requests.ReadRequestAsync(request.DiscordUserId, cancellationToken);
 
     public async Task<ulong?> Handle(GetDiscordUserByNicknameQuery request, CancellationToken cancellationToken)
     {
-        var member = await members.ReadClubMemberByNicknameAsync(request.Nickname).ConfigureAwait(false);
+        var member = await members.ReadClubMemberByNicknameAsync(request.Nickname, cancellationToken).ConfigureAwait(false);
         return member?.User.DiscordUserId;
     }
 
     public async Task<GeoGuessrUser?> Handle(GetGeoGuessrUserByNicknameQuery request, CancellationToken cancellationToken)
     {
-        var member = await members.ReadClubMemberByNicknameAsync(request.Nickname).ConfigureAwait(false);
+        var member = await members.ReadClubMemberByNicknameAsync(request.Nickname, cancellationToken).ConfigureAwait(false);
         return member?.User;
     }
 
     public async Task<UserDto?> Handle(GetGeoGuessrProfileQuery request, CancellationToken cancellationToken)
     {
-        var user = await users.ReadUserByDiscordUserIdAsync(request.DiscordUserId).ConfigureAwait(false);
+        var user = await users.ReadUserByDiscordUserIdAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
         if (user is null)
         {
             return null;
         }
 
-        return await profileReader.ReadUserProfileAsync(user.UserId).ConfigureAwait(false);
+        return await profileReader.ReadUserProfileAsync(user.UserId, cancellationToken).ConfigureAwait(false);
     }
 }

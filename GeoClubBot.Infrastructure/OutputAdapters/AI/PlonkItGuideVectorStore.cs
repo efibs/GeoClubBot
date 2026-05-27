@@ -35,7 +35,7 @@ public partial class PlonkItGuideVectorStore(
 
     #region Management methods
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _rebuildStoreLock.WaitAsync().ConfigureAwait(false);
 
@@ -81,7 +81,7 @@ public partial class PlonkItGuideVectorStore(
         }
     }
 
-    public async IAsyncEnumerable<string> RebuildStoreAsync()
+    public async IAsyncEnumerable<string> RebuildStoreAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var connectionExists = await _testConnectionsAsync().ConfigureAwait(false);
 

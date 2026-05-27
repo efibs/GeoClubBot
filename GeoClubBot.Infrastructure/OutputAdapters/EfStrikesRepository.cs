@@ -13,17 +13,17 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
         return strike;
     }
 
-    public async Task<int?> ReadNumberOfActiveStrikesByMemberUserIdAsync(string memberUserId)
+    public async Task<int?> ReadNumberOfActiveStrikesByMemberUserIdAsync(string memberUserId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMemberStrikes
             .AsNoTracking()
             .WhereActive()
             .Where(s => s.ClubMember!.UserId == memberUserId)
-            .CountAsync()
+            .CountAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<Dictionary<string, int>> ReadActiveStrikeCountsByMemberUserIdsAsync(IEnumerable<string> memberUserIds)
+    public async Task<Dictionary<string, int>> ReadActiveStrikeCountsByMemberUserIdsAsync(IEnumerable<string> memberUserIds, CancellationToken cancellationToken = default)
     {
         // Materialize the input set once so EF translates it as a single IN-list
         var userIdSet = memberUserIds.ToHashSet();
@@ -34,46 +34,46 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
             .Where(s => s.ClubMember!.UserId != null && userIdSet.Contains(s.ClubMember.UserId))
             .GroupBy(s => s.ClubMember!.UserId)
             .Select(g => new { UserId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.UserId, x => x.Count)
+            .ToDictionaryAsync(x => x.UserId, x => x.Count, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname)
+    public async Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname, CancellationToken cancellationToken = default)
     {
         var member = await dbContext.ClubMembers
             .AsNoTracking()
             .Include(m => m.Strikes)
             .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname)
+            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname, cancellationToken)
             .ConfigureAwait(false);
 
         return member?.Strikes;
     }
 
-    public async Task<List<ClubMemberStrike>> ReadAllStrikesAsync()
+    public async Task<List<ClubMemberStrike>> ReadAllStrikesAsync(CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMemberStrikes
             .AsNoTracking()
             .Include(s => s.ClubMember)
             .ThenInclude(m => m!.User)
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<ClubMemberStrike?> ReadForUpdateByIdAsync(Guid strikeId)
+    public async Task<ClubMemberStrike?> ReadForUpdateByIdAsync(Guid strikeId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMemberStrikes
             .Include(s => s.ClubMember)
             .ThenInclude(m => m!.User)
-            .FirstOrDefaultAsync(s => s.StrikeId == strikeId)
+            .FirstOrDefaultAsync(s => s.StrikeId == strikeId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold)
+    public async Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMemberStrikes
             .Where(s => s.Timestamp < threshold)
-            .ExecuteDeleteAsync()
+            .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 }

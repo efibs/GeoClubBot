@@ -57,7 +57,7 @@ public sealed class DailyChallengeHandler(
                 TimeLimit = selectedEntry.Value.TimeLimit
             };
 
-            var response = await GeoGuessrClient.CreateChallengeAsync(apiRequest).ConfigureAwait(false);
+            var response = await GeoGuessrClient.CreateChallengeAsync(apiRequest, cancellationToken).ConfigureAwait(false);
 
             nextChallenges.Add(new ClubChallenge(
                 selectedEntry.Key.Difficulty,
@@ -66,18 +66,18 @@ public sealed class DailyChallengeHandler(
                 response.Token));
         }
 
-        var oldClubChallenges = await clubChallenges.ReadLatestClubChallengeLinksAsync().ConfigureAwait(false);
+        var oldClubChallenges = await clubChallenges.ReadLatestClubChallengeLinksAsync(cancellationToken).ConfigureAwait(false);
 
         var newLinks = nextChallenges
             .Select(c => ClubChallengeLink.Create(c.Difficulty, c.RolePriority, c.ChallengeId))
             .ToList();
         clubChallenges.AddLatestClubChallengeLinks(newLinks);
 
-        var lastChallengeHighScores = await ReadLastChallengeHighScoresAsync(oldClubChallenges).ConfigureAwait(false);
+        var lastChallengeHighScores = await ReadLastChallengeHighScoresAsync(oldClubChallenges, cancellationToken).ConfigureAwait(false);
 
         clubChallenges.DeleteLatestClubChallengeLinks(oldClubChallenges);
 
-        await SendMessagesAsync(lastChallengeHighScores, nextChallenges).ConfigureAwait(false);
+        await SendMessagesAsync(lastChallengeHighScores, nextChallenges, cancellationToken).ConfigureAwait(false);
 
         await mediator
             .Send(new DistributeDailyChallengeRolesCommand(lastChallengeHighScores), cancellationToken)
@@ -86,7 +86,7 @@ public sealed class DailyChallengeHandler(
         return Unit.Value;
     }
 
-    private async Task<List<ClubChallengeResult>> ReadLastChallengeHighScoresAsync(List<ClubChallengeLink> oldChallengeLinks)
+    private async Task<List<ClubChallengeResult>> ReadLastChallengeHighScoresAsync(List<ClubChallengeLink> oldChallengeLinks, CancellationToken cancellationToken)
     {
         var results = new List<ClubChallengeResult>();
 
@@ -94,7 +94,7 @@ public sealed class DailyChallengeHandler(
         {
             var queryParams = new ReadHighscoresQueryParams { Limit = 10, MinRounds = 5 };
             var response = await GeoGuessrClient
-                .ReadHighscoresAsync(oldChallengeLink.ChallengeId, queryParams)
+                .ReadHighscoresAsync(oldChallengeLink.ChallengeId, queryParams, cancellationToken)
                 .ConfigureAwait(false);
 
             var highscores = ChallengeResultHighScoresAssembler.AssembleEntities(response);
@@ -104,17 +104,17 @@ public sealed class DailyChallengeHandler(
         return results;
     }
 
-    private async Task SendMessagesAsync(List<ClubChallengeResult> lastChallengeHighScores, List<ClubChallenge> nextChallenges)
+    private async Task SendMessagesAsync(List<ClubChallengeResult> lastChallengeHighScores, List<ClubChallenge> nextChallenges, CancellationToken cancellationToken)
     {
         if (lastChallengeHighScores is { Count: > 0 })
         {
-            await SendLastChallengeResultsAsync(lastChallengeHighScores).ConfigureAwait(false);
+            await SendLastChallengeResultsAsync(lastChallengeHighScores, cancellationToken).ConfigureAwait(false);
         }
 
-        await SendNextChallengesAsync(nextChallenges).ConfigureAwait(false);
+        await SendNextChallengesAsync(nextChallenges, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task SendLastChallengeResultsAsync(List<ClubChallengeResult> lastChallengeResults)
+    private async Task SendLastChallengeResultsAsync(List<ClubChallengeResult> lastChallengeResults, CancellationToken cancellationToken)
     {
         var builder = new StringBuilder("# :trophy: The results are in! :trophy: ");
 
@@ -134,7 +134,7 @@ public sealed class DailyChallengeHandler(
             }
 
             await discordMessageAccess
-                .SendMessageAsync(builder.ToString(), config.Value.TextChannelId)
+                .SendMessageAsync(builder.ToString(), config.Value.TextChannelId, cancellationToken)
                 .ConfigureAwait(false);
 
             builder = new StringBuilder();
@@ -169,7 +169,7 @@ public sealed class DailyChallengeHandler(
         }
     }
 
-    private async Task SendNextChallengesAsync(List<ClubChallenge> nextChallenges)
+    private async Task SendNextChallengesAsync(List<ClubChallenge> nextChallenges, CancellationToken cancellationToken)
     {
         var builder = new StringBuilder("# :dart: Next challenges :dart:");
 
@@ -193,7 +193,7 @@ public sealed class DailyChallengeHandler(
         }
 
         await discordMessageAccess
-            .SendMessageAsync(builder.ToString(), config.Value.TextChannelId)
+            .SendMessageAsync(builder.ToString(), config.Value.TextChannelId, cancellationToken)
             .ConfigureAwait(false);
     }
 }

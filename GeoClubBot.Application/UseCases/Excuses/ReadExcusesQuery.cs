@@ -11,6 +11,6 @@ public sealed class ReadExcusesHandler(IExcusesRepository excuses)
 {
     public Task<List<ClubMemberExcuse>> Handle(ReadExcusesQuery request, CancellationToken cancellationToken) =>
         request.MemberNickname is null
-            ? excuses.ReadExcusesAsync()
-            : excuses.ReadExcusesByMemberNicknameAsync(request.MemberNickname);
+            ? excuses.ReadExcusesAsync(cancellationToken)
+            : excuses.ReadExcusesByMemberNicknameAsync(request.MemberNickname, cancellationToken);
 }

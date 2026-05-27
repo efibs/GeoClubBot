@@ -28,7 +28,7 @@ public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
             }
 
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(notification.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
             if (clubMember?.ClubId is null)
@@ -50,7 +50,7 @@ public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
 
             LogRenamingPrivateChannel(logger, clubMember.User.Nickname);
 
-            await discordTextChannelAccess.UpdateTextChannelAsync(newTextChannel).ConfigureAwait(false);
+            await discordTextChannelAccess.UpdateTextChannelAsync(newTextChannel, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {

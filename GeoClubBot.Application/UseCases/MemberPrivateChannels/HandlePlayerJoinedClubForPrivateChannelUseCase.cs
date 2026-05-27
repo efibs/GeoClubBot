@@ -27,7 +27,7 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
             }
 
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(notification.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
             if (clubMember is null)
@@ -39,7 +39,7 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
                 .Send(new CreateMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
 
-            await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+            await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {

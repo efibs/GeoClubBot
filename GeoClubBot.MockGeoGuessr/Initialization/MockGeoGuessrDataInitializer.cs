@@ -26,7 +26,7 @@ public class MockGeoGuessrDataInitializer(
 
         foreach (var clubEntry in geoGuessrConfig.Value.Clubs)
         {
-            var dbClub = await unitOfWork.Clubs.ReadClubByIdAsync(clubEntry.ClubId);
+            var dbClub = await unitOfWork.Clubs.ReadClubByIdAsync(clubEntry.ClubId, cancellationToken);
 
             if (dbClub is null)
             {
@@ -37,7 +37,7 @@ public class MockGeoGuessrDataInitializer(
 
             dataStore.Clubs[dbClub.ClubId] = MapClubToDto(dbClub);
 
-            var dbMembers = await unitOfWork.ClubMembers.ReadClubMembersByClubIdAsync(dbClub.ClubId);
+            var dbMembers = await unitOfWork.ClubMembers.ReadClubMembersByClubIdAsync(dbClub.ClubId, cancellationToken);
             var memberDict = new ConcurrentDictionary<string, ClubMemberDto>();
 
             foreach (var dbMember in dbMembers.Where(m => m.ClubId is not null))
@@ -51,12 +51,12 @@ public class MockGeoGuessrDataInitializer(
         }
 
         // Load linked users that may not be in any club currently
-        var allLinkedUsers = await unitOfWork.GeoGuessrUsers.ReadAllLinkedUsersAsync();
+        var allLinkedUsers = await unitOfWork.GeoGuessrUsers.ReadAllLinkedUsersAsync(cancellationToken);
         foreach (var user in allLinkedUsers)
             dataStore.Users.TryAdd(user.UserId, MapGeoGuessrUserToDto(user));
 
         // Load existing challenges
-        var challengeLinks = await unitOfWork.ClubChallenges.ReadLatestClubChallengeLinksAsync();
+        var challengeLinks = await unitOfWork.ClubChallenges.ReadLatestClubChallengeLinksAsync(cancellationToken);
         foreach (var link in challengeLinks)
         {
             dataStore.Challenges.TryAdd(link.ChallengeId, new PostChallengeRequestDto

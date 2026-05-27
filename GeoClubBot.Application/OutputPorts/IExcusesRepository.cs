@@ -6,15 +6,15 @@ public interface IExcusesRepository
 {
     ClubMemberExcuse CreateExcuse(ClubMemberExcuse excuse);
 
-    Task<List<ClubMemberExcuse>> ReadExcusesAsync();
+    Task<List<ClubMemberExcuse>> ReadExcusesAsync(CancellationToken cancellationToken = default);
 
-    Task<ClubMemberExcuse?> ReadExcuseAsync(Guid id);
+    Task<ClubMemberExcuse?> ReadExcuseAsync(Guid id, CancellationToken cancellationToken = default);
 
-    Task<ClubMemberExcuse?> ReadForUpdateByIdAsync(Guid excuseId);
+    Task<ClubMemberExcuse?> ReadForUpdateByIdAsync(Guid excuseId, CancellationToken cancellationToken = default);
 
-    Task<List<ClubMemberExcuse>> ReadExcusesByMemberNicknameAsync(string memberNickname);
+    Task<List<ClubMemberExcuse>> ReadExcusesByMemberNicknameAsync(string memberNickname, CancellationToken cancellationToken = default);
 
     void DeleteExcuse(ClubMemberExcuse excuse);
 
-    Task<int> DeleteExcusesBeforeAsync(DateTimeOffset threshold);
+    Task<int> DeleteExcusesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default);
 }

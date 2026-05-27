@@ -28,7 +28,7 @@ public sealed partial class SendDueRemindersHandler(
         var today = DateOnly.FromDateTime(now);
 
         var dueReminders = await reminders
-            .ReadDueRemindersAsync(currentTime, today)
+            .ReadDueRemindersAsync(currentTime, today, cancellationToken)
             .ConfigureAwait(false);
 
         if (dueReminders.Count == 0)
@@ -58,7 +58,7 @@ public sealed partial class SendDueRemindersHandler(
                 : reminder.CustomMessage;
 
             var sent = await directMessageAccess
-                .SendDirectMessageAsync(reminder.DiscordUserId, message)
+                .SendDirectMessageAsync(reminder.DiscordUserId, message, cancellationToken)
                 .ConfigureAwait(false);
 
             if (sent)
@@ -86,7 +86,7 @@ public sealed partial class SendDueRemindersHandler(
             return false;
         }
 
-        var clubMember = await members.ReadClubMemberByUserIdAsync(linkedUser.UserId).ConfigureAwait(false);
+        var clubMember = await members.ReadClubMemberByUserIdAsync(linkedUser.UserId, cancellationToken).ConfigureAwait(false);
 
         if (clubMember?.ClubId is null)
         {
@@ -94,7 +94,7 @@ public sealed partial class SendDueRemindersHandler(
         }
 
         var todaysActivities = await activityReader
-            .ReadTodaysActivitiesAsync(clubMember.ClubId.Value)
+            .ReadTodaysActivitiesAsync(clubMember.ClubId.Value, cancellationToken)
             .ConfigureAwait(false);
 
         return todaysActivities.Any(a => a.UserId == linkedUser.UserId && a.XpReward == dailyMissionXpReward);

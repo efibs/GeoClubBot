@@ -8,12 +8,12 @@ namespace GeoClubBot.Discord.OutputAdapters;
 
 public class DiscordMessageClubEventNotifier(IDiscordMessageAccess discordMessageAccess, IOptions<ClubLevelCheckerConfiguration> config) : IClubEventNotifier
 {
-    public async Task SendClubLevelUpEvent(Club club)
+    public async Task SendClubLevelUpEvent(Club club, CancellationToken cancellationToken = default)
     {
-        // Build the message
         var message = $"{club.Name} is now level {club.Level} in GeoGuessr! :partying_face: ";
-        
-        // Send the message
-        await discordMessageAccess.SendMessageAsync(message, config.Value.LevelUpMessageChannelId).ConfigureAwait(false);
+
+        await discordMessageAccess
+            .SendMessageAsync(message, config.Value.LevelUpMessageChannelId, cancellationToken)
+            .ConfigureAwait(false);
     }
 }

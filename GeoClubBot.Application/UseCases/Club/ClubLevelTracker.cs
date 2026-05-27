@@ -9,18 +9,18 @@ public sealed class ClubLevelTracker : IClubLevelTracker
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _initialized;
 
-    public async Task EnsureInitializedAsync(IClubRepository clubs, IEnumerable<Guid> clubIds)
+    public async Task EnsureInitializedAsync(IClubRepository clubs, IEnumerable<Guid> clubIds, CancellationToken cancellationToken = default)
     {
         if (_initialized) return;
 
-        await _initLock.WaitAsync().ConfigureAwait(false);
+        await _initLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_initialized) return;
 
             foreach (var clubId in clubIds)
             {
-                var club = await clubs.ReadClubByIdAsync(clubId).ConfigureAwait(false);
+                var club = await clubs.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
                 if (club is not null)
                 {
                     _lastLevels[clubId] = club.Level;

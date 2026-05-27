@@ -41,9 +41,9 @@ public class DbUnitOfWork : IUnitOfWork
 
     public IDailyMissionRepository DailyMissions { get; }
 
-    public async Task<int> SaveChangesAsync()
+    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.SaveChangesAsync().ConfigureAwait(false);
+        return await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
     
     private readonly GeoClubBotDbContext _dbContext;

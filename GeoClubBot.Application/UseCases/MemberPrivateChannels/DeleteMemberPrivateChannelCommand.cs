@@ -26,11 +26,11 @@ public sealed partial class DeleteMemberPrivateChannelHandler(
         }
 
         var successful = await discordTextChannelAccess
-            .DeleteTextChannelAsync(clubMember.PrivateTextChannelId.Value)
+            .DeleteTextChannelAsync(clubMember.PrivateTextChannelId.Value, cancellationToken)
             .ConfigureAwait(false);
 
         var trackedMember = await clubMembers
-            .ReadForUpdateByUserIdAsync(clubMember.UserId)
+            .ReadForUpdateByUserIdAsync(clubMember.UserId, cancellationToken)
             .ConfigureAwait(false);
         trackedMember?.SetPrivateTextChannelId(null);
 

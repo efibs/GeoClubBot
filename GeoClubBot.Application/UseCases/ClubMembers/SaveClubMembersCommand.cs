@@ -15,16 +15,16 @@ public sealed class SaveClubMembersHandler(
     {
         foreach (var snapshot in request.Snapshots)
         {
-            var persistedUser = await UpsertUserAsync(snapshot).ConfigureAwait(false);
-            await UpsertMemberAsync(snapshot, persistedUser).ConfigureAwait(false);
+            var persistedUser = await UpsertUserAsync(snapshot, cancellationToken).ConfigureAwait(false);
+            await UpsertMemberAsync(snapshot, persistedUser, cancellationToken).ConfigureAwait(false);
         }
 
         return Unit.Value;
     }
 
-    private async Task<GeoGuessrUser> UpsertUserAsync(ClubMemberSyncSnapshot snapshot)
+    private async Task<GeoGuessrUser> UpsertUserAsync(ClubMemberSyncSnapshot snapshot, CancellationToken cancellationToken)
     {
-        var existing = await users.ReadForUpdateByUserIdAsync(snapshot.UserId).ConfigureAwait(false);
+        var existing = await users.ReadForUpdateByUserIdAsync(snapshot.UserId, cancellationToken).ConfigureAwait(false);
         if (existing is not null)
         {
             existing.UpdateFromApi(snapshot.Nickname);
@@ -36,9 +36,9 @@ public sealed class SaveClubMembersHandler(
         return created;
     }
 
-    private async Task UpsertMemberAsync(ClubMemberSyncSnapshot snapshot, GeoGuessrUser persistedUser)
+    private async Task UpsertMemberAsync(ClubMemberSyncSnapshot snapshot, GeoGuessrUser persistedUser, CancellationToken cancellationToken)
     {
-        var existing = await members.ReadForUpdateByUserIdAsync(snapshot.UserId).ConfigureAwait(false);
+        var existing = await members.ReadForUpdateByUserIdAsync(snapshot.UserId, cancellationToken).ConfigureAwait(false);
         if (existing is not null)
         {
             existing.SyncFromApi(snapshot.TargetClubId, snapshot.Xp, snapshot.JoinedAt);

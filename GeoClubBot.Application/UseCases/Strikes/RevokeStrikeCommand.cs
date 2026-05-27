@@ -11,7 +11,7 @@ public sealed class RevokeStrikeHandler(IStrikesRepository strikes)
 {
     public async Task<ClubMemberStrike?> Handle(RevokeStrikeCommand request, CancellationToken cancellationToken)
     {
-        var strike = await strikes.ReadForUpdateByIdAsync(request.StrikeId).ConfigureAwait(false);
+        var strike = await strikes.ReadForUpdateByIdAsync(request.StrikeId, cancellationToken).ConfigureAwait(false);
 
         if (strike is null)
         {

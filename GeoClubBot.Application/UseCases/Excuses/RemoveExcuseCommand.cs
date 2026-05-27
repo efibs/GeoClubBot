@@ -10,7 +10,7 @@ public sealed class RemoveExcuseHandler(IExcusesRepository excuses)
 {
     public async Task<bool> Handle(RemoveExcuseCommand request, CancellationToken cancellationToken)
     {
-        var excuse = await excuses.ReadForUpdateByIdAsync(request.ExcuseId).ConfigureAwait(false);
+        var excuse = await excuses.ReadForUpdateByIdAsync(request.ExcuseId, cancellationToken).ConfigureAwait(false);
 
         if (excuse is null)
         {

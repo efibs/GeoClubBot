@@ -12,7 +12,7 @@ public sealed class SetClubLevelStatusHandler(IDiscordStatusUpdater discordStatu
     public async Task<Unit> Handle(SetClubLevelStatusCommand request, CancellationToken cancellationToken)
     {
         var newStatus = $"Level {request.Level} club!";
-        await discordStatusUpdater.UpdateStatusAsync(newStatus).ConfigureAwait(false);
+        await discordStatusUpdater.UpdateStatusAsync(newStatus, cancellationToken).ConfigureAwait(false);
         return Unit.Value;
     }
 }

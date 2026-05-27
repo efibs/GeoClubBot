@@ -14,10 +14,10 @@ public sealed class CalculateAverageXpHandler(
     public async Task<List<ClubMemberAverageXp>> Handle(CalculateAverageXpQuery request, CancellationToken cancellationToken)
     {
         var historyEntries = await history
-            .ReadHistoryEntriesByClubIdAsync(request.ClubId)
+            .ReadHistoryEntriesByClubIdAsync(request.ClubId, cancellationToken)
             .ConfigureAwait(false);
 
-        var allExcuses = await excuses.ReadExcusesAsync().ConfigureAwait(false);
+        var allExcuses = await excuses.ReadExcusesAsync(cancellationToken).ConfigureAwait(false);
 
         var excusesByUser = allExcuses
             .GroupBy(e => e.UserId)

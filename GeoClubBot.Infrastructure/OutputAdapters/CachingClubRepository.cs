@@ -15,14 +15,14 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
         return created;
     }
 
-    public async Task<Club> CreateOrUpdateClubAsync(Club club)
+    public async Task<Club> CreateOrUpdateClubAsync(Club club, CancellationToken cancellationToken = default)
     {
-        var result = await inner.CreateOrUpdateClubAsync(club).ConfigureAwait(false);
+        var result = await inner.CreateOrUpdateClubAsync(club, cancellationToken).ConfigureAwait(false);
         InvalidateCacheFor(club);
         return result;
     }
 
-    public async Task<Club?> ReadClubByIdAsync(Guid clubId)
+    public async Task<Club?> ReadClubByIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         var key = ByIdKey(clubId);
         if (cache.TryGetValue<Club?>(key, out var cached))
@@ -30,22 +30,22 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
             return cached;
         }
 
-        var club = await inner.ReadClubByIdAsync(clubId).ConfigureAwait(false);
+        var club = await inner.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
         cache.Set(key, club, CacheTtl);
         return club;
     }
 
-    public Task<Club?> ReadForUpdateByIdAsync(Guid clubId)
+    public Task<Club?> ReadForUpdateByIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         // Caller intends to mutate; bypass the cache and return a tracked entity.
         // The mutation is invalidated implicitly on the next CreateOrUpdateClubAsync,
         // but since the level mutation goes through SaveChanges, we also invalidate here
         // so stale reads don't outlive the change.
         cache.Remove(ByIdKey(clubId));
-        return inner.ReadForUpdateByIdAsync(clubId);
+        return inner.ReadForUpdateByIdAsync(clubId, cancellationToken);
     }
 
-    public async Task<Club?> ReadClubByNameAsync(string clubName)
+    public async Task<Club?> ReadClubByNameAsync(string clubName, CancellationToken cancellationToken = default)
     {
         var key = ByNameKey(clubName);
         if (cache.TryGetValue<Club?>(key, out var cached))
@@ -53,7 +53,7 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
             return cached;
         }
 
-        var club = await inner.ReadClubByNameAsync(clubName).ConfigureAwait(false);
+        var club = await inner.ReadClubByNameAsync(clubName, cancellationToken).ConfigureAwait(false);
         cache.Set(key, club, CacheTtl);
         return club;
     }

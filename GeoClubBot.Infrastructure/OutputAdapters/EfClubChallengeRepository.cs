@@ -12,11 +12,11 @@ public class EfClubChallengeRepository(GeoClubBotDbContext dbContext) : IClubCha
         dbContext.LatestClubChallengeLinks.AddRange(links);
     }
 
-    public async Task<List<ClubChallengeLink>> ReadLatestClubChallengeLinksAsync()
+    public async Task<List<ClubChallengeLink>> ReadLatestClubChallengeLinksAsync(CancellationToken cancellationToken = default)
     {
         return await dbContext.LatestClubChallengeLinks
             .AsNoTracking()
-            .ToListAsync()
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 

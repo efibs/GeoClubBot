@@ -12,7 +12,7 @@ public partial class CachingGeoGuessrActivityReader(
     IOptions<GeoGuessrConfiguration> config,
     ILogger<CachingGeoGuessrActivityReader> logger) : IGeoGuessrActivityReader
 {
-    public async Task<IReadOnlyList<ReadClubActivitiesItemDto>> ReadTodaysActivitiesAsync(Guid clubId)
+    public async Task<IReadOnlyList<ReadClubActivitiesItemDto>> ReadTodaysActivitiesAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         var today = DateTimeOffset.UtcNow.Date;
         var cacheKey = $"GeoGuessrActivities:{clubId}:{today:yyyy-MM-dd}";
@@ -21,13 +21,13 @@ public partial class CachingGeoGuessrActivityReader(
         {
             entry.AbsoluteExpirationRelativeToNow = config.Value.ActivityCacheTimeToLive;
             LogCacheMiss(clubId);
-            return await _fetchTodaysActivitiesAsync(clubId, today).ConfigureAwait(false);
+            return await _fetchTodaysActivitiesAsync(clubId, today, cancellationToken).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         return cached ?? [];
     }
 
-    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> _fetchTodaysActivitiesAsync(Guid clubId, DateTime today)
+    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> _fetchTodaysActivitiesAsync(Guid clubId, DateTime today, CancellationToken cancellationToken)
     {
         var client = clientFactory.CreateActivityClient();
         var todaysActivities = new List<ReadClubActivitiesItemDto>();
@@ -40,7 +40,7 @@ public partial class CachingGeoGuessrActivityReader(
                 PaginationToken = paginationToken
             };
 
-            var batch = await client.ReadClubActivitiesAsync(clubId, request).ConfigureAwait(false);
+            var batch = await client.ReadClubActivitiesAsync(clubId, request, cancellationToken).ConfigureAwait(false);
 
             if (batch.Items.Count == 0)
             {
@@ -68,7 +68,7 @@ public partial class CachingGeoGuessrActivityReader(
         }
     }
 
-    public async Task<IReadOnlyList<ReadClubActivitiesItemDto>> ReadActivitiesSinceAsync(Guid clubId, DateTimeOffset since)
+    public async Task<IReadOnlyList<ReadClubActivitiesItemDto>> ReadActivitiesSinceAsync(Guid clubId, DateTimeOffset since, CancellationToken cancellationToken = default)
     {
         var cacheKey = $"GeoGuessrActivities:{clubId}:since:{since:yyyy-MM-ddTHH:mm:ssZ}";
 
@@ -76,13 +76,13 @@ public partial class CachingGeoGuessrActivityReader(
         {
             entry.AbsoluteExpirationRelativeToNow = config.Value.ActivityCacheTimeToLive;
             LogCacheMiss(clubId);
-            return await _fetchActivitiesSinceAsync(clubId, since).ConfigureAwait(false);
+            return await _fetchActivitiesSinceAsync(clubId, since, cancellationToken).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         return cached ?? [];
     }
 
-    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> _fetchActivitiesSinceAsync(Guid clubId, DateTimeOffset since)
+    private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> _fetchActivitiesSinceAsync(Guid clubId, DateTimeOffset since, CancellationToken cancellationToken)
     {
         var client = clientFactory.CreateActivityClient();
         var activities = new List<ReadClubActivitiesItemDto>();
@@ -91,7 +91,7 @@ public partial class CachingGeoGuessrActivityReader(
         while (true)
         {
             var batch = await client
-                .ReadClubActivitiesAsync(clubId, new ReadClubActivitiesQueryParams { PaginationToken = paginationToken })
+                .ReadClubActivitiesAsync(clubId, new ReadClubActivitiesQueryParams { PaginationToken = paginationToken }, cancellationToken)
                 .ConfigureAwait(false);
 
             if (batch.Items.Count == 0)

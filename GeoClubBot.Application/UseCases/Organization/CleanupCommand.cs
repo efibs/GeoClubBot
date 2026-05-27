@@ -23,9 +23,9 @@ public sealed partial class CleanupHandler(
     {
         var threshold = DateTime.UtcNow.Subtract(_historyKeepThreshold);
 
-        var deletedExcuses = await excuses.DeleteExcusesBeforeAsync(threshold).ConfigureAwait(false);
-        var deletedHistoryEntries = await history.DeleteHistoryEntriesBeforeAsync(threshold).ConfigureAwait(false);
-        var deletedMembers = await clubMembers.DeleteClubMembersWithoutHistoryAndStrikesAsync().ConfigureAwait(false);
+        var deletedExcuses = await excuses.DeleteExcusesBeforeAsync(threshold, cancellationToken).ConfigureAwait(false);
+        var deletedHistoryEntries = await history.DeleteHistoryEntriesBeforeAsync(threshold, cancellationToken).ConfigureAwait(false);
+        var deletedMembers = await clubMembers.DeleteClubMembersWithoutHistoryAndStrikesAsync(cancellationToken).ConfigureAwait(false);
 
         LogDeleteResults(logger, deletedExcuses, deletedHistoryEntries, deletedMembers);
 

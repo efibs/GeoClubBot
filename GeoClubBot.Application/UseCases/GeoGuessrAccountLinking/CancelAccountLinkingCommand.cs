@@ -12,7 +12,7 @@ public sealed class CancelAccountLinkingHandler(IAccountLinkingRequestRepository
     public async Task<bool> Handle(CancelAccountLinkingCommand request, CancellationToken cancellationToken)
     {
         var linkingRequest = await requests
-            .ReadRequestAsync(request.DiscordUserId, request.GeoGuessrUserId)
+            .ReadRequestAsync(request.DiscordUserId, request.GeoGuessrUserId, cancellationToken)
             .ConfigureAwait(false);
 
         if (linkingRequest is null)

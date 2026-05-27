@@ -30,14 +30,14 @@ public sealed class ClubMemberActivityRewardHandler(
             .Take(3)
             .ToList();
 
-        var mvpPlayerUserIds = await MentionMvpsAsync(leaderboard).ConfigureAwait(false);
+        var mvpPlayerUserIds = await MentionMvpsAsync(leaderboard, cancellationToken).ConfigureAwait(false);
 
         await UpdateRolesAsync(mvpPlayerUserIds, cancellationToken).ConfigureAwait(false);
 
         return Unit.Value;
     }
 
-    private async Task<List<string>> MentionMvpsAsync(List<IGrouping<int, ClubMemberActivityStatus>> leaderboard)
+    private async Task<List<string>> MentionMvpsAsync(List<IGrouping<int, ClubMemberActivityStatus>> leaderboard, CancellationToken cancellationToken)
     {
         IEnumerable<string> mvpPlayerUserIds = [];
 
@@ -75,7 +75,7 @@ public sealed class ClubMemberActivityRewardHandler(
             }
 
             await discordMessageAccess
-                .SendMessageAsync(msgBuilder.ToString(), config.Value.TextChannelId)
+                .SendMessageAsync(msgBuilder.ToString(), config.Value.TextChannelId, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -93,17 +93,17 @@ public sealed class ClubMemberActivityRewardHandler(
             .ConfigureAwait(false);
 
         var membersWithMvpRole = await discordServerRolesAccess
-            .ReadMembersWithRoleAsync(config.Value.MvpRoleId)
+            .ReadMembersWithRoleAsync(config.Value.MvpRoleId, cancellationToken)
             .ConfigureAwait(false);
 
         var membersToAddMvpRole = discordUserIds.Except(membersWithMvpRole);
         var membersToRemoveMvpRole = membersWithMvpRole.Except(discordUserIds);
 
         await discordServerRolesAccess
-            .AddRoleToMembersByUserIdsAsync(membersToAddMvpRole, config.Value.MvpRoleId)
+            .AddRoleToMembersByUserIdsAsync(membersToAddMvpRole, config.Value.MvpRoleId, cancellationToken)
             .ConfigureAwait(false);
         await discordServerRolesAccess
-            .RemoveRoleFromPlayersAsync(membersToRemoveMvpRole, config.Value.MvpRoleId)
+            .RemoveRoleFromPlayersAsync(membersToRemoveMvpRole, config.Value.MvpRoleId, cancellationToken)
             .ConfigureAwait(false);
     }
 }

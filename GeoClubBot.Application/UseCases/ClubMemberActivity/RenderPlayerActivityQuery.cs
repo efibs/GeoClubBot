@@ -24,14 +24,14 @@ public sealed class RenderPlayerActivityHandler(
 {
     public async Task<MemoryStream?> Handle(RenderPlayerActivityQuery request, CancellationToken cancellationToken)
     {
-        var clubId = await ResolveClubId(request.ClubName, request.Nickname).ConfigureAwait(false);
+        var clubId = await ResolveClubId(request.ClubName, request.Nickname, cancellationToken).ConfigureAwait(false);
         if (clubId is null)
         {
             return null;
         }
 
         var playersHistoryEntries = await history
-            .ReadHistoryEntriesByPlayerNicknameAsync(request.Nickname, clubId.Value)
+            .ReadHistoryEntriesByPlayerNicknameAsync(request.Nickname, clubId.Value, cancellationToken)
             .ConfigureAwait(false);
 
         if (playersHistoryEntries is null)
@@ -40,7 +40,7 @@ public sealed class RenderPlayerActivityHandler(
         }
 
         var member = await clubMembers
-            .ReadClubMemberByNicknameAsync(request.Nickname)
+            .ReadClubMemberByNicknameAsync(request.Nickname, cancellationToken)
             .ConfigureAwait(false);
 
         if (member is not null)
@@ -84,17 +84,17 @@ public sealed class RenderPlayerActivityHandler(
         return clubEntry?.GetMinXP(activityCheckerConfig.Value) ?? activityCheckerConfig.Value.MinXP;
     }
 
-    private async Task<Guid?> ResolveClubId(string? clubName, string memberNickname)
+    private async Task<Guid?> ResolveClubId(string? clubName, string memberNickname, CancellationToken cancellationToken)
     {
         if (clubName is null)
         {
             var clubMember = await clubMembers
-                .ReadClubMemberByNicknameAsync(memberNickname)
+                .ReadClubMemberByNicknameAsync(memberNickname, cancellationToken)
                 .ConfigureAwait(false);
             return clubMember?.ClubId;
         }
 
-        var club = await clubs.ReadClubByNameAsync(clubName).ConfigureAwait(false);
+        var club = await clubs.ReadClubByNameAsync(clubName, cancellationToken).ConfigureAwait(false);
         return club?.ClubId;
     }
 }

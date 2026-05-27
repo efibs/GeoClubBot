@@ -8,7 +8,7 @@ namespace GeoClubBot.Discord.OutputAdapters;
 
 public partial class DiscordDiscordServerRolesAccess(DiscordSocketClient client, ILogger<DiscordDiscordServerRolesAccess> logger, IOptions<DiscordConfiguration> config) : IDiscordServerRolesAccess
 {
-    public async Task<int> RemoveRoleFromAllPlayersAsync(ulong roleId)
+    public async Task<int> RemoveRoleFromAllPlayersAsync(ulong roleId, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
@@ -27,7 +27,7 @@ public partial class DiscordDiscordServerRolesAccess(DiscordSocketClient client,
         return usersWithRole.Count;
     }
 
-    public async Task RemoveRolesFromUserAsync(ulong userId, IEnumerable<ulong> roleIds)
+    public async Task RemoveRolesFromUserAsync(ulong userId, IEnumerable<ulong> roleIds, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
@@ -39,7 +39,7 @@ public partial class DiscordDiscordServerRolesAccess(DiscordSocketClient client,
         await user.RemoveRolesAsync(roleIds).ConfigureAwait(false);
     }
 
-    public async Task RemoveRoleFromPlayersAsync(IEnumerable<ulong> userIds, ulong roleId)
+    public async Task RemoveRoleFromPlayersAsync(IEnumerable<ulong> userIds, ulong roleId, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
@@ -55,7 +55,7 @@ public partial class DiscordDiscordServerRolesAccess(DiscordSocketClient client,
         }
     }
 
-    public async Task AddRoleToMembersByUserIdsAsync(IEnumerable<ulong> userIds, ulong roleId)
+    public async Task AddRoleToMembersByUserIdsAsync(IEnumerable<ulong> userIds, ulong roleId, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
@@ -73,7 +73,7 @@ public partial class DiscordDiscordServerRolesAccess(DiscordSocketClient client,
         }
     }
 
-    public Task<List<ulong>> ReadMembersWithRoleAsync(ulong roleId)
+    public Task<List<ulong>> ReadMembersWithRoleAsync(ulong roleId, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);

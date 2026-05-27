@@ -12,19 +12,19 @@ public class EfAccountLinkingRequestRepository(GeoClubBotDbContext dbContext) : 
         dbContext.Add(request);
     }
 
-    public async Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId, string geoGuessrUserId)
+    public async Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId, string geoGuessrUserId, CancellationToken cancellationToken = default)
     {
         return await dbContext.GeoGuessrAccountLinkingRequests
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.DiscordUserId == discordUserId && r.GeoGuessrUserId == geoGuessrUserId)
+            .FirstOrDefaultAsync(r => r.DiscordUserId == discordUserId && r.GeoGuessrUserId == geoGuessrUserId, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId)
+    public async Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId, CancellationToken cancellationToken = default)
     {
         return await dbContext.GeoGuessrAccountLinkingRequests
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.DiscordUserId == discordUserId)
+            .FirstOrDefaultAsync(r => r.DiscordUserId == discordUserId, cancellationToken)
             .ConfigureAwait(false);
     }
 

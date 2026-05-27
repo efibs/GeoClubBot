@@ -11,7 +11,7 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
 {
     private const int MaxNumPlayersPerMessage = 15;
 
-    public async Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName, int minXP)
+    public async Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName, int minXP, CancellationToken cancellationToken = default)
     {
         // Get the server
         var server = client.GetGuild(discordConfig.Value.ServerId);
@@ -160,7 +160,8 @@ public class DiscordActivityStatusMessageSender(DiscordSocketClient client, IOpt
         List<ClubMemberAverageXp> topMembers,
         List<ClubMemberAverageXp> bottomMembers,
         string clubName,
-        int historyDepth)
+        int historyDepth,
+        CancellationToken cancellationToken = default)
     {
         // Get the server
         var server = client.GetGuild(discordConfig.Value.ServerId);

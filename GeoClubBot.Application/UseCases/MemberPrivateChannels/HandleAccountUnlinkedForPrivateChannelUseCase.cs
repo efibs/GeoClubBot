@@ -18,7 +18,7 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
             LogDeletingPrivateChannel(logger, notification.Nickname);
 
             var clubMember = await unitOfWork.ClubMembers
-                .ReadClubMemberByUserIdAsync(notification.UserId)
+                .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
             var successful = await mediator
@@ -30,7 +30,7 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
                 logger.LogWarning("Failed to delete member private channel for member '{clubMemberNickname}'", notification.Nickname);
             }
 
-            await unitOfWork.SaveChangesAsync().ConfigureAwait(false);
+            await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e)
         {
