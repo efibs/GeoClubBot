@@ -27,7 +27,7 @@ public class EfDailyMissionReminderRepository(GeoClubBotDbContext dbContext) : I
             .ConfigureAwait(false);
     }
 
-    public async Task<List<DailyMissionReminder>> ReadDueRemindersAsync(TimeOnly currentTimeUtc, DateOnly todayUtc, CancellationToken cancellationToken = default)
+    public async Task<List<DailyMissionReminder>> ReadDueRemindersForUpdateAsync(TimeOnly currentTimeUtc, DateOnly todayUtc, CancellationToken cancellationToken = default)
     {
         return await dbContext.DailyMissionReminders
             .Where(r => r.ReminderTimeUtc == currentTimeUtc

@@ -28,7 +28,7 @@ public sealed partial class SendDueRemindersHandler(
         var today = DateOnly.FromDateTime(now);
 
         var dueReminders = await reminders
-            .ReadDueRemindersAsync(currentTime, today, cancellationToken)
+            .ReadDueRemindersForUpdateAsync(currentTime, today, cancellationToken)
             .ConfigureAwait(false);
 
         if (dueReminders.Count == 0)
