@@ -9,7 +9,6 @@ using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.Strikes;
-using Utilities;
 using Xunit;
 
 namespace GeoClubBot.Tests.Application.UseCases.ClubMemberActivity;
@@ -23,6 +22,7 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
     private readonly IStrikesRepository _strikes = Substitute.For<IStrikesRepository>();
     private readonly IExcusesRepository _excuses = Substitute.For<IExcusesRepository>();
     private readonly IClubRepository _clubs = Substitute.For<IClubRepository>();
+    private readonly IClubMemberRepository _clubMembers = Substitute.For<IClubMemberRepository>();
     private readonly IHistoryRepository _history = Substitute.For<IHistoryRepository>();
     private readonly IActivityStatusMessageSender _messageSender = Substitute.For<IActivityStatusMessageSender>();
     private readonly ISender _mediator = Substitute.For<ISender>();
@@ -37,6 +37,12 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         _excuses.ReadExcusesAsync(Arg.Any<CancellationToken>()).Returns([]);
         _history.ReadLatestHistoryEntriesByClubIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns([]);
+        _strikes.ReadActiveStrikeCountsByMemberUserIdsAsync(
+                Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, int>());
+        _clubMembers.ReadClubMembersByUserIdsAsync(
+                Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, ClubMember>());
     }
 
     [Fact]
@@ -61,12 +67,9 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             .WithUserId("user-1").WithNickname("Player1")
             .InClub(ClubId).WithXp(1000).JoinedAt(joinedAt)
             .Build();
-        _mediator
-            .Send(Arg.Is<ReadOrSyncClubMemberByUserIdQuery>(q => q.UserId == "user-1"), Arg.Any<CancellationToken>())
-            .Returns(Result<ClubMember>.Success(persistedMember));
-
-        _strikes.ReadNumberOfActiveStrikesByMemberUserIdAsync("user-1", Arg.Any<CancellationToken>())
-            .Returns(0);
+        _clubMembers.ReadClubMembersByUserIdsAsync(
+                Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, ClubMember> { ["user-1"] = persistedMember });
 
         var handler = CreateHandler();
 
@@ -102,12 +105,9 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             .WithUserId("user-1").WithNickname("Player1")
             .InClub(ClubId).WithXp(1200).JoinedAt(joinedAt)
             .Build();
-        _mediator
-            .Send(Arg.Is<ReadOrSyncClubMemberByUserIdQuery>(q => q.UserId == "user-1"), Arg.Any<CancellationToken>())
-            .Returns(Result<ClubMember>.Success(persistedMember));
-
-        _strikes.ReadNumberOfActiveStrikesByMemberUserIdAsync("user-1", Arg.Any<CancellationToken>())
-            .Returns(0);
+        _clubMembers.ReadClubMembersByUserIdsAsync(
+                Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, ClubMember> { ["user-1"] = persistedMember });
 
         var handler = CreateHandler();
 
@@ -141,12 +141,12 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             .WithUserId("user-1").WithNickname("Player1")
             .InClub(ClubId).WithXp(1000).JoinedAt(joinedAt)
             .Build();
-        _mediator
-            .Send(Arg.Is<ReadOrSyncClubMemberByUserIdQuery>(q => q.UserId == "user-1"), Arg.Any<CancellationToken>())
-            .Returns(Result<ClubMember>.Success(persistedMember));
-
-        _strikes.ReadNumberOfActiveStrikesByMemberUserIdAsync("user-1", Arg.Any<CancellationToken>())
-            .Returns(3);
+        _clubMembers.ReadClubMembersByUserIdsAsync(
+                Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, ClubMember> { ["user-1"] = persistedMember });
+        _strikes.ReadActiveStrikeCountsByMemberUserIdsAsync(
+                Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, int> { ["user-1"] = 3 });
 
         var handler = CreateHandler();
 
@@ -170,9 +170,9 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         var persistedMember = new ClubMemberBuilder()
             .WithUserId("user-1").WithNickname("Player1")
             .InClub(ClubId).WithXp(1000).JoinedAt(joinedAt).Build();
-        _mediator
-            .Send(Arg.Is<ReadOrSyncClubMemberByUserIdQuery>(q => q.UserId == "user-1"), Arg.Any<CancellationToken>())
-            .Returns(Result<ClubMember>.Success(persistedMember));
+        _clubMembers.ReadClubMembersByUserIdsAsync(
+                Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, ClubMember> { ["user-1"] = persistedMember });
 
         var handler = CreateHandler();
 
@@ -183,7 +183,7 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
     }
 
     [Fact]
-    public async Task Handle_SkipsMember_WhenReadOrSyncReturnsFailure()
+    public async Task Handle_SkipsMember_WhenPersistedMemberLookupMisses()
     {
         var joinedAt = DateTimeOffset.UtcNow.AddMonths(-6);
         var apiResponse = new List<ClubMemberDto>
@@ -192,9 +192,8 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         };
         _client.ReadClubMembersAsync(ClubId, Arg.Any<CancellationToken>()).Returns(apiResponse);
 
-        _mediator
-            .Send(Arg.Is<ReadOrSyncClubMemberByUserIdQuery>(q => q.UserId == "user-1"), Arg.Any<CancellationToken>())
-            .Returns(Result<ClubMember>.Failure(Error.NotFound("club_member.not_found", "missing")));
+        // _clubMembers.ReadClubMembersByUserIdsAsync defaults (set in the constructor) to an
+        // empty dict — simulates a member missing from the batched DB read.
 
         var handler = CreateHandler();
 
@@ -217,7 +216,7 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             .BuildOptions();
 
         return new CheckGeoGuessrPlayerActivityHandler(
-            _clientFactory, _strikes, _excuses, _clubs, _history,
+            _clientFactory, _strikes, _excuses, _clubs, _clubMembers, _history,
             _messageSender, _mediator, geoGuessrConfig, activityCheckerConfig, _logger);
     }
 

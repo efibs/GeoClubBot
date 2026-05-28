@@ -21,6 +21,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     IStrikesRepository strikes,
     IExcusesRepository excuses,
     IClubRepository clubs,
+    IClubMemberRepository clubMembers,
     IHistoryRepository history,
     IActivityStatusMessageSender activityStatusMessageSender,
     ISender mediator,
@@ -144,12 +145,21 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
 
         var checkTimeRange = new TimeRange(lastActivityCheckTime, now);
 
+        // SaveClubMembersCommand has just persisted every API member, so a single batched
+        // read returns each ClubMember + active strike count. The hot loop below is pure
+        // dict lookups; no more per-member DB round-trip.
+        var userIds = members.Select(m => m.User.UserId).ToList();
+        var persistedMembersTask = clubMembers.ReadClubMembersByUserIdsAsync(userIds, cancellationToken);
+        var activeStrikeCountsTask = strikes.ReadActiveStrikeCountsByMemberUserIdsAsync(userIds, cancellationToken);
+        await Task.WhenAll(persistedMembersTask, activeStrikeCountsTask).ConfigureAwait(false);
+        var persistedMembers = await persistedMembersTask.ConfigureAwait(false);
+        var activeStrikeCounts = await activeStrikeCountsTask.ConfigureAwait(false);
+
         foreach (var member in members)
         {
-            var newStatus = await CalculateStatusAsync(
-                    member, latestHistoryEntriesDict, excusesDict, checkTimeRange,
-                    xpRequirement, gracePeriod, maxNumStrikes, cancellationToken)
-                .ConfigureAwait(false);
+            var newStatus = CalculateStatus(
+                member, latestHistoryEntriesDict, excusesDict, persistedMembers, activeStrikeCounts,
+                checkTimeRange, xpRequirement, gracePeriod, maxNumStrikes);
 
             if (newStatus is not null)
             {
@@ -160,27 +170,22 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         return statuses;
     }
 
-    private async Task<ClubMemberActivityStatus?> CalculateStatusAsync(
+    private ClubMemberActivityStatus? CalculateStatus(
         ClubMember member,
         Dictionary<string, ClubMemberHistoryEntry> latestActivities,
         Dictionary<string, List<ClubMemberExcuse>> excusesDict,
+        Dictionary<string, ClubMember> persistedMembers,
+        Dictionary<string, int> activeStrikeCounts,
         TimeRange checkTimeRange,
         int xpRequirement,
         TimeSpan gracePeriod,
-        int maxNumStrikes,
-        CancellationToken cancellationToken)
+        int maxNumStrikes)
     {
-        var memberResult = await mediator
-            .Send(new ReadOrSyncClubMemberByUserIdQuery(member.User.UserId), cancellationToken)
-            .ConfigureAwait(false);
-
-        if (memberResult.IsFailure)
+        if (!persistedMembers.TryGetValue(member.User.UserId, out var clubMember))
         {
             LogClubMemberCouldNotBeFound(logger, member.User.UserId);
             return null;
         }
-
-        var clubMember = memberResult.Value;
 
         var latestActivity = latestActivities.GetValueOrDefault(clubMember.UserId);
         var xpSinceLastUpdate = member.Xp - (latestActivity?.Xp ?? 0);
@@ -190,9 +195,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
 
         var targetAchieved = xpSinceLastUpdate >= target;
 
-        var numStrikes = await strikes
-            .ReadNumberOfActiveStrikesByMemberUserIdAsync(clubMember.UserId, cancellationToken)
-            .ConfigureAwait(false) ?? 0;
+        var numStrikes = activeStrikeCounts.GetValueOrDefault(clubMember.UserId, 0);
 
         if (!targetAchieved)
         {

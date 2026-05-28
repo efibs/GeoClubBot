@@ -32,6 +32,23 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .ConfigureAwait(false);
     }
 
+    public async Task<Dictionary<string, ClubMember>> ReadClubMembersByUserIdsAsync(IReadOnlyCollection<string> userIds, CancellationToken cancellationToken = default)
+    {
+        if (userIds.Count == 0)
+        {
+            return new Dictionary<string, ClubMember>();
+        }
+
+        var members = await dbContext.ClubMembers
+            .AsNoTracking()
+            .Include(m => m.User)
+            .Where(m => userIds.Contains(m.UserId))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return members.ToDictionary(m => m.UserId);
+    }
+
     public async Task<ClubMember?> ReadForUpdateByUserIdAsync(string userId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
