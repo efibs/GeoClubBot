@@ -38,6 +38,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Configuration", "Configurat
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.MockGeoGuessr", "GeoClubBot.MockGeoGuessr\GeoClubBot.MockGeoGuessr.csproj", "{D46703EF-4715-45A1-B946-3C86B71B55B1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Tests", "GeoClubBot.Tests\GeoClubBot.Tests.csproj", "{F571FA44-0BEF-409C-B485-A1D40E835C43}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -180,6 +182,18 @@ Global
 		{D46703EF-4715-45A1-B946-3C86B71B55B1}.Release|x64.Build.0 = Release|Any CPU
 		{D46703EF-4715-45A1-B946-3C86B71B55B1}.Release|x86.ActiveCfg = Release|Any CPU
 		{D46703EF-4715-45A1-B946-3C86B71B55B1}.Release|x86.Build.0 = Release|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Debug|x64.Build.0 = Debug|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Debug|x86.Build.0 = Debug|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Release|x64.ActiveCfg = Release|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Release|x64.Build.0 = Release|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Release|x86.ActiveCfg = Release|Any CPU
+		{F571FA44-0BEF-409C-B485-A1D40E835C43}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
