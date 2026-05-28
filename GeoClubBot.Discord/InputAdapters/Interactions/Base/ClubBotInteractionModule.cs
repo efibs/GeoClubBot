@@ -1,4 +1,5 @@
 using Discord.Interactions;
+using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Utilities;
@@ -33,21 +34,38 @@ public abstract class ClubBotInteractionModule(ISender mediator, ILogger logger)
         {
             await body(CancellationToken.None).ConfigureAwait(false);
         }
+        catch (ValidationException validationEx)
+        {
+            // Bubble up the actual field-level messages from the validator so the user
+            // can correct the bad input. ValidationBehavior in the MediatR pipeline throws
+            // this when an AbstractValidator<T> fails.
+            Logger.LogInformation(
+                "Slash command {Module}.{Method} rejected by validation: {Errors}",
+                GetType().Name, body.Method.Name,
+                string.Join("; ", validationEx.Errors.Select(e => e.ErrorMessage)));
+
+            var message = string.Join("\n", validationEx.Errors.Select(e => $"• {e.ErrorMessage}"));
+            await TrySendFollowupAsync(message).ConfigureAwait(false);
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Slash command {Module}.{Method} failed", GetType().Name, body.Method.Name);
 
             var message = failureMessage
                 ?? "Something went wrong. Please try again later. If the issue persists, contact an admin.";
+            await TrySendFollowupAsync(message).ConfigureAwait(false);
+        }
+    }
 
-            try
-            {
-                await FollowupAsync(message, ephemeral: true).ConfigureAwait(false);
-            }
-            catch (Exception followupEx)
-            {
-                Logger.LogError(followupEx, "Failed to deliver followup error message for {Module}", GetType().Name);
-            }
+    private async Task TrySendFollowupAsync(string message)
+    {
+        try
+        {
+            await FollowupAsync(message, ephemeral: true).ConfigureAwait(false);
+        }
+        catch (Exception followupEx)
+        {
+            Logger.LogError(followupEx, "Failed to deliver followup error message for {Module}", GetType().Name);
         }
     }
 
