@@ -124,31 +124,31 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 
             if (string.IsNullOrWhiteSpace(response.Content))
             {
-                _logger.LogError("LLM failed to respond.");
+                LogLlmEmptyResponse(_logger);
                 return null;
             }
 
-            _logger.LogDebug("Handling done.");
+            LogAiHandlingDone(_logger);
             return response.Content;
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            _logger.LogError("AI overall timeout of {timeout}s reached.", _overallTimeout.TotalSeconds);
+            LogAiOverallTimeout(_logger, _overallTimeout.TotalSeconds);
             return $"AI response timed out (overall limit of {_overallTimeout.TotalSeconds}s reached). Try again later.";
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogError("AI per-request timeout of {timeout}s reached.", _requestTimeout.TotalSeconds);
+            LogAiPerRequestTimeout(_logger, _requestTimeout.TotalSeconds);
             return $"AI response timed out (request limit of {_requestTimeout.TotalSeconds}s reached). Try again later.";
         }
         catch (HttpOperationException httpEx) when (httpEx.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            _logger.LogError(httpEx, "Too many requests have been reached.");
+            LogAiTooManyRequests(_logger, httpEx);
             return "AI is currently not available. Try again later.";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during AI response");
+            LogAiUnexpectedError(_logger, ex);
         }
         finally
         {
@@ -179,6 +179,24 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
 
     [LoggerMessage(LogLevel.Debug, "Handling message using AI: {prompt}")]
     partial void LogHandlingMessageUsingAiPrompt(string prompt);
+
+    [LoggerMessage(LogLevel.Error, "LLM failed to respond.")]
+    static partial void LogLlmEmptyResponse(ILogger logger);
+
+    [LoggerMessage(LogLevel.Debug, "Handling done.")]
+    static partial void LogAiHandlingDone(ILogger logger);
+
+    [LoggerMessage(LogLevel.Error, "AI overall timeout of {Timeout}s reached.")]
+    static partial void LogAiOverallTimeout(ILogger logger, double timeout);
+
+    [LoggerMessage(LogLevel.Error, "AI per-request timeout of {Timeout}s reached.")]
+    static partial void LogAiPerRequestTimeout(ILogger logger, double timeout);
+
+    [LoggerMessage(LogLevel.Error, "Too many requests have been reached.")]
+    static partial void LogAiTooManyRequests(ILogger logger, Exception ex);
+
+    [LoggerMessage(LogLevel.Error, "Error during AI response")]
+    static partial void LogAiUnexpectedError(ILogger logger, Exception ex);
 
     private sealed class RateLimitRetryHandler(HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
     {

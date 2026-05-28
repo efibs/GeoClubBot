@@ -14,7 +14,7 @@ namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.ActivityCheckerCronScheduleConfigurationKey)]
-public class ActivityCheckJob(
+public partial class ActivityCheckJob(
     ISender mediator,
     IServiceScopeFactory scopeFactory,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
@@ -37,7 +37,7 @@ public class ActivityCheckJob(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error checking player activity for club {ClubId}.", club.ClubId);
+                LogPlayerActivityCheckFailed(logger, ex, club.ClubId);
                 return new List<ClubMemberActivityStatus>();
             }
         })).ConfigureAwait(false);
@@ -52,7 +52,7 @@ public class ActivityCheckJob(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error rewarding member activity.");
+            LogActivityRewardFailed(logger, ex);
         }
 
         // Cleanup runs last so deletions don't strand members without history entries.
@@ -62,7 +62,16 @@ public class ActivityCheckJob(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error running cleanup.");
+            LogCleanupFailed(logger, ex);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Error checking player activity for club {ClubId}.")]
+    static partial void LogPlayerActivityCheckFailed(ILogger logger, Exception ex, Guid clubId);
+
+    [LoggerMessage(LogLevel.Error, "Error rewarding member activity.")]
+    static partial void LogActivityRewardFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(LogLevel.Error, "Error running cleanup.")]
+    static partial void LogCleanupFailed(ILogger logger, Exception ex);
 }

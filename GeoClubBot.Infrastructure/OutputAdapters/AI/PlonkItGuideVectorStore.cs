@@ -50,7 +50,7 @@ public partial class PlonkItGuideVectorStore(
 
                 if (connectionExists == false)
                 {
-                    logger.LogError("Could not create PlonkIt Guide vector store because not all connections could be established.");
+                    LogConnectionsUnavailable(logger);
                     return;
                 }
 
@@ -65,10 +65,10 @@ public partial class PlonkItGuideVectorStore(
 
                 await foreach (var statusUpdate in InitPlonkItStoreAsync().ConfigureAwait(false))
                 {
-                    logger.LogDebug(statusUpdate);
+                    LogStoreInitStatus(logger, statusUpdate);
                 }
 
-                logger.LogDebug("Initializing PlonkIt Guide done.");
+                LogStoreInitDone(logger);
             }
         }
         catch (Exception ex)
@@ -341,7 +341,7 @@ public partial class PlonkItGuideVectorStore(
 
         if (guides == null)
         {
-            logger.LogError("PlonkItGuide could not be retrieved.");
+            LogPlonkItGuideRetrievalFailed(logger);
             yield return "ERROR: PlonkItGuide could not be retrieved.";
             yield break;
         }
@@ -513,4 +513,16 @@ public partial class PlonkItGuideVectorStore(
 
     [LoggerMessage(LogLevel.Error, "Error fetching plonk-it-guide page {url}")]
     static partial void LogErrorFetchingPlonkItGuidePageUrl(ILogger<PlonkItGuideVectorStore> logger, Exception ex, string url);
+
+    [LoggerMessage(LogLevel.Error, "Could not create PlonkIt Guide vector store because not all connections could be established.")]
+    static partial void LogConnectionsUnavailable(ILogger<PlonkItGuideVectorStore> logger);
+
+    [LoggerMessage(LogLevel.Debug, "{StatusUpdate}")]
+    static partial void LogStoreInitStatus(ILogger<PlonkItGuideVectorStore> logger, string statusUpdate);
+
+    [LoggerMessage(LogLevel.Debug, "Initializing PlonkIt Guide done.")]
+    static partial void LogStoreInitDone(ILogger<PlonkItGuideVectorStore> logger);
+
+    [LoggerMessage(LogLevel.Error, "PlonkItGuide could not be retrieved.")]
+    static partial void LogPlonkItGuideRetrievalFailed(ILogger<PlonkItGuideVectorStore> logger);
 }

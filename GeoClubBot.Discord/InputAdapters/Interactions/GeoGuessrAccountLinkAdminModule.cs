@@ -13,7 +13,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
 [Group("gg-account-link-admin", "Commands for linking Discord accounts to GeoGuessr accounts")]
-public class GeoGuessrAccountLinkAdminModule(
+public partial class GeoGuessrAccountLinkAdminModule(
     ISender mediator,
     ILogger<GeoGuessrAccountLinkAdminModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
@@ -79,7 +79,7 @@ public class GeoGuessrAccountLinkAdminModule(
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error while trying to open one time password input modal for linking request between discord user {DiscordUserId} on GeoGuessr account {GeoGuessrUserId}.", discordUserIdString, geoGuessrUserId);
+            LogOtpModalOpenFailed(Logger, ex, discordUserIdString, geoGuessrUserId);
             await RespondAsync("Failed to open one time password input modal.", ephemeral: true).ConfigureAwait(false);
         }
     }
@@ -114,7 +114,7 @@ public class GeoGuessrAccountLinkAdminModule(
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error while trying to open cancel modal for linking request between discord user {DiscordUserId} on GeoGuessr account {GeoGuessrUserId}.", discordUserIdString, geoGuessrUserId);
+            LogCancelModalOpenFailed(Logger, ex, discordUserIdString, geoGuessrUserId);
             await RespondAsync("Failed to open cancel modal.", ephemeral: true).ConfigureAwait(false);
         }
     }
@@ -156,7 +156,7 @@ public class GeoGuessrAccountLinkAdminModule(
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Sending admin complete response failed.");
+            LogAdminCompleteResponseFailed(Logger, ex);
         }
 
         try
@@ -167,7 +167,7 @@ public class GeoGuessrAccountLinkAdminModule(
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Sending direct message to user with completed account linking failed.");
+            LogLinkingCompleteDmFailed(Logger, ex);
         }
 
         if (messageIdString != null)
@@ -192,7 +192,7 @@ public class GeoGuessrAccountLinkAdminModule(
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Sending admin complete response failed.");
+            LogAdminCompleteResponseFailed(Logger, ex);
         }
 
         try
@@ -203,7 +203,7 @@ public class GeoGuessrAccountLinkAdminModule(
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Sending direct message to user with completed account linking failed.");
+            LogLinkingCompleteDmFailed(Logger, ex);
         }
 
         if (messageIdString != null)
@@ -213,4 +213,18 @@ public class GeoGuessrAccountLinkAdminModule(
             await message.DeleteAsync().ConfigureAwait(false);
         }
     }
+
+    [LoggerMessage(LogLevel.Error,
+        "Error while trying to open one time password input modal for linking request between discord user {DiscordUserId} on GeoGuessr account {GeoGuessrUserId}.")]
+    static partial void LogOtpModalOpenFailed(ILogger logger, Exception ex, string discordUserId, string geoGuessrUserId);
+
+    [LoggerMessage(LogLevel.Error,
+        "Error while trying to open cancel modal for linking request between discord user {DiscordUserId} on GeoGuessr account {GeoGuessrUserId}.")]
+    static partial void LogCancelModalOpenFailed(ILogger logger, Exception ex, string discordUserId, string geoGuessrUserId);
+
+    [LoggerMessage(LogLevel.Warning, "Sending admin complete response failed.")]
+    static partial void LogAdminCompleteResponseFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(LogLevel.Warning, "Sending direct message to user with completed account linking failed.")]
+    static partial void LogLinkingCompleteDmFailed(ILogger logger, Exception ex);
 }
