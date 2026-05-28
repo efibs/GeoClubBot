@@ -14,10 +14,10 @@ public sealed class CalculateAverageXpHandler(
     public async Task<List<ClubMemberAverageXp>> Handle(CalculateAverageXpQuery request, CancellationToken cancellationToken)
     {
         var historyEntries = await history
-            .ReadHistoryEntriesByClubIdAsync(request.ClubId, cancellationToken)
+            .ReadHistoryEntryProjectionsByClubIdAsync(request.ClubId, cancellationToken)
             .ConfigureAwait(false);
 
-        var allExcuses = await excuses.ReadExcusesAsync(cancellationToken).ConfigureAwait(false);
+        var allExcuses = await excuses.ReadExcuseProjectionsAsync(cancellationToken).ConfigureAwait(false);
 
         var excusesByUser = allExcuses
             .GroupBy(e => e.UserId)
@@ -57,9 +57,8 @@ public sealed class CalculateAverageXpHandler(
 
             var average = validDifferences.Average();
 
-            var clubMember = entries[0].ClubMember;
-            var nickname = clubMember?.User?.Nickname ?? userId;
-            var joinedAt = clubMember?.JoinedAt ?? DateTimeOffset.MaxValue;
+            var nickname = entries[0].MemberNickname ?? userId;
+            var joinedAt = entries[0].MemberJoinedAt ?? DateTimeOffset.MaxValue;
 
             results.Add(new ClubMemberAverageXp(nickname, average, joinedAt));
         }

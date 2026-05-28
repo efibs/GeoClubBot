@@ -7,6 +7,7 @@ using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
+using UseCases.OutputPorts.Projections;
 using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.Strikes;
 using Utilities;
@@ -53,10 +54,10 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         await mediator.Send(new SaveClubMembersCommand(snapshots), cancellationToken).ConfigureAwait(false);
 
         var latestHistoryEntries = await history
-            .ReadLatestHistoryEntriesByClubIdAsync(clubId, cancellationToken)
+            .ReadLatestHistoryEntryProjectionsByClubIdAsync(clubId, cancellationToken)
             .ConfigureAwait(false);
 
-        var allExcuses = await excuses.ReadExcusesAsync(cancellationToken).ConfigureAwait(false);
+        var allExcuses = await excuses.ReadExcuseProjectionsAsync(cancellationToken).ConfigureAwait(false);
 
         var lastActivityCheckTime = latestHistoryEntries.Any()
             ? latestHistoryEntries.Select(a => a.Timestamp).Max()
@@ -126,8 +127,8 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
 
     private async Task<List<ClubMemberActivityStatus>> CalculateStatusesAsync(
         List<ClubMember> members,
-        IEnumerable<ClubMemberHistoryEntry> latestHistoryEntries,
-        IEnumerable<ClubMemberExcuse> excusesList,
+        IEnumerable<LatestHistoryEntryProjection> latestHistoryEntries,
+        IEnumerable<ExcuseProjection> excusesList,
         DateTimeOffset lastActivityCheckTime,
         DateTimeOffset now,
         int xpRequirement,
@@ -172,8 +173,8 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
 
     private ClubMemberActivityStatus? CalculateStatus(
         ClubMember member,
-        Dictionary<string, ClubMemberHistoryEntry> latestActivities,
-        Dictionary<string, List<ClubMemberExcuse>> excusesDict,
+        Dictionary<string, LatestHistoryEntryProjection> latestActivities,
+        Dictionary<string, List<ExcuseProjection>> excusesDict,
         Dictionary<string, ClubMember> persistedMembers,
         Dictionary<string, int> activeStrikeCounts,
         TimeRange checkTimeRange,
@@ -218,7 +219,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     private static (int IndividualTarget, string? IndividualTargetReason) CalculateIndividualTarget(
         ClubMember member,
         TimeRange checkTimeRange,
-        Dictionary<string, List<ClubMemberExcuse>> excuses,
+        Dictionary<string, List<ExcuseProjection>> excuses,
         int xpRequirement,
         TimeSpan gracePeriod)
     {

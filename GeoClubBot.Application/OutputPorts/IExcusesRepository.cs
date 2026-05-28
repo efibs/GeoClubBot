@@ -1,4 +1,5 @@
 using Entities;
+using UseCases.OutputPorts.Projections;
 
 namespace UseCases.OutputPorts;
 
@@ -7,6 +8,8 @@ public interface IExcusesRepository
     ClubMemberExcuse CreateExcuse(ClubMemberExcuse excuse);
 
     Task<List<ClubMemberExcuse>> ReadExcusesAsync(CancellationToken cancellationToken = default);
+
+    Task<List<ExcuseProjection>> ReadExcuseProjectionsAsync(CancellationToken cancellationToken = default);
 
     Task<ClubMemberExcuse?> ReadExcuseAsync(Guid id, CancellationToken cancellationToken = default);
 

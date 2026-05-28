@@ -1,4 +1,5 @@
 using Entities;
+using UseCases.OutputPorts.Projections;
 
 namespace UseCases.OutputPorts;
 
@@ -12,7 +13,11 @@ public interface IHistoryRepository
 
     Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
 
+    Task<List<LatestHistoryEntryProjection>> ReadLatestHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
+
     Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
+
+    Task<List<HistoryEntryProjection>> ReadHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
 
     Task<int> DeleteHistoryEntriesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default);
 }

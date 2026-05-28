@@ -2,6 +2,7 @@ using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Projections;
 
 namespace Infrastructure.OutputAdapters;
 
@@ -55,6 +56,18 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
             .ConfigureAwait(false);
     }
 
+    public async Task<List<LatestHistoryEntryProjection>> ReadLatestHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.ClubMemberHistoryEntries
+            .AsNoTracking()
+            .Where(e => e.ClubId == clubId)
+            .GroupBy(e => e.UserId)
+            .Select(g => g.OrderByDescending(e => e.Timestamp).First())
+            .Select(e => new LatestHistoryEntryProjection(e.UserId, e.Xp, e.Timestamp))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMemberHistoryEntries
@@ -63,6 +76,22 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
             .ThenInclude(m => m!.User)
             .Where(e => e.ClubId == clubId)
             .OrderByDescending(e => e.Timestamp)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<List<HistoryEntryProjection>> ReadHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.ClubMemberHistoryEntries
+            .AsNoTracking()
+            .Where(e => e.ClubId == clubId)
+            .OrderByDescending(e => e.Timestamp)
+            .Select(e => new HistoryEntryProjection(
+                e.UserId,
+                e.Xp,
+                e.Timestamp,
+                e.ClubMember == null ? null : e.ClubMember.User!.Nickname,
+                e.ClubMember == null ? (DateTimeOffset?)null : e.ClubMember.JoinedAt))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

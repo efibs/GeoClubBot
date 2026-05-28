@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using NSubstitute;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.Projections;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.Strikes;
@@ -34,8 +35,8 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         _clientFactory.CreateClient(Arg.Any<Guid>()).Returns(_client);
         _clubs.ReadClubByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns(Club.Create(ClubId, "TestClub", 5));
-        _excuses.ReadExcusesAsync(Arg.Any<CancellationToken>()).Returns([]);
-        _history.ReadLatestHistoryEntriesByClubIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+        _excuses.ReadExcuseProjectionsAsync(Arg.Any<CancellationToken>()).Returns([]);
+        _history.ReadLatestHistoryEntryProjectionsByClubIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns([]);
         _strikes.ReadActiveStrikeCountsByMemberUserIdsAsync(
                 Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
@@ -56,11 +57,10 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             BuildApiMember("user-1", "Player1", xp: 1000, joinedAt)
         };
         _client.ReadClubMembersAsync(ClubId, Arg.Any<CancellationToken>()).Returns(apiResponse);
-        _history.ReadLatestHistoryEntriesByClubIdAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ClubMemberHistoryEntry>
+        _history.ReadLatestHistoryEntryProjectionsByClubIdAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(new List<LatestHistoryEntryProjection>
             {
-                new HistoryEntryBuilder().WithUserId("user-1").InClub(ClubId).WithXp(1000)
-                    .At(DateTimeOffset.UtcNow.AddDays(-7)).Build()
+                new("user-1", Xp: 1000, Timestamp: DateTimeOffset.UtcNow.AddDays(-7))
             });
 
         var persistedMember = new ClubMemberBuilder()
@@ -94,11 +94,10 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         _client.ReadClubMembersAsync(ClubId, Arg.Any<CancellationToken>()).Returns(apiResponse);
 
         // Latest historical entry says they had 1000 XP. Delta = 200.
-        _history.ReadLatestHistoryEntriesByClubIdAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ClubMemberHistoryEntry>
+        _history.ReadLatestHistoryEntryProjectionsByClubIdAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(new List<LatestHistoryEntryProjection>
             {
-                new HistoryEntryBuilder().WithUserId("user-1").InClub(ClubId).WithXp(1000)
-                    .At(DateTimeOffset.UtcNow.AddDays(-7)).Build()
+                new("user-1", Xp: 1000, Timestamp: DateTimeOffset.UtcNow.AddDays(-7))
             });
 
         var persistedMember = new ClubMemberBuilder()
@@ -130,11 +129,10 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             BuildApiMember("user-1", "Player1", xp: 1000, joinedAt)
         };
         _client.ReadClubMembersAsync(ClubId, Arg.Any<CancellationToken>()).Returns(apiResponse);
-        _history.ReadLatestHistoryEntriesByClubIdAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ClubMemberHistoryEntry>
+        _history.ReadLatestHistoryEntryProjectionsByClubIdAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(new List<LatestHistoryEntryProjection>
             {
-                new HistoryEntryBuilder().WithUserId("user-1").InClub(ClubId).WithXp(1000)
-                    .At(DateTimeOffset.UtcNow.AddDays(-7)).Build()
+                new("user-1", Xp: 1000, Timestamp: DateTimeOffset.UtcNow.AddDays(-7))
             });
 
         var persistedMember = new ClubMemberBuilder()

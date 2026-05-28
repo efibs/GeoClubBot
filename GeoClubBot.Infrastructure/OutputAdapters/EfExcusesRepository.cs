@@ -2,6 +2,7 @@ using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
 using UseCases.OutputPorts;
+using UseCases.OutputPorts.Projections;
 
 namespace Infrastructure.OutputAdapters;
 
@@ -19,6 +20,15 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
             .AsNoTracking()
             .Include(e => e.ClubMember)
             .ThenInclude(m => m!.User)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<List<ExcuseProjection>> ReadExcuseProjectionsAsync(CancellationToken cancellationToken = default)
+    {
+        return await dbContext.ClubMemberExcuses
+            .AsNoTracking()
+            .Select(e => new ExcuseProjection(e.UserId, e.From, e.To))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
