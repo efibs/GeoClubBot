@@ -24,14 +24,14 @@ public class UserInfoModule(
                     .Send(new GetLinkedGeoGuessrUserQuery(user.Id), ct)
                     .ConfigureAwait(false);
 
-                if (linkedGeoGuessrAccount == null)
+                if (linkedGeoGuessrAccount.IsFailure)
                 {
                     await FollowupAsync($"The user '{user.DisplayName}' has not linked his GeoGuessr account yet.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
                 else
                 {
-                    await FollowupAsync($"The user '{user.DisplayName}' is called '**{linkedGeoGuessrAccount.Nickname}**' in GeoGuessr.", ephemeral: true)
+                    await FollowupAsync($"The user '{user.DisplayName}' is called '**{linkedGeoGuessrAccount.Value.Nickname}**' in GeoGuessr.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
             },
@@ -48,7 +48,7 @@ public class UserInfoModule(
                     .Send(new GetGeoGuessrProfileQuery(user.Id), ct)
                     .ConfigureAwait(false);
 
-                if (profile is null)
+                if (profile.IsFailure)
                 {
                     await FollowupAsync(
                         $"The user '{user.DisplayName}' has not linked their GeoGuessr account yet.",
@@ -56,7 +56,7 @@ public class UserInfoModule(
                     return;
                 }
 
-                await FollowupAsync(embed: BuildProfileEmbed(profile), ephemeral: true).ConfigureAwait(false);
+                await FollowupAsync(embed: BuildProfileEmbed(profile.Value), ephemeral: true).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Reading the GeoGuessr profile failed. Try again later. If the problem persists, please contact an admin.");
@@ -70,14 +70,14 @@ public class UserInfoModule(
                     .Send(new GetDiscordUserByNicknameQuery(nickname), ct)
                     .ConfigureAwait(false);
 
-                if (discordUserId == null)
+                if (discordUserId.IsFailure)
                 {
                     await FollowupAsync($"No linked Discord user found for GeoGuessr player '**{nickname}**'.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
                 else
                 {
-                    await FollowupAsync($"The GeoGuessr player '**{nickname}**' is <@{discordUserId}>.", ephemeral: true)
+                    await FollowupAsync($"The GeoGuessr player '**{nickname}**' is <@{discordUserId.Value}>.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
             },

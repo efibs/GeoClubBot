@@ -7,6 +7,7 @@ using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.GeoGuessrAccountLinking;
+using Utilities;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
@@ -26,7 +27,7 @@ public partial class GeoGuessrAccountLinkAdminModule(
                     .Send(new CompleteAccountLinkingCommand(discordUser.Id, geoGuessrUserId, oneTimePassword), ct)
                     .ConfigureAwait(false);
 
-                await HandleLinkingEndedAsync(result.Successful, result.User, discordUser, null).ConfigureAwait(false);
+                await HandleLinkingEndedAsync(result, discordUser, null).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to complete linking process (internal error).");
@@ -96,7 +97,7 @@ public partial class GeoGuessrAccountLinkAdminModule(
                     .ConfigureAwait(false);
 
                 var discordUser = Context.Guild.GetUser(discordUserId);
-                await HandleLinkingEndedAsync(result.Successful, result.User, discordUser, messageIdString).ConfigureAwait(false);
+                await HandleLinkingEndedAsync(result, discordUser, messageIdString).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to complete linking process (internal error).");
@@ -142,13 +143,13 @@ public partial class GeoGuessrAccountLinkAdminModule(
             ephemeral: true,
             failureMessage: "Failed to cancel linking process (internal error).");
 
-    private async Task HandleLinkingEndedAsync(bool successful, GeoGuessrUser? geoGuessrUser, IUser discordUser, string? messageIdString)
+    private async Task HandleLinkingEndedAsync(Result<GeoGuessrUser> result, IUser discordUser, string? messageIdString)
     {
         try
         {
-            if (!successful)
+            if (result.IsFailure)
             {
-                await FollowupAsync("Account linking failed: Wrong password. Please try again.", ephemeral: true).ConfigureAwait(false);
+                await FollowupAsync(FriendlyMessageFor(result.Error), ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
@@ -159,11 +160,16 @@ public partial class GeoGuessrAccountLinkAdminModule(
             LogAdminCompleteResponseFailed(Logger, ex);
         }
 
+        if (result.IsFailure)
+        {
+            return;
+        }
+
         try
         {
             var dmChannel = await discordUser.CreateDMChannelAsync().ConfigureAwait(false);
             await dmChannel.SendMessageAsync(
-                $"Your GeoGuessr account \"{geoGuessrUser?.Nickname ?? "N/A"}\" was successfully linked to this Discord account.").ConfigureAwait(false);
+                $"Your GeoGuessr account \"{result.Value.Nickname}\" was successfully linked to this Discord account.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -178,13 +184,13 @@ public partial class GeoGuessrAccountLinkAdminModule(
         }
     }
 
-    private async Task HandleLinkingCanceledByAdminAsync(bool successful, IUser discordUser, string? messageIdString)
+    private async Task HandleLinkingCanceledByAdminAsync(Result result, IUser discordUser, string? messageIdString)
     {
         try
         {
-            if (!successful)
+            if (result.IsFailure)
             {
-                await FollowupAsync("There was no account linking process for the given accounts.", ephemeral: true).ConfigureAwait(false);
+                await FollowupAsync(FriendlyMessageFor(result.Error), ephemeral: true).ConfigureAwait(false);
                 return;
             }
 

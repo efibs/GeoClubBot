@@ -23,7 +23,7 @@ public class MyActivityModule(
                     .Send(new GetLinkedGeoGuessrUserQuery(Context.User.Id), ct)
                     .ConfigureAwait(false);
 
-                if (geoGuessrUser is null)
+                if (geoGuessrUser.IsFailure)
                 {
                     await FollowupAsync("You have not yet linked your GeoGuessr account to this Discord account.\n\n" +
                                         "Please use the '/gg-account link' command to start linking your GeoGuessr account.")
@@ -32,7 +32,7 @@ public class MyActivityModule(
                 }
 
                 var activity = await Mediator
-                    .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
+                    .Send(new GetActivityThisWeekQuery(geoGuessrUser.Value.UserId), ct)
                     .ConfigureAwait(false);
 
                 // Build two-row progress display: day labels + emoji per day

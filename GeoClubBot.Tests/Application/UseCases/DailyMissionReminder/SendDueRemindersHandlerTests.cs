@@ -11,6 +11,7 @@ using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.DailyMissionReminder;
 using UseCases.UseCases.GeoGuessrAccountLinking;
+using Utilities;
 using Xunit;
 using DailyMissionReminderEntity = Entities.DailyMissionReminder;
 
@@ -121,7 +122,8 @@ public sealed class SendDueRemindersHandlerTests
             .Returns([reminder]);
 
         _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
-            Arg.Any<CancellationToken>()).Returns((GeoGuessrUser?)null);
+                Arg.Any<CancellationToken>())
+            .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
 
         _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(false);

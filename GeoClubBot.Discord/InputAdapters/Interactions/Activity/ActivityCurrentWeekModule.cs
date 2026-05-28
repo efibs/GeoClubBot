@@ -24,7 +24,7 @@ public partial class ActivityModule
                         .Send(new GetGeoGuessrUserByNicknameQuery(nickname), ct)
                         .ConfigureAwait(false);
 
-                    if (geoGuessrUser is null)
+                    if (geoGuessrUser.IsFailure)
                     {
                         await FollowupAsync($"No club member with the GeoGuessr nickname '**{nickname}**' was found.")
                             .ConfigureAwait(false);
@@ -32,10 +32,10 @@ public partial class ActivityModule
                     }
 
                     var activity = await Mediator
-                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
+                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.Value.UserId), ct)
                         .ConfigureAwait(false);
 
-                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
+                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Value.Nickname).Build())
                         .ConfigureAwait(false);
                 },
                 ephemeral: true,
@@ -52,7 +52,7 @@ public partial class ActivityModule
                         .Send(new GetLinkedGeoGuessrUserQuery(user.Id), ct)
                         .ConfigureAwait(false);
 
-                    if (geoGuessrUser is null)
+                    if (geoGuessrUser.IsFailure)
                     {
                         await FollowupAsync($"The user '{user.DisplayName}' has not linked their GeoGuessr account yet.")
                             .ConfigureAwait(false);
@@ -60,10 +60,10 @@ public partial class ActivityModule
                     }
 
                     var activity = await Mediator
-                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
+                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.Value.UserId), ct)
                         .ConfigureAwait(false);
 
-                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
+                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Value.Nickname).Build())
                         .ConfigureAwait(false);
                 },
                 ephemeral: true,

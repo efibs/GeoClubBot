@@ -37,7 +37,7 @@ public sealed class CompleteAccountLinkingHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsFailure_WhenOtpDoesNotMatch()
+    public async Task Handle_ReturnsValidationFailure_WhenOtpDoesNotMatch()
     {
         var request = GeoGuessrAccountLinkingRequest.Create(DiscordUserId, GeoGuessrUserId, Otp);
         _requests.ReadRequestAsync(DiscordUserId, GeoGuessrUserId, Arg.Any<CancellationToken>())
@@ -47,8 +47,9 @@ public sealed class CompleteAccountLinkingHandlerTests
             new CompleteAccountLinkingCommand(DiscordUserId, GeoGuessrUserId, "WRONG_OTP_"),
             CancellationToken.None);
 
-        result.Successful.Should().BeFalse();
-        result.User.Should().BeNull();
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("account_linking.otp_mismatch");
+        result.Error.Type.Should().Be(ErrorType.Validation);
         await _roles.DidNotReceive().AddRoleToMembersByUserIdsAsync(
             Arg.Any<IEnumerable<ulong>>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>());
     }
@@ -72,8 +73,8 @@ public sealed class CompleteAccountLinkingHandlerTests
             new CompleteAccountLinkingCommand(DiscordUserId, GeoGuessrUserId, Otp),
             CancellationToken.None);
 
-        result.Successful.Should().BeTrue();
-        result.User.Should().BeSameAs(trackedUser);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().BeSameAs(trackedUser);
         trackedUser.DiscordUserId.Should().Be(DiscordUserId);
         _requests.Received(1).DeleteRequest(request);
         await _roles.Received(1).AddRoleToMembersByUserIdsAsync(
@@ -83,20 +84,22 @@ public sealed class CompleteAccountLinkingHandlerTests
     }
 
     [Fact]
-    public async Task Handle_Throws_WhenNoLinkingRequestExists()
+    public async Task Handle_ReturnsRequestNotFound_WhenNoLinkingRequestExists()
     {
         _requests.ReadRequestAsync(DiscordUserId, GeoGuessrUserId, Arg.Any<CancellationToken>())
             .Returns((GeoGuessrAccountLinkingRequest?)null);
 
-        var act = async () => await CreateHandler().Handle(
+        var result = await CreateHandler().Handle(
             new CompleteAccountLinkingCommand(DiscordUserId, GeoGuessrUserId, Otp),
             CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("account_linking.request_not_found");
+        result.Error.Type.Should().Be(ErrorType.NotFound);
     }
 
     [Fact]
-    public async Task Handle_Throws_WhenUserSyncFails()
+    public async Task Handle_ReturnsUserSyncFailed_WhenUserSyncFails()
     {
         var request = GeoGuessrAccountLinkingRequest.Create(DiscordUserId, GeoGuessrUserId, Otp);
         _requests.ReadRequestAsync(DiscordUserId, GeoGuessrUserId, Arg.Any<CancellationToken>())
@@ -106,10 +109,11 @@ public sealed class CompleteAccountLinkingHandlerTests
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("user.not_found", "missing")));
 
-        var act = async () => await CreateHandler().Handle(
+        var result = await CreateHandler().Handle(
             new CompleteAccountLinkingCommand(DiscordUserId, GeoGuessrUserId, Otp),
             CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("account_linking.user_sync_failed");
     }
 }

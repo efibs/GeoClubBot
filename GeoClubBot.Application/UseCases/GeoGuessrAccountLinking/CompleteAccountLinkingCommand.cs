@@ -6,25 +6,24 @@ using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.Users;
+using Utilities;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
 public sealed record CompleteAccountLinkingCommand(ulong DiscordUserId, string GeoGuessrUserId, string OneTimePassword)
-    : ICommand<CompleteAccountLinkingResult>;
-
-public sealed record CompleteAccountLinkingResult(bool Successful, GeoGuessrUser? User);
+    : ICommand<Result<GeoGuessrUser>>;
 
 public sealed class CompleteAccountLinkingHandler(
     IAccountLinkingRequestRepository requests,
     IGeoGuessrUserRepository users,
     ISender mediator,
     IDiscordServerRolesAccess rolesAccess,
-    IConfiguration config) : IRequestHandler<CompleteAccountLinkingCommand, CompleteAccountLinkingResult>
+    IConfiguration config) : IRequestHandler<CompleteAccountLinkingCommand, Result<GeoGuessrUser>>
 {
     private readonly ulong _hasLinkedRoleId =
         config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
 
-    public async Task<CompleteAccountLinkingResult> Handle(CompleteAccountLinkingCommand request, CancellationToken cancellationToken)
+    public async Task<Result<GeoGuessrUser>> Handle(CompleteAccountLinkingCommand request, CancellationToken cancellationToken)
     {
         var linkingRequest = await requests
             .ReadRequestAsync(request.DiscordUserId, request.GeoGuessrUserId, cancellationToken)
@@ -32,13 +31,16 @@ public sealed class CompleteAccountLinkingHandler(
 
         if (linkingRequest is null)
         {
-            throw new InvalidOperationException(
-                $"There is no linking request for Discord user with id {request.DiscordUserId} and GeoGuessr user with id {request.GeoGuessrUserId}");
+            return Error.NotFound(
+                "account_linking.request_not_found",
+                $"There is no linking request for Discord user with id {request.DiscordUserId} and GeoGuessr user with id {request.GeoGuessrUserId}.");
         }
 
         if (!linkingRequest.Matches(request.OneTimePassword))
         {
-            return new CompleteAccountLinkingResult(false, null);
+            return Error.Validation(
+                "account_linking.otp_mismatch",
+                "Account linking failed: Wrong password. Please try again.");
         }
 
         // Ensure the user exists locally (sync from API on first contact)
@@ -47,7 +49,9 @@ public sealed class CompleteAccountLinkingHandler(
             .ConfigureAwait(false);
         if (ensured.IsFailure)
         {
-            throw new InvalidOperationException($"User with id {request.GeoGuessrUserId} does not exist.");
+            return Error.Unexpected(
+                "account_linking.user_sync_failed",
+                $"User with id {request.GeoGuessrUserId} could not be synced from the GeoGuessr API.");
         }
 
         var trackedUser = await users
@@ -55,7 +59,9 @@ public sealed class CompleteAccountLinkingHandler(
             .ConfigureAwait(false);
         if (trackedUser is null)
         {
-            return new CompleteAccountLinkingResult(false, null);
+            return Error.NotFound(
+                "account_linking.user_not_found",
+                $"GeoGuessr user with id {request.GeoGuessrUserId} was not found after syncing.");
         }
 
         trackedUser.LinkDiscord(request.DiscordUserId);
@@ -69,6 +75,6 @@ public sealed class CompleteAccountLinkingHandler(
             .AddRoleToMembersByUserIdsAsync([request.DiscordUserId], _hasLinkedRoleId, cancellationToken)
             .ConfigureAwait(false);
 
-        return new CompleteAccountLinkingResult(true, trackedUser);
+        return trackedUser;
     }
 }

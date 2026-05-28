@@ -21,13 +21,14 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
                 .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
-            var successful = await mediator
+            var result = await mediator
                 .Send(new DeleteMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
 
-            if (!successful)
+            if (result.IsFailure)
             {
-                logger.LogWarning("Failed to delete member private channel for member '{clubMemberNickname}'", notification.Nickname);
+                logger.LogWarning("Failed to delete member private channel for member '{clubMemberNickname}': {Error}",
+                    notification.Nickname, result.Error.Message);
             }
         }
         catch (Exception e)

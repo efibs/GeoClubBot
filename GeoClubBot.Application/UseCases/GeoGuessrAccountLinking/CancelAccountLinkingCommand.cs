@@ -1,15 +1,16 @@
 using MediatR;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
+using Utilities;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
-public sealed record CancelAccountLinkingCommand(ulong DiscordUserId, string GeoGuessrUserId) : ICommand<bool>;
+public sealed record CancelAccountLinkingCommand(ulong DiscordUserId, string GeoGuessrUserId) : ICommand<Result>;
 
 public sealed class CancelAccountLinkingHandler(IAccountLinkingRequestRepository requests)
-    : IRequestHandler<CancelAccountLinkingCommand, bool>
+    : IRequestHandler<CancelAccountLinkingCommand, Result>
 {
-    public async Task<bool> Handle(CancelAccountLinkingCommand request, CancellationToken cancellationToken)
+    public async Task<Result> Handle(CancelAccountLinkingCommand request, CancellationToken cancellationToken)
     {
         var linkingRequest = await requests
             .ReadRequestAsync(request.DiscordUserId, request.GeoGuessrUserId, cancellationToken)
@@ -17,10 +18,12 @@ public sealed class CancelAccountLinkingHandler(IAccountLinkingRequestRepository
 
         if (linkingRequest is null)
         {
-            return false;
+            return Error.NotFound(
+                "account_linking.request_not_found",
+                "There was no account-linking request for the given accounts.");
         }
 
         requests.DeleteRequest(linkingRequest);
-        return true;
+        return Result.Success();
     }
 }

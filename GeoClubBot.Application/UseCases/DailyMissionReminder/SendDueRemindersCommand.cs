@@ -81,12 +81,12 @@ public sealed partial class SendDueRemindersHandler(
             .Send(new GetLinkedGeoGuessrUserQuery(discordUserId), cancellationToken)
             .ConfigureAwait(false);
 
-        if (linkedUser is null)
+        if (linkedUser.IsFailure)
         {
             return false;
         }
 
-        var clubMember = await members.ReadClubMemberByUserIdAsync(linkedUser.UserId, cancellationToken).ConfigureAwait(false);
+        var clubMember = await members.ReadClubMemberByUserIdAsync(linkedUser.Value.UserId, cancellationToken).ConfigureAwait(false);
 
         if (clubMember?.ClubId is null)
         {
@@ -97,7 +97,7 @@ public sealed partial class SendDueRemindersHandler(
             .ReadTodaysActivitiesAsync(clubMember.ClubId.Value, cancellationToken)
             .ConfigureAwait(false);
 
-        return todaysActivities.Any(a => a.UserId == linkedUser.UserId && a.XpReward == dailyMissionXpReward);
+        return todaysActivities.Any(a => a.UserId == linkedUser.Value.UserId && a.XpReward == dailyMissionXpReward);
     }
 
     [LoggerMessage(LogLevel.Information, "Sending {Count} daily mission reminders.")]

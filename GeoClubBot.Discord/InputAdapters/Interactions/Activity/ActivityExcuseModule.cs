@@ -100,13 +100,13 @@ public partial class ActivityModule
                 return;
             }
 
-            var successful = await Mediator.Send(new RemoveExcuseCommand(excuseIdGuid)).ConfigureAwait(false);
+            var result = await Mediator.Send(new RemoveExcuseCommand(excuseIdGuid)).ConfigureAwait(false);
 
             await RespondAsync(
-                successful
+                result.IsSuccess
                     ? $"Excuse with id {excuseId} successfully removed"
                     : $"There is no excuse with id {excuseId}",
-                ephemeral: !successful).ConfigureAwait(false);
+                ephemeral: result.IsFailure).ConfigureAwait(false);
         }
 
         [SlashCommand("read", "Read the excuses for a player")]
