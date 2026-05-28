@@ -1,5 +1,6 @@
 using Configuration;
 using MediatR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
@@ -14,8 +15,7 @@ public sealed partial class CheckClubLevelHandler(
     IGeoGuessrClientFactory geoGuessrClientFactory,
     IClubRepository clubs,
     IClubLevelTracker tracker,
-    ISender mediator,
-    IEnumerable<IClubEventNotifier> notifiers,
+    IServiceScopeFactory scopeFactory,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     ILogger<CheckClubLevelHandler> logger) : IRequestHandler<CheckClubLevelCommand, Unit>
 {
@@ -30,8 +30,17 @@ public sealed partial class CheckClubLevelHandler(
 
         logger.LogDebug("Checking club levels...");
 
-        foreach (var clubEntry in configuredClubs)
+        // Per-club fan-out: each branch gets its own DI scope so the EF tracked-entity
+        // update (UpdateLevel + SaveChanges) doesn't share a DbContext across branches.
+        // ClubLevelTracker is a thread-safe ConcurrentDictionary so the per-key Set is safe.
+        await Task.WhenAll(configuredClubs.Select(async clubEntry =>
         {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var scopedSender = scope.ServiceProvider.GetRequiredService<ISender>();
+            var scopedClubs = scope.ServiceProvider.GetRequiredService<IClubRepository>();
+            var scopedUnitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var scopedNotifiers = scope.ServiceProvider.GetRequiredService<IEnumerable<IClubEventNotifier>>();
+
             var client = geoGuessrClientFactory.CreateClient(clubEntry.ClubId);
             var clubDto = await client.ReadClubAsync(clubEntry.ClubId, cancellationToken).ConfigureAwait(false);
             var newLevel = clubDto.Level;
@@ -39,20 +48,24 @@ public sealed partial class CheckClubLevelHandler(
             var lastLevel = tracker.TryGet(clubEntry.ClubId);
             if (newLevel == lastLevel)
             {
-                continue;
+                return;
             }
 
             LogClubLevelChangedToClubLevel(newLevel);
 
             if (clubEntry.ClubId == mainClubId)
             {
-                await mediator.Send(new SetClubLevelStatusCommand(newLevel), cancellationToken).ConfigureAwait(false);
+                await scopedSender
+                    .Send(new SetClubLevelStatusCommand(newLevel), cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             // Skip the "level up" notification when we're just seeding the tracker for the first time.
             if (lastLevel is not null)
             {
-                var tracked = await clubs.ReadForUpdateByIdAsync(clubEntry.ClubId, cancellationToken).ConfigureAwait(false);
+                var tracked = await scopedClubs
+                    .ReadForUpdateByIdAsync(clubEntry.ClubId, cancellationToken)
+                    .ConfigureAwait(false);
                 if (tracked is null)
                 {
                     LogFailedToUpdateClubLevelClubDoesNotExits(clubEntry.ClubId);
@@ -60,8 +73,9 @@ public sealed partial class CheckClubLevelHandler(
                 else
                 {
                     tracked.UpdateLevel(newLevel);
+                    await scopedUnitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-                    foreach (var notifier in notifiers)
+                    foreach (var notifier in scopedNotifiers)
                     {
                         await notifier.SendClubLevelUpEvent(tracked, cancellationToken).ConfigureAwait(false);
                     }
@@ -69,7 +83,7 @@ public sealed partial class CheckClubLevelHandler(
             }
 
             tracker.Set(clubEntry.ClubId, newLevel);
-        }
+        })).ConfigureAwait(false);
 
         return Unit.Value;
     }

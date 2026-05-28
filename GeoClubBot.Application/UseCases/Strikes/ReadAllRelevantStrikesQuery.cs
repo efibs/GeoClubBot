@@ -1,5 +1,7 @@
 using Configuration;
 using Entities;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
@@ -11,29 +13,31 @@ public sealed record ReadAllRelevantStrikesQuery : IQuery<List<ClubMemberRelevan
 
 public sealed class ReadAllRelevantStrikesHandler(
     IGeoGuessrClientFactory geoGuessrClientFactory,
-    IStrikesRepository strikes,
+    IServiceScopeFactory scopeFactory,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
-    : MediatR.IRequestHandler<ReadAllRelevantStrikesQuery, List<ClubMemberRelevantStrike>>
+    : IRequestHandler<ReadAllRelevantStrikesQuery, List<ClubMemberRelevantStrike>>
 {
     public async Task<List<ClubMemberRelevantStrike>> Handle(
         ReadAllRelevantStrikesQuery request, CancellationToken cancellationToken)
     {
-        var relevantStrikes = new List<ClubMemberRelevantStrike>();
-
-        foreach (var club in geoGuessrConfig.Value.Clubs)
+        // Each club fans out into its own DI scope so per-club IStrikesRepository reads
+        // don't share a DbContext across parallel branches.
+        var perClubStrikes = await Task.WhenAll(geoGuessrConfig.Value.Clubs.Select(async club =>
         {
-            var client = geoGuessrClientFactory.CreateClient(club.ClubId);
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var scopedStrikes = scope.ServiceProvider.GetRequiredService<IStrikesRepository>();
 
+            var client = geoGuessrClientFactory.CreateClient(club.ClubId);
             var clubMembers = await client
                 .ReadClubMembersAsync(club.ClubId, cancellationToken)
                 .ConfigureAwait(false);
 
-            // Batch-read the active strike counts for every member in one round-trip
             var userIds = clubMembers.Select(m => m.User.UserId).ToList();
-            var activeStrikeCounts = await strikes
+            var activeStrikeCounts = await scopedStrikes
                 .ReadActiveStrikeCountsByMemberUserIdsAsync(userIds, cancellationToken)
                 .ConfigureAwait(false);
 
+            var clubStrikes = new List<ClubMemberRelevantStrike>();
             foreach (var clubMember in clubMembers)
             {
                 if (!activeStrikeCounts.TryGetValue(clubMember.User.UserId, out var numActiveStrikes) || numActiveStrikes == 0)
@@ -41,10 +45,11 @@ public sealed class ReadAllRelevantStrikesHandler(
                     continue;
                 }
 
-                relevantStrikes.Add(new ClubMemberRelevantStrike(clubMember.User.Nick, numActiveStrikes));
+                clubStrikes.Add(new ClubMemberRelevantStrike(clubMember.User.Nick, numActiveStrikes));
             }
-        }
+            return clubStrikes;
+        })).ConfigureAwait(false);
 
-        return relevantStrikes;
+        return perClubStrikes.SelectMany(s => s).ToList();
     }
 }
