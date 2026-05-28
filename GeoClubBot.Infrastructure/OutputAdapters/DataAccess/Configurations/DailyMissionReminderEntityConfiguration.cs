@@ -29,6 +29,6 @@ public class DailyMissionReminderEntityConfiguration : IEntityTypeConfiguration<
         builder.UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Ignore(x => x.DomainEvents);
 
-        builder.HasIndex(x => x.ReminderTimeUtc);
+        builder.HasIndex(x => new { x.ReminderTimeUtc, x.LastSentDateUtc });
     }
 }

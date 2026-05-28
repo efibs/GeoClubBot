@@ -32,5 +32,6 @@ public class ClubMemberStrikeConfiguration : IEntityTypeConfiguration<ClubMember
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(x => x.Timestamp);
+        builder.HasIndex(x => x.UserId);
     }
 }

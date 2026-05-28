@@ -33,5 +33,6 @@ public class ClubMemberExcuseConfiguration : IEntityTypeConfiguration<ClubMember
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(x => x.To);
+        builder.HasIndex(x => x.UserId);
     }
 }
