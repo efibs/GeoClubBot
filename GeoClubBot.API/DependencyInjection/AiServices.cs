@@ -29,6 +29,12 @@ public static class AiServices
         services.AddTransient<VllmEmbeddingService>(_ =>
             new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName));
 
+        // Split components: page-fetching (Puppeteer), embedding (vLLM + categoriser), and
+        // the vector index (Qdrant). The PlonkItGuideVectorStore facade composes them.
+        services.AddSingleton<IPlonkItPageFetcher, PuppeteerPlonkItPageFetcher>();
+        services.AddSingleton<IPlonkItVectorIndex, QdrantPlonkItVectorIndex>();
+        services.AddSingleton<IPlonkItEmbedder, VllmPlonkItEmbedder>();
+
         services.AddSingleton<PlonkItGuideVectorStore>();
         services.AddSingleton<IPlonkItGuideVectorStore>(sp => sp.GetRequiredService<PlonkItGuideVectorStore>());
 
