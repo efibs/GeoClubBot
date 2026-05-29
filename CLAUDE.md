@@ -15,7 +15,7 @@ dotnet build GeoClubBot.sln
 # Run the API (entry point project)
 dotnet run --project GeoClubBot.API
 
-# Start local PostgreSQL + Qdrant via Docker
+# Start local PostgreSQL (compose.yaml also defines a `qdrant` service for AI features)
 docker compose up postgresqldb
 
 # Build Docker image
@@ -25,7 +25,31 @@ docker build -f ./GeoClubBot.API/Dockerfile -t ghcr.io/efibs/geo-club-bot:dev .
 dotnet ef migrations add <MigrationName> --project GeoClubBot.Infrastructure --startup-project GeoClubBot.API
 ```
 
-There are no test projects in this repository.
+### Tests
+
+Tests live in **GeoClubBot.Tests** (xUnit + FluentAssertions + NSubstitute).
+
+```bash
+# Run all tests
+dotnet test GeoClubBot.Tests/GeoClubBot.Tests.csproj
+
+# Run a single test by name (or substring)
+dotnet test --filter "FullyQualifiedName~CheckStrikeDecayHandlerTests"
+
+# Run only fast unit tests (exclude integration tests that need Docker)
+dotnet test --filter "Category!=Integration"
+```
+
+Integration tests (`Integration/`, `[Trait("Category", "Integration")]`) spin up a real
+PostgreSQL via **Testcontainers** — they require a running Docker daemon. They share one
+container (`PostgresCollection`/`PostgresFixture`) and each test namespaces its own seed data
+by random `Club`/`UserId` so the container is reused safely.
+
+### Local dev without real credentials
+
+Set `GeoGuessr:UseMock=true` (default in `appsettings.Development.json`) to run against the
+in-process **GeoClubBot.MockGeoGuessr** instead of the real GeoGuessr API. It serves a mock API
+plus a UI (URL logged at startup) for seeding/driving fake club data.
 
 ## Architecture
 
@@ -55,6 +79,13 @@ API + Discord (controllers, slash command modules)
 | **Extensions** | Helper extension methods |
 | **Utilities** | General utilities |
 | **QuartzExtensions** | `ConfiguredCronJobAttribute` for declarative cron job registration |
+| **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API + Razor UI for local dev (gated by `GeoGuessr:UseMock`) |
+| **GeoClubBot.Tests** | xUnit unit + Testcontainers-backed integration tests |
+
+> **Namespace gotcha**: assembly names are `GeoClubBot.*` but several projects set a short
+> `RootNamespace` — Application → `UseCases`, Domain → `Entities`, Infrastructure → `Infrastructure`.
+> `Configuration`, `Constants`, `Extensions`, `Utilities`, `QuartzExtensions` use their own names;
+> only `GeoClubBot.Discord` keeps the `GeoClubBot.` prefix. Match the existing `using`s, not the folder.
 
 ### Key Patterns
 
@@ -64,6 +95,8 @@ API + Discord (controllers, slash command modules)
 - **Refit HTTP Client**: `IGeoGuessrClient` is a declarative Refit interface for the GeoGuessr API, with Polly resilience (rate limiting, retry, circuit breaker) configured in `ResiliencePipelines.cs`.
 - **Quartz Jobs**: Jobs use `[ConfiguredCronJob("ConfigKey:Schedule")]` attribute for auto-discovery. Located in `Infrastructure/InputAdapters/Jobs/`.
 - **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/`. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
+- **Result type**: Use cases return `Result<T>` / `Error` (`Utilities/Result.cs`) instead of throwing for expected failures. `Error.Type` (`ErrorType.NotFound`, `Validation`, `Conflict`, `Forbidden`, `Unauthorized`, `Unexpected`) is mapped to HTTP status codes by the `ResultExtensions` middleware in `GeoClubBot.API/Middleware/`.
+- **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 
 ### DI Registration
 
@@ -88,5 +121,4 @@ API + Discord (controllers, slash command modules)
 ## C# Conventions
 
 - .NET 10.0, C# 14, nullable reference types enabled, implicit usings enabled
-- File-scoped namespaces
-- No `.editorconfig` or `Directory.Build.props` present
+- Conventions are enforced by `.editorconfig` (no `Directory.Build.props`): file-scoped namespaces, `using` directives **outside** the namespace, `_camelCase` private fields, 4-space indent (2 for JSON/YAML), Allman braces, `var` when the type is apparent.
