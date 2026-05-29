@@ -2,6 +2,7 @@ using Configuration;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using UseCases.Observability;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace GeoClubBot.DependencyInjection;
@@ -12,19 +13,24 @@ public partial class CachingGeoGuessrActivityReader(
     IOptions<GeoGuessrConfiguration> config,
     ILogger<CachingGeoGuessrActivityReader> logger) : IGeoGuessrActivityReader
 {
+    private const string CacheName = "geoguessr_activities";
+
     public async Task<IReadOnlyList<ReadClubActivitiesItemDto>> ReadTodaysActivitiesAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         var today = DateTimeOffset.UtcNow.Date;
         var cacheKey = $"GeoGuessrActivities:{clubId}:{today:yyyy-MM-dd}";
 
-        var cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
+        if (cache.TryGetValue<IReadOnlyList<ReadClubActivitiesItemDto>>(cacheKey, out var cached))
         {
-            entry.AbsoluteExpirationRelativeToNow = config.Value.ActivityCacheTimeToLive;
-            LogCacheMiss(clubId);
-            return await FetchTodaysActivitiesAsync(clubId, today, cancellationToken).ConfigureAwait(false);
-        }).ConfigureAwait(false);
+            CacheMetrics.RecordHit(CacheName);
+            return cached ?? [];
+        }
 
-        return cached ?? [];
+        CacheMetrics.RecordMiss(CacheName);
+        LogCacheMiss(clubId);
+        var fetched = await FetchTodaysActivitiesAsync(clubId, today, cancellationToken).ConfigureAwait(false);
+        cache.Set(cacheKey, fetched, config.Value.ActivityCacheTimeToLive);
+        return fetched;
     }
 
     private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> FetchTodaysActivitiesAsync(Guid clubId, DateTime today, CancellationToken cancellationToken)
@@ -72,14 +78,17 @@ public partial class CachingGeoGuessrActivityReader(
     {
         var cacheKey = $"GeoGuessrActivities:{clubId}:since:{since:yyyy-MM-ddTHH:mm:ssZ}";
 
-        var cached = await cache.GetOrCreateAsync(cacheKey, async entry =>
+        if (cache.TryGetValue<IReadOnlyList<ReadClubActivitiesItemDto>>(cacheKey, out var cached))
         {
-            entry.AbsoluteExpirationRelativeToNow = config.Value.ActivityCacheTimeToLive;
-            LogCacheMiss(clubId);
-            return await FetchActivitiesSinceAsync(clubId, since, cancellationToken).ConfigureAwait(false);
-        }).ConfigureAwait(false);
+            CacheMetrics.RecordHit(CacheName);
+            return cached ?? [];
+        }
 
-        return cached ?? [];
+        CacheMetrics.RecordMiss(CacheName);
+        LogCacheMiss(clubId);
+        var fetched = await FetchActivitiesSinceAsync(clubId, since, cancellationToken).ConfigureAwait(false);
+        cache.Set(cacheKey, fetched, config.Value.ActivityCacheTimeToLive);
+        return fetched;
     }
 
     private async Task<IReadOnlyList<ReadClubActivitiesItemDto>> FetchActivitiesSinceAsync(Guid clubId, DateTimeOffset since, CancellationToken cancellationToken)

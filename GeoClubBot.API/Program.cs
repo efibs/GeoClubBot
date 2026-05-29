@@ -10,8 +10,12 @@ using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using QuartzExtensions;
 using UseCases.Behaviors;
+using UseCases.Observability;
 using UseCases.UseCases;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -82,6 +86,40 @@ builder.Services.AddMediatR(cfg =>
 
 // Register FluentValidation validators from the use cases assembly.
 builder.Services.AddValidatorsFromAssemblyContaining<IUseCasesAssemblyMarker>();
+
+// OpenTelemetry: handler / cache meters from the Application layer, plus stock
+// instrumentation for ASP.NET Core, outbound HTTP, EF Core, and process runtime.
+// The OTLP exporter is opt-in via the OpenTelemetry:Endpoint config key — if absent,
+// instruments are still produced (in-process listeners work) but nothing is shipped out.
+var otelEndpoint = builder.Configuration.GetValue<string?>("OpenTelemetry:Endpoint");
+const string ServiceName = "GeoClubBot.API";
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService(ServiceName))
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddMeter(HandlerMetrics.MeterName)
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation();
+
+        if (!string.IsNullOrWhiteSpace(otelEndpoint))
+        {
+            metrics.AddOtlpExporter(otlp => otlp.Endpoint = new Uri(otelEndpoint));
+        }
+    })
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation();
+
+        if (!string.IsNullOrWhiteSpace(otelEndpoint))
+        {
+            tracing.AddOtlpExporter(otlp => otlp.Endpoint = new Uri(otelEndpoint));
+        }
+    });
 
 var app = builder.Build();
 

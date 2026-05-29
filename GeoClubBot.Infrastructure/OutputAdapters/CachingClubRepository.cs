@@ -1,11 +1,13 @@
 using Entities;
 using Microsoft.Extensions.Caching.Memory;
+using UseCases.Observability;
 using UseCases.OutputPorts;
 
 namespace Infrastructure.OutputAdapters;
 
 public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) : IClubRepository
 {
+    private const string CacheName = "clubs";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
 
     public Club CreateClub(Club club)
@@ -27,9 +29,11 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
         var key = ByIdKey(clubId);
         if (cache.TryGetValue<Club?>(key, out var cached))
         {
+            CacheMetrics.RecordHit(CacheName);
             return cached;
         }
 
+        CacheMetrics.RecordMiss(CacheName);
         var club = await inner.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
         cache.Set(key, club, CacheTtl);
         return club;
@@ -50,9 +54,11 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
         var key = ByNameKey(clubName);
         if (cache.TryGetValue<Club?>(key, out var cached))
         {
+            CacheMetrics.RecordHit(CacheName);
             return cached;
         }
 
+        CacheMetrics.RecordMiss(CacheName);
         var club = await inner.ReadClubByNameAsync(clubName, cancellationToken).ConfigureAwait(false);
         cache.Set(key, club, CacheTtl);
         return club;

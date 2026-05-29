@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using UseCases.Observability;
 
 namespace UseCases.Behaviors;
 
@@ -22,16 +23,20 @@ public partial class LoggingBehavior<TRequest, TResponse>(ILogger<LoggingBehavio
         LogHandling(logger, requestName);
 
         var stopwatch = Stopwatch.StartNew();
+        var requestNameTag = new KeyValuePair<string, object?>("request_name", requestName);
         try
         {
             var response = await next(cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
+            HandlerMetrics.HandlerDurationMs.Record(stopwatch.Elapsed.TotalMilliseconds, requestNameTag);
             LogHandled(logger, requestName, stopwatch.ElapsedMilliseconds);
             return response;
         }
         catch
         {
             stopwatch.Stop();
+            HandlerMetrics.HandlerDurationMs.Record(stopwatch.Elapsed.TotalMilliseconds, requestNameTag);
+            HandlerMetrics.HandlerFailures.Add(1, requestNameTag);
             LogFailed(logger, requestName, stopwatch.ElapsedMilliseconds);
             throw;
         }
