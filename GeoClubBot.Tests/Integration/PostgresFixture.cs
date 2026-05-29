@@ -16,8 +16,7 @@ namespace GeoClubBot.Tests.Integration;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithDatabase("geoclubbot_tests")
         .WithUsername("postgres")
         .WithPassword("postgres")
