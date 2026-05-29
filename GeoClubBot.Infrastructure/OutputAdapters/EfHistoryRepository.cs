@@ -44,25 +44,17 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
             .ConfigureAwait(false);
     }
 
-    public async Task<List<ClubMemberHistoryEntry>> ReadLatestHistoryEntriesByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
+    public async Task<List<LatestHistoryEntryProjection>> ReadLatestHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
+        // GroupBy(UserId).Select(g => g.OrderByDescending(...).First()) doesn't translate on
+        // EF Core 10 / Npgsql; fall back to the correlated-subquery pattern (now correctly
+        // scoped by ClubId so a later entry in another club can't shadow the result).
         return await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
             .Where(e => e.ClubId == clubId)
             .Where(e => e.Timestamp == dbContext.ClubMemberHistoryEntries
-                .Where(ei => ei.UserId == e.UserId)
+                .Where(ei => ei.UserId == e.UserId && ei.ClubId == clubId)
                 .Max(ei => ei.Timestamp))
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async Task<List<LatestHistoryEntryProjection>> ReadLatestHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
-    {
-        return await dbContext.ClubMemberHistoryEntries
-            .AsNoTracking()
-            .Where(e => e.ClubId == clubId)
-            .GroupBy(e => e.UserId)
-            .Select(g => g.OrderByDescending(e => e.Timestamp).First())
             .Select(e => new LatestHistoryEntryProjection(e.UserId, e.Xp, e.Timestamp))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
