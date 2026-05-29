@@ -7,7 +7,7 @@ using UseCases.UseCases.Club;
 
 namespace Infrastructure.InputAdapters;
 
-public class InitialSyncService(
+public partial class InitialSyncService(
     DiscordBotReadyService botReadyService,
     IServiceScopeFactory scopeFactory,
     ILogger<InitialSyncService> logger) : IHostedService
@@ -24,9 +24,12 @@ public class InitialSyncService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error during initial sync of clubs.");
+            LogInitialSyncFailed(logger, ex);
         }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    [LoggerMessage(LogLevel.Error, "Error during initial sync of clubs.")]
+    static partial void LogInitialSyncFailed(ILogger<InitialSyncService> logger, Exception ex);
 }

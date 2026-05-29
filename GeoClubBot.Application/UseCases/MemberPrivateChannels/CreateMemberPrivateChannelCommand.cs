@@ -54,6 +54,7 @@ public sealed partial class CreateMemberPrivateChannelHandler(
             .ConfigureAwait(false);
         trackedMember?.SetPrivateTextChannelId(textChannelId.Value);
 
+        LogPrivateChannelCreated(logger, clubMember.User.Nickname, textChannelId.Value);
         return textChannelId;
     }
 
@@ -72,4 +73,7 @@ public sealed partial class CreateMemberPrivateChannelHandler(
 
     [LoggerMessage(LogLevel.Information, "Creating private text channel for club member '{clubMemberNickname}'...")]
     static partial void LogCreatingPrivateChannel(ILogger<CreateMemberPrivateChannelHandler> logger, string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Information, "Private text channel {TextChannelId} created for club member '{clubMemberNickname}'.")]
+    static partial void LogPrivateChannelCreated(ILogger<CreateMemberPrivateChannelHandler> logger, string clubMemberNickname, ulong textChannelId);
 }

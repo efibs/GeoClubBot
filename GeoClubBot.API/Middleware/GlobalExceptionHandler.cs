@@ -6,7 +6,7 @@ using FluentValidationException = FluentValidation.ValidationException;
 
 namespace GeoClubBot.Middleware;
 
-public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+public partial class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -21,11 +21,11 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
 
         if (statusCode == StatusCodes.Status500InternalServerError)
         {
-            logger.LogError(exception, "Unhandled exception for {Path}", httpContext.Request.Path);
+            LogUnhandledException(logger, exception, httpContext.Request.Path);
         }
         else
         {
-            logger.LogWarning(exception, "Request failed with {StatusCode} for {Path}", statusCode, httpContext.Request.Path);
+            LogRequestFailed(logger, exception, statusCode, httpContext.Request.Path);
         }
 
         ProblemDetails problemDetails;
@@ -60,4 +60,10 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
 
         return true;
     }
+
+    [LoggerMessage(LogLevel.Error, "Unhandled exception for {Path}")]
+    static partial void LogUnhandledException(ILogger<GlobalExceptionHandler> logger, Exception exception, PathString path);
+
+    [LoggerMessage(LogLevel.Warning, "Request failed with {StatusCode} for {Path}")]
+    static partial void LogRequestFailed(ILogger<GlobalExceptionHandler> logger, Exception exception, int statusCode, PathString path);
 }

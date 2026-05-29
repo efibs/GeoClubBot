@@ -3,6 +3,7 @@ using Entities;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
@@ -24,6 +25,7 @@ public sealed class CompleteAccountLinkingHandlerTests
     private readonly IGeoGuessrUserRepository _users = Substitute.For<IGeoGuessrUserRepository>();
     private readonly ISender _mediator = Substitute.For<ISender>();
     private readonly IDiscordServerRolesAccess _roles = Substitute.For<IDiscordServerRolesAccess>();
+    private readonly ILogger<CompleteAccountLinkingHandler> _logger = Substitute.For<ILogger<CompleteAccountLinkingHandler>>();
 
     private CompleteAccountLinkingHandler CreateHandler()
     {
@@ -33,7 +35,7 @@ public sealed class CompleteAccountLinkingHandlerTests
                 [ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey] = HasLinkedRoleId.ToString()
             })
             .Build();
-        return new CompleteAccountLinkingHandler(_requests, _users, _mediator, _roles, config);
+        return new CompleteAccountLinkingHandler(_requests, _users, _mediator, _roles, config, _logger);
     }
 
     [Fact]

@@ -9,7 +9,7 @@ namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.GeoGuessrClubSyncScheduleConfigurationKey)]
-public class SyncClubsJob(ISender mediator, ILogger<SyncClubsJob> logger) : IJob
+public partial class SyncClubsJob(ISender mediator, ILogger<SyncClubsJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
@@ -19,7 +19,10 @@ public class SyncClubsJob(ISender mediator, ILogger<SyncClubsJob> logger) : IJob
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error syncing clubs in periodical job.");
+            LogFailed(logger, ex);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Error syncing clubs in periodical job.")]
+    static partial void LogFailed(ILogger<SyncClubsJob> logger, Exception ex);
 }

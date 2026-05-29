@@ -9,7 +9,7 @@ namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.DailyChallengesCronScheduleConfigurationKey)]
-public class DailyChallengeJob(ISender mediator, ILogger<DailyChallengeJob> logger) : IJob
+public partial class DailyChallengeJob(ISender mediator, ILogger<DailyChallengeJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
@@ -19,7 +19,10 @@ public class DailyChallengeJob(ISender mediator, ILogger<DailyChallengeJob> logg
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to create daily challenge.");
+            LogFailed(logger, ex);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Failed to create daily challenge.")]
+    static partial void LogFailed(ILogger<DailyChallengeJob> logger, Exception ex);
 }

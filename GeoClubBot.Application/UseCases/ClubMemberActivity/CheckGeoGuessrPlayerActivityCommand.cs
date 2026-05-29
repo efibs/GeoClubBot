@@ -12,7 +12,7 @@ namespace UseCases.UseCases.ClubMemberActivity;
 public sealed record CheckGeoGuessrPlayerActivityCommand(Guid ClubId)
     : ICommand<List<ClubMemberActivityStatus>>;
 
-public sealed class CheckGeoGuessrPlayerActivityHandler(
+public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     ActivityCheckSyncStep syncStep,
     ActivityStatusCalculator statusCalculator,
     ActivityAverageXpRollupStep averageXpStep,
@@ -34,7 +34,7 @@ public sealed class CheckGeoGuessrPlayerActivityHandler(
         var gracePeriod = TimeSpan.FromDays(clubEntry.GetGracePeriodDays(defaults));
         var maxNumStrikes = clubEntry.GetMaxNumStrikes(defaults);
 
-        logger.LogDebug("Checking player activity for club {ClubId}...", clubId);
+        LogCheckingPlayerActivity(logger, clubId);
 
         var members = await syncStep.ExecuteAsync(clubId, cancellationToken).ConfigureAwait(false);
 
@@ -47,7 +47,7 @@ public sealed class CheckGeoGuessrPlayerActivityHandler(
             ? latestHistoryEntries.Select(a => a.Timestamp).Max()
             : DateTimeOffset.MinValue;
 
-        logger.LogInformation("Last activity check was on {LastActivityCheckTime:F}", lastActivityCheckTime);
+        LogLastActivityCheckTime(logger, lastActivityCheckTime);
 
         var now = DateTimeOffset.UtcNow;
 
@@ -79,8 +79,17 @@ public sealed class CheckGeoGuessrPlayerActivityHandler(
                 .ConfigureAwait(false);
         }
 
-        logger.LogDebug("Checking player activity for club {ClubId} done.", clubId);
+        LogPlayerActivityCheckDone(logger, clubId);
 
         return newStatuses;
     }
+
+    [LoggerMessage(LogLevel.Debug, "Checking player activity for club {ClubId}...")]
+    static partial void LogCheckingPlayerActivity(ILogger<CheckGeoGuessrPlayerActivityHandler> logger, Guid clubId);
+
+    [LoggerMessage(LogLevel.Information, "Last activity check was on {LastActivityCheckTime:F}")]
+    static partial void LogLastActivityCheckTime(ILogger<CheckGeoGuessrPlayerActivityHandler> logger, DateTimeOffset lastActivityCheckTime);
+
+    [LoggerMessage(LogLevel.Debug, "Checking player activity for club {ClubId} done.")]
+    static partial void LogPlayerActivityCheckDone(ILogger<CheckGeoGuessrPlayerActivityHandler> logger, Guid clubId);
 }

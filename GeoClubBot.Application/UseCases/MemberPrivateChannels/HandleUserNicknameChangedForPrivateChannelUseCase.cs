@@ -54,7 +54,7 @@ public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandleUserNicknameChangedForPrivateChannelUseCase");
+            LogUnhandled(logger, e);
         }
     }
 
@@ -62,4 +62,7 @@ public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
         "Handling user updated for renaming private text channel for club member '{clubMemberNickname}'...")]
     static partial void LogRenamingPrivateChannel(ILogger<HandleUserNicknameChangedForPrivateChannelUseCase> logger,
         string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandleUserNicknameChangedForPrivateChannelUseCase")]
+    static partial void LogUnhandled(ILogger<HandleUserNicknameChangedForPrivateChannelUseCase> logger, Exception ex);
 }

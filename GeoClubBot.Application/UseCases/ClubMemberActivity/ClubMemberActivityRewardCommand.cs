@@ -12,7 +12,7 @@ namespace UseCases.UseCases.ClubMemberActivity;
 
 public sealed record ClubMemberActivityRewardCommand(List<ClubMemberActivityStatus> Statuses) : ICommand;
 
-public sealed class ClubMemberActivityRewardHandler(
+public sealed partial class ClubMemberActivityRewardHandler(
     ISender mediator,
     IDiscordServerRolesAccess discordServerRolesAccess,
     IDiscordMessageAccess discordMessageAccess,
@@ -21,7 +21,7 @@ public sealed class ClubMemberActivityRewardHandler(
 {
     public async Task<Unit> Handle(ClubMemberActivityRewardCommand request, CancellationToken cancellationToken)
     {
-        logger.LogDebug("Starting reward member activity");
+        LogStartingRewardMemberActivity(logger);
 
         var leaderboard = request.Statuses
             .Where(s => s.XpSinceLastUpdate > 0)
@@ -80,7 +80,7 @@ public sealed class ClubMemberActivityRewardHandler(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to mention MVPs.");
+            LogFailedToMentionMvps(logger, ex);
         }
 
         return mvpPlayerUserIds.ToList();
@@ -106,4 +106,10 @@ public sealed class ClubMemberActivityRewardHandler(
             .RemoveRoleFromPlayersAsync(membersToRemoveMvpRole, config.Value.MvpRoleId, cancellationToken)
             .ConfigureAwait(false);
     }
+
+    [LoggerMessage(LogLevel.Debug, "Starting reward member activity")]
+    static partial void LogStartingRewardMemberActivity(ILogger<ClubMemberActivityRewardHandler> logger);
+
+    [LoggerMessage(LogLevel.Error, "Failed to mention MVPs.")]
+    static partial void LogFailedToMentionMvps(ILogger<ClubMemberActivityRewardHandler> logger, Exception ex);
 }

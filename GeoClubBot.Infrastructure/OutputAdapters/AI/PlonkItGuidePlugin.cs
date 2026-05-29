@@ -40,7 +40,7 @@ public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILo
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error while trying to find relevant information");
+            LogSearchFailed(logger, ex);
             throw;
         }
     }
@@ -49,7 +49,7 @@ public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILo
     [Description("Get all unique countries that have information in the PlonkIt Guide")]
     public async Task<string> GetCountries()
     {
-        logger.LogDebug("Running get all countries");
+        LogRunningGetAllCountries(logger);
 
         var countries = await vectorStore.GetUniqueCountriesAsync().ConfigureAwait(false);
 
@@ -94,4 +94,10 @@ public partial class PlonkItGuidePlugin(PlonkItGuideVectorStore vectorStore, ILo
 
     [LoggerMessage(LogLevel.Debug, "Running get all sections for country {country}")]
     static partial void LogRunningGetAllSectionsForCountry(ILogger<PlonkItGuidePlugin> logger, string country);
+
+    [LoggerMessage(LogLevel.Debug, "Running get all countries")]
+    static partial void LogRunningGetAllCountries(ILogger<PlonkItGuidePlugin> logger);
+
+    [LoggerMessage(LogLevel.Error, "Error while trying to find relevant information")]
+    static partial void LogSearchFailed(ILogger<PlonkItGuidePlugin> logger, Exception ex);
 }

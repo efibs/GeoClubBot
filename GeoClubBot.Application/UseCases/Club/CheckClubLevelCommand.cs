@@ -28,7 +28,7 @@ public sealed partial class CheckClubLevelHandler(
             .EnsureInitializedAsync(clubs, configuredClubs.Select(c => c.ClubId), cancellationToken)
             .ConfigureAwait(false);
 
-        logger.LogDebug("Checking club levels...");
+        LogCheckingClubLevels(logger);
 
         // Per-club fan-out: each branch gets its own DI scope so the EF tracked-entity
         // update (UpdateLevel + SaveChanges) doesn't share a DbContext across branches.
@@ -93,4 +93,7 @@ public sealed partial class CheckClubLevelHandler(
 
     [LoggerMessage(LogLevel.Warning, "Failed to update club level. Club {clubId} does not exits.")]
     partial void LogFailedToUpdateClubLevelClubDoesNotExits(Guid clubId);
+
+    [LoggerMessage(LogLevel.Debug, "Checking club levels...")]
+    static partial void LogCheckingClubLevels(ILogger<CheckClubLevelHandler> logger);
 }

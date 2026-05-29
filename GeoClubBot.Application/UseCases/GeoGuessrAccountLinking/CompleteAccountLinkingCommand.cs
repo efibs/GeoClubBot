@@ -2,6 +2,7 @@ using Constants;
 using Entities;
 using MediatR;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
@@ -13,12 +14,13 @@ namespace UseCases.UseCases.GeoGuessrAccountLinking;
 public sealed record CompleteAccountLinkingCommand(ulong DiscordUserId, string GeoGuessrUserId, string OneTimePassword)
     : ICommand<Result<GeoGuessrUser>>;
 
-public sealed class CompleteAccountLinkingHandler(
+public sealed partial class CompleteAccountLinkingHandler(
     IAccountLinkingRequestRepository requests,
     IGeoGuessrUserRepository users,
     ISender mediator,
     IDiscordServerRolesAccess rolesAccess,
-    IConfiguration config) : IRequestHandler<CompleteAccountLinkingCommand, Result<GeoGuessrUser>>
+    IConfiguration config,
+    ILogger<CompleteAccountLinkingHandler> logger) : IRequestHandler<CompleteAccountLinkingCommand, Result<GeoGuessrUser>>
 {
     private readonly ulong _hasLinkedRoleId =
         config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
@@ -75,6 +77,10 @@ public sealed class CompleteAccountLinkingHandler(
             .AddRoleToMembersByUserIdsAsync([request.DiscordUserId], _hasLinkedRoleId, cancellationToken)
             .ConfigureAwait(false);
 
+        LogAccountLinked(logger, request.DiscordUserId, request.GeoGuessrUserId);
         return trackedUser;
     }
+
+    [LoggerMessage(LogLevel.Information, "Discord user {DiscordUserId} linked to GeoGuessr user {GeoGuessrUserId}.")]
+    static partial void LogAccountLinked(ILogger<CompleteAccountLinkingHandler> logger, ulong discordUserId, string geoGuessrUserId);
 }

@@ -16,7 +16,7 @@ public sealed partial class CheckStrikeDecayHandler(
 {
     public async Task<Unit> Handle(CheckStrikeDecayCommand request, CancellationToken cancellationToken)
     {
-        logger.LogDebug("Checking strike decay...");
+        LogCheckingStrikeDecay(logger);
 
         var numDeleted = await strikes
             .DeleteStrikesBeforeAsync(DateTimeOffset.UtcNow - _strikeDecayTimeSpan)
@@ -32,4 +32,7 @@ public sealed partial class CheckStrikeDecayHandler(
 
     [LoggerMessage(LogLevel.Information, "Deleted {numDeleted} decayed strikes.")]
     static partial void LogDeletedNumStrikes(ILogger<CheckStrikeDecayHandler> logger, int numDeleted);
+
+    [LoggerMessage(LogLevel.Debug, "Checking strike decay...")]
+    static partial void LogCheckingStrikeDecay(ILogger<CheckStrikeDecayHandler> logger);
 }

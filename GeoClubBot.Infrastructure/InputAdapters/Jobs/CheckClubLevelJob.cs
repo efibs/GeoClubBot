@@ -9,7 +9,7 @@ namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.ClubLevelCheckerCronScheduleConfigurationKey)]
-public class CheckClubLevelJob(ISender mediator, ILogger<CheckClubLevelJob> logger) : IJob
+public partial class CheckClubLevelJob(ISender mediator, ILogger<CheckClubLevelJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
@@ -19,7 +19,10 @@ public class CheckClubLevelJob(ISender mediator, ILogger<CheckClubLevelJob> logg
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error checking club level.");
+            LogFailed(logger, ex);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Error checking club level.")]
+    static partial void LogFailed(ILogger<CheckClubLevelJob> logger, Exception ex);
 }

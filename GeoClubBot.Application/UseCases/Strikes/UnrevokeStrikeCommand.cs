@@ -1,4 +1,5 @@
 using Entities;
+using Microsoft.Extensions.Logging;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using Utilities;
@@ -7,7 +8,9 @@ namespace UseCases.UseCases.Strikes;
 
 public sealed record UnrevokeStrikeCommand(Guid StrikeId) : ICommand<Result<ClubMemberStrike>>;
 
-public sealed class UnrevokeStrikeHandler(IStrikesRepository strikes)
+public sealed partial class UnrevokeStrikeHandler(
+    IStrikesRepository strikes,
+    ILogger<UnrevokeStrikeHandler> logger)
     : MediatR.IRequestHandler<UnrevokeStrikeCommand, Result<ClubMemberStrike>>
 {
     public async Task<Result<ClubMemberStrike>> Handle(UnrevokeStrikeCommand request, CancellationToken cancellationToken)
@@ -20,6 +23,10 @@ public sealed class UnrevokeStrikeHandler(IStrikesRepository strikes)
         }
 
         strike.Unrevoke();
+        LogStrikeUnrevoked(logger, strike.StrikeId, strike.UserId);
         return strike;
     }
+
+    [LoggerMessage(LogLevel.Information, "Strike {StrikeId} unrevoked for member {UserId}.")]
+    static partial void LogStrikeUnrevoked(ILogger<UnrevokeStrikeHandler> logger, Guid strikeId, string userId);
 }

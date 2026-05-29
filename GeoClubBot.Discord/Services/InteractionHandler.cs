@@ -35,12 +35,11 @@ public partial class InteractionHandler
             // Register the slash commands
             await _interactionService.RegisterCommandsToGuildAsync(_config.ServerId).ConfigureAwait(false);
 
-            // Log information
-            _logger.LogInformation("Slash commands registered");
+            LogSlashCommandsRegistered(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create slash commands");
+            LogFailedToCreateSlashCommands(_logger, ex);
         }
     }
 
@@ -65,7 +64,7 @@ public partial class InteractionHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to handle interaction");
+            LogFailedToHandleInteraction(_logger, ex);
         }
     }
 
@@ -80,4 +79,13 @@ public partial class InteractionHandler
 
     [LoggerMessage(LogLevel.Error, "Slash command failed: {reason}")]
     partial void LogSlashCommandFailed(string reason);
+
+    [LoggerMessage(LogLevel.Information, "Slash commands registered")]
+    static partial void LogSlashCommandsRegistered(ILogger<InteractionHandler> logger);
+
+    [LoggerMessage(LogLevel.Error, "Failed to create slash commands")]
+    static partial void LogFailedToCreateSlashCommands(ILogger<InteractionHandler> logger, Exception ex);
+
+    [LoggerMessage(LogLevel.Error, "Failed to handle interaction")]
+    static partial void LogFailedToHandleInteraction(ILogger<InteractionHandler> logger, Exception ex);
 }

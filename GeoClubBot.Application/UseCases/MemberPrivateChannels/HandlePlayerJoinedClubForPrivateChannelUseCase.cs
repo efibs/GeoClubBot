@@ -41,11 +41,14 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandlePlayerJoinedClubForPrivateChannelUseCase");
+            LogUnhandled(logger, e);
         }
     }
 
     [LoggerMessage(LogLevel.Information, "Detected join of member '{clubMemberNickname}'. Creating private channel...")]
     static partial void LogJoinDetected(ILogger<HandlePlayerJoinedClubForPrivateChannelUseCase> logger,
         string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandlePlayerJoinedClubForPrivateChannelUseCase")]
+    static partial void LogUnhandled(ILogger<HandlePlayerJoinedClubForPrivateChannelUseCase> logger, Exception ex);
 }

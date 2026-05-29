@@ -9,7 +9,7 @@ namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.DailyMissionReminderCronScheduleConfigurationKey)]
-public class DailyMissionReminderJob(ISender mediator, ILogger<DailyMissionReminderJob> logger) : IJob
+public partial class DailyMissionReminderJob(ISender mediator, ILogger<DailyMissionReminderJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
@@ -19,7 +19,10 @@ public class DailyMissionReminderJob(ISender mediator, ILogger<DailyMissionRemin
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send daily mission reminders.");
+            LogFailed(logger, ex);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Failed to send daily mission reminders.")]
+    static partial void LogFailed(ILogger<DailyMissionReminderJob> logger, Exception ex);
 }

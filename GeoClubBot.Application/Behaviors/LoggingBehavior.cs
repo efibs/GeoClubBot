@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace UseCases.Behaviors;
 
-public class LoggingBehavior<TRequest, TResponse>(ILogger<LoggingBehavior<TRequest, TResponse>> logger)
+public partial class LoggingBehavior<TRequest, TResponse>(ILogger<LoggingBehavior<TRequest, TResponse>> logger)
     : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
@@ -19,21 +19,30 @@ public class LoggingBehavior<TRequest, TResponse>(ILogger<LoggingBehavior<TReque
             ["RequestId"] = requestId
         });
 
-        logger.LogDebug("Handling {RequestName}", requestName);
+        LogHandling(logger, requestName);
 
         var stopwatch = Stopwatch.StartNew();
         try
         {
             var response = await next(cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
-            logger.LogDebug("Handled {RequestName} in {ElapsedMilliseconds}ms", requestName, stopwatch.ElapsedMilliseconds);
+            LogHandled(logger, requestName, stopwatch.ElapsedMilliseconds);
             return response;
         }
         catch
         {
             stopwatch.Stop();
-            logger.LogDebug("Failed {RequestName} after {ElapsedMilliseconds}ms", requestName, stopwatch.ElapsedMilliseconds);
+            LogFailed(logger, requestName, stopwatch.ElapsedMilliseconds);
             throw;
         }
     }
+
+    [LoggerMessage(LogLevel.Debug, "Handling {RequestName}")]
+    static partial void LogHandling(ILogger logger, string requestName);
+
+    [LoggerMessage(LogLevel.Debug, "Handled {RequestName} in {ElapsedMilliseconds}ms")]
+    static partial void LogHandled(ILogger logger, string requestName, long elapsedMilliseconds);
+
+    [LoggerMessage(LogLevel.Debug, "Failed {RequestName} after {ElapsedMilliseconds}ms")]
+    static partial void LogFailed(ILogger logger, string requestName, long elapsedMilliseconds);
 }

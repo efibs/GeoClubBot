@@ -7,7 +7,7 @@ using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.ClubMemberRole;
 
-public class HandlePlayerLeftClubForMemberRoleUseCase(
+public partial class HandlePlayerLeftClubForMemberRoleUseCase(
     IDiscordServerRolesAccess rolesAccess,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     ILogger<HandlePlayerLeftClubForMemberRoleUseCase> logger) : INotificationHandler<PlayerLeftClubEvent>
@@ -33,7 +33,10 @@ public class HandlePlayerLeftClubForMemberRoleUseCase(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandlePlayerLeftClubForMemberRoleUseCase");
+            LogUnhandled(logger, e);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandlePlayerLeftClubForMemberRoleUseCase")]
+    static partial void LogUnhandled(ILogger<HandlePlayerLeftClubForMemberRoleUseCase> logger, Exception ex);
 }

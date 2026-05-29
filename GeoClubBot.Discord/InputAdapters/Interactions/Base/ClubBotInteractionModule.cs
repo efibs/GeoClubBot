@@ -11,7 +11,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.Base;
 /// "defer → run body → friendly followup on failure" flow so each command can shrink
 /// to a single ExecuteAsync(...) call.
 /// </summary>
-public abstract class ClubBotInteractionModule(ISender mediator, ILogger logger)
+public abstract partial class ClubBotInteractionModule(ISender mediator, ILogger logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
     protected ISender Mediator { get; } = mediator;
@@ -39,9 +39,8 @@ public abstract class ClubBotInteractionModule(ISender mediator, ILogger logger)
             // Bubble up the actual field-level messages from the validator so the user
             // can correct the bad input. ValidationBehavior in the MediatR pipeline throws
             // this when an AbstractValidator<T> fails.
-            Logger.LogInformation(
-                "Slash command {Module}.{Method} rejected by validation: {Errors}",
-                GetType().Name, body.Method.Name,
+            LogValidationRejected(
+                Logger, GetType().Name, body.Method.Name,
                 string.Join("; ", validationEx.Errors.Select(e => e.ErrorMessage)));
 
             var message = string.Join("\n", validationEx.Errors.Select(e => $"• {e.ErrorMessage}"));
@@ -49,7 +48,7 @@ public abstract class ClubBotInteractionModule(ISender mediator, ILogger logger)
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Slash command {Module}.{Method} failed", GetType().Name, body.Method.Name);
+            LogSlashCommandFailed(Logger, ex, GetType().Name, body.Method.Name);
 
             var message = failureMessage
                 ?? "Something went wrong. Please try again later. If the issue persists, contact an admin.";
@@ -65,7 +64,7 @@ public abstract class ClubBotInteractionModule(ISender mediator, ILogger logger)
         }
         catch (Exception followupEx)
         {
-            Logger.LogError(followupEx, "Failed to deliver followup error message for {Module}", GetType().Name);
+            LogFollowupDeliveryFailed(Logger, followupEx, GetType().Name);
         }
     }
 
@@ -85,4 +84,13 @@ public abstract class ClubBotInteractionModule(ISender mediator, ILogger logger)
         ErrorType.Unauthorized => "You must be authenticated to do that.",
         _ => "Something went wrong. Please try again later. If the issue persists, contact an admin."
     };
+
+    [LoggerMessage(LogLevel.Information, "Slash command {Module}.{Method} rejected by validation: {Errors}")]
+    static partial void LogValidationRejected(ILogger logger, string module, string method, string errors);
+
+    [LoggerMessage(LogLevel.Error, "Slash command {Module}.{Method} failed")]
+    static partial void LogSlashCommandFailed(ILogger logger, Exception ex, string module, string method);
+
+    [LoggerMessage(LogLevel.Error, "Failed to deliver followup error message for {Module}")]
+    static partial void LogFollowupDeliveryFailed(ILogger logger, Exception ex, string module);
 }

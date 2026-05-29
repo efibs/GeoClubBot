@@ -27,13 +27,12 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
 
             if (result.IsFailure)
             {
-                logger.LogWarning("Failed to delete member private channel for member '{clubMemberNickname}': {Error}",
-                    notification.Nickname, result.Error.Message);
+                LogFailedToDeletePrivateChannel(logger, notification.Nickname, result.Error.Message);
             }
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandleAccountUnlinkedForPrivateChannelUseCase");
+            LogUnhandled(logger, e);
         }
     }
 
@@ -41,4 +40,11 @@ public partial class HandleAccountUnlinkedForPrivateChannelUseCase(
         "Handling account unlinked for deleting private text channel for club member '{clubMemberNickname}'...")]
     static partial void LogDeletingPrivateChannel(ILogger<HandleAccountUnlinkedForPrivateChannelUseCase> logger,
         string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to delete member private channel for member '{clubMemberNickname}': {Error}")]
+    static partial void LogFailedToDeletePrivateChannel(ILogger<HandleAccountUnlinkedForPrivateChannelUseCase> logger,
+        string clubMemberNickname, string error);
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandleAccountUnlinkedForPrivateChannelUseCase")]
+    static partial void LogUnhandled(ILogger<HandleAccountUnlinkedForPrivateChannelUseCase> logger, Exception ex);
 }

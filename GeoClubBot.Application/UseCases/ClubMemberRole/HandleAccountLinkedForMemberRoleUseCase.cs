@@ -8,7 +8,7 @@ using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.ClubMemberRole;
 
-public class HandleAccountLinkedForMemberRoleUseCase(
+public partial class HandleAccountLinkedForMemberRoleUseCase(
     IClubMemberRepository clubMembers,
     IDiscordServerRolesAccess rolesAccess,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
@@ -42,7 +42,10 @@ public class HandleAccountLinkedForMemberRoleUseCase(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandleAccountLinkedForMemberRoleUseCase");
+            LogUnhandled(logger, e);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandleAccountLinkedForMemberRoleUseCase")]
+    static partial void LogUnhandled(ILogger<HandleAccountLinkedForMemberRoleUseCase> logger, Exception ex);
 }

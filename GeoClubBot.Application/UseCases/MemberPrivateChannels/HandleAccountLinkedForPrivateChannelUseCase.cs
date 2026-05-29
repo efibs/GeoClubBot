@@ -39,7 +39,7 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandleAccountLinkedForPrivateChannelUseCase");
+            LogUnhandled(logger, e);
         }
     }
 
@@ -47,4 +47,7 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
         "Handling account linked for creating private text channel for club member '{clubMemberNickname}'...")]
     static partial void LogCreatingPrivateChannel(ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger,
         string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandleAccountLinkedForPrivateChannelUseCase")]
+    static partial void LogUnhandled(ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger, Exception ex);
 }

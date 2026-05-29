@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace UseCases.Behaviors;
 
-public class UnhandledExceptionBehavior<TRequest, TResponse>(ILogger<UnhandledExceptionBehavior<TRequest, TResponse>> logger)
+public partial class UnhandledExceptionBehavior<TRequest, TResponse>(ILogger<UnhandledExceptionBehavior<TRequest, TResponse>> logger)
     : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
@@ -15,8 +15,11 @@ public class UnhandledExceptionBehavior<TRequest, TResponse>(ILogger<UnhandledEx
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Unhandled exception for request {RequestName}", typeof(TRequest).Name);
+            LogUnhandledException(logger, exception, typeof(TRequest).Name);
             throw;
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Unhandled exception for request {RequestName}")]
+    static partial void LogUnhandledException(ILogger logger, Exception exception, string requestName);
 }

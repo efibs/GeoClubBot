@@ -7,7 +7,7 @@ using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.ClubMemberRole;
 
-public class HandleAccountUnlinkedForMemberRoleUseCase(
+public partial class HandleAccountUnlinkedForMemberRoleUseCase(
     IDiscordServerRolesAccess rolesAccess,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     ILogger<HandleAccountUnlinkedForMemberRoleUseCase> logger)
@@ -31,7 +31,10 @@ public class HandleAccountUnlinkedForMemberRoleUseCase(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandleAccountUnlinkedForMemberRoleUseCase");
+            LogUnhandled(logger, e);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandleAccountUnlinkedForMemberRoleUseCase")]
+    static partial void LogUnhandled(ILogger<HandleAccountUnlinkedForMemberRoleUseCase> logger, Exception ex);
 }

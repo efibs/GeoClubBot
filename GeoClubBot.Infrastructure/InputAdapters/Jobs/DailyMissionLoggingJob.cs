@@ -9,7 +9,7 @@ namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
 [ConfiguredCronJob(ConfigKeys.DailyMissionLoggingCronScheduleConfigurationKey)]
-public class DailyMissionLoggingJob(ISender mediator, ILogger<DailyMissionLoggingJob> logger) : IJob
+public partial class DailyMissionLoggingJob(ISender mediator, ILogger<DailyMissionLoggingJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
@@ -19,7 +19,10 @@ public class DailyMissionLoggingJob(ISender mediator, ILogger<DailyMissionLoggin
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to log daily missions.");
+            LogFailed(logger, ex);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Failed to log daily missions.")]
+    static partial void LogFailed(ILogger<DailyMissionLoggingJob> logger, Exception ex);
 }

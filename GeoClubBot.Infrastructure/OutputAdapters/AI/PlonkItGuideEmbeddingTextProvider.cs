@@ -7,7 +7,7 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 
 namespace Infrastructure.OutputAdapters.AI;
 
-public class PlonkItGuideEmbeddingTextProvider : IPlonkItGuideEmbeddingTextProvider
+public partial class PlonkItGuideEmbeddingTextProvider : IPlonkItGuideEmbeddingTextProvider
 {
     private const string CountryPlaceholder = "{{country}}";
     private static readonly List<string> Categories = [
@@ -106,7 +106,7 @@ Return only the category.
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Categorization of PlonkIt section failed.");
+            LogCategorizationFailed(_logger, ex);
         }
 
         var textBuilder = new StringBuilder("Country: ");
@@ -128,4 +128,7 @@ Return only the category.
     private readonly KernelFunction _categorizeFunction;
     private readonly ILogger<PlonkItGuideEmbeddingTextProvider> _logger;
     private readonly string _llmEndpoint;
+
+    [LoggerMessage(LogLevel.Warning, "Categorization of PlonkIt section failed.")]
+    static partial void LogCategorizationFailed(ILogger<PlonkItGuideEmbeddingTextProvider> logger, Exception ex);
 }

@@ -36,7 +36,7 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
         }
         catch (Exception e)
         {
-            logger.LogError(e, "Error while handling HandlePlayerLeftClubForPrivateChannelUseCase");
+            LogUnhandled(logger, e);
         }
     }
 
@@ -44,4 +44,7 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
         "Detected leave of member '{clubMemberNickname}'. Removing private channel...")]
     static partial void LogLeaveDetected(ILogger<HandlePlayerLeftClubForPrivateChannelUseCase> logger,
         string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Error, "Error while handling HandlePlayerLeftClubForPrivateChannelUseCase")]
+    static partial void LogUnhandled(ILogger<HandlePlayerLeftClubForPrivateChannelUseCase> logger, Exception ex);
 }
