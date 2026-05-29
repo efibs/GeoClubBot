@@ -92,8 +92,8 @@ public sealed class ActivityCheckerConfigurationBuilder
             MinXP = _minXp,
             GracePeriodDays = _gracePeriodDays,
             MaxNumStrikes = _maxNumStrikes,
-            HistoryKeepTimeSpan = "180.00:00:00",
-            StrikeDecayTimeSpan = "60.00:00:00",
+            HistoryKeepTimeSpan = TimeSpan.FromDays(180),
+            StrikeDecayTimeSpan = TimeSpan.FromDays(60),
             AverageXpTopN = _averageXpTopN,
             AverageXpBottomN = _averageXpBottomN,
             AverageXpHistoryDepth = _averageXpHistoryDepth

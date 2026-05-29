@@ -1,7 +1,7 @@
-using Constants;
+using Configuration;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 
@@ -13,15 +13,12 @@ public sealed partial class CleanupHandler(
     IExcusesRepository excuses,
     IHistoryRepository history,
     IClubMemberRepository clubMembers,
-    IConfiguration config,
+    IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
     ILogger<CleanupHandler> logger) : IRequestHandler<CleanupCommand, Unit>
 {
-    private readonly TimeSpan _historyKeepThreshold =
-        config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerHistoryKeepTimeSpanConfigurationKey);
-
     public async Task<Unit> Handle(CleanupCommand request, CancellationToken cancellationToken)
     {
-        var threshold = DateTime.UtcNow.Subtract(_historyKeepThreshold);
+        var threshold = DateTime.UtcNow.Subtract(activityCheckerConfig.Value.HistoryKeepTimeSpan);
 
         var deletedExcuses = await excuses.DeleteExcusesBeforeAsync(threshold, cancellationToken).ConfigureAwait(false);
         var deletedHistoryEntries = await history.DeleteHistoryEntriesBeforeAsync(threshold, cancellationToken).ConfigureAwait(false);

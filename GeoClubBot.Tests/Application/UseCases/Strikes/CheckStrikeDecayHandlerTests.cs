@@ -1,7 +1,7 @@
-using Constants;
+using Configuration;
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.OutputPorts;
 using UseCases.UseCases.Strikes;
@@ -47,14 +47,17 @@ public sealed class CheckStrikeDecayHandlerTests
 
     private CheckStrikeDecayHandler CreateHandler(TimeSpan decay)
     {
-        var configValues = new Dictionary<string, string?>
+        var options = Options.Create(new ActivityCheckerConfiguration
         {
-            [ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey] = decay.ToString()
-        };
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(configValues)
-            .Build();
+            Schedule = "0 * * * * ?",
+            TextChannelId = 1UL,
+            MinXP = 100,
+            GracePeriodDays = 7,
+            MaxNumStrikes = 3,
+            HistoryKeepTimeSpan = TimeSpan.FromDays(90),
+            StrikeDecayTimeSpan = decay
+        });
 
-        return new CheckStrikeDecayHandler(_strikes, _logger, config);
+        return new CheckStrikeDecayHandler(_strikes, _logger, options);
     }
 }

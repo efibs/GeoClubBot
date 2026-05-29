@@ -21,11 +21,11 @@ public class ActivityCheckerConfiguration
     [Required]
     public required int MaxNumStrikes { get; set; }
 
-    [Required(AllowEmptyStrings = false)]
-    public required string HistoryKeepTimeSpan { get; set; }
+    [Required]
+    public required TimeSpan HistoryKeepTimeSpan { get; set; }
 
-    [Required(AllowEmptyStrings = false)]
-    public required string StrikeDecayTimeSpan { get; set; }
+    [Required]
+    public required TimeSpan StrikeDecayTimeSpan { get; set; }
 
     public int? AverageXpTopN { get; set; }
 

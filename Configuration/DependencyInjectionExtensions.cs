@@ -48,6 +48,8 @@ public static class DependencyInjectionExtensions
             .ValidateOnStart();
 
         services.AddOptions<CorsConfiguration>()
-            .Bind(config.GetSection(CorsConfiguration.SectionName));
+            .Bind(config.GetSection(CorsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
     }
 }

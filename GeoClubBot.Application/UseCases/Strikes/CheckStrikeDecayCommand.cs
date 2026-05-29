@@ -1,7 +1,7 @@
-using Constants;
+using Configuration;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 
@@ -12,23 +12,20 @@ public sealed record CheckStrikeDecayCommand : ICommand;
 public sealed partial class CheckStrikeDecayHandler(
     IStrikesRepository strikes,
     ILogger<CheckStrikeDecayHandler> logger,
-    IConfiguration config) : IRequestHandler<CheckStrikeDecayCommand, Unit>
+    IOptions<ActivityCheckerConfiguration> activityCheckerConfig) : IRequestHandler<CheckStrikeDecayCommand, Unit>
 {
     public async Task<Unit> Handle(CheckStrikeDecayCommand request, CancellationToken cancellationToken)
     {
         LogCheckingStrikeDecay(logger);
 
         var numDeleted = await strikes
-            .DeleteStrikesBeforeAsync(DateTimeOffset.UtcNow - _strikeDecayTimeSpan)
+            .DeleteStrikesBeforeAsync(DateTimeOffset.UtcNow - activityCheckerConfig.Value.StrikeDecayTimeSpan)
             .ConfigureAwait(false);
 
         LogDeletedNumStrikes(logger, numDeleted);
 
         return Unit.Value;
     }
-
-    private readonly TimeSpan _strikeDecayTimeSpan =
-        config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
 
     [LoggerMessage(LogLevel.Information, "Deleted {numDeleted} decayed strikes.")]
     static partial void LogDeletedNumStrikes(ILogger<CheckStrikeDecayHandler> logger, int numDeleted);
