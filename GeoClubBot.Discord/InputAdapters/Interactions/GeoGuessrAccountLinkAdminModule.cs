@@ -51,14 +51,14 @@ public partial class GeoGuessrAccountLinkAdminModule(
         ExecuteAsync(
             async ct =>
             {
-                var successful = await Mediator
+                var result = await Mediator
                     .Send(new UnlinkAccountsCommand(discordUser.Id, geoGuessrUserId), ct)
                     .ConfigureAwait(false);
 
                 await FollowupAsync(
-                        successful
+                        result.IsSuccess
                             ? "Account linking was successfully removed."
-                            : "The given accounts are not linked",
+                            : FriendlyMessageFor(result.Error),
                         ephemeral: true)
                     .ConfigureAwait(false);
             },

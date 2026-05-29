@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
+using Utilities;
 using DomainDailyMissionReminder = Entities.DailyMissionReminder;
 
 namespace UseCases.UseCases.DailyMissionReminder;
@@ -12,7 +13,7 @@ public sealed record SetDailyMissionReminderCommand(
     string? TimeZoneId,
     string? CustomMessage) : ICommand;
 
-public sealed record StopDailyMissionReminderCommand(ulong DiscordUserId) : ICommand<bool>;
+public sealed record StopDailyMissionReminderCommand(ulong DiscordUserId) : ICommand<Result>;
 
 public sealed record GetDailyMissionReminderStatusQuery(ulong DiscordUserId) : IQuery<DomainDailyMissionReminder?>;
 
@@ -20,7 +21,7 @@ public sealed partial class DailyMissionReminderHandlers(
     IDailyMissionReminderRepository reminders,
     ILogger<DailyMissionReminderHandlers> logger)
     : IRequestHandler<SetDailyMissionReminderCommand, Unit>,
-      IRequestHandler<StopDailyMissionReminderCommand, bool>,
+      IRequestHandler<StopDailyMissionReminderCommand, Result>,
       IRequestHandler<GetDailyMissionReminderStatusQuery, DomainDailyMissionReminder?>
 {
     public async Task<Unit> Handle(SetDailyMissionReminderCommand request, CancellationToken cancellationToken)
@@ -45,19 +46,21 @@ public sealed partial class DailyMissionReminderHandlers(
         return Unit.Value;
     }
 
-    public async Task<bool> Handle(StopDailyMissionReminderCommand request, CancellationToken cancellationToken)
+    public async Task<Result> Handle(StopDailyMissionReminderCommand request, CancellationToken cancellationToken)
     {
         var existing = await reminders.ReadReminderForUpdateAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
 
         if (existing is null)
         {
             LogNoReminderFound(request.DiscordUserId);
-            return false;
+            return Error.NotFound(
+                "daily_mission_reminder.not_found",
+                "No daily mission reminder is configured for this Discord user.");
         }
 
         reminders.DeleteReminder(existing);
         LogReminderStopped(request.DiscordUserId);
-        return true;
+        return Result.Success();
     }
 
     public Task<DomainDailyMissionReminder?> Handle(GetDailyMissionReminderStatusQuery request, CancellationToken cancellationToken) =>

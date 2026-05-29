@@ -6,21 +6,22 @@ using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
+using Utilities;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;
 
-public sealed record UnlinkAccountsCommand(ulong DiscordUserId, string GeoGuessrUserId) : ICommand<bool>;
+public sealed record UnlinkAccountsCommand(ulong DiscordUserId, string GeoGuessrUserId) : ICommand<Result>;
 
 public sealed class UnlinkAccountsHandler(
     IGeoGuessrUserRepository users,
     IDiscordServerRolesAccess rolesAccess,
     IConfiguration config,
-    IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IRequestHandler<UnlinkAccountsCommand, bool>
+    IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IRequestHandler<UnlinkAccountsCommand, Result>
 {
     private readonly ulong _hasLinkedRoleId =
         config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
 
-    public async Task<bool> Handle(UnlinkAccountsCommand request, CancellationToken cancellationToken)
+    public async Task<Result> Handle(UnlinkAccountsCommand request, CancellationToken cancellationToken)
     {
         var user = await users
             .ReadForUpdateByUserIdAsync(request.GeoGuessrUserId, cancellationToken)
@@ -28,7 +29,9 @@ public sealed class UnlinkAccountsHandler(
 
         if (user is null || user.DiscordUserId != request.DiscordUserId)
         {
-            return false;
+            return Error.NotFound(
+                "account_linking.not_linked",
+                "The given accounts are not linked.");
         }
 
         user.UnlinkDiscord();
@@ -43,6 +46,6 @@ public sealed class UnlinkAccountsHandler(
             .RemoveRolesFromUserAsync(request.DiscordUserId, rolesToRemove.ToArray(), cancellationToken)
             .ConfigureAwait(false);
 
-        return true;
+        return Result.Success();
     }
 }

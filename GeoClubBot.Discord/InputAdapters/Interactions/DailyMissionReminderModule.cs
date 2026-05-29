@@ -61,12 +61,12 @@ public class DailyMissionReminderModule(
         ExecuteAsync(
             async ct =>
             {
-                var stopped = await Mediator
+                var result = await Mediator
                     .Send(new StopDailyMissionReminderCommand(Context.User.Id), ct)
                     .ConfigureAwait(false);
 
                 await FollowupAsync(
-                        stopped
+                        result.IsSuccess
                             ? "Your daily mission reminder has been stopped."
                             : "You don't have an active daily mission reminder.",
                         ephemeral: true)
