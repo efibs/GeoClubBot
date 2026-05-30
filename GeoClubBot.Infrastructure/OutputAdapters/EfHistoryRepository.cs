@@ -74,9 +74,13 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
 
     public async Task<List<HistoryEntryProjection>> ReadHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
+        // History entries are immutable snapshots tagged with the club at record time, so a member who
+        // has since switched or left a club still has rows with e.ClubId == clubId. The extra
+        // ClubMember.ClubId == clubId check keeps the average-XP results to members CURRENTLY in the
+        // club — former members must not show up in the top/bottom average-XP output.
         return await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
-            .Where(e => e.ClubId == clubId)
+            .Where(e => e.ClubId == clubId && e.ClubMember!.ClubId == clubId)
             .OrderByDescending(e => e.Timestamp)
             .Select(e => new HistoryEntryProjection(
                 e.UserId,

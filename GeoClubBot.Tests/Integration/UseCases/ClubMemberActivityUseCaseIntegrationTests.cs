@@ -175,4 +175,80 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
         result.Leaderboard.Should().NotBeNull();
         result.Leaderboard!.Should().Contain(m => m.Nickname == nickname);
     }
+
+    /// <summary>
+    /// Seeds a member whose <em>current</em> club is <paramref name="currentClubId"/> (which may be
+    /// null = no longer in any club) but whose history rows are tagged with <paramref name="historyClubId"/>
+    /// — i.e. they earned that XP while still in that club before switching/leaving.
+    /// </summary>
+    private async Task<string> SeedMemberWithHistoryTaggedAsync(
+        string nickname, Guid? currentClubId, Guid historyClubId, params int[] xps)
+    {
+        var userId = NewUserId();
+
+        await using var seed = fixture.CreateDbContext();
+        foreach (var c in new[] { currentClubId, historyClubId }.OfType<Guid>().Distinct())
+        {
+            if (!seed.Clubs.Any(x => x.ClubId == c))
+            {
+                seed.Add(Club.Create(c, $"club-{c:N}", 1));
+            }
+        }
+
+        var user = GeoGuessrUser.Create(userId, nickname);
+        seed.Add(user);
+        seed.Add(ClubMember.Create(user, currentClubId, xp: xps[^1], joinedAt: DateTimeOffset.UtcNow.AddMonths(-3)));
+
+        var timestamp = DateTimeOffset.UtcNow.AddDays(-5 * xps.Length);
+        foreach (var xp in xps)
+        {
+            seed.Add(ClubMemberHistoryEntry.Create(userId, historyClubId, xp, timestamp));
+            timestamp = timestamp.AddDays(5);
+        }
+
+        await seed.SaveChangesAsync();
+        return userId;
+    }
+
+    [Fact]
+    public async Task CalculateAverageXp_ExcludesAFormerMember_WhoSwitchedToAnotherClub()
+    {
+        var clubA = Guid.NewGuid();
+        var clubB = Guid.NewGuid();
+
+        var currentNickname = NewNickname();
+        var formerNickname = NewNickname();
+
+        // Currently in club A, earned their XP in club A.
+        await SeedMemberWithHistoryTaggedAsync(currentNickname, currentClubId: clubA, historyClubId: clubA, 100, 250, 400);
+        // Earned XP in club A but has since switched to club B — must NOT appear in club A's averages.
+        await SeedMemberWithHistoryTaggedAsync(formerNickname, currentClubId: clubB, historyClubId: clubA, 100, 300, 500);
+
+        using var host = CreateHost();
+        var leaderboard = await host.SendAsync(new CalculateAverageXpQuery(clubA, HistoryDepth: 2));
+
+        leaderboard.Should().Contain(m => m.Nickname == currentNickname);
+        leaderboard.Should().NotContain(m => m.Nickname == formerNickname,
+            "a member who switched to another club is no longer in club A");
+    }
+
+    [Fact]
+    public async Task CalculateAverageXp_ExcludesAFormerMember_WhoLeftAllClubs()
+    {
+        var clubA = Guid.NewGuid();
+
+        var currentNickname = NewNickname();
+        var leaverNickname = NewNickname();
+
+        await SeedMemberWithHistoryTaggedAsync(currentNickname, currentClubId: clubA, historyClubId: clubA, 100, 250, 400);
+        // No current club (left entirely) but history is still tagged with club A.
+        await SeedMemberWithHistoryTaggedAsync(leaverNickname, currentClubId: null, historyClubId: clubA, 100, 300, 500);
+
+        using var host = CreateHost();
+        var leaderboard = await host.SendAsync(new CalculateAverageXpQuery(clubA, HistoryDepth: 2));
+
+        leaderboard.Should().Contain(m => m.Nickname == currentNickname);
+        leaderboard.Should().NotContain(m => m.Nickname == leaverNickname,
+            "a member who left all clubs is no longer in club A");
+    }
 }
