@@ -22,6 +22,10 @@ public class DailyMission : BaseEntity
 
     public string RewardType { get; private set; } = string.Empty;
 
+    public string? MapSlug { get; private set; }
+
+    public string? MapName { get; private set; }
+
     public DateTimeOffset FetchedAtUtc { get; private set; }
 
     public static DailyMission Create(
@@ -34,7 +38,9 @@ public class DailyMission : BaseEntity
         DateTimeOffset endDate,
         int rewardAmount,
         string rewardType,
-        DateTimeOffset fetchedAtUtc)
+        DateTimeOffset fetchedAtUtc,
+        string? mapSlug = null,
+        string? mapName = null)
     {
         return new DailyMission
         {
@@ -47,7 +53,9 @@ public class DailyMission : BaseEntity
             EndDate = endDate,
             RewardAmount = rewardAmount,
             RewardType = rewardType,
-            FetchedAtUtc = fetchedAtUtc
+            FetchedAtUtc = fetchedAtUtc,
+            MapSlug = mapSlug,
+            MapName = mapName
         };
     }
 

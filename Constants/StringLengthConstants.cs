@@ -12,4 +12,6 @@ public static class StringLengthConstants
     public const int DailyMissionTypeMaxLength = 32;
     public const int DailyMissionGameModeMaxLength = 32;
     public const int DailyMissionRewardTypeMaxLength = 32;
+    public const int DailyMissionMapSlugMaxLength = 128;
+    public const int DailyMissionMapNameMaxLength = 128;
 }

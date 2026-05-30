@@ -27,6 +27,12 @@ public class DailyMissionEntityConfiguration : IEntityTypeConfiguration<DailyMis
             .IsRequired()
             .HasMaxLength(StringLengthConstants.DailyMissionRewardTypeMaxLength);
 
+        builder.Property(x => x.MapSlug)
+            .HasMaxLength(StringLengthConstants.DailyMissionMapSlugMaxLength);
+
+        builder.Property(x => x.MapName)
+            .HasMaxLength(StringLengthConstants.DailyMissionMapNameMaxLength);
+
         builder.Property(x => x.CurrentProgress).IsRequired();
         builder.Property(x => x.TargetProgress).IsRequired();
         builder.Property(x => x.Completed).IsRequired();

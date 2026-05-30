@@ -24,7 +24,7 @@ namespace GeoClubBot.Tests.Integration.UseCases;
 [Trait("Category", "Integration")]
 public sealed class DailyMissionAndChallengeUseCaseIntegrationTests(PostgresFixture fixture)
 {
-    private static DailyMissionDto BuildMission(string type, string gameMode, int target) => new()
+    private static DailyMissionDto BuildMission(string type, string gameMode, int target, string? mapSlug = null, string? mapName = null) => new()
     {
         Id = Guid.NewGuid(),
         Type = type,
@@ -35,6 +35,8 @@ public sealed class DailyMissionAndChallengeUseCaseIntegrationTests(PostgresFixt
         EndDate = DateTimeOffset.UtcNow.AddDays(1),
         RewardAmount = 100,
         RewardType = "Xp",
+        MapSlug = mapSlug,
+        MapName = mapName,
     };
 
     private MediatorTestHost CreateMissionHost() =>
@@ -78,6 +80,46 @@ public sealed class DailyMissionAndChallengeUseCaseIntegrationTests(PostgresFixt
         await host.Mock<IDiscordMessageAccess>()
             .Received()
             .SendMessageAsync(Arg.Any<string>(), 20UL, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task LogDailyMissions_PersistsMapProperties_WhenProvided()
+    {
+        var mission = BuildMission("PlayGames", "Duels", 3, mapSlug: "a-custom-map", mapName: "A Custom Map");
+
+        using var host = CreateMissionHost();
+        var missionsClient = Substitute.For<IGeoGuessrClient>();
+        missionsClient.ReadDailyMissionsAsync(Arg.Any<CancellationToken>())
+            .Returns(new DailyMissionsResponseDto { Missions = [mission], NextMissionDate = DateTimeOffset.UtcNow.AddDays(1) });
+        host.Mock<IGeoGuessrClientFactory>().CreateMissionsClient().Returns(missionsClient);
+
+        await host.SendAsync(new LogDailyMissionsCommand());
+
+        await using var read = fixture.CreateDbContext();
+        var persisted = await read.DailyMissions.AsNoTracking()
+            .SingleAsync(m => m.MissionId == mission.Id);
+        persisted.MapSlug.Should().Be("a-custom-map");
+        persisted.MapName.Should().Be("A Custom Map");
+    }
+
+    [Fact]
+    public async Task LogDailyMissions_PersistsNullMapProperties_WhenNotProvided()
+    {
+        var mission = BuildMission("Score", "Classic", 15000);
+
+        using var host = CreateMissionHost();
+        var missionsClient = Substitute.For<IGeoGuessrClient>();
+        missionsClient.ReadDailyMissionsAsync(Arg.Any<CancellationToken>())
+            .Returns(new DailyMissionsResponseDto { Missions = [mission], NextMissionDate = DateTimeOffset.UtcNow.AddDays(1) });
+        host.Mock<IGeoGuessrClientFactory>().CreateMissionsClient().Returns(missionsClient);
+
+        await host.SendAsync(new LogDailyMissionsCommand());
+
+        await using var read = fixture.CreateDbContext();
+        var persisted = await read.DailyMissions.AsNoTracking()
+            .SingleAsync(m => m.MissionId == mission.Id);
+        persisted.MapSlug.Should().BeNull();
+        persisted.MapName.Should().BeNull();
     }
 
     [Fact]

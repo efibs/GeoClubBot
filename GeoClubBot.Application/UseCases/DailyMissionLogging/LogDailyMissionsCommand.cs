@@ -53,7 +53,9 @@ public sealed partial class LogDailyMissionsHandler(
             m.EndDate,
             m.RewardAmount,
             m.RewardType,
-            fetchedAt)).ToList();
+            fetchedAt,
+            m.MapSlug,
+            m.MapName)).ToList();
 
         if (entities.Count > 0)
         {
