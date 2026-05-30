@@ -66,7 +66,7 @@ public sealed class MediatorTestHost : IDisposable
         RegisterValidators(services, applicationAssembly);
         RegisterPersistence(services);
         RegisterInternalApplicationServices(services);
-        RegisterConfigurationOptions(services);
+        RegisterConfigurationOptions(services, configuration);
         RegisterExternalPortSubstitutes(services, applicationAssembly);
 
         configure?.Invoke(services);
@@ -130,20 +130,29 @@ public sealed class MediatorTestHost : IDisposable
         services.AddTransient<ActivityAverageXpRollupStep>();
     }
 
-    private static void RegisterConfigurationOptions(IServiceCollection services)
+    private static void RegisterConfigurationOptions(IServiceCollection services, IConfiguration configuration)
     {
         var configurationAssembly = typeof(ActivityCheckerConfiguration).Assembly;
         var createMethod = typeof(Options).GetMethod(nameof(Options.Create))!;
 
         foreach (var type in configurationAssembly.GetTypes()
                      .Where(t => t is { IsClass: true, IsAbstract: false }
-                                 && t.Name.EndsWith("Configuration", StringComparison.Ordinal)
-                                 && t.GetConstructor(Type.EmptyTypes) is not null))
+                                 && t.Name.EndsWith("Configuration", StringComparison.Ordinal)))
         {
+            // Bind each options class from its section so any `configurationValues` a test supplies
+            // (e.g. "SelfRoles:TextChannelId") flow into the matching IOptions<T>. Tests that need
+            // richer values still override via the `configure` callback, which runs afterwards.
+            if (type.GetField(nameof(ActivityCheckerConfiguration.SectionName),
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                    ?.GetValue(null) is not string sectionName)
+            {
+                continue;
+            }
+
             object? instance;
             try
             {
-                instance = Activator.CreateInstance(type);
+                instance = configuration.GetSection(sectionName).Get(type) ?? Activator.CreateInstance(type);
             }
             catch
             {

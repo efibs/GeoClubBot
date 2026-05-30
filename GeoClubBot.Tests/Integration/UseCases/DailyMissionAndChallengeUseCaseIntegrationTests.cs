@@ -141,12 +141,6 @@ public sealed class DailyMissionAndChallengeUseCaseIntegrationTests(PostgresFixt
                         SecondRoleId = 200,
                         ThirdRoleId = 300,
                     }));
-                },
-                configurationValues: new Dictionary<string, string?>
-                {
-                    ["DailyChallenges:FirstRoleId"] = "100",
-                    ["DailyChallenges:SecondRoleId"] = "200",
-                    ["DailyChallenges:ThirdRoleId"] = "300",
                 });
 
             var client = Substitute.For<IGeoGuessrClient>();

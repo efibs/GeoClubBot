@@ -1,7 +1,7 @@
-using Constants;
+using Configuration;
 using Entities;
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
@@ -25,18 +25,17 @@ public sealed class UnlinkAccountsHandlerTests
 
     private UnlinkAccountsHandler CreateHandler()
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                [ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey] = HasLinkedRoleId.ToString()
-            })
-            .Build();
+        var accountLinkingConfig = Options.Create(new GeoGuessrAccountLinkingConfiguration
+        {
+            AdminChannelId = 0UL,
+            HasLinkedRoleId = HasLinkedRoleId
+        });
 
         var geoConfig = new GeoGuessrConfigurationBuilder()
             .WithClub(ClubId, roleId: ClubRoleId)
             .BuildOptions();
 
-        return new UnlinkAccountsHandler(_users, _roles, config, geoConfig);
+        return new UnlinkAccountsHandler(_users, _roles, accountLinkingConfig, geoConfig);
     }
 
     [Fact]

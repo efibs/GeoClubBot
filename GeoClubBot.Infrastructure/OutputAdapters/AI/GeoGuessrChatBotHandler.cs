@@ -1,8 +1,10 @@
 using System.Net;
+using Configuration;
 using Constants;
 using MediatR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
@@ -49,27 +51,28 @@ Always cite your sources as **clickable links** (masked Markdown links). masked 
         ILogger<GeoGuessrChatBotHandler> logger,
         IDiscordSelfUserAccess discordSelfUserAccess,
         PlonkItGuidePlugin plonkItGuidePlugIn,
-        IConfiguration config)
+        IConfiguration config,
+        IOptions<AiConfiguration> aiOptions)
     {
         _logger = logger;
         _discordSelfUserAccess = discordSelfUserAccess;
         _plonkItGuidePlugIn = plonkItGuidePlugIn;
 
+        var aiConfig = aiOptions.Value;
+
         var llmEndpoint = config.GetConnectionString(ConfigKeys.LlmInferenceEndpointConnectionString)!;
-        var llmModelName = config.GetValue<string>(ConfigKeys.LlmModelNameConfigurationKey)!;
-        var embeddingModelName = config.GetValue<string>(ConfigKeys.EmbeddingModelNameConfigurationKey)!;
+        var llmModelName = aiConfig.LlmModel!;
+        var embeddingModelName = aiConfig.EmbeddingModel!;
         var embeddingEndpoint = config.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
-        var llmApiKey = config.GetValue<string>(ConfigKeys.LlmApiKeyConfigurationKey);
+        var llmApiKey = aiConfig.LlmApiKey;
 
         LogLlmEndpoint(llmEndpoint);
         LogLlmModel(llmModelName);
         LogEmbeddingEndpoint(embeddingEndpoint);
         LogEmbeddingModel(embeddingModelName);
 
-        var requestTimeoutSeconds = config.GetValue(ConfigKeys.LlmRequestTimeoutSecondsConfigurationKey, 60);
-        var overallTimeoutSeconds = config.GetValue(ConfigKeys.LlmOverallTimeoutSecondsConfigurationKey, 180);
-        _requestTimeout = TimeSpan.FromSeconds(requestTimeoutSeconds);
-        _overallTimeout = TimeSpan.FromSeconds(overallTimeoutSeconds);
+        _requestTimeout = TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds);
+        _overallTimeout = TimeSpan.FromSeconds(aiConfig.OverallTimeoutSeconds);
 
         var httpClient = new HttpClient(new RateLimitRetryHandler(new HttpClientHandler()))
         {

@@ -1,4 +1,5 @@
 using System.Text;
+using Configuration;
 using Constants;
 using Discord;
 using Discord.Interactions;
@@ -6,14 +7,14 @@ using Discord.WebSocket;
 using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
 [Group("self-roles", "Commands for managing self-roles")]
-public class SelfRolesModule(ISender mediator, ILogger<SelfRolesModule> logger, IConfiguration config)
+public class SelfRolesModule(ISender mediator, ILogger<SelfRolesModule> logger, IOptions<SelfRolesConfiguration> selfRolesOptions)
     : ClubBotInteractionModule(mediator, logger)
 {
     [SlashCommand("select", "Select the roles you would like to have")]
@@ -116,13 +117,9 @@ public class SelfRolesModule(ISender mediator, ILogger<SelfRolesModule> logger, 
         await FollowupAsync("## Select your roles below:", components: component.Build(), ephemeral: true).ConfigureAwait(false);
     }
 
-    private readonly List<SelfRoleSetting> _selfRoleSettings = config
-        .GetSection(ConfigKeys.SelfRolesRolesConfigurationKey)
-        .Get<List<SelfRoleSetting>>()!;
+    private readonly List<SelfRoleSetting> _selfRoleSettings = selfRolesOptions.Value.Roles;
 
-    private readonly HashSet<ulong> _assignableRoleIds = config
-        .GetSection(ConfigKeys.SelfRolesRolesConfigurationKey)
-        .Get<List<SelfRoleSetting>>()!
+    private readonly HashSet<ulong> _assignableRoleIds = selfRolesOptions.Value.Roles
         .Select(rs => rs.RoleId)
         .ToHashSet();
 }

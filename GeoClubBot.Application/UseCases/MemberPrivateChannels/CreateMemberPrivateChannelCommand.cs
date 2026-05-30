@@ -1,8 +1,8 @@
-using Constants;
+using Configuration;
 using Entities;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
@@ -15,15 +15,13 @@ public sealed partial class CreateMemberPrivateChannelHandler(
     IClubMemberRepository clubMembers,
     IDiscordTextChannelAccess discordTextChannelAccess,
     IDiscordMessageAccess discordMessageAccess,
-    IConfiguration config,
+    IOptions<MemberPrivateChannelsConfiguration> memberPrivateChannelsOptions,
     ILogger<CreateMemberPrivateChannelHandler> logger)
     : IRequestHandler<CreateMemberPrivateChannelCommand, ulong?>
 {
-    private readonly ulong _privateTextChannelCategoryId =
-        config.GetValue<ulong>(ConfigKeys.MemberPrivateChannelsCategoryIdConfigurationKey);
+    private readonly ulong _privateTextChannelCategoryId = memberPrivateChannelsOptions.Value.CategoryId;
 
-    private readonly string _privateChannelsDescription =
-        config.GetValue<string>(ConfigKeys.MemberPrivateChannelsDescriptionConfigurationKey)!;
+    private readonly string _privateChannelsDescription = memberPrivateChannelsOptions.Value.Description;
 
     public async Task<ulong?> Handle(CreateMemberPrivateChannelCommand request, CancellationToken cancellationToken)
     {

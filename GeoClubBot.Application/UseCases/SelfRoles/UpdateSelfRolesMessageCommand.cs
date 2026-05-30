@@ -1,7 +1,7 @@
-using Constants;
+using Configuration;
 using Entities;
 using MediatR;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.Discord;
 
@@ -13,14 +13,11 @@ public sealed class UpdateSelfRolesMessageHandler(
     IDiscordTextChannelAccess discordTextChannelAccess,
     IDiscordMessageAccess discordMessageAccess,
     IDiscordSelfUserAccess discordSelfUserAccess,
-    IConfiguration config) : IRequestHandler<UpdateSelfRolesMessageCommand, Unit>
+    IOptions<SelfRolesConfiguration> selfRolesOptions) : IRequestHandler<UpdateSelfRolesMessageCommand, Unit>
 {
-    private readonly ulong _textChannelId =
-        config.GetValue<ulong>(ConfigKeys.SelfRolesTextChannelIdConfigurationKey);
+    private readonly ulong _textChannelId = selfRolesOptions.Value.TextChannelId;
 
-    private readonly List<SelfRoleSetting> _selfRoleSettings = config
-        .GetSection(ConfigKeys.SelfRolesRolesConfigurationKey)
-        .Get<List<SelfRoleSetting>>()!;
+    private readonly List<SelfRoleSetting> _selfRoleSettings = selfRolesOptions.Value.Roles;
 
     public async Task<Unit> Handle(UpdateSelfRolesMessageCommand request, CancellationToken cancellationToken)
     {

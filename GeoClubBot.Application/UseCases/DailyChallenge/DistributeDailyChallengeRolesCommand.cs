@@ -1,7 +1,7 @@
-using Constants;
+using Configuration;
 using Entities;
 using MediatR;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.Users;
@@ -13,11 +13,11 @@ public sealed record DistributeDailyChallengeRolesCommand(List<ClubChallengeResu
 public sealed class DistributeDailyChallengeRolesHandler(
     ISender mediator,
     IDiscordServerRolesAccess discordServerRolesAccess,
-    IConfiguration config) : IRequestHandler<DistributeDailyChallengeRolesCommand, Unit>
+    IOptions<DailyChallengesConfiguration> dailyChallengesOptions) : IRequestHandler<DistributeDailyChallengeRolesCommand, Unit>
 {
-    private readonly ulong _firstRoleId = config.GetValue<ulong>(ConfigKeys.DailyChallengesFirstRoleIdConfigurationKey);
-    private readonly ulong _secondRoleId = config.GetValue<ulong>(ConfigKeys.DailyChallengesSecondRoleIdConfigurationKey);
-    private readonly ulong _thirdRoleId = config.GetValue<ulong>(ConfigKeys.DailyChallengesThirdRoleIdConfigurationKey);
+    private readonly ulong _firstRoleId = dailyChallengesOptions.Value.FirstRoleId;
+    private readonly ulong _secondRoleId = dailyChallengesOptions.Value.SecondRoleId;
+    private readonly ulong _thirdRoleId = dailyChallengesOptions.Value.ThirdRoleId;
 
     public async Task<Unit> Handle(DistributeDailyChallengeRolesCommand request, CancellationToken cancellationToken)
     {

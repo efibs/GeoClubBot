@@ -1,11 +1,11 @@
-using Constants;
+using Configuration;
 using Discord.WebSocket;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Infrastructure.InputAdapters;
 
-public class UserJoinedService(DiscordSocketClient client, IConfiguration config) : IHostedService
+public class UserJoinedService(DiscordSocketClient client, IOptions<DiscordConfiguration> discordOptions) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -53,8 +53,7 @@ public class UserJoinedService(DiscordSocketClient client, IConfiguration config
         return messageText;
     }
     
-    private readonly ulong _serverId = config.GetValue<ulong>(ConfigKeys.DiscordServerIdConfigurationKey);
-    private readonly ulong _welcomeTextChannelId = config.GetValue<ulong>(ConfigKeys.DiscordWelcomeTextChannelIdConfigurationKey);
-    private readonly string _welcomeMessageTemplate =
-        config.GetValue<string>(ConfigKeys.DiscordWelcomeMessageConfigurationKey)!;
+    private readonly ulong _serverId = discordOptions.Value.ServerId;
+    private readonly ulong _welcomeTextChannelId = discordOptions.Value.WelcomeTextChannelId;
+    private readonly string _welcomeMessageTemplate = discordOptions.Value.WelcomeMessage;
 }

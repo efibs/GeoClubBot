@@ -1,8 +1,8 @@
-using Constants;
+using Configuration;
 using Entities;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
@@ -19,11 +19,10 @@ public sealed partial class CompleteAccountLinkingHandler(
     IGeoGuessrUserRepository users,
     ISender mediator,
     IDiscordServerRolesAccess rolesAccess,
-    IConfiguration config,
+    IOptions<GeoGuessrAccountLinkingConfiguration> accountLinkingOptions,
     ILogger<CompleteAccountLinkingHandler> logger) : IRequestHandler<CompleteAccountLinkingCommand, Result<GeoGuessrUser>>
 {
-    private readonly ulong _hasLinkedRoleId =
-        config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
+    private readonly ulong _hasLinkedRoleId = accountLinkingOptions.Value.HasLinkedRoleId;
 
     public async Task<Result<GeoGuessrUser>> Handle(CompleteAccountLinkingCommand request, CancellationToken cancellationToken)
     {

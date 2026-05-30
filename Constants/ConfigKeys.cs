@@ -1,7 +1,11 @@
 namespace Constants;
 
 /// <summary>
-/// Class holding the configuration keys as constants.
+/// Configuration keys that cannot use the strongly-typed options pattern:
+/// connection-string names (resolved via <c>IConfiguration.GetConnectionString</c>), cron schedule
+/// keys read by the <c>ConfiguredCronJobAttribute</c> (attributes require compile-time constants),
+/// and the <c>SQL:Migrate</c> flag read once at start-up before the host is built.
+/// Everything else is bound to an options class in the Configuration project.
 /// </summary>
 public static class ConfigKeys
 {
@@ -11,46 +15,17 @@ public static class ConfigKeys
     public const string EmbeddingEndpoint = "EmbeddingEndpoint";
     public const string CategorizationEndpoint = "CategorizationEndpoint";
 
-    public const string AiActiveConfigurationKey = "AI:Active";
-    public const string LlmModelNameConfigurationKey = "AI:LlmModel";
-    public const string CategorizeModelNameConfigurationKey = "AI:CategorizeModel";
-    public const string LlmApiKeyConfigurationKey = "AI:LlmApiKey";
-    public const string EmbeddingModelNameConfigurationKey = "AI:EmbeddingModel";
-    public const string EmbeddingMaxDegreeOfParallelismConfigurationKey = "AI:MaxDegreeOfParallelism";
-    public const string LlmRequestTimeoutSecondsConfigurationKey = "AI:RequestTimeoutSeconds";
-    public const string LlmOverallTimeoutSecondsConfigurationKey = "AI:OverallTimeoutSeconds";
-
-    public const string DiscordServerIdConfigurationKey = "Discord:ServerId";
-    public const string DiscordWelcomeMessageConfigurationKey = "Discord:WelcomeMessage";
-    public const string DiscordWelcomeTextChannelIdConfigurationKey = "Discord:WelcomeTextChannelId";
-
     public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:SyncSchedule";
-    
+
     public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
-    public const string ActivityCheckerHistoryKeepTimeSpanConfigurationKey = "ActivityChecker:HistoryKeepTimeSpan";
-    public const string ActivityCheckerStrikeDecayTimeSpanConfigurationKey = "ActivityChecker:StrikeDecayTimeSpan";
-    
-    public const string ClubLevelCheckerCronScheduleConfigurationKey =  "ClubLevelChecker:Schedule";
-    
+
+    public const string ClubLevelCheckerCronScheduleConfigurationKey = "ClubLevelChecker:Schedule";
+
     public const string DailyChallengesCronScheduleConfigurationKey = "DailyChallenges:Schedule";
-    public const string DailyChallengesFirstRoleIdConfigurationKey = "DailyChallenges:FirstRoleId";
-    public const string DailyChallengesSecondRoleIdConfigurationKey = "DailyChallenges:SecondRoleId";
-    public const string DailyChallengesThirdRoleIdConfigurationKey = "DailyChallenges:ThirdRoleId";
 
     public const string DailyMissionReminderCronScheduleConfigurationKey = "DailyMissionReminder:Schedule";
 
     public const string DailyMissionLoggingCronScheduleConfigurationKey = "DailyMissionLogging:Schedule";
 
-    public const string GeoGuessrAccountLinkingAdminChannelIdConfigurationKey = "GeoGuessrAccountLinking:AdminChannelId";
-    public const string GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey = "GeoGuessrAccountLinking:HasLinkedRoleId";
-
-
-    public const string MemberPrivateChannelsCategoryIdConfigurationKey = "MemberPrivateChannels:CategoryId";
-    public const string MemberPrivateChannelsDescriptionConfigurationKey = "MemberPrivateChannels:Description";
-    
-    public const string SelfRolesTextChannelIdConfigurationKey = "SelfRoles:TextChannelId";
-    public const string SelfRolesRolesConfigurationKey = "SelfRoles:Roles";
-    
-    
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

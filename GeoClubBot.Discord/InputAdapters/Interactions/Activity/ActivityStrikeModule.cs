@@ -1,9 +1,9 @@
-using Constants;
+using Configuration;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.UseCases.Strikes;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -13,8 +13,10 @@ public partial class ActivityModule
     public partial class ActivityStrikeModule(
         ISender mediator,
         ILogger<ActivityStrikeModule> logger,
-        IConfiguration config) : ClubBotInteractionModule(mediator, logger)
+        IOptions<ActivityCheckerConfiguration> activityCheckerOptions) : ClubBotInteractionModule(mediator, logger)
     {
+        private readonly TimeSpan _strikeDecayTimeSpan = activityCheckerOptions.Value.StrikeDecayTimeSpan;
+
         [SlashCommand("add", "Create a new strike for a player")]
         public async Task CreateStrikeAsync(string memberNickname,
             [Summary(description: "Strike date in format YYYY-MM-DD")]
@@ -33,7 +35,7 @@ public partial class ActivityModule
             }
             else
             {
-                var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+                var expirationTimeSpan = _strikeDecayTimeSpan;
                 await RespondAsync(
                     $"Strike with id {result.Value} was added to player **{memberNickname}** (expires: {(strikeDate + expirationTimeSpan):d}).")
                     .ConfigureAwait(false);
@@ -62,7 +64,7 @@ public partial class ActivityModule
                 return;
             }
 
-            var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+            var expirationTimeSpan = _strikeDecayTimeSpan;
             var strikesListString = string.Join("\n", strikeStatus.Strikes.Select(s =>
                 $"- {s.Timestamp:d} - Revoked: {s.Revoked} (Id: {s.StrikeId}, expires: {(s.Timestamp + expirationTimeSpan):d})"));
 
@@ -84,7 +86,7 @@ public partial class ActivityModule
             }
 
             var expirationTimeSpan =
-                config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+                _strikeDecayTimeSpan;
 
             var strikesListString = string.Join("\n", strikes
                 .OrderBy(s => s.ClubMember!.User!.Nickname)
@@ -171,7 +173,7 @@ public partial class ActivityModule
 
             var strike = result.Value;
             var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
-            var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+            var expirationTimeSpan = _strikeDecayTimeSpan;
             await RespondAsync(
                 $"Strike for player **{nickname}** from {strike.Timestamp:d} (expires: {(strike.Timestamp + expirationTimeSpan):d}, id: {strikeId}) was successfully revoked.")
                 .ConfigureAwait(false);
@@ -196,7 +198,7 @@ public partial class ActivityModule
 
             var strike = result.Value;
             var nickname = strike.ClubMember?.User.Nickname ?? "Unknown";
-            var expirationTimeSpan = config.GetValue<TimeSpan>(ConfigKeys.ActivityCheckerStrikeDecayTimeSpanConfigurationKey);
+            var expirationTimeSpan = _strikeDecayTimeSpan;
             await RespondAsync(
                 $"Revocation of strike for player **{nickname}** from {strike.Timestamp:d} (expires: {(strike.Timestamp + expirationTimeSpan):d}, id: {strikeId}) was successfully removed.")
                 .ConfigureAwait(false);

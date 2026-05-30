@@ -1,3 +1,4 @@
+using Configuration;
 using Constants;
 using GeoClubBot.Services;
 using Infrastructure.OutputAdapters.AI;
@@ -12,15 +13,15 @@ public static class AiServices
 {
     public static void AddAiServicesIfConfigured(this IServiceCollection services, IConfiguration configuration)
     {
-        var aiActive = configuration.GetValue(ConfigKeys.AiActiveConfigurationKey, false);
-        if (!aiActive)
+        var aiConfig = configuration.GetSection(AiConfiguration.SectionName).Get<AiConfiguration>() ?? new AiConfiguration();
+        if (!aiConfig.Active)
         {
             return;
         }
 
         var qdrantConnectionString = configuration.GetConnectionString(ConfigKeys.QDrantConnectionString)!;
         var embeddingEndpoint = configuration.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
-        var embeddingModelName = configuration.GetValue<string>(ConfigKeys.EmbeddingModelNameConfigurationKey)!;
+        var embeddingModelName = aiConfig.EmbeddingModel!;
 
         services.AddHostedService<AiBotService>();
 

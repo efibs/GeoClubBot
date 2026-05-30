@@ -1,7 +1,5 @@
 using Configuration;
-using Constants;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts;
@@ -15,11 +13,10 @@ public sealed record UnlinkAccountsCommand(ulong DiscordUserId, string GeoGuessr
 public sealed class UnlinkAccountsHandler(
     IGeoGuessrUserRepository users,
     IDiscordServerRolesAccess rolesAccess,
-    IConfiguration config,
+    IOptions<GeoGuessrAccountLinkingConfiguration> accountLinkingOptions,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IRequestHandler<UnlinkAccountsCommand, Result>
 {
-    private readonly ulong _hasLinkedRoleId =
-        config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey);
+    private readonly ulong _hasLinkedRoleId = accountLinkingOptions.Value.HasLinkedRoleId;
 
     public async Task<Result> Handle(UnlinkAccountsCommand request, CancellationToken cancellationToken)
     {

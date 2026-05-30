@@ -1,12 +1,13 @@
 using System.Text.RegularExpressions;
+using Configuration;
 using Constants;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -16,7 +17,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 public class GeoGuessrAccountLinkPublicModule(
     ISender mediator,
     ILogger<GeoGuessrAccountLinkPublicModule> logger,
-    IConfiguration config) : ClubBotInteractionModule(mediator, logger)
+    IOptions<GeoGuessrAccountLinkingConfiguration> accountLinkingOptions) : ClubBotInteractionModule(mediator, logger)
 {
     [SlashCommand("link", "Link your Discord account to a GeoGuessr account")]
     public Task StartLinkingProcessAsync([Summary(description: "The link to your profile")] string shareProfileLink) =>
@@ -151,6 +152,5 @@ public class GeoGuessrAccountLinkPublicModule(
     private static readonly Regex ShareProfileLinkCheckerRegex =
         new(@"^https:\/\/www\.geoguessr\.com\/user\/[\da-z]{24}$", RegexOptions.Compiled);
 
-    private readonly ulong _accountLinkingAdminChannelId =
-        config.GetValue<ulong>(ConfigKeys.GeoGuessrAccountLinkingAdminChannelIdConfigurationKey);
+    private readonly ulong _accountLinkingAdminChannelId = accountLinkingOptions.Value.AdminChannelId;
 }

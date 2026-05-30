@@ -51,5 +51,25 @@ public static class DependencyInjectionExtensions
             .Bind(config.GetSection(CorsConfiguration.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        services.AddOptions<GeoGuessrAccountLinkingConfiguration>()
+            .Bind(config.GetSection(GeoGuessrAccountLinkingConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<MemberPrivateChannelsConfiguration>()
+            .Bind(config.GetSection(MemberPrivateChannelsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<SelfRolesConfiguration>()
+            .Bind(config.GetSection(SelfRolesConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // AI features are optional (gated by the Active flag), so the section is bound without
+        // start-up validation — the values are only required when the AI services are registered.
+        services.AddOptions<AiConfiguration>()
+            .Bind(config.GetSection(AiConfiguration.SectionName));
     }
 }

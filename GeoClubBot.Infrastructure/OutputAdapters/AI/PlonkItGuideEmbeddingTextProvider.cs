@@ -1,7 +1,9 @@
 using System.Text;
+using Configuration;
 using Constants;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 
@@ -42,13 +44,16 @@ Text: {{$input}}
 Return only the category.
 ";
 
-    public PlonkItGuideEmbeddingTextProvider(ILogger<PlonkItGuideEmbeddingTextProvider> logger, IConfiguration config)
+    public PlonkItGuideEmbeddingTextProvider(
+        ILogger<PlonkItGuideEmbeddingTextProvider> logger,
+        IConfiguration config,
+        IOptions<AiConfiguration> aiOptions)
     {
         _logger = logger;
 
         _llmEndpoint = config.GetConnectionString(ConfigKeys.CategorizationEndpoint)!;
-        var llmModelName = config.GetValue<string>(ConfigKeys.CategorizeModelNameConfigurationKey)!;
-        var llmApiKey = config.GetValue<string>(ConfigKeys.LlmApiKeyConfigurationKey);
+        var llmModelName = aiOptions.Value.CategorizeModel!;
+        var llmApiKey = aiOptions.Value.LlmApiKey;
 
         _categorizeKernel = Kernel.CreateBuilder()
             .AddOpenAIChatCompletion(modelId: llmModelName, apiKey: llmApiKey, endpoint: new Uri(_llmEndpoint + "/v1"))

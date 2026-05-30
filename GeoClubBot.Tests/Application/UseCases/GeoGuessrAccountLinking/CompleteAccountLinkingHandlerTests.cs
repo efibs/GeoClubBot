@@ -1,9 +1,9 @@
-using Constants;
+using Configuration;
 using Entities;
 using FluentAssertions;
 using MediatR;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
@@ -29,13 +29,12 @@ public sealed class CompleteAccountLinkingHandlerTests
 
     private CompleteAccountLinkingHandler CreateHandler()
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                [ConfigKeys.GeoGuessrAccountLinkingHasLinkedRoleIdConfigurationKey] = HasLinkedRoleId.ToString()
-            })
-            .Build();
-        return new CompleteAccountLinkingHandler(_requests, _users, _mediator, _roles, config, _logger);
+        var accountLinkingConfig = Options.Create(new GeoGuessrAccountLinkingConfiguration
+        {
+            AdminChannelId = 0UL,
+            HasLinkedRoleId = HasLinkedRoleId
+        });
+        return new CompleteAccountLinkingHandler(_requests, _users, _mediator, _roles, accountLinkingConfig, _logger);
     }
 
     [Fact]
