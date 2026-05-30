@@ -40,12 +40,18 @@ public sealed partial class ActivityStatusCalculator(
         // SaveClubMembersCommand has just persisted every API member, so a single batched
         // read returns each ClubMember + active strike count. The hot loop below is pure
         // dict lookups; no more per-member DB round-trip.
+        //
+        // These two reads share the request-scoped DbContext, so they MUST be awaited
+        // sequentially — EF Core does not support concurrent operations on a single context
+        // (running them via Task.WhenAll throws "A second operation was started on this context
+        // instance...", which surfaces under the parallel multi-club activity check).
         var userIds = members.Select(m => m.User.UserId).ToList();
-        var persistedMembersTask = clubMembers.ReadClubMembersByUserIdsAsync(userIds, cancellationToken);
-        var activeStrikeCountsTask = strikes.ReadActiveStrikeCountsByMemberUserIdsAsync(userIds, cancellationToken);
-        await Task.WhenAll(persistedMembersTask, activeStrikeCountsTask).ConfigureAwait(false);
-        var persistedMembers = await persistedMembersTask.ConfigureAwait(false);
-        var activeStrikeCounts = await activeStrikeCountsTask.ConfigureAwait(false);
+        var persistedMembers = await clubMembers
+            .ReadClubMembersByUserIdsAsync(userIds, cancellationToken)
+            .ConfigureAwait(false);
+        var activeStrikeCounts = await strikes
+            .ReadActiveStrikeCountsByMemberUserIdsAsync(userIds, cancellationToken)
+            .ConfigureAwait(false);
 
         foreach (var member in members)
         {
