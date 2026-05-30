@@ -19,4 +19,8 @@ public class DailyMissionDto
     public required int RewardAmount { get; set; }
 
     public required string RewardType { get; set; }
+
+    public string? MapSlug { get; set; }
+
+    public string? MapName { get; set; }
 }

@@ -3,6 +3,7 @@ using Infrastructure.InputAdapters;
 using Infrastructure.OutputAdapters;
 using UseCases.OutputPorts;
 using UseCases.OutputPorts.Discord;
+using UseCases.OutputPorts.Rendering;
 
 namespace GeoClubBot.DependencyInjection.Modules;
 
@@ -14,6 +15,7 @@ public static class DiscordAdaptersModule
         services.AddHostedService<UserJoinedService>();
         services.AddHostedService<UserLeftService>();
 
+        services.AddTransient<IDailyMissionRenderer, DiscordDailyMissionRenderer>();
         services.AddTransient<IActivityStatusMessageFormatter, DiscordActivityStatusMessageFormatter>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IDiscordStatusUpdater, DiscordDiscordStatusUpdater>();
