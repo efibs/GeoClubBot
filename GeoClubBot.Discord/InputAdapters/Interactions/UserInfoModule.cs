@@ -95,7 +95,7 @@ public class UserInfoModule(
         var profileUrl = $"https://www.geoguessr.com/user/{profile.Id}";
         var thumbnailUrl = string.IsNullOrWhiteSpace(profile.CustomImage)
             ? null
-            : $"https://www.geoguessr.com/images/auto/{profile.CustomImage}";
+            : $"https://www.geoguessr.com/images/resize:auto:96:96/gravity:ce/plain/{profile.CustomImage}";
 
         var ratingDisplay = profile.Competitive.Rating == 0
             ? "N/A"
