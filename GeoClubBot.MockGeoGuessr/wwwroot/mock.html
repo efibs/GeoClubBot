@@ -319,6 +319,8 @@ async function load_missions(){
     <div class="col-md-1"><label class="form-label">Reward Type</label><input class="form-control form-control-sm" id="nm-rwdt" value="Coins"/></div>
     <div class="col-md-1"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" id="nm-done"/><label class="form-check-label" for="nm-done">Done</label></div></div>
     <div class="col-md-2"><label class="form-label">End Date (UTC)</label><input class="form-control form-control-sm" type="date" id="nm-end" value="${tomorrow}"/></div>
+    <div class="col-md-2"><label class="form-label">Map Slug <span class="text-muted">(optional)</span></label><input class="form-control form-control-sm" id="nm-mapslug" placeholder="e.g. world"/></div>
+    <div class="col-md-2"><label class="form-label">Map Name <span class="text-muted">(optional)</span></label><input class="form-control form-control-sm" id="nm-mapname" placeholder="e.g. A Community Map"/></div>
     <div class="col-md-12 mt-2"><button class="btn btn-success btn-sm" onclick="addMission()">Add Mission</button></div>
   </div></div></div>`;
 
@@ -330,14 +332,16 @@ async function load_missions(){
       <span>Current Missions (${missions.length})</span>
       <button class="btn btn-sm btn-outline-danger" onclick="clearMissions()">Clear all</button></div>
       <div class="card-body p-0"><table class="table table-sm mb-0">
-      <thead><tr><th>Id</th><th>Type</th><th>Game Mode</th><th>Progress</th><th>Reward</th><th>Completed</th><th>End Date</th><th></th></tr></thead><tbody>`;
+      <thead><tr><th>Id</th><th>Type</th><th>Game Mode</th><th>Progress</th><th>Reward</th><th>Completed</th><th>End Date</th><th>Map</th><th></th></tr></thead><tbody>`;
     missions.forEach(m=>{
       const id=m.id;
+      const mapCell=m.mapSlug?`<span title="${h(m.mapName||m.mapSlug)}">${h(m.mapSlug)}</span>`:`<span class="text-muted">—</span>`;
       html+=`<tr><td><code>${id.substring(0,8)}</code></td><td>${h(m.type)}</td><td>${h(m.gameMode)}</td>
       <td>${m.currentProgress} / ${m.targetProgress}</td>
       <td>${m.rewardAmount} ${h(m.rewardType)}</td>
       <td>${m.completed?'✓':''}</td>
       <td>${(m.endDate||'').substring(0,10)}</td>
+      <td>${mapCell}</td>
       <td><button class="btn btn-sm btn-outline-danger" onclick="deleteMission('${id}')">Delete</button></td></tr>`;
     });
     html+=`</tbody></table></div></div>`;
@@ -354,6 +358,8 @@ async function saveNextMissionDate(){
 
 async function addMission(){
   const endDateStr=document.getElementById('nm-end').value;
+  const mapSlug=document.getElementById('nm-mapslug').value.trim()||null;
+  const mapName=document.getElementById('nm-mapname').value.trim()||null;
   await post('/missions',{
     type:document.getElementById('nm-type').value,
     gameMode:document.getElementById('nm-mode').value,
@@ -362,7 +368,9 @@ async function addMission(){
     rewardAmount:+document.getElementById('nm-rwd').value,
     rewardType:document.getElementById('nm-rwdt').value,
     completed:document.getElementById('nm-done').checked,
-    endDate:endDateStr?new Date(endDateStr+'T00:00:00Z').toISOString():null
+    endDate:endDateStr?new Date(endDateStr+'T00:00:00Z').toISOString():null,
+    mapSlug,
+    mapName
   });
   load_missions();
 }

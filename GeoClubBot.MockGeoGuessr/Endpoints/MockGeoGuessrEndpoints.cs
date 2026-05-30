@@ -40,5 +40,7 @@ public record AddMissionRequest(
     bool Completed = false,
     DateTimeOffset? EndDate = null,
     int RewardAmount = 100,
-    string RewardType = "Coins");
+    string RewardType = "Coins",
+    string? MapSlug = null,
+    string? MapName = null);
 public record UpdateNextMissionDateRequest(DateTimeOffset NextMissionDate);

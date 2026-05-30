@@ -322,7 +322,9 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             Completed = req.Completed,
             EndDate = req.EndDate ?? DateTimeOffset.UtcNow.Date.AddDays(1),
             RewardAmount = req.RewardAmount,
-            RewardType = req.RewardType
+            RewardType = req.RewardType,
+            MapSlug = req.MapSlug,
+            MapName = req.MapName,
         };
         lock (store.DailyMissions)
         {
