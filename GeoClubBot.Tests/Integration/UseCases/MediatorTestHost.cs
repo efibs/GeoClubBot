@@ -11,6 +11,8 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.Behaviors;
 using UseCases.OutputPorts;
+using UseCases.UseCases.Club;
+using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 
 namespace GeoClubBot.Tests.Integration.UseCases;
 
@@ -63,6 +65,7 @@ public sealed class MediatorTestHost : IDisposable
 
         RegisterValidators(services, applicationAssembly);
         RegisterPersistence(services);
+        RegisterInternalApplicationServices(services);
         RegisterConfigurationOptions(services);
         RegisterExternalPortSubstitutes(services, applicationAssembly);
 
@@ -112,6 +115,19 @@ public sealed class MediatorTestHost : IDisposable
                 services.AddScoped(@interface, impl);
             }
         }
+    }
+
+    /// <summary>
+    /// Internal application services that are concrete (not output ports) and so are not picked up
+    /// by the substitute scan. Mirrors the production registrations in <c>ClubMembersModule</c> so
+    /// the GeoGuessr-orchestration handlers (club level / activity checks) resolve their collaborators.
+    /// </summary>
+    private static void RegisterInternalApplicationServices(IServiceCollection services)
+    {
+        services.AddSingleton<IClubLevelTracker, ClubLevelTracker>();
+        services.AddTransient<ActivityCheckSyncStep>();
+        services.AddTransient<ActivityStatusCalculator>();
+        services.AddTransient<ActivityAverageXpRollupStep>();
     }
 
     private static void RegisterConfigurationOptions(IServiceCollection services)
