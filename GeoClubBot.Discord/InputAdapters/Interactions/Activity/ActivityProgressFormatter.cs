@@ -32,12 +32,12 @@ internal static class ActivityProgressFormatter
 
     private static string WeekdayLabel(DateOnly date) => date.DayOfWeek switch
     {
-        DayOfWeek.Monday    => "Mo",
-        DayOfWeek.Tuesday   => "Tu",
+        DayOfWeek.Monday => "Mo",
+        DayOfWeek.Tuesday => "Tu",
         DayOfWeek.Wednesday => "We",
-        DayOfWeek.Thursday  => "Th",
-        DayOfWeek.Friday    => "Fr",
-        DayOfWeek.Saturday  => "Sa",
-        _                   => "Su"
+        DayOfWeek.Thursday => "Th",
+        DayOfWeek.Friday => "Fr",
+        DayOfWeek.Saturday => "Sa",
+        _ => "Su"
     };
 }

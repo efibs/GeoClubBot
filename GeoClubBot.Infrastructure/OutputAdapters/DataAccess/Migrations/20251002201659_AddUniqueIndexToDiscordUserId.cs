@@ -1,28 +1,27 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Infrastructure.OutputAdapters.DataAccess.Migrations
+namespace Infrastructure.OutputAdapters.DataAccess.Migrations;
+
+/// <inheritdoc />
+public partial class AddUniqueIndexToDiscordUserId : Migration
 {
     /// <inheritdoc />
-    public partial class AddUniqueIndexToDiscordUserId : Migration
+    protected override void Up(MigrationBuilder migrationBuilder)
     {
-        /// <inheritdoc />
-        protected override void Up(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.CreateIndex(
-                name: "IX_GeoGuessrUsers_DiscordUserId",
-                table: "GeoGuessrUsers",
-                column: "DiscordUserId",
-                unique: true);
-        }
+        migrationBuilder.CreateIndex(
+            name: "IX_GeoGuessrUsers_DiscordUserId",
+            table: "GeoGuessrUsers",
+            column: "DiscordUserId",
+            unique: true);
+    }
 
-        /// <inheritdoc />
-        protected override void Down(MigrationBuilder migrationBuilder)
-        {
-            migrationBuilder.DropIndex(
-                name: "IX_GeoGuessrUsers_DiscordUserId",
-                table: "GeoGuessrUsers");
-        }
+    /// <inheritdoc />
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+        migrationBuilder.DropIndex(
+            name: "IX_GeoGuessrUsers_DiscordUserId",
+            table: "GeoGuessrUsers");
     }
 }

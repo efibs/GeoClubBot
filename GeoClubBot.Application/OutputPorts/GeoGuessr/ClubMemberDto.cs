@@ -3,7 +3,7 @@ namespace UseCases.OutputPorts.GeoGuessr;
 public class ClubMemberDto
 {
     public required ClubMemberUserDto User { get; set; }
-    
+
     public required int Role { get; set; }
 
     public required DateTimeOffset JoinedAt { get; set; }

@@ -1,3 +1,3 @@
 namespace Infrastructure.InputAdapters.Jobs;
 
-public interface JobAssemblyMarker;
+public interface IJobAssemblyMarker;

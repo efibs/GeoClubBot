@@ -5,4 +5,4 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 /// This is empty by design. It doesn't need to do anything, it just
 /// needs to be there.
 /// </summary>
-public interface InteractionsAssemblyMarker;
+public interface INteractionsAssemblyMarker;

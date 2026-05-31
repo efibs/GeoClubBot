@@ -3,9 +3,9 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;
 

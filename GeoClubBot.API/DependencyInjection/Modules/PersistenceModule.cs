@@ -1,6 +1,6 @@
 using Constants;
-using Infrastructure.OutputAdapters.Repositories;
 using Infrastructure.OutputAdapters.DataAccess;
+using Infrastructure.OutputAdapters.Repositories;
 using Microsoft.EntityFrameworkCore;
 using UseCases.OutputPorts.Repositories;
 

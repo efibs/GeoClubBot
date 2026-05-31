@@ -3,8 +3,8 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.Repositories;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 

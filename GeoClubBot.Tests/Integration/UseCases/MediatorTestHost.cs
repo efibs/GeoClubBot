@@ -1,7 +1,7 @@
 using Configuration;
 using FluentValidation;
-using Infrastructure.OutputAdapters.Repositories;
 using Infrastructure.OutputAdapters.DataAccess;
+using Infrastructure.OutputAdapters.Repositories;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;

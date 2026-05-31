@@ -3,9 +3,9 @@ using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMembers;
 
 namespace UseCases.UseCases.Club;

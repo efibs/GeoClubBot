@@ -1,7 +1,7 @@
 using Entities;
 using Microsoft.Extensions.Logging;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Projections;
+using UseCases.OutputPorts.Repositories;
 using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;

@@ -1,14 +1,14 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
+using GeoClubBot.Tests.TestBuilders;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;
 using Xunit;
-using GeoClubBot.Tests.TestBuilders;
 
 namespace GeoClubBot.Tests.Application.UseCases.GeoGuessrAccountLinking;
 

@@ -2,8 +2,8 @@ using Configuration;
 using MediatR;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
+using UseCases.OutputPorts.Repositories;
 using Utilities;
 
 namespace UseCases.UseCases.GeoGuessrAccountLinking;

@@ -16,7 +16,7 @@ public static class QuartzModule
         {
             q.SchedulerId = StringConstants.QuartzSchedulerName;
 
-            var commandsAssembly = typeof(JobAssemblyMarker).Assembly;
+            var commandsAssembly = typeof(IJobAssemblyMarker).Assembly;
             q.AddCronJobs(commandsAssembly);
 
             // Listener records per-job duration + failures into JobMetrics.

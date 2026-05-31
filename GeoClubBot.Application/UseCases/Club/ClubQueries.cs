@@ -2,8 +2,8 @@ using Configuration;
 using MediatR;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.Repositories;
 
 namespace UseCases.UseCases.Club;
 

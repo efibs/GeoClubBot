@@ -7,33 +7,35 @@ using UseCases.OutputPorts.Discord;
 
 namespace GeoClubBot.Discord.OutputAdapters;
 
-public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOptions<DiscordConfiguration> config) : IDiscordTextChannelAccess
+public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOptions<DiscordConfiguration> config)
+    : IDiscordTextChannelAccess
 {
     public async Task<ulong?> CreatePrivateTextChannelAsync(ulong categoryId, string name, string description,
-        IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds, CancellationToken cancellationToken = default)
+        IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds,
+        CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
-        
+
         // Create the text channel
         var createdTextChannel = await guild.CreateTextChannelAsync(name, options =>
         {
             // Set to text channel
             options.ChannelType = ChannelType.Text;
-            
+
             // Set the category id
             options.CategoryId = categoryId;
-            
+
             // Set the description
             options.Topic = description;
-            
+
             // Get the overwrites
             var overwrites = GetOverwrites(guild, allowedDiscordUserIds, allowedRoleIds);
-            
+
             // Set to private
             options.PermissionOverwrites = overwrites;
         }).ConfigureAwait(false);
-        
+
         return createdTextChannel?.Id;
     }
 
@@ -41,10 +43,10 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
-        
+
         // Get the text channel
         var textChannel = guild.GetTextChannel(newTextChannel.Id);
-        
+
         // Update the text channel
         await textChannel.ModifyAsync(options =>
         {
@@ -54,7 +56,7 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
                 // Update the name
                 options.Name = newTextChannel.Name;
             }
-            
+
             // If a description is given
             if (string.IsNullOrWhiteSpace(newTextChannel.Description) == false)
             {
@@ -63,36 +65,37 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
             }
         }).ConfigureAwait(false);
     }
-    
+
     public async Task<bool> DeleteTextChannelAsync(ulong textChannelId, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
-        
+
         // Get the text channel
         var textChannel = guild.GetTextChannel(textChannelId);
-        
+
         // If the text channel was not found
         if (textChannel == null)
         {
             // Nothing to do
             return false;
         }
-        
+
         // Delete the text channel
         await textChannel.DeleteAsync().ConfigureAwait(false);
-        
+
         return true;
     }
 
-    public async Task<ulong?> ReadLastMessageOfUserAsync(ulong userId, ulong channelId, int numMessageSearchlimit, CancellationToken cancellationToken = default)
+    public async Task<ulong?> ReadLastMessageOfUserAsync(ulong userId, ulong channelId, int numMessageSearchlimit,
+        CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
-        
+
         // Get the text channel
         var textChannel = guild.GetTextChannel(channelId);
-        
+
         // If the text channel was not found
         if (textChannel == null)
         {
@@ -105,32 +108,33 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
             .GetMessagesAsync(numMessageSearchlimit)
             .FlattenAsync()
             .ConfigureAwait(false);
-        
+
         // Get the latest message of the user
         var latestMessage = messages
             .Where(m => m.Author.Id == userId)
             .OrderByDescending(m => m.Timestamp)
             .FirstOrDefault();
-            
+
         return latestMessage?.Id;
     }
 
-    private List<Overwrite> GetOverwrites(SocketGuild guild, IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds)
+    private List<Overwrite> GetOverwrites(SocketGuild guild, IEnumerable<ulong>? allowedDiscordUserIds,
+        IEnumerable<ulong>? allowedRoleIds)
     {
         // Get the overwrites for the allowed users
         var allowedUsersOverwrites = allowedDiscordUserIds?
-            .Select(uId => new Overwrite(uId, 
-                PermissionTarget.User, 
+            .Select(uId => new Overwrite(uId,
+                PermissionTarget.User,
                 new OverwritePermissions(viewChannel: PermValue.Allow)))
             .ToList() ?? [];
-            
+
         // Get the allowed role overwrites
         var allowedRolesOverwrites = allowedRoleIds?
-            .Select(rId => new Overwrite(rId, 
-                PermissionTarget.Role, 
+            .Select(rId => new Overwrite(rId,
+                PermissionTarget.Role,
                 new OverwritePermissions(viewChannel: PermValue.Allow)))
             .ToList() ?? [];
-            
+
         // Get the final overwrite
         var textChannelOverwrites = new List<Overwrite>
         {
@@ -138,13 +142,13 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
                 new OverwritePermissions(viewChannel: PermValue.Deny)),
             new()
         };
-            
+
         // Append the user overwrites
         textChannelOverwrites.AddRange(allowedUsersOverwrites);
-            
+
         // Append the role overwrites
         textChannelOverwrites.AddRange(allowedRolesOverwrites);
-        
+
         return textChannelOverwrites;
     }
 }

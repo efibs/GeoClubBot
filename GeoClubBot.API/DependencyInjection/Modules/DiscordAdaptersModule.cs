@@ -1,8 +1,8 @@
 using GeoClubBot.Discord.OutputAdapters;
 using Infrastructure.InputAdapters;
 using Infrastructure.OutputAdapters;
-using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Discord;
+using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Rendering;
 
 namespace GeoClubBot.DependencyInjection.Modules;

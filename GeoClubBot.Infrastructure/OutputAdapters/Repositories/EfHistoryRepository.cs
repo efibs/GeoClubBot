@@ -1,8 +1,8 @@
 using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Projections;
+using UseCases.OutputPorts.Repositories;
 
 namespace Infrastructure.OutputAdapters.Repositories;
 

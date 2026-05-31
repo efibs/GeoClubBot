@@ -8,7 +8,7 @@ internal static class ChallengeResultHighScoresAssembler
     {
         return dtos.Items.Select(AssembleEntity).ToList();
     }
-    
+
     public static ClubChallengeResultPlayer AssembleEntity(ChallengeResultItemDto dto)
     {
         return new ClubChallengeResultPlayer(

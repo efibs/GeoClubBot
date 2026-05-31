@@ -1,7 +1,7 @@
 using FluentAssertions;
 using NSubstitute;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Projections;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMemberActivity;
 using Xunit;
 

@@ -4,9 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
+using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Repositories;
-using UseCases.OutputPorts.GeoGuessr;
 
 namespace UseCases.UseCases.Club;
 

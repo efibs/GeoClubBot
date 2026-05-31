@@ -5,7 +5,7 @@ namespace Configuration;
 public class DiscordConfiguration
 {
     public const string SectionName = "Discord";
-    
+
     [Required(AllowEmptyStrings = false)]
     public required string BotToken { get; set; }
 

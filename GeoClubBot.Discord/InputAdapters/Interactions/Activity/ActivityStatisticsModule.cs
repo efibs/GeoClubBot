@@ -80,7 +80,7 @@ public partial class ActivityModule
         [SlashCommand("player-history", "Read the history of a player")]
         public Task ReadPlayerHistoryAsync(
             string memberNickname,
-            [MinValue(1)] [Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries,
+            [MinValue(1)][Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries,
             [Summary(description: "[optional] The clubs name")] string? clubName = null) =>
             ExecuteAsync(
                 async ct =>
@@ -104,7 +104,7 @@ public partial class ActivityModule
         [SlashCommand("average-leaderboard", "Read the leaderboard of members by average club xp")]
         public Task ReadAverageLeaderboardAsync(
             [Summary(description: "[optional] The clubs name")] string? clubName = null,
-            [MinValue(1)] [Summary(description: "[optional] The number of intervals to include in the average")] int periods = 4) =>
+            [MinValue(1)][Summary(description: "[optional] The number of intervals to include in the average")] int periods = 4) =>
             ExecuteAsync(
                 async ct =>
                 {

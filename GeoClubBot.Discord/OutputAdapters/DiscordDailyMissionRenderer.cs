@@ -64,113 +64,113 @@ public sealed class DiscordDailyMissionRenderer : IDailyMissionRenderer
         template.Replace("{0}", arg0).Replace("{1}", arg1);
 
     /// <summary>
-        /// Friendly English names for each game mode. Used to fill the generic fallback
-        /// phrase (e.g. "Win {count} {gameMode}"). A value of <c>null</c> ("None") means
-        /// the mode has no display name.
-        /// </summary>
-        private static readonly IReadOnlyDictionary<string, string?> _gameModeNames =
-            new Dictionary<string, string?>
-            {
-                ["DailyChallenge"] = "Daily Challenge",
-                ["Duels"] = "Duels",
-                ["SinglePlayerQuiz"] = "Featured Quiz",
-                ["ReplayableQuiz"] = "Quiz",
-                ["AnyBattleRoyale"] = "Battle Royale",
-                ["Classic"] = "Classic",
-                ["TeamDuels"] = "Team Duels",
-                ["CommunityStreak"] = "Community Streak",
-                ["CountryStreak"] = "Country Streak",
-                ["RankedDuels"] = "Ranked Duels",
-                ["RankedTeamDuels"] = "Ranked Team Duels",
-                ["UnrankedDuels"] = "Unranked Duels",
-                ["UnrankedTeamDuels"] = "Unranked Team Duels",
-                ["None"] = null,
-            };
+    /// Friendly English names for each game mode. Used to fill the generic fallback
+    /// phrase (e.g. "Win {count} {gameMode}"). A value of <c>null</c> ("None") means
+    /// the mode has no display name.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string?> _gameModeNames =
+        new Dictionary<string, string?>
+        {
+            ["DailyChallenge"] = "Daily Challenge",
+            ["Duels"] = "Duels",
+            ["SinglePlayerQuiz"] = "Featured Quiz",
+            ["ReplayableQuiz"] = "Quiz",
+            ["AnyBattleRoyale"] = "Battle Royale",
+            ["Classic"] = "Classic",
+            ["TeamDuels"] = "Team Duels",
+            ["CommunityStreak"] = "Community Streak",
+            ["CountryStreak"] = "Country Streak",
+            ["RankedDuels"] = "Ranked Duels",
+            ["RankedTeamDuels"] = "Ranked Team Duels",
+            ["UnrankedDuels"] = "Unranked Duels",
+            ["UnrankedTeamDuels"] = "Unranked Team Duels",
+            ["None"] = null,
+        };
 
-        /// <summary>
-        /// The generic, type-based translation key used as a fallback when no
-        /// mode-specific phrase exists. A value of <c>null</c> ("Unknown") means
-        /// no fallback is available and the raw key is returned instead.
-        /// </summary>
-        private static readonly IReadOnlyDictionary<string, string?> _missionTypeKeys =
-            new Dictionary<string, string?>
-            {
-                ["PlayGames"] = "components.mission-type-play-games",
-                ["Score"] = "components.mission-type-score",
-                ["WinGames"] = "components.mission-type-win-games",
-                ["Unknown"] = null,
-            };
+    /// <summary>
+    /// The generic, type-based translation key used as a fallback when no
+    /// mode-specific phrase exists. A value of <c>null</c> ("Unknown") means
+    /// no fallback is available and the raw key is returned instead.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string?> _missionTypeKeys =
+        new Dictionary<string, string?>
+        {
+            ["PlayGames"] = "components.mission-type-play-games",
+            ["Score"] = "components.mission-type-score",
+            ["WinGames"] = "components.mission-type-win-games",
+            ["Unknown"] = null,
+        };
 
-        /// <summary>
-        /// The English ("en") string table for every mission key the generator can produce,
-        /// copied verbatim from GeoGuessr's translation bundle. <c>{0}</c> and <c>{1}</c>
-        /// are positional interpolation slots.
-        /// </summary>
-        private static readonly IReadOnlyDictionary<string, string> _translations =
-            new Dictionary<string, string>
-            {
-                // Generic, type-based fallbacks.
-                ["components.mission-type-play-games"] = "Play {0} {1}",
-                ["components.mission-type-score"] = "Score {0} points in {1}",
-                ["components.mission-type-win-games"] = "Win {0} {1}",
+    /// <summary>
+    /// The English ("en") string table for every mission key the generator can produce,
+    /// copied verbatim from GeoGuessr's translation bundle. <c>{0}</c> and <c>{1}</c>
+    /// are positional interpolation slots.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> _translations =
+        new Dictionary<string, string>
+        {
+            // Generic, type-based fallbacks.
+            ["components.mission-type-play-games"] = "Play {0} {1}",
+            ["components.mission-type-score"] = "Score {0} points in {1}",
+            ["components.mission-type-win-games"] = "Win {0} {1}",
 
-                // Classic, no specific map.
-                ["components.score-x-points-in-classic"] = "Score {0} points in Classic",
+            // Classic, no specific map.
+            ["components.score-x-points-in-classic"] = "Score {0} points in Classic",
 
-                // PlayGames — singular.
-                ["components.mission-playgames-one-dailychallenge"] = "Play the Daily Challenge",
-                ["components.mission-playgames-one-duels"] = "Play a Duel",
-                ["components.mission-playgames-one-quickplay"] = "Play a Quick Play game",
-                ["components.mission-playgames-one-maprunner"] = "Play a MapRunner game",
-                ["components.mission-playgames-one-singleplayerquiz"] = "Play a Featured Quiz",
-                ["components.mission-playgames-one-replayablequiz"] = "Play a Quiz",
-                ["components.mission-playgames-one-classic"] = "Play a game on the {1} map",
-                ["components.mission-playgames-one-anybattleroyale"] = "Play a Battle Royale game",
-                ["components.mission-playgames-one-teamduels"] = "Play a Team Duel",
-                ["components.mission-playgames-one-rankedduels"] = "Play a Ranked Duel",
-                ["components.mission-playgames-one-rankedteamduels"] = "Play a Ranked Team Duel",
-                ["components.mission-playgames-one-unrankedduels"] = "Play an Unranked Duel",
-                ["components.mission-playgames-one-unrankedteamduels"] = "Play an Unranked Team Duel",
+            // PlayGames — singular.
+            ["components.mission-playgames-one-dailychallenge"] = "Play the Daily Challenge",
+            ["components.mission-playgames-one-duels"] = "Play a Duel",
+            ["components.mission-playgames-one-quickplay"] = "Play a Quick Play game",
+            ["components.mission-playgames-one-maprunner"] = "Play a MapRunner game",
+            ["components.mission-playgames-one-singleplayerquiz"] = "Play a Featured Quiz",
+            ["components.mission-playgames-one-replayablequiz"] = "Play a Quiz",
+            ["components.mission-playgames-one-classic"] = "Play a game on the {1} map",
+            ["components.mission-playgames-one-anybattleroyale"] = "Play a Battle Royale game",
+            ["components.mission-playgames-one-teamduels"] = "Play a Team Duel",
+            ["components.mission-playgames-one-rankedduels"] = "Play a Ranked Duel",
+            ["components.mission-playgames-one-rankedteamduels"] = "Play a Ranked Team Duel",
+            ["components.mission-playgames-one-unrankedduels"] = "Play an Unranked Duel",
+            ["components.mission-playgames-one-unrankedteamduels"] = "Play an Unranked Team Duel",
 
-                // PlayGames — plural.
-                ["components.mission-playgames-many-duels"] = "Play {0} Duels",
-                ["components.mission-playgames-many-quickplay"] = "Play {0} Quick Play games",
-                ["components.mission-playgames-many-maprunner"] = "Play {0} MapRunner games",
-                ["components.mission-playgames-many-singleplayerquiz"] = "Play {0} Featured Quizzes",
-                ["components.mission-playgames-many-replayablequiz"] = "Play {0} Quizzes",
-                ["components.mission-playgames-many-classic"] = "Play {0} games on the {1} map",
-                ["components.mission-playgames-many-anybattleroyale"] = "Play {0} Battle Royale games",
-                ["components.mission-playgames-many-teamduels"] = "Play {0} Team Duels",
-                ["components.mission-playgames-many-rankedduels"] = "Play {0} Ranked Duels",
-                ["components.mission-playgames-many-rankedteamduels"] = "Play {0} Ranked Team Duels",
-                ["components.mission-playgames-many-unrankedduels"] = "Play {0} Unranked Duels",
-                ["components.mission-playgames-many-unrankedteamduels"] = "Play {0} Unranked Team Duels",
+            // PlayGames — plural.
+            ["components.mission-playgames-many-duels"] = "Play {0} Duels",
+            ["components.mission-playgames-many-quickplay"] = "Play {0} Quick Play games",
+            ["components.mission-playgames-many-maprunner"] = "Play {0} MapRunner games",
+            ["components.mission-playgames-many-singleplayerquiz"] = "Play {0} Featured Quizzes",
+            ["components.mission-playgames-many-replayablequiz"] = "Play {0} Quizzes",
+            ["components.mission-playgames-many-classic"] = "Play {0} games on the {1} map",
+            ["components.mission-playgames-many-anybattleroyale"] = "Play {0} Battle Royale games",
+            ["components.mission-playgames-many-teamduels"] = "Play {0} Team Duels",
+            ["components.mission-playgames-many-rankedduels"] = "Play {0} Ranked Duels",
+            ["components.mission-playgames-many-rankedteamduels"] = "Play {0} Ranked Team Duels",
+            ["components.mission-playgames-many-unrankedduels"] = "Play {0} Unranked Duels",
+            ["components.mission-playgames-many-unrankedteamduels"] = "Play {0} Unranked Team Duels",
 
-                // WinGames — singular.
-                ["components.mission-wingames-one-duels"] = "Win a Duel",
-                ["components.mission-wingames-one-maprunner"] = "Complete a MapRunner game",
-                ["components.mission-wingames-one-anybattleroyale"] = "Win a Battle Royale game",
-                ["components.mission-wingames-one-teamduels"] = "Win a Team Duel",
-                ["components.mission-wingames-one-rankedduels"] = "Win a Ranked Duel",
-                ["components.mission-wingames-one-rankedteamduels"] = "Win a Ranked Team Duel",
-                ["components.mission-wingames-one-unrankedduels"] = "Win an Unranked Duel",
-                ["components.mission-wingames-one-unrankedteamduels"] = "Win an Unranked Team Duel",
+            // WinGames — singular.
+            ["components.mission-wingames-one-duels"] = "Win a Duel",
+            ["components.mission-wingames-one-maprunner"] = "Complete a MapRunner game",
+            ["components.mission-wingames-one-anybattleroyale"] = "Win a Battle Royale game",
+            ["components.mission-wingames-one-teamduels"] = "Win a Team Duel",
+            ["components.mission-wingames-one-rankedduels"] = "Win a Ranked Duel",
+            ["components.mission-wingames-one-rankedteamduels"] = "Win a Ranked Team Duel",
+            ["components.mission-wingames-one-unrankedduels"] = "Win an Unranked Duel",
+            ["components.mission-wingames-one-unrankedteamduels"] = "Win an Unranked Team Duel",
 
-                // WinGames — plural.
-                ["components.mission-wingames-many-duels"] = "Win {0} Duels",
-                ["components.mission-wingames-many-maprunner"] = "Complete {0} MapRunner games",
-                ["components.mission-wingames-many-anybattleroyale"] = "Win {0} Battle Royale games",
-                ["components.mission-wingames-many-teamduels"] = "Win {0} Team Duels",
-                ["components.mission-wingames-many-rankedduels"] = "Win {0} Ranked Duels",
-                ["components.mission-wingames-many-rankedteamduels"] = "Win {0} Ranked Team Duels",
-                ["components.mission-wingames-many-unrankedduels"] = "Win {0} Unranked Duels",
-                ["components.mission-wingames-many-unrankedteamduels"] = "Win {0} Unranked Team Duels",
+            // WinGames — plural.
+            ["components.mission-wingames-many-duels"] = "Win {0} Duels",
+            ["components.mission-wingames-many-maprunner"] = "Complete {0} MapRunner games",
+            ["components.mission-wingames-many-anybattleroyale"] = "Win {0} Battle Royale games",
+            ["components.mission-wingames-many-teamduels"] = "Win {0} Team Duels",
+            ["components.mission-wingames-many-rankedduels"] = "Win {0} Ranked Duels",
+            ["components.mission-wingames-many-rankedteamduels"] = "Win {0} Ranked Team Duels",
+            ["components.mission-wingames-many-unrankedduels"] = "Win {0} Unranked Duels",
+            ["components.mission-wingames-many-unrankedteamduels"] = "Win {0} Unranked Team Duels",
 
-                // Score — plural (no singular variants exist in the source).
-                ["components.mission-score-many-classic"] = "Score {0} points on the {1} map",
-                ["components.mission-score-many-quickplay"] = "Score {0} points in Quick Play",
-                ["components.mission-score-many-replayablequiz"] = "Score {0} points in Quizzes",
-                ["components.mission-score-many-streak"] = "Make {0} correct country guesses on the {1} map",
-                ["components.mission-score-many-countrystreak"] = "Make {0} correct guesses in Country Streaks",
-            };
+            // Score — plural (no singular variants exist in the source).
+            ["components.mission-score-many-classic"] = "Score {0} points on the {1} map",
+            ["components.mission-score-many-quickplay"] = "Score {0} points in Quick Play",
+            ["components.mission-score-many-replayablequiz"] = "Score {0} points in Quizzes",
+            ["components.mission-score-many-streak"] = "Make {0} correct country guesses on the {1} map",
+            ["components.mission-score-many-countrystreak"] = "Make {0} correct guesses in Country Streaks",
+        };
 }

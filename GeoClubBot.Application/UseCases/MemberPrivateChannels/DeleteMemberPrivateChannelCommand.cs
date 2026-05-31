@@ -2,8 +2,8 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.Abstractions;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
+using UseCases.OutputPorts.Repositories;
 using Utilities;
 
 namespace UseCases.UseCases.MemberPrivateChannels;

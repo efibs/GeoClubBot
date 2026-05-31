@@ -28,7 +28,7 @@ public partial class InteractionHandler
         try
         {
             // Get the assembly containing the commands
-            var commandsAssembly = typeof(InteractionsAssemblyMarker).Assembly;
+            var commandsAssembly = typeof(INteractionsAssemblyMarker).Assembly;
 
             // Add the modules via reflection
             await _interactionService.AddModulesAsync(commandsAssembly, _serviceProvider).ConfigureAwait(false);
@@ -93,7 +93,7 @@ public partial class InteractionHandler
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<InteractionHandler> _logger;
     private readonly DiscordConfiguration _config;
-    
+
     [LoggerMessage(LogLevel.Debug, "Handling interaction on guild {guild} in channel {channel}")]
     partial void LogHandlingInteractionOnGuildInChannel(ulong? guild, ulong? channel);
 

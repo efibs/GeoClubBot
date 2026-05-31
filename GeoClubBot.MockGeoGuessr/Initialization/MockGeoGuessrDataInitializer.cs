@@ -6,8 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.Repositories;
 
 namespace GeoClubBot.MockGeoGuessr.Initialization;
 

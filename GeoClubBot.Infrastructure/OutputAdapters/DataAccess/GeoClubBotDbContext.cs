@@ -10,21 +10,21 @@ public class GeoClubBotDbContext : DbContext
     {
         _mediator = mediator;
     }
-    
+
     public DbSet<Club> Clubs { get; set; }
-    
+
     public DbSet<ClubMember> ClubMembers { get; set; }
-    
+
     public DbSet<ClubMemberExcuse> ClubMemberExcuses { get; set; }
-    
+
     public DbSet<ClubMemberStrike> ClubMemberStrikes { get; set; }
-    
+
     public DbSet<ClubMemberHistoryEntry> ClubMemberHistoryEntries { get; set; }
 
     public DbSet<ClubChallengeLink> LatestClubChallengeLinks { get; set; }
 
     public DbSet<GeoGuessrUser> GeoGuessrUsers { get; set; }
-    
+
     public DbSet<GeoGuessrAccountLinkingRequest> GeoGuessrAccountLinkingRequests { get; set; }
 
     public DbSet<DailyMissionReminder> DailyMissionReminders { get; set; }
@@ -34,7 +34,7 @@ public class GeoClubBotDbContext : DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
-        
+
 #if DEBUG
         optionsBuilder.EnableSensitiveDataLogging();
 #endif
@@ -77,6 +77,6 @@ public class GeoClubBotDbContext : DbContext
 
         return result;
     }
-    
+
     private readonly IMediator _mediator;
 }

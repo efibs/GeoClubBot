@@ -17,12 +17,23 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         var clubs = store.Clubs.Select(c =>
         {
             var memberCount = store.ClubMembers.TryGetValue(c.Key, out var m) ? m.Count : 0;
-            return new { c.Value.ClubId, c.Value.Name, c.Value.Level, c.Value.Xp, MemberCount = memberCount, c.Value.MaxMemberCount, c.Value.Tag, c.Value.Description };
+            return new
+            {
+                c.Value.ClubId,
+                c.Value.Name,
+                c.Value.Level,
+                c.Value.Xp,
+                MemberCount = memberCount,
+                c.Value.MaxMemberCount,
+                c.Value.Tag,
+                c.Value.Description
+            };
         });
         return Ok(new
         {
             clubs,
-            users = store.Users.Values.Select(u => new { u.Id, u.Nick, u.CountryCode, u.IsProUser, u.Competitive.Elo, u.Competitive.Rating }),
+            users = store.Users.Values.Select(u => new
+            { u.Id, u.Nick, u.CountryCode, u.IsProUser, u.Competitive.Elo, u.Competitive.Rating }),
             challengeCount = store.Challenges.Count
         });
     }
@@ -33,7 +44,15 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (!store.Clubs.TryGetValue(clubId, out var club))
             return NotFound();
         var members = store.ClubMembers.TryGetValue(clubId, out var m)
-            ? m.Values.Select(mb => new { mb.User.UserId, mb.User.Nick, mb.Xp, mb.WeeklyXp, mb.Role, JoinedAt = mb.JoinedAt.ToString("yyyy-MM-dd") })
+            ? m.Values.Select(mb => new
+            {
+                mb.User.UserId,
+                mb.User.Nick,
+                mb.Xp,
+                mb.WeeklyXp,
+                mb.Role,
+                JoinedAt = mb.JoinedAt.ToString("yyyy-MM-dd")
+            })
             : [];
         var activities = store.ClubActivities.TryGetValue(clubId, out var a)
             ? a.OrderByDescending(x => x.RecordedAt).Take(20).Select(x => new
@@ -46,7 +65,18 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             : [];
         return Ok(new
         {
-            club = new { club.ClubId, club.Name, club.Level, club.Xp, club.MaxMemberCount, club.Tag, club.Description, club.Language, club.JoinRule },
+            club = new
+            {
+                club.ClubId,
+                club.Name,
+                club.Level,
+                club.Xp,
+                club.MaxMemberCount,
+                club.Tag,
+                club.Description,
+                club.Language,
+                club.JoinRule
+            },
             members,
             activities
         });
@@ -87,10 +117,23 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         {
             User = new ClubMemberUserDto
             {
-                UserId = user.Id, Nick = user.Nick, Avatar = "", FullBodyAvatar = "",
-                BorderUrl = "", IsVerified = false, Flair = 0, CountryCode = user.CountryCode, TierId = 0, ClubUserType = 0
+                UserId = user.Id,
+                Nick = user.Nick,
+                Avatar = "",
+                FullBodyAvatar = "",
+                BorderUrl = "",
+                IsVerified = false,
+                Flair = 0,
+                CountryCode = user.CountryCode,
+                TierId = 0,
+                ClubUserType = 0
             },
-            Role = 0, JoinedAt = DateTimeOffset.UtcNow, IsOnline = false, Xp = 0, WeeklyXp = 0, LastActive = null
+            Role = 0,
+            JoinedAt = DateTimeOffset.UtcNow,
+            IsOnline = false,
+            Xp = 0,
+            WeeklyXp = 0,
+            LastActive = null
         };
         store.NotifyDataChanged();
         return Ok();
@@ -114,7 +157,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             return NotFound("Member not found");
         member.Xp = 0;
         member.WeeklyXp = 0;
-        var target = store.ClubMembers.GetOrAdd(req.TargetClubId, _ => new ConcurrentDictionary<string, ClubMemberDto>());
+        var target =
+            store.ClubMembers.GetOrAdd(req.TargetClubId, _ => new ConcurrentDictionary<string, ClubMemberDto>());
         target[userId] = member;
         store.NotifyDataChanged();
         return Ok();
@@ -162,12 +206,21 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         var userId = string.IsNullOrWhiteSpace(req.UserId) ? Guid.NewGuid().ToString("N")[..24] : req.UserId;
         var user = new UserDto
         {
-            Id = userId, Nick = req.Nick.Trim(), Created = DateTimeOffset.UtcNow,
-            IsProUser = req.IsProUser, Type = "user", IsVerified = false,
-            CustomImage = "", FullBodyPin = "", BorderUrl = "", Color = 0,
-            Url = $"/user/{userId}", CountryCode = req.CountryCode ?? "us",
+            Id = userId,
+            Nick = req.Nick.Trim(),
+            Created = DateTimeOffset.UtcNow,
+            IsProUser = req.IsProUser,
+            Type = "user",
+            IsVerified = false,
+            CustomImage = "",
+            FullBodyPin = "",
+            BorderUrl = "",
+            Color = 0,
+            Url = $"/user/{userId}",
+            CountryCode = req.CountryCode ?? "us",
             Competitive = new UserCompetitiveDto { Elo = 1000, Rating = 1000, LastRatingChange = 0 },
-            IsBanned = false, ChatBan = false
+            IsBanned = false,
+            ChatBan = false
         };
         if (!store.Users.TryAdd(userId, user))
             return Conflict("User ID already exists");
@@ -180,7 +233,15 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     {
         if (!store.Users.TryGetValue(userId, out var user))
             return NotFound();
-        if (req.Nick is not null) { user.Nick = req.Nick; foreach (var m in store.ClubMembers.Values) { if (m.TryGetValue(userId, out var mb)) mb.User.Nick = req.Nick; } }
+        if (req.Nick is not null)
+        {
+            user.Nick = req.Nick;
+            foreach (var m in store.ClubMembers.Values)
+            {
+                if (m.TryGetValue(userId, out var mb)) mb.User.Nick = req.Nick;
+            }
+        }
+
         if (req.CountryCode is not null) user.CountryCode = req.CountryCode;
         if (req.IsProUser.HasValue) user.IsProUser = req.IsProUser.Value;
         if (req.Elo.HasValue) user.Competitive.Elo = req.Elo.Value;
@@ -197,8 +258,21 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             string? clubName = null;
             foreach (var (cid, members) in store.ClubMembers)
                 if (members.ContainsKey(u.Id) && store.Clubs.TryGetValue(cid, out var c))
-                { clubName = c.Name; break; }
-            return new { u.Id, u.Nick, u.CountryCode, u.IsProUser, u.Competitive.Elo, u.Competitive.Rating, ClubName = clubName };
+                {
+                    clubName = c.Name;
+                    break;
+                }
+
+            return new
+            {
+                u.Id,
+                u.Nick,
+                u.CountryCode,
+                u.IsProUser,
+                u.Competitive.Elo,
+                u.Competitive.Rating,
+                ClubName = clubName
+            };
         });
         return Ok(users);
     }
@@ -209,7 +283,16 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         return Ok(store.Challenges.Select(c =>
         {
             var scoreCount = store.ChallengeHighscores.TryGetValue(c.Key, out var s) ? s.Count : 0;
-            return new { Token = c.Key, c.Value.Map, c.Value.TimeLimit, c.Value.ForbidMoving, c.Value.ForbidRotating, c.Value.ForbidZooming, ScoreCount = scoreCount };
+            return new
+            {
+                Token = c.Key,
+                c.Value.Map,
+                c.Value.TimeLimit,
+                c.Value.ForbidMoving,
+                c.Value.ForbidRotating,
+                c.Value.ForbidZooming,
+                ScoreCount = scoreCount
+            };
         }));
     }
 
@@ -219,9 +302,13 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         var token = store.GenerateChallengeToken();
         store.Challenges[token] = new PostChallengeRequestDto
         {
-            AccessLevel = 0, ChallengeType = 0, ForbidMoving = req.ForbidMoving,
-            ForbidRotating = req.ForbidRotating, ForbidZooming = req.ForbidZooming,
-            Map = req.Map ?? "world", TimeLimit = req.TimeLimit > 0 ? req.TimeLimit : 60
+            AccessLevel = 0,
+            ChallengeType = 0,
+            ForbidMoving = req.ForbidMoving,
+            ForbidRotating = req.ForbidRotating,
+            ForbidZooming = req.ForbidZooming,
+            Map = req.Map ?? "world",
+            TimeLimit = req.TimeLimit > 0 ? req.TimeLimit : 60
         };
         store.ChallengeHighscores[token] = [];
         store.NotifyDataChanged();
@@ -235,7 +322,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             return NotFound();
         return Ok(scores.Select(s => new
         {
-            s.Game.Player.Id, s.Game.Player.Nick,
+            s.Game.Player.Id,
+            s.Game.Player.Nick,
             Score = s.Game.Player.TotalScore.Amount,
             Distance = s.Game.Player.TotalDistance.Meters.Amount
         }));
@@ -253,11 +341,13 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             {
                 Player = new ChallengeResultPlayerDto
                 {
-                    Id = req.UserId, Nick = nick,
+                    Id = req.UserId,
+                    Nick = nick,
                     TotalScore = new ChallengeResultPlayerScoreDto { Amount = req.Score.ToString(), Unit = "points" },
                     TotalDistance = new ChallengeResultPlayerDistanceDto
                     {
-                        Meters = new ChallengeResultPlayerDistanceMetersDto { Amount = req.Distance.ToString(), Unit = "m" }
+                        Meters = new ChallengeResultPlayerDistanceMetersDto
+                        { Amount = req.Distance.ToString(), Unit = "m" }
                     }
                 }
             }
@@ -283,6 +373,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
                 LastFire = trigger?.GetPreviousFireTimeUtc()?.ToString("yyyy-MM-dd HH:mm:ss")
             });
         }
+
         return Ok(jobs);
     }
 
@@ -302,6 +393,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         {
             snapshot = store.DailyMissions.ToList();
         }
+
         return Ok(new
         {
             nextMissionDate = store.NextMissionDate,
@@ -330,6 +422,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         {
             store.DailyMissions.Add(mission);
         }
+
         store.NotifyDataChanged();
         return Ok(new { id = mission.Id });
     }
@@ -344,8 +437,10 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             {
                 return NotFound();
             }
+
             store.DailyMissions.RemoveAt(index);
         }
+
         store.NotifyDataChanged();
         return Ok();
     }
@@ -357,6 +452,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         {
             store.DailyMissions.Clear();
         }
+
         store.NotifyDataChanged();
         return Ok();
     }

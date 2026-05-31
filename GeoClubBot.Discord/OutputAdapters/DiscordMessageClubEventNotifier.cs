@@ -1,8 +1,8 @@
 using Configuration;
 using Entities;
 using Microsoft.Extensions.Options;
-using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Discord;
+using UseCases.OutputPorts.Notifications;
 
 namespace GeoClubBot.Discord.OutputAdapters;
 

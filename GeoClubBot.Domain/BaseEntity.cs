@@ -13,7 +13,7 @@ public abstract class BaseEntity
     {
         _domainEvents.Clear();
     }
-    
+
     public IReadOnlyCollection<INotification> DomainEvents => _domainEvents.AsReadOnly();
 
     private readonly List<INotification> _domainEvents = [];
