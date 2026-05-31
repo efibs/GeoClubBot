@@ -1,13 +1,16 @@
+using Discord;
+using Discord.Net;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts.Discord;
+using Utilities;
 
 namespace GeoClubBot.Discord.OutputAdapters;
 
 public partial class DiscordDirectMessageAccess(DiscordSocketClient client, ILogger<DiscordDirectMessageAccess> logger)
     : IDiscordDirectMessageAccess
 {
-    public async Task<bool> SendDirectMessageAsync(ulong discordUserId, string message, CancellationToken cancellationToken = default)
+    public async Task<Result> SendDirectMessageAsync(ulong discordUserId, string message, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -15,25 +18,37 @@ public partial class DiscordDirectMessageAccess(DiscordSocketClient client, ILog
 
             if (user == null)
             {
+                // Could be a cache miss / replication lag, so treat as transient rather than a privacy block.
                 LogUserNotFound(discordUserId);
-                return false;
+                return Error.Unexpected("discord.dm.failed", "Could not resolve the Discord user to send a direct message to.");
             }
 
             var dmChannel = await user.CreateDMChannelAsync().ConfigureAwait(false);
             await dmChannel.SendMessageAsync(message).ConfigureAwait(false);
 
-            return true;
+            return Result.Success();
+        }
+        catch (HttpException ex) when (ex.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
+        {
+            // 50007: the recipient does not accept DMs from this bot (privacy settings) or has blocked it.
+            // This is permanent until the user changes their settings — distinct from a transient failure.
+            LogDmsDisabled(discordUserId);
+            return Error.Forbidden("discord.dm.disabled", "The user does not accept direct messages from the bot.");
         }
         catch (Exception ex)
         {
+            // Network blips, rate limits, Discord outages, etc. — may succeed on a later attempt.
             LogFailedToSendDm(discordUserId, ex);
-            return false;
+            return Error.Unexpected("discord.dm.failed", "Failed to send the direct message due to an unexpected error.");
         }
     }
 
     [LoggerMessage(LogLevel.Warning, "Failed to send DM: user {DiscordUserId} not found.")]
     partial void LogUserNotFound(ulong discordUserId);
 
-    [LoggerMessage(LogLevel.Warning, "Failed to send DM to user {DiscordUserId}.")]
+    [LoggerMessage(LogLevel.Information, "Could not send DM to user {DiscordUserId}: the user has DMs from the bot disabled or has blocked the bot.")]
+    partial void LogDmsDisabled(ulong discordUserId);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to send DM to user {DiscordUserId} due to an unexpected error.")]
     partial void LogFailedToSendDm(ulong discordUserId, Exception ex);
 }

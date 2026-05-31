@@ -105,7 +105,7 @@ public sealed class SendDueRemindersHandlerTests
             });
 
         _dm.SendDirectMessageAsync(123UL, "Custom!", Arg.Any<CancellationToken>())
-            .Returns(true);
+            .Returns(Result.Success());
 
         await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
 
@@ -114,7 +114,7 @@ public sealed class SendDueRemindersHandlerTests
     }
 
     [Fact]
-    public async Task Handle_DoesNotMarkSent_WhenDirectMessageFails()
+    public async Task Handle_DoesNotMarkSent_WhenDirectMessageFailsTransiently()
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
         _reminders.ReadDueRemindersForUpdateAsync(
@@ -126,10 +126,31 @@ public sealed class SendDueRemindersHandlerTests
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
 
         _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(false);
+            .Returns(Result.Failure(Error.Unexpected("discord.dm.failed", "Transient failure.")));
 
         await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
 
         reminder.LastSentDateUtc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_MarksSent_WhenUserHasDmsDisabled_SoItIsNotRetried()
+    {
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
+        _reminders.ReadDueRemindersForUpdateAsync(
+                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns([reminder]);
+
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+                Arg.Any<CancellationToken>())
+            .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
+
+        _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result.Failure(Error.Forbidden("discord.dm.disabled", "DMs disabled.")));
+
+        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
+
+        // DMs-disabled is permanent for the day, so it is marked sent to avoid re-attempting.
+        reminder.LastSentDateUtc.Should().NotBeNull();
     }
 }

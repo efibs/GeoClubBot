@@ -7,6 +7,7 @@ using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.GeoGuessrAccountLinking;
+using Utilities;
 
 namespace UseCases.UseCases.DailyMissionReminder;
 
@@ -57,17 +58,25 @@ public sealed partial class SendDueRemindersHandler(
                 ? defaultMessage
                 : reminder.CustomMessage;
 
-            var sent = await directMessageAccess
+            var dmResult = await directMessageAccess
                 .SendDirectMessageAsync(reminder.DiscordUserId, message, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (sent)
+            if (dmResult.IsSuccess)
             {
                 reminder.MarkSent(today);
                 LogReminderSent(reminder.DiscordUserId);
             }
+            else if (dmResult.Error.Type == ErrorType.Forbidden)
+            {
+                // The user has DMs from the bot disabled/blocked — retrying won't help until they fix it,
+                // so mark it sent to stop this run (and the rest of the due window) from hammering Discord.
+                reminder.MarkSent(today);
+                LogReminderDmsDisabled(reminder.DiscordUserId);
+            }
             else
             {
+                // Transient failure — left unmarked so a later run can retry.
                 LogReminderFailed(reminder.DiscordUserId);
             }
         }
@@ -108,6 +117,9 @@ public sealed partial class SendDueRemindersHandler(
 
     [LoggerMessage(LogLevel.Warning, "Failed to send daily mission reminder to user {DiscordUserId}.")]
     partial void LogReminderFailed(ulong discordUserId);
+
+    [LoggerMessage(LogLevel.Error, "Could not deliver daily mission reminder to user {DiscordUserId} - they have DMs from the bot disabled or blocked the bot; not retrying today.")]
+    partial void LogReminderDmsDisabled(ulong discordUserId);
 
     [LoggerMessage(LogLevel.Debug, "Daily mission reminder skipped for user {DiscordUserId} - already completed today.")]
     partial void LogReminderSkippedAlreadyDone(ulong discordUserId);

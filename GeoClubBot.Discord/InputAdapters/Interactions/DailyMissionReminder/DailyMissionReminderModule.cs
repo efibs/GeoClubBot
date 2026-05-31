@@ -4,6 +4,7 @@ using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.DailyMissionReminder;
+using Utilities;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.DailyMissionReminder;
 
@@ -44,14 +45,35 @@ public class DailyMissionReminderModule(
                     }
                 }
 
-                await Mediator
+                var dmResult = await Mediator
                     .Send(new SetDailyMissionReminderCommand(Context.User.Id, localTime, timezone, message), ct)
                     .ConfigureAwait(false);
 
                 var tzDisplay = timezone ?? "UTC";
-                await FollowupAsync($"Daily reminder set for **{time}** ({tzDisplay}). You will receive a DM each day at that time.",
-                        ephemeral: true)
-                    .ConfigureAwait(false);
+                var baseMessage = $"Daily reminder set for **{time}** ({tzDisplay}). You will receive a DM each day at that time.";
+
+                string followup;
+                if (dmResult.IsSuccess)
+                {
+                    followup = $"{baseMessage}\n\n📬 I've just sent you a test DM. If you **didn't** receive it, you must enable "
+                        + "direct messages from server members/bots, otherwise you won't get your reminders.";
+                }
+                else if (dmResult.Error.Type == ErrorType.Forbidden)
+                {
+                    // Permanent: the user has DMs from the bot disabled or has blocked it.
+                    followup = $"{baseMessage}\n\n⚠️ I couldn't send you a test DM because you don't accept direct messages "
+                        + "from the bot, so you won't receive your reminders. Please enable direct messages from server "
+                        + "members/bots (Server name → Privacy Settings → Allow direct messages), then run this command again.";
+                }
+                else
+                {
+                    // Transient: your reminder is saved, the test DM just failed this time.
+                    followup = $"{baseMessage}\n\n⚠️ Your reminder is saved, but I couldn't send a test DM right now due to a "
+                        + "temporary problem. If you don't receive reminders, make sure you allow direct messages from "
+                        + "server members/bots and re-run this command to test again.";
+                }
+
+                await FollowupAsync(followup, ephemeral: true).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to set the daily reminder. Please try again later.");
