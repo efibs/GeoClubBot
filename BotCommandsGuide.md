@@ -70,12 +70,20 @@ Shows your current reminder settings: time, timezone, custom message, and when i
 ---
 
 ## 📊 Feature: Your Personal Activity
-See how you're doing in the club this week.
+See how you're doing in the club.
 
 ### `/my-activity current-week`
 Shows your daily mission progress for the current week: total XP earned, days completed, and a visual progress bar (🟩 done, ⬛ missed) for each day.
 
 No parameters. Requires your GeoGuessr account to be linked (see `/gg-account link`).
+
+### `/my-activity last-days`
+Shows your daily mission progress over the last several days — handy if you want to see a rolling window instead of just the current calendar week.
+
+**Parameters:**
+- `days` *(optional)* — how many days back to include, from `1` to `14`. Defaults to `7`.
+
+Requires your GeoGuessr account to be linked (see `/gg-account link`).
 
 ---
 
@@ -100,7 +108,7 @@ Tells you what GeoGuessr nickname a Discord user is linked to.
 **Parameters:**
 - `user` *(required)* — pick a member of the server.
 
-Also available as a **user command**: right-click a member → **Apps** → `gg-nickname`.
+Also available as a **user command**: right-click a member → **Apps** → **GeoGuessr Nickname**.
 
 ### `/user-info gg-profile`
 Shows a full GeoGuessr profile for a Discord user — country, member-since date, account type, level, rating, status (good standing / banned / suspended / chat banned), and their club.
@@ -108,7 +116,7 @@ Shows a full GeoGuessr profile for a Discord user — country, member-since date
 **Parameters:**
 - `user` *(required)* — pick a member of the server.
 
-Also available as a **user command**: right-click a member → **Apps** → `gg-profile`.
+Also available as a **user command**: right-click a member → **Apps** → **GeoGuessr Profile**.
 
 ### `/user-info discord-user`
 The reverse lookup: give it a GeoGuessr nickname and it tells you which Discord user that is.
