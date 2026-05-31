@@ -44,3 +44,18 @@ public record AddMissionRequest(
     string? MapSlug = null,
     string? MapName = null);
 public record UpdateNextMissionDateRequest(DateTimeOffset NextMissionDate);
+public record UpdateRankedProgressRequest(
+    int? Rating = null,
+    int? DivisionNumber = null,
+    string? DivisionName = null,
+    string? Tier = null,
+    int? MoveDuels = null,
+    int? NoMoveDuels = null,
+    int? NmpzDuels = null,
+    int? WinStreak = null,
+    float? GuessedFirstRate = null);
+public record UpdateRankedPeakRatingRequest(
+    int? PeakOverallRating = null,
+    int? MoveDuels = null,
+    int? NoMoveDuels = null,
+    int? NmpzDuels = null);

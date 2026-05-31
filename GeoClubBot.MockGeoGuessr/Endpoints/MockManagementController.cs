@@ -356,6 +356,105 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         return Ok();
     }
 
+    [HttpGet("users/{userId}/ranked-progress")]
+    public IActionResult GetRankedProgress(string userId)
+    {
+        if (!store.Users.ContainsKey(userId))
+            return NotFound("User not found");
+
+        var progress = store.RankedProgress.GetOrAdd(userId, _ => new RankedProgressResponseDto
+        {
+            DivisionNumber = 1,
+            DivisionName = "Bronze",
+            Rating = 1000,
+            Tier = "Bronze",
+            GameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 },
+            GuessedFirstRate = 0.5f,
+            WinStreak = 0,
+            LatestGames = [],
+            BestCountries = [],
+            WorstCountries = []
+        });
+        return Ok(progress);
+    }
+
+    [HttpPost("users/{userId}/ranked-progress")]
+    public IActionResult UpdateRankedProgress(string userId, [FromBody] UpdateRankedProgressRequest req)
+    {
+        if (!store.Users.ContainsKey(userId))
+            return NotFound("User not found");
+
+        var progress = store.RankedProgress.GetOrAdd(userId, _ => new RankedProgressResponseDto
+        {
+            DivisionNumber = 1,
+            DivisionName = "Bronze",
+            Rating = 1000,
+            Tier = "Bronze",
+            GameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 },
+            GuessedFirstRate = 0.5f,
+            WinStreak = 0,
+            LatestGames = [],
+            BestCountries = [],
+            WorstCountries = []
+        });
+
+        if (req.Rating.HasValue) progress.Rating = req.Rating.Value;
+        if (req.DivisionNumber.HasValue) progress.DivisionNumber = req.DivisionNumber.Value;
+        if (req.DivisionName is not null) progress.DivisionName = req.DivisionName;
+        if (req.Tier is not null) progress.Tier = req.Tier;
+        if (req.WinStreak.HasValue) progress.WinStreak = req.WinStreak.Value;
+        if (req.GuessedFirstRate.HasValue) progress.GuessedFirstRate = req.GuessedFirstRate.Value;
+        if (req.MoveDuels.HasValue || req.NoMoveDuels.HasValue || req.NmpzDuels.HasValue)
+        {
+            progress.GameModeRatings ??= new GameModeRatingsDto();
+            if (req.MoveDuels.HasValue) progress.GameModeRatings.MoveDuels = req.MoveDuels.Value;
+            if (req.NoMoveDuels.HasValue) progress.GameModeRatings.NoMoveDuels = req.NoMoveDuels.Value;
+            if (req.NmpzDuels.HasValue) progress.GameModeRatings.NmpzDuels = req.NmpzDuels.Value;
+        }
+
+        store.NotifyDataChanged();
+        return Ok();
+    }
+
+    [HttpGet("users/{userId}/ranked-peak")]
+    public IActionResult GetRankedPeakRating(string userId)
+    {
+        if (!store.Users.ContainsKey(userId))
+            return NotFound("User not found");
+
+        var peak = store.RankedPeakRatings.GetOrAdd(userId, _ => new RankedPeakRatingResponseDto
+        {
+            PeakOverallRating = 1000,
+            PeakGameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 }
+        });
+        return Ok(peak);
+    }
+
+    [HttpPost("users/{userId}/ranked-peak")]
+    public IActionResult UpdateRankedPeakRating(string userId, [FromBody] UpdateRankedPeakRatingRequest req)
+    {
+        if (!store.Users.ContainsKey(userId))
+            return NotFound("User not found");
+
+        var peak = store.RankedPeakRatings.GetOrAdd(userId, _ => new RankedPeakRatingResponseDto
+        {
+            PeakOverallRating = 1000,
+            PeakGameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 }
+        });
+
+        if (req.PeakOverallRating.HasValue) peak.PeakOverallRating = req.PeakOverallRating.Value;
+        if (req.MoveDuels.HasValue || req.NoMoveDuels.HasValue || req.NmpzDuels.HasValue)
+        {
+            peak.PeakGameModeRatings ??= new GameModeRatingsDto();
+            if (req.MoveDuels.HasValue) peak.PeakGameModeRatings.MoveDuels = req.MoveDuels.Value;
+            if (req.NoMoveDuels.HasValue) peak.PeakGameModeRatings.NoMoveDuels = req.NoMoveDuels.Value;
+            if (req.NmpzDuels.HasValue) peak.PeakGameModeRatings.NmpzDuels = req.NmpzDuels.Value;
+        }
+
+        store.NotifyDataChanged();
+        return Ok();
+    }
+
     [HttpGet("jobs")]
     public async Task<IActionResult> ListJobs()
     {
