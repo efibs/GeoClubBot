@@ -3,6 +3,7 @@ using Constants;
 using FluentValidation;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
+using GeoClubBot.Discord.Services;
 using GeoClubBot.Middleware;
 using GeoClubBot.MockGeoGuessr.DependencyInjection;
 using GeoClubBot.MockGeoGuessr.Endpoints;
@@ -10,6 +11,7 @@ using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -78,6 +80,7 @@ builder.Services.AddClubBotServices(builder.Configuration);
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssemblyContaining<IUseCasesAssemblyMarker>();
+    cfg.AddOpenBehavior(typeof(TracingBehavior<,>));
     cfg.AddOpenBehavior(typeof(LoggingBehavior<,>));
     cfg.AddOpenBehavior(typeof(UnhandledExceptionBehavior<,>));
     cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
@@ -87,21 +90,30 @@ builder.Services.AddMediatR(cfg =>
 // Register FluentValidation validators from the use cases assembly.
 builder.Services.AddValidatorsFromAssemblyContaining<IUseCasesAssemblyMarker>();
 
-// OpenTelemetry: handler / cache meters from the Application layer, plus stock
-// instrumentation for ASP.NET Core, outbound HTTP, EF Core, and process runtime.
+// OpenTelemetry: custom handler / job / cache meters and activity sources from the
+// Application + Discord layers, plus stock instrumentation for ASP.NET Core, outbound HTTP,
+// EF Core, and the process runtime. Traces, metrics and logs are all exported.
 // The OTLP exporter is opt-in via the OpenTelemetry:Endpoint config key — if absent,
 // instruments are still produced (in-process listeners work) but nothing is shipped out.
 var otelEndpoint = builder.Configuration.GetValue<string?>("OpenTelemetry:Endpoint");
 const string ServiceName = "GeoClubBot.API";
+
+// Duration histograms (ms) — explicit buckets so p95/p99 are meaningful for our workloads.
+var durationBucketsMs = new[] { 5d, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000 };
+
 builder.Services.AddOpenTelemetry()
-    .ConfigureResource(r => r.AddService(ServiceName))
+    .ConfigureResource(r => r
+        .AddService(ServiceName, serviceVersion: "1.0.0")
+        .AddAttributes([new KeyValuePair<string, object>("deployment.environment", builder.Environment.EnvironmentName)]))
     .WithMetrics(metrics =>
     {
         metrics
             .AddMeter(HandlerMetrics.MeterName)
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
-            .AddRuntimeInstrumentation();
+            .AddRuntimeInstrumentation()
+            .AddView("geoclubbot.handler.duration", new ExplicitBucketHistogramConfiguration { Boundaries = durationBucketsMs })
+            .AddView("geoclubbot.job.duration", new ExplicitBucketHistogramConfiguration { Boundaries = durationBucketsMs });
 
         if (!string.IsNullOrWhiteSpace(otelEndpoint))
         {
@@ -111,15 +123,33 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(tracing =>
     {
         tracing
+            .AddSource(ApplicationDiagnostics.ActivitySourceName)
+            .AddSource(DiscordDiagnostics.ActivitySourceName)
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
-            .AddEntityFrameworkCoreInstrumentation();
+            // SQL text is captured in Development only — it can contain sensitive parameter values.
+            .AddEntityFrameworkCoreInstrumentation(ef => ef.SetDbStatementForText = builder.Environment.IsDevelopment());
 
         if (!string.IsNullOrWhiteSpace(otelEndpoint))
         {
             tracing.AddOtlpExporter(otlp => otlp.Endpoint = new Uri(otelEndpoint));
         }
-    });
+    })
+    .WithLogging(
+        logging =>
+        {
+            if (!string.IsNullOrWhiteSpace(otelEndpoint))
+            {
+                logging.AddOtlpExporter(otlp => otlp.Endpoint = new Uri(otelEndpoint));
+            }
+        },
+        // Ship the rendered message + logging scopes so logs are useful next to the traces
+        // they correlate with (by TraceId/SpanId).
+        options =>
+        {
+            options.IncludeFormattedMessage = true;
+            options.IncludeScopes = true;
+        });
 
 var app = builder.Build();
 

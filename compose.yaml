@@ -39,6 +39,16 @@
       nofile:
         soft: 10000
         hard: 10000
+  # OpenTelemetry backend for local dev: a turnkey traces + metrics + logs UI that receives
+  # OTLP. Start with `docker compose up aspire-dashboard`, then open http://localhost:18888.
+  # The app exports to it via OpenTelemetry:Endpoint = http://localhost:4317 (see appsettings.Development.json).
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "18888:18888"  # Dashboard UI
+      - "4317:18889"   # OTLP/gRPC receiver the app exports to
 secrets:
   postgresqldb-username:
     file: .env.postgresqldb-username

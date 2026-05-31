@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Configuration;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -48,6 +49,14 @@ public partial class InteractionHandler
         // Log debug
         LogHandlingInteractionOnGuildInChannel(interaction.GuildId, interaction.ChannelId);
 
+        // Root span for the interaction. The MediatR use-case spans nest underneath this so a
+        // single trace shows the whole "Discord command -> use case -> EF/HTTP" flow.
+        using var activity = DiscordDiagnostics.ActivitySource.StartActivity(
+            ActivityNameFor(interaction), ActivityKind.Server);
+        activity?.SetTag("discord.interaction_type", interaction.Type.ToString());
+        activity?.SetTag("discord.guild_id", interaction.GuildId);
+        activity?.SetTag("discord.channel_id", interaction.ChannelId);
+
         try
         {
             // Create the interaction context
@@ -59,14 +68,25 @@ public partial class InteractionHandler
             // If the execution failed
             if (!result.IsSuccess)
             {
+                activity?.SetStatus(ActivityStatusCode.Error, result.ErrorReason);
                 LogSlashCommandFailed(result.ErrorReason);
             }
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
             LogFailedToHandleInteraction(_logger, ex);
         }
     }
+
+    private static string ActivityNameFor(SocketInteraction interaction) => interaction switch
+    {
+        SocketSlashCommand slash => $"slash {slash.Data.Name}",
+        SocketMessageComponent component => $"component {component.Data.CustomId}",
+        SocketModal modal => $"modal {modal.Data.CustomId}",
+        _ => interaction.Type.ToString()
+    };
 
     private readonly DiscordSocketClient _client;
     private readonly InteractionService _interactionService;
