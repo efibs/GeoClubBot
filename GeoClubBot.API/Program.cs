@@ -208,3 +208,7 @@ if (useMockGeoGuessr)
 }
 
 app.Run();
+
+// Exposes the implicit Program class (top-level statements) so the test project can
+// boot the real app in-process via WebApplicationFactory<Program>.
+public partial class Program;

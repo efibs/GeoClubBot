@@ -1,0 +1,23 @@
+{
+  "stryker-config": {
+    "solution": "GeoClubBot.sln",
+    "project": "GeoClubBot.Application.csproj",
+    "test-projects": [
+      "GeoClubBot.Tests/GeoClubBot.Tests.csproj"
+    ],
+    "mutation-level": "Standard",
+    "ignore-methods": [
+      "ConfigureAwait"
+    ],
+    "reporters": [
+      "html",
+      "markdown",
+      "progress"
+    ],
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 0
+    }
+  }
+}

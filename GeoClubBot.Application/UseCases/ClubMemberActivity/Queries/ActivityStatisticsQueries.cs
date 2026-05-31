@@ -26,11 +26,14 @@ public sealed class ActivityStatisticsHandlers(
 
         var entries = await history.ReadHistoryEntriesAsync(club.ClubId, cancellationToken).ConfigureAwait(false);
 
+        // Per member, average the XP *gained* between consecutive history snapshots. That gain
+        // sequence telescopes (its sum is the newest snapshot), so the snapshots must be taken in
+        // chronological order — ReadHistoryEntriesAsync returns them unordered, so order here.
         var averagePointsEarned = entries
             .GroupBy(e => e.UserId)
-            .Select(g => g.Select(e => e.Xp).ToList())
-            .Select(g => g
-                .Zip(g.Prepend(0), (a, b) => a - b)
+            .Select(g => g.OrderBy(e => e.Timestamp).Select(e => e.Xp).ToList())
+            .Select(xpSnapshots => xpSnapshots
+                .Zip(xpSnapshots.Prepend(0), (a, b) => a - b)
                 .Average())
             .Order()
             .ToList();

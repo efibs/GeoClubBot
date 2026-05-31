@@ -1,0 +1,54 @@
+name: Mutation testing
+
+# Stryker is slow, so it is deliberately NOT part of the PR gate. It runs weekly and
+# on demand to measure how effectively the tests actually catch bugs (mutation score),
+# scoped to the Application (business-logic) project. The break threshold is 0, so this
+# job reports but never fails the build — raise it in stryker-config.json once a baseline
+# is established.
+on:
+  schedule:
+    - cron: '0 3 * * 1'   # Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  mutation:
+    name: Stryker (Application)
+    runs-on: ubuntu-latest
+    # Runs the full suite (unit + Docker-backed integration) so the score reflects the tests
+    # that actually cover the Application handlers. GitHub runners ship Docker, so Testcontainers
+    # works under Stryker just as it does in the integration job. ~few minutes; headroom for growth.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Run Stryker
+        run: dotnet stryker
+
+      - name: Publish mutation report to job summary
+        if: always()
+        run: |
+          report=$(find StrykerOutput -name '*.md' | sort | tail -n1)
+          if [ -n "$report" ]; then cat "$report" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stryker-report
+          path: StrykerOutput/**/reports/*.html
+          retention-days: 14
