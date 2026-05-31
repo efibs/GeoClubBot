@@ -8,6 +8,12 @@ riderModule.iml
 TestResults/
 coverage.cobertura.xml
 
+# Verify snapshot tests: *.verified.* is the committed baseline; *.received.* is transient.
+*.received.*
+
+# Stryker mutation testing output
+StrykerOutput/
+
 # Appsettings
 appsettings.*.json
 .env.*
