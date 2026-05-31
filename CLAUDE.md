@@ -66,6 +66,10 @@ by random `Club`/`UserId` so the container is reused safely.
   project and runs the full suite to measure how effectively tests catch bugs. Not on the PR gate
   (see `.github/workflows/mutation.yml`); `break: 0` so it reports without failing. Run locally with
   `dotnet tool restore && dotnet stryker`.
+- **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
+  (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing) over thousands of random
+  inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
+  and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
 
 ### Local dev without real credentials
 
