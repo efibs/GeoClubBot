@@ -70,6 +70,38 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         });
     }
 
+    public Task<RankedProgressResponseDto> ReadRankedProgressOfUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (dataStore.RankedProgress.TryGetValue(userId, out var progress))
+            return Task.FromResult(progress);
+
+        return Task.FromResult(new RankedProgressResponseDto
+        {
+            DivisionNumber = 1,
+            DivisionName = "Bronze",
+            Rating = 1000,
+            Tier = "Bronze",
+            GameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 },
+            GuessedFirstRate = 0.5f,
+            WinStreak = 0,
+            LatestGames = [],
+            BestCountries = [],
+            WorstCountries = []
+        });
+    }
+
+    public Task<RankedPeakRatingResponseDto> ReadRankedPeakRatingOfUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (dataStore.RankedPeakRatings.TryGetValue(userId, out var peakRating))
+            return Task.FromResult(peakRating);
+
+        return Task.FromResult(new RankedPeakRatingResponseDto
+        {
+            PeakOverallRating = 1000,
+            PeakGameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 }
+        });
+    }
+
     public Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default)
     {
         var response = new ReadClubActivitiesResponseDto

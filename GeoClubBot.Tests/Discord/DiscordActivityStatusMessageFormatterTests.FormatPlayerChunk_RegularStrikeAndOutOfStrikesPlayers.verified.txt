@@ -1,0 +1,5 @@
+﻿
+* Alice got only 40XP and therefore is now on 2 strikes.
+```ansi
+[2;31mBob[0m got only 10XP and already had 3 strikes and therefore [2;31mneeds to be kicked[0m.
+```

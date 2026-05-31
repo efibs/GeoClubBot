@@ -5,6 +5,8 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.GeoGuessrAccountLinking;
+using UseCases.UseCases.RankedSystem;
+using Utilities;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Users;
 
@@ -56,7 +58,15 @@ public class UserInfoModule(
                     return;
                 }
 
-                await FollowupAsync(embed: BuildProfileEmbed(profile.Value), ephemeral: true).ConfigureAwait(false);
+                var rankedProgress = await Mediator
+                    .Send(new GetUserRankedProgressQuery(user.Id), ct)
+                    .ConfigureAwait(false);
+
+                var peakRating = await Mediator
+                    .Send(new GetUserRankedPeakRatingQuery(user.Id), ct)
+                    .ConfigureAwait(false);
+
+                await FollowupAsync(embed: BuildProfileEmbed(profile.Value, rankedProgress, peakRating), ephemeral: true).ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Reading the GeoGuessr profile failed. Try again later. If the problem persists, please contact an admin.");
@@ -84,7 +94,7 @@ public class UserInfoModule(
             ephemeral: true,
             failureMessage: "Reading the Discord user failed. Try again later. If the problem persists, please contact an admin.");
 
-    private static Embed BuildProfileEmbed(UserDto profile)
+    internal static Embed BuildProfileEmbed(UserDto profile, Result<RankedProgressResponseDto> rankedProgress, Result<RankedPeakRatingResponseDto> rankedPeakRating)
     {
         // ISO 3166-1 alpha-2 → regional indicator emoji pair (e.g. "DE" → 🇩🇪)
         var flagEmoji = string.IsNullOrWhiteSpace(profile.CountryCode)
@@ -97,9 +107,11 @@ public class UserInfoModule(
             ? null
             : $"https://www.geoguessr.com/images/resize:auto:96:96/gravity:ce/plain/{profile.CustomImage}";
 
-        var ratingDisplay = profile.Competitive.Rating == 0
-            ? "N/A"
-            : profile.Competitive.Rating.ToString();
+        var hasRating = rankedProgress.ValueOrNull?.Rating is not null;
+
+        var ratingDisplay = rankedProgress.ValueOrNull?.Rating?.ToString()
+                            ?? rankedPeakRating.ValueOrNull?.PeakOverallRating?.ToString()
+                            ?? "N/A";
 
         string statusDisplay;
         if (profile.IsBanned)
@@ -123,7 +135,7 @@ public class UserInfoModule(
             .AddField("Member since", $"<t:{profile.Created.ToUnixTimeSeconds()}:D>", inline: true)
             .AddField("Type", profile.IsProUser ? $"{profile.Type} (Pro)" : profile.Type, inline: true)
             .AddField("Level", profile.Progress?.Level.ToString() ?? "–", inline: true)
-            .AddField("Rating", ratingDisplay, inline: true)
+            .AddField(hasRating ? "Rating" : "Peak rating", ratingDisplay, inline: true)
             .AddField("Status", statusDisplay, inline: true);
 
         if (profile.Club is not null)
