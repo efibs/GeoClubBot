@@ -6,6 +6,9 @@
       "GeoClubBot.Tests/GeoClubBot.Tests.csproj"
     ],
     "mutation-level": "Standard",
+    "ignore-methods": [
+      "ConfigureAwait"
+    ],
     "reporters": [
       "html",
       "markdown",

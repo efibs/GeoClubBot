@@ -91,6 +91,27 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
         club.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GetClubByNameOrDefault_FallsBackToMainClub_WhenNameIsBlank(string blankName)
+    {
+        // A blank/whitespace name must take the IsNullOrWhiteSpace → main-club branch, not be
+        // treated as a real club name (which would look up "" / "   " and find nothing).
+        var mainClubId = Guid.NewGuid();
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(DomainClub.Create(mainClubId, $"club-{mainClubId:N}", 3));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost(mainClubId);
+        var club = await host.SendAsync(new GetClubByNameOrDefaultQuery(blankName));
+
+        club.Should().NotBeNull();
+        club!.ClubId.Should().Be(mainClubId);
+    }
+
     [Fact]
     public async Task GetClubTodaysXp_ExcludesWeeklyMissions_WhenNotRequested()
     {
