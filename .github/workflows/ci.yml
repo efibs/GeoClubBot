@@ -1,0 +1,25 @@
+name: CI
+
+# Pull-request gate + feature-branch feedback.
+#   - Every PR into dev or master must pass the full test suite before merge
+#     (mark the "Unit tests (fast)" and "Integration tests (Docker)" checks as
+#     required in branch protection).
+#   - Pushes to feature branches get the same checks for fast feedback.
+on:
+  pull_request:
+    branches: [ dev, master ]
+  push:
+    branches-ignore: [ dev, master ]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref (e.g. a force-push to a PR branch).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml

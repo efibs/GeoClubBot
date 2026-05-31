@@ -4,6 +4,10 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 
+# Test output / coverage (produced by `dotnet test --collect`)
+TestResults/
+coverage.cobertura.xml
+
 # Appsettings
 appsettings.*.json
 .env.*

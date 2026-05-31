@@ -9,6 +9,25 @@ docker compose up postgresqldb
 
 # Building and Publishing
 
+## Automated (CI/CD)
+
+Publishing is automated via GitHub Actions (see [`.github/workflows/`](.github/workflows) and
+the [branching model in CONTRIBUTING.md](CONTRIBUTING.md#branching-model)):
+
+- **Release** — push a SemVer tag (no `v` prefix, e.g. `0.13.0`). The tagged commit is fully
+  tested, then the image is built and pushed as `ghcr.io/efibs/geo-club-bot:0.13.0`, `:0.13`,
+  `:0` and `:latest`, and a GitHub Release is created.
+  ```bash
+  git tag 0.13.0 && git push origin 0.13.0
+  ```
+- **Dev/staging** — every push to `dev` publishes a rolling `ghcr.io/efibs/geo-club-bot:dev`
+  image (plus `:dev-<sha>`).
+
+Both run the full test suite first and authenticate to GHCR with the built-in `GITHUB_TOKEN`
+(no `CR_PAT` needed in CI).
+
+## Manual
+
 To build the docker image, run:
 ```bash
 docker build -f ./GeoClubBot.API/Dockerfile -t ghcr.io/efibs/geo-club-bot:your-version .

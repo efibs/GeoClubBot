@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # .NET / NuGet dependencies across the solution.
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # One PR for the usual coupled bumps instead of a dozen.
+      microsoft-and-ef:
+        patterns: [ "Microsoft.*", "Npgsql*" ]
+      test-stack:
+        patterns: [ "xunit*", "FluentAssertions", "NSubstitute", "coverlet*", "Testcontainers*" ]
+
+  # Keep the workflow actions (checkout, setup-dotnet, docker/*, ...) current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: [ "*" ]
+
+  # Base images in the Dockerfile (dotnet/aspnet, dotnet/sdk).
+  - package-ecosystem: docker
+    directory: "/GeoClubBot.API"
+    schedule:
+      interval: weekly

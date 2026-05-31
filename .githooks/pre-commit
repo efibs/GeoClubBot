@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#
+# GeoClubBot pre-commit hook: enforce formatting and run the fast unit tests
+# before a commit lands, so CI failures are caught locally first.
+#
+# Install with: ./scripts/install-git-hooks.sh
+# Bypass once with: git commit --no-verify
+#
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+echo "[pre-commit] Verifying formatting (.editorconfig)..."
+if ! dotnet format GeoClubBot.sln --verify-no-changes --no-restore; then
+  echo "" >&2
+  echo "[pre-commit] Formatting issues found. Fix them with:" >&2
+  echo "    dotnet format GeoClubBot.sln" >&2
+  exit 1
+fi
+
+echo "[pre-commit] Running fast unit tests (excluding integration)..."
+if ! dotnet test GeoClubBot.Tests/GeoClubBot.Tests.csproj --filter "Category!=Integration" --nologo; then
+  echo "" >&2
+  echo "[pre-commit] Unit tests failed. Commit aborted." >&2
+  exit 1
+fi
+
+echo "[pre-commit] OK"

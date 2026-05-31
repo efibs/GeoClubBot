@@ -1,0 +1,127 @@
+name: Tests
+
+# Reusable workflow: build the solution and run the full test suite.
+# Called by ci.yml (PR gate), dev-image.yml and release.yml so "run all tests"
+# is defined in exactly one place.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  # Fast feedback: build + every test that doesn't need Docker.
+  unit-tests:
+    name: Unit tests (fast)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore GeoClubBot.sln
+
+      - name: Build
+        run: dotnet build GeoClubBot.sln --no-restore --configuration Release
+
+      - name: Test (excluding integration)
+        run: >
+          dotnet test GeoClubBot.Tests/GeoClubBot.Tests.csproj
+          --no-build --configuration Release
+          --filter "Category!=Integration"
+          --settings coverlet.runsettings
+          --collect:"XPlat Code Coverage"
+          --results-directory ./TestResults/unit
+          --logger "trx;LogFileName=unit.trx"
+
+      - name: Coverage report
+        if: always()
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.4.4
+        with:
+          reports: ./TestResults/unit/**/coverage.cobertura.xml
+          targetdir: ./TestResults/unit/coveragereport
+          reporttypes: MarkdownSummaryGithub;Cobertura
+
+      - name: Publish coverage to job summary
+        if: always()
+        run: cat ./TestResults/unit/coveragereport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: ./TestResults/unit
+          retention-days: 7
+
+  # Full integration suite. GitHub-hosted ubuntu runners ship a working Docker
+  # daemon, so the Testcontainers Postgres fixture spins up out of the box.
+  integration-tests:
+    name: Integration tests (Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore GeoClubBot.sln
+
+      - name: Build
+        run: dotnet build GeoClubBot.sln --no-restore --configuration Release
+
+      - name: Test (integration only)
+        run: >
+          dotnet test GeoClubBot.Tests/GeoClubBot.Tests.csproj
+          --no-build --configuration Release
+          --filter "Category=Integration"
+          --settings coverlet.runsettings
+          --collect:"XPlat Code Coverage"
+          --results-directory ./TestResults/integration
+          --logger "trx;LogFileName=integration.trx"
+
+      - name: Coverage report
+        if: always()
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.4.4
+        with:
+          reports: ./TestResults/integration/**/coverage.cobertura.xml
+          targetdir: ./TestResults/integration/coveragereport
+          reporttypes: MarkdownSummaryGithub;Cobertura
+
+      - name: Publish coverage to job summary
+        if: always()
+        run: cat ./TestResults/integration/coveragereport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: ./TestResults/integration
+          retention-days: 7

@@ -6,6 +6,7 @@ Developer helper scripts for GeoClubBot.
 |---|---|
 | `new-usecase.sh` | Scaffolds a use case (request + handler) and optional validator / Discord command module in the correct folders with the right namespaces. Run `scripts/new-usecase.sh --help` for arguments. |
 | `new-usecase-gui.sh` | A [`zenity`](https://help.gnome.org/users/zenity/stable/) form front-end for `new-usecase.sh`. Pops a single dialog with labeled fields, then calls the scaffolder. Meant to be wired into Rider as an External Tool. |
+| `install-git-hooks.sh` | One-time setup: points `core.hooksPath` at `.githooks/` so the `pre-commit` hook (formatting check + fast unit tests) runs locally. Bypass a commit with `git commit --no-verify`. |
 
 ## Using `new-usecase.sh` from the command line
 
