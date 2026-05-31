@@ -15,7 +15,7 @@ public class UserInfoModule(
     ILogger<UserInfoModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
     [SlashCommand("gg-nickname", "Get the GeoGuessr nickname of a user")]
-    [UserCommand("gg-nickname")]
+    [UserCommand("GeoGuessr Nickname")]
     public Task GetGeoGuessrNicknameAsync(IGuildUser user) =>
         ExecuteAsync(
             async ct =>
@@ -39,7 +39,7 @@ public class UserInfoModule(
             failureMessage: "Reading the GeoGuessr nickname failed. Try again later. If the problem persists, please contact an admin.");
 
     [SlashCommand("gg-profile", "Get the GeoGuessr profile of a user")]
-    [UserCommand("gg-profile")]
+    [UserCommand("GeoGuessr Profile")]
     public Task GetGeoGuessrProfileAsync(IGuildUser user) =>
         ExecuteAsync(
             async ct =>
