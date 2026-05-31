@@ -7,6 +7,8 @@ public sealed record GetLastCheckTimeQuery : IQuery<DateTimeOffset?>;
 
 public sealed record GetActivityThisWeekQuery(string UserId) : IQuery<ClubMemberWeekActivity>;
 
+public sealed record GetActivityLastDaysQuery(string UserId, int DaysBack) : IQuery<ClubMemberWeekActivity>;
+
 public sealed record ClubStatisticsQuery : IQuery<ClubStatistics?>;
 
 public sealed record PlayerStatisticsQuery(string Nickname) : IQuery<PlayerStatistics?>;

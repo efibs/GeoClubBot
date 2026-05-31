@@ -26,6 +26,9 @@ public partial class ActivityModule(
     [Group("current-week", "Commands about a member's current week activity")]
     public partial class ActivityCurrentWeekModule;
 
+    [Group("last-days", "Commands about a member's activity over the last N days")]
+    public partial class ActivityLastDaysModule;
+
     [SlashCommand("last-check-time", "Prints the last time the activities were checked")]
     public async Task LastCheckTimeAsync()
     {

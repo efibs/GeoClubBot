@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Interactions;
+using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -25,9 +26,7 @@ public class MyActivityModule(
 
                 if (geoGuessrUser.IsFailure)
                 {
-                    await FollowupAsync("You have not yet linked your GeoGuessr account to this Discord account.\n\n" +
-                                        "Please use the '/gg-account link' command to start linking your GeoGuessr account.")
-                        .ConfigureAwait(false);
+                    await SendNotLinkedAsync().ConfigureAwait(false);
                     return;
                 }
 
@@ -35,37 +34,53 @@ public class MyActivityModule(
                     .Send(new GetActivityThisWeekQuery(geoGuessrUser.Value.UserId), ct)
                     .ConfigureAwait(false);
 
-                // Build two-row progress display: day labels + emoji per day
-                var labelRow = string.Join(" ", activity.DailyMissions.Select(d => d.Date.DayOfWeek switch
-                {
-                    DayOfWeek.Monday    => "Mo",
-                    DayOfWeek.Tuesday   => "Tu",
-                    DayOfWeek.Wednesday => "We",
-                    DayOfWeek.Thursday  => "Th",
-                    DayOfWeek.Friday    => "Fr",
-                    DayOfWeek.Saturday  => "Sa",
-                    _                   => "Su"
-                }));
-                var emojiRow = string.Join(" ", activity.DailyMissions.Select(d => d.MissionCompleted ? "🟩" : "⬛"));
-                var progressValue = activity.DailyMissions.Count > 0
-                    ? $"`{labelRow}`\n{emojiRow}"
-                    : "No days tracked yet";
-
-                var embed = new EmbedBuilder()
-                    .WithTitle("📅 Your Activity This Week")
-                    .WithColor(new Color(0x1A, 0xBC, 0x9C))
-                    .AddField("🏆 XP Earned", $"**{activity.TotalXp:N0} XP**", inline: true)
-                    .AddField("📆 Days Completed", $"**{activity.NumDaysDone} / {activity.DailyMissions.Count}**", inline: true)
-                    .AddField("Progress", progressValue);
-
-                if (activity.AllDaysCompleted)
-                    embed.WithDescription("🔥 Perfect week so far — keep it up!");
-
-                if (activity.JoinedThisWeek)
-                    embed.WithFooter($"⭐ You joined the club on {activity.JoinedDateTime:MMM d} — welcome aboard!");
-
-                await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+                await FollowupAsync(embed: BuildSelfEmbed(activity, "📅 Your Activity This Week", "🔥 Perfect week so far — keep it up!").Build())
+                    .ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to retrieve your current week activity (internal error). Please try again later. If the issue persists, please contact an admin.");
+
+    [SlashCommand("last-days", "Prints your daily mission activity over the last N days")]
+    public Task LastDays(
+        [Summary(description: "How many days back to include (1-14, default 7)")]
+        [MinValue(1)] [MaxValue(14)] int days = 7) =>
+        ExecuteAsync(
+            async ct =>
+            {
+                var geoGuessrUser = await Mediator
+                    .Send(new GetLinkedGeoGuessrUserQuery(Context.User.Id), ct)
+                    .ConfigureAwait(false);
+
+                if (geoGuessrUser.IsFailure)
+                {
+                    await SendNotLinkedAsync().ConfigureAwait(false);
+                    return;
+                }
+
+                var activity = await Mediator
+                    .Send(new GetActivityLastDaysQuery(geoGuessrUser.Value.UserId, days), ct)
+                    .ConfigureAwait(false);
+
+                await FollowupAsync(embed: BuildSelfEmbed(activity, $"📅 Your Activity — Last {days} Days", $"🔥 Perfect — all {days} days completed!").Build())
+                    .ConfigureAwait(false);
+            },
+            ephemeral: true,
+            failureMessage: "Failed to retrieve your activity (internal error). Please try again later. If the issue persists, please contact an admin.");
+
+    private Task SendNotLinkedAsync() =>
+        FollowupAsync("You have not yet linked your GeoGuessr account to this Discord account.\n\n" +
+                      "Please use the '/gg-account link' command to start linking your GeoGuessr account.");
+
+    private static EmbedBuilder BuildSelfEmbed(ClubMemberWeekActivity activity, string title, string perfectMessage)
+    {
+        var embed = ActivityProgressFormatter.BuildActivityEmbed(activity, title);
+
+        if (activity.AllDaysCompleted)
+            embed.WithDescription(perfectMessage);
+
+        if (activity.JoinedThisWeek)
+            embed.WithFooter($"⭐ You joined the club on {activity.JoinedDateTime:MMM d} — welcome aboard!");
+
+        return embed;
+    }
 }

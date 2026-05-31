@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -71,27 +72,7 @@ public partial class ActivityModule
 
         private static EmbedBuilder BuildWeekActivityEmbed(Entities.ClubMemberWeekActivity activity, string nickname)
         {
-            var labelRow = string.Join(" ", activity.DailyMissions.Select(d => d.Date.DayOfWeek switch
-            {
-                DayOfWeek.Monday    => "Mo",
-                DayOfWeek.Tuesday   => "Tu",
-                DayOfWeek.Wednesday => "We",
-                DayOfWeek.Thursday  => "Th",
-                DayOfWeek.Friday    => "Fr",
-                DayOfWeek.Saturday  => "Sa",
-                _                   => "Su"
-            }));
-            var emojiRow = string.Join(" ", activity.DailyMissions.Select(d => d.MissionCompleted ? "🟩" : "⬛"));
-            var progressValue = activity.DailyMissions.Count > 0
-                ? $"`{labelRow}`\n{emojiRow}"
-                : "No days tracked yet";
-
-            var embed = new EmbedBuilder()
-                .WithTitle($"📅 {nickname}'s Activity This Week")
-                .WithColor(new Color(0x1A, 0xBC, 0x9C))
-                .AddField("🏆 XP Earned", $"**{activity.TotalXp:N0} XP**", inline: true)
-                .AddField("📆 Days Completed", $"**{activity.NumDaysDone} / {activity.DailyMissions.Count}**", inline: true)
-                .AddField("Progress", progressValue);
+            var embed = ActivityProgressFormatter.BuildActivityEmbed(activity, $"📅 {nickname}'s Activity This Week");
 
             if (activity.AllDaysCompleted)
                 embed.WithDescription("🔥 Perfect week so far");

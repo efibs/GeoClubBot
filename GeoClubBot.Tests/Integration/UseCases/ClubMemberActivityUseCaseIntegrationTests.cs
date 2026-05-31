@@ -162,6 +162,84 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
+    public async Task GetActivityLastDays_ReturnsZero_WhenUserHasNoMembership()
+    {
+        using var host = CreateHost(Guid.NewGuid());
+
+        var activity = await host.SendAsync(new GetActivityLastDaysQuery(NewUserId(), DaysBack: 14));
+
+        activity.TotalXp.Should().Be(0);
+        activity.DailyMissions.Should().HaveCount(14);
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_SumsActivities_AndMarksCompletedDays()
+    {
+        var clubId = Guid.NewGuid();
+        var userId = NewUserId();
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(clubId, $"club-{clubId:N}", 1));
+            var user = GeoGuessrUser.Create(userId, NewNickname());
+            seed.Add(user);
+            seed.Add(ClubMember.Create(user, clubId, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost(Guid.NewGuid());
+        // Two full daily missions (20 XP each, the default DailyMissionXpReward) on distinct days
+        // within the window, plus a partial-XP entry that should sum but not mark a completed day.
+        host.Mock<IGeoGuessrActivityReader>()
+            .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
+            [
+                new ReadClubActivitiesItemDto { UserId = userId, XpReward = 20, RecordedAt = DateTimeOffset.UtcNow },
+                new ReadClubActivitiesItemDto { UserId = userId, XpReward = 20, RecordedAt = DateTimeOffset.UtcNow.AddDays(-3) },
+                new ReadClubActivitiesItemDto { UserId = userId, XpReward = 5, RecordedAt = DateTimeOffset.UtcNow.AddDays(-1) },
+            ]);
+
+        var activity = await host.SendAsync(new GetActivityLastDaysQuery(userId, DaysBack: 7));
+
+        activity.TotalXp.Should().Be(45);
+        activity.DailyMissions.Should().HaveCount(7);
+        activity.NumDaysDone.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_ProducesExactlyDaysBackSlots()
+    {
+        var clubId = Guid.NewGuid();
+        var userId = NewUserId();
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(clubId, $"club-{clubId:N}", 1));
+            var user = GeoGuessrUser.Create(userId, NewNickname());
+            seed.Add(user);
+            seed.Add(ClubMember.Create(user, clubId, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost(Guid.NewGuid());
+        host.Mock<IGeoGuessrActivityReader>()
+            .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)[]);
+
+        var activity = await host.SendAsync(new GetActivityLastDaysQuery(userId, DaysBack: 14));
+
+        activity.DailyMissions.Should().HaveCount(14);
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_RejectsOutOfRangeDaysBack()
+    {
+        using var host = CreateHost(Guid.NewGuid());
+
+        var act = () => host.SendAsync(new GetActivityLastDaysQuery(NewUserId(), DaysBack: 15));
+
+        await act.Should().ThrowAsync<FluentValidation.ValidationException>();
+    }
+
+    [Fact]
     public async Task ActivityLeaderboard_ReturnsTheRankedMembers_ForANamedClub()
     {
         var clubId = Guid.NewGuid();

@@ -16,7 +16,8 @@ public sealed partial class ActivityReadHandlers(
     IOptions<DailyMissionReminderConfiguration> missionConfig,
     ILogger<ActivityReadHandlers> logger)
     : IRequestHandler<GetLastCheckTimeQuery, DateTimeOffset?>,
-      IRequestHandler<GetActivityThisWeekQuery, ClubMemberWeekActivity>
+      IRequestHandler<GetActivityThisWeekQuery, ClubMemberWeekActivity>,
+      IRequestHandler<GetActivityLastDaysQuery, ClubMemberWeekActivity>
 {
     private readonly Guid _mainClubId = geoGuessrConfig.Value.MainClub.ClubId;
 
@@ -30,18 +31,35 @@ public sealed partial class ActivityReadHandlers(
         return club?.LatestActivityCheckTime;
     }
 
-    public async Task<ClubMemberWeekActivity> Handle(GetActivityThisWeekQuery request, CancellationToken cancellationToken)
+    public Task<ClubMemberWeekActivity> Handle(GetActivityThisWeekQuery request, CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var startOfWeek = GetStartOfWeek(today);
-        var startOfWeekUtc = new DateTimeOffset(startOfWeek.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        return ComputeActivityAsync(request.UserId, startOfWeek, today, cancellationToken);
+    }
 
-        var daySlots = Enumerable.Range(0, today.DayNumber - startOfWeek.DayNumber + 1)
-            .Select(i => startOfWeek.AddDays(i))
+    public Task<ClubMemberWeekActivity> Handle(GetActivityLastDaysQuery request, CancellationToken cancellationToken)
+    {
+        var daysBack = Math.Clamp(request.DaysBack, 1, 14);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var startDate = today.AddDays(-(daysBack - 1));
+        return ComputeActivityAsync(request.UserId, startDate, today, cancellationToken);
+    }
+
+    private async Task<ClubMemberWeekActivity> ComputeActivityAsync(
+        string userId,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken)
+    {
+        var startUtc = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        var daySlots = Enumerable.Range(0, endDate.DayNumber - startDate.DayNumber + 1)
+            .Select(i => startDate.AddDays(i))
             .ToList();
 
         var clubMember = await clubMembers
-            .ReadClubMemberByUserIdAsync(request.UserId, cancellationToken)
+            .ReadClubMemberByUserIdAsync(userId, cancellationToken)
             .ConfigureAwait(false);
 
         if (clubMember?.ClubId is null)
@@ -53,11 +71,11 @@ public sealed partial class ActivityReadHandlers(
                 JoinedDateTime: DateTimeOffset.UtcNow);
         }
 
-        var weekActivities = await activityReader
-            .ReadActivitiesSinceAsync(clubMember.ClubId.Value, startOfWeekUtc, cancellationToken)
+        var activities = await activityReader
+            .ReadActivitiesSinceAsync(clubMember.ClubId.Value, startUtc, cancellationToken)
             .ConfigureAwait(false);
 
-        var memberActivities = weekActivities.Where(a => a.UserId == request.UserId).ToList();
+        var memberActivities = activities.Where(a => a.UserId == userId).ToList();
 
         var dailyMissionXpReward = missionConfig.Value.DailyMissionXpReward;
         var completedDays = memberActivities
@@ -70,12 +88,12 @@ public sealed partial class ActivityReadHandlers(
             .ToList();
 
         var totalXp = memberActivities.Sum(a => a.XpReward);
-        var joinedThisWeek = clubMember.JoinedAt >= startOfWeekUtc;
+        var joinedInPeriod = clubMember.JoinedAt >= startUtc;
 
         return new ClubMemberWeekActivity(
             TotalXp: totalXp,
             DailyMissions: dailyMissions,
-            JoinedThisWeek: joinedThisWeek,
+            JoinedThisWeek: joinedInPeriod,
             JoinedDateTime: clubMember.JoinedAt);
     }
 
