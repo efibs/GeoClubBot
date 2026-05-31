@@ -1,4 +1,4 @@
-using Infrastructure.OutputAdapters;
+using Infrastructure.OutputAdapters.Repositories;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace GeoClubBot.DependencyInjection.Modules;

@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Rendering;

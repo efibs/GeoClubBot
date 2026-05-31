@@ -1,6 +1,6 @@
 using MediatR;
 using UseCases.Abstractions;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace UseCases.UseCases.Club;
 

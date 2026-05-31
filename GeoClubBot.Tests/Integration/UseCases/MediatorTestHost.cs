@@ -1,6 +1,6 @@
 using Configuration;
 using FluentValidation;
-using Infrastructure.OutputAdapters;
+using Infrastructure.OutputAdapters.Repositories;
 using Infrastructure.OutputAdapters.DataAccess;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.Behaviors;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 GeoClubBot is a .NET 10.0 ASP.NET Core Web API + Discord bot for managing GeoGuessr gaming clubs. It integrates with the GeoGuessr API and Discord to track member activity, manage strikes, run daily challenges, and handle account linking.
 
+> **New to the codebase?** See [`Documentation/DeveloperGuide.md`](Documentation/DeveloperGuide.md) for a solution map, the namespace↔folder gotcha, and step-by-step recipes answering "where do I add a slash command / use case / repository / job?".
+
 ## Build & Run Commands
 
 ```bash
@@ -89,12 +91,13 @@ API + Discord (controllers, slash command modules)
 
 ### Key Patterns
 
-- **Unit of Work**: `IUnitOfWork` (in Application) / `DbUnitOfWork` (in Infrastructure) aggregates all repositories. All data access goes through `IUnitOfWork`.
-- **Use Cases**: Each use case has an input port interface (`IXxxUseCase`) in `Application/InputPorts/` and implementation in `Application/UseCases/`. Registered as transient in `ClubBotServices.cs`.
+- **Use Cases**: Each use case is a MediatR request (`ICommand`/`IQuery` record, from `Application/Abstractions/`) plus an `IRequestHandler<,>` handler, co-located per feature in `Application/UseCases/<Feature>/` (optional FluentValidation validators under `Validators/`). Handlers and validators are **auto-registered** via assembly scan (`IUseCasesAssemblyMarker`) in `Program.cs` — no manual DI.
+- **Repositories**: Output-port interfaces (`IXxxRepository`) live in `Application/OutputPorts/Repositories/`; EF implementations (`EfXxxRepository`) in `Infrastructure/OutputAdapters/Repositories/`, registered in `PersistenceModule`. Handlers inject the repository interfaces directly.
+- **Unit of Work**: `IUnitOfWork` / `DbUnitOfWork` exposes only `SaveChangesAsync()` (it does **not** aggregate repositories); the MediatR `UnitOfWorkBehavior` calls it to commit after each command.
 - **Domain Events**: `BaseEntity` collects domain events; `GeoClubBotDbContext.SaveChangesAsync` dispatches them via MediatR.
 - **Refit HTTP Client**: `IGeoGuessrClient` is a declarative Refit interface for the GeoGuessr API, with Polly resilience (rate limiting, retry, circuit breaker) configured in `ResiliencePipelines.cs`.
 - **Quartz Jobs**: Jobs use `[ConfiguredCronJob("ConfigKey:Schedule")]` attribute for auto-discovery. Located in `Infrastructure/InputAdapters/Jobs/`.
-- **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/`. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
+- **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/<Feature>/` (feature subfolders mirroring `Application/UseCases/`), auto-discovered via `InteractionsAssemblyMarker` — no manual registration. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
 - **Result type**: Use cases return `Result<T>` / `Error` (`Utilities/Result.cs`) instead of throwing for expected failures. `Error.Type` (`ErrorType.NotFound`, `Validation`, `Conflict`, `Forbidden`, `Unauthorized`, `Unexpected`) is mapped to HTTP status codes by the `ResultExtensions` middleware in `GeoClubBot.API/Middleware/`.
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 

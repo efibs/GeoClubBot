@@ -1,7 +1,7 @@
 using Entities;
 using FluentAssertions;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.Club;
 using Xunit;
 

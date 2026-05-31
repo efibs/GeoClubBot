@@ -12,6 +12,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		ChallengesConfig.json = ChallengesConfig.json
 		.gitignore = .gitignore
 		BotCommandsGuide.md = BotCommandsGuide.md
+		CONTRIBUTING.md = CONTRIBUTING.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Infrastructure", "GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj", "{D38D6E28-1D89-4B71-818A-75D55A14A445}"
@@ -39,6 +40,18 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.MockGeoGuessr", "GeoClubBot.MockGeoGuessr\GeoClubBot.MockGeoGuessr.csproj", "{D46703EF-4715-45A1-B946-3C86B71B55B1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GeoClubBot.Tests", "GeoClubBot.Tests\GeoClubBot.Tests.csproj", "{F571FA44-0BEF-409C-B485-A1D40E835C43}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "scripts", "scripts", "{3F934AC8-F1B8-41A8-B556-15ABDD05DF38}"
+	ProjectSection(SolutionItems) = preProject
+		scripts\new-usecase.sh = scripts\new-usecase.sh
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Documentation", "Documentation", "{4549EE6A-17B1-43C6-A33B-F6010BC4C752}"
+	ProjectSection(SolutionItems) = preProject
+		Documentation\DeveloperGuide.md = Documentation\DeveloperGuide.md
+		Documentation\ER-Diagram.drawio = Documentation\ER-Diagram.drawio
+		Documentation\ResultConventions.md = Documentation\ResultConventions.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -204,5 +217,7 @@ Global
 		{4824C301-1764-4965-8706-4E02B91AB7F7} = {D1E67922-C47C-4C56-A089-764D793E0403}
 		{95843BB6-DC6E-423A-9F19-03262F15EDD0} = {D1E67922-C47C-4C56-A089-764D793E0403}
 		{D67B0D65-1C83-40BD-961A-082FDD768667} = {D1E67922-C47C-4C56-A089-764D793E0403}
+		{3F934AC8-F1B8-41A8-B556-15ABDD05DF38} = {0936FAB1-36AC-4536-A45E-F84EA16A7691}
+		{4549EE6A-17B1-43C6-A33B-F6010BC4C752} = {0936FAB1-36AC-4536-A45E-F84EA16A7691}
 	EndGlobalSection
 EndGlobal

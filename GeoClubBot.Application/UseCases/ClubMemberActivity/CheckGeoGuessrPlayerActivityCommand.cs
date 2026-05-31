@@ -4,7 +4,8 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Notifications;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 
 namespace UseCases.UseCases.ClubMemberActivity;

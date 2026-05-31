@@ -1,7 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.Abstractions;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using Utilities;
 using DomainDailyMissionReminder = Entities.DailyMissionReminder;
 

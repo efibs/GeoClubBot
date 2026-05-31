@@ -6,7 +6,7 @@ using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using Utilities;
 
 namespace GeoClubBot.Controllers;

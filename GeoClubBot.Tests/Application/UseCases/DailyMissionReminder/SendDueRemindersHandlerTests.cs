@@ -6,7 +6,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.DailyMissionReminder;

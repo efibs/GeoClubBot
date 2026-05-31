@@ -2,7 +2,7 @@ using Entities;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.Strikes;
 using Utilities;
 using Xunit;

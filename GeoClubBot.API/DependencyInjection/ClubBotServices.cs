@@ -15,12 +15,7 @@ public static class ClubBotServices
         services.AddDiscordAdaptersModule();
         services.AddGeoGuessrIntegrationModule();
         services.AddRenderingModule();
-        services.AddStrikesModule();
-        services.AddExcusesModule();
         services.AddClubMembersModule();
-        services.AddAccountLinkingModule();
-        services.AddDailyChallengesModule();
-        services.AddSelfRolesModule();
         services.AddQuartzModule();
         services.AddAiServicesIfConfigured(configuration);
     }

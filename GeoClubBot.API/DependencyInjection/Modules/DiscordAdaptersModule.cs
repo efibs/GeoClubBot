@@ -1,7 +1,7 @@
 using GeoClubBot.Discord.OutputAdapters;
 using Infrastructure.InputAdapters;
 using Infrastructure.OutputAdapters;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.Rendering;
 

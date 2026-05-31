@@ -1,8 +1,8 @@
 using Constants;
-using Infrastructure.OutputAdapters;
+using Infrastructure.OutputAdapters.Repositories;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 
 namespace GeoClubBot.DependencyInjection.Modules;
 

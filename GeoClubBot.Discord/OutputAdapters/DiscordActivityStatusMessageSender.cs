@@ -2,7 +2,7 @@ using Configuration;
 using Discord.WebSocket;
 using Entities;
 using Microsoft.Extensions.Options;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Notifications;
 
 namespace GeoClubBot.Discord.OutputAdapters;
 

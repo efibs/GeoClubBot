@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.Club;
 using Xunit;

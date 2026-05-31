@@ -3,7 +3,7 @@ using FluentAssertions;
 using GeoClubBot.Tests.TestBuilders;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Projections;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 using Xunit;

@@ -1,6 +1,6 @@
 using Entities;
 using FluentAssertions;
-using Infrastructure.OutputAdapters;
+using Infrastructure.OutputAdapters.Repositories;
 using Xunit;
 
 namespace GeoClubBot.Tests.Integration;

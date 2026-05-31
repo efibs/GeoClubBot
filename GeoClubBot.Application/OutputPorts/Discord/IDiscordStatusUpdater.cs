@@ -1,4 +1,4 @@
-namespace UseCases.OutputPorts;
+namespace UseCases.OutputPorts.Discord;
 
 public interface IDiscordStatusUpdater
 {

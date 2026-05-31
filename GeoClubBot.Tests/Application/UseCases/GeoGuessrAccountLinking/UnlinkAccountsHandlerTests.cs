@@ -3,7 +3,7 @@ using Entities;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;

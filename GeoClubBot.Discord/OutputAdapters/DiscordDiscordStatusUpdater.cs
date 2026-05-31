@@ -1,5 +1,5 @@
 using Discord.WebSocket;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Discord;
 
 namespace GeoClubBot.Discord.OutputAdapters;
 

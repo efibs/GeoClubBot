@@ -1,7 +1,7 @@
 using Entities;
 using MediatR;
 using UseCases.Abstractions;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMembers;
 using Utilities;
 

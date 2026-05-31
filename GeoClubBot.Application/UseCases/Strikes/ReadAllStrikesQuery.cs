@@ -1,6 +1,6 @@
 using Entities;
 using UseCases.Abstractions;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 
 namespace UseCases.UseCases.Strikes;
 

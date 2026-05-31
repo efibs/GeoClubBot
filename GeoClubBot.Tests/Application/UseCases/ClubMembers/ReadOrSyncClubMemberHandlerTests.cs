@@ -3,7 +3,7 @@ using FluentAssertions;
 using GeoClubBot.Tests.TestBuilders;
 using MediatR;
 using NSubstitute;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.ClubMembers;
 using Utilities;

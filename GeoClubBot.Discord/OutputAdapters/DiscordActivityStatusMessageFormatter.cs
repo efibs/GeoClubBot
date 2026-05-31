@@ -1,6 +1,6 @@
 using System.Text;
 using Entities;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Notifications;
 
 namespace GeoClubBot.Discord.OutputAdapters;
 

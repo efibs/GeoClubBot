@@ -5,7 +5,7 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;

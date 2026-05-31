@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 
 namespace UseCases.UseCases.Club;
 

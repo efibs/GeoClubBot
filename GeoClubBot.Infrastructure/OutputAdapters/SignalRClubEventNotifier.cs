@@ -1,7 +1,7 @@
 using Entities;
 using Infrastructure.OutputAdapters.Hubs;
 using Microsoft.AspNetCore.SignalR;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Notifications;
 
 namespace Infrastructure.OutputAdapters;
 

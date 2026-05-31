@@ -1,6 +1,6 @@
 using Entities;
 using Microsoft.Extensions.Logging;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using UseCases.OutputPorts.Projections;
 using Utilities;
 

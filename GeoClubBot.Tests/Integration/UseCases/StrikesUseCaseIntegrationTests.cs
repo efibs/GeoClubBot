@@ -1,7 +1,7 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
-using Infrastructure.OutputAdapters;
+using Infrastructure.OutputAdapters.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using UseCases.UseCases.Strikes;

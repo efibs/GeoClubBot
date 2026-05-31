@@ -1,5 +1,5 @@
 using UseCases.Abstractions;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 using Utilities;
 
 namespace UseCases.UseCases.Excuses;

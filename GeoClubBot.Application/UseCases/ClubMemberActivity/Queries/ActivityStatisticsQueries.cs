@@ -2,7 +2,7 @@ using Configuration;
 using Entities;
 using MediatR;
 using Microsoft.Extensions.Options;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Repositories;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 

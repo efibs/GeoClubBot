@@ -1,5 +1,5 @@
 using MediatR;
-using UseCases.OutputPorts;
+using UseCases.OutputPorts.Notifications;
 
 namespace UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 
