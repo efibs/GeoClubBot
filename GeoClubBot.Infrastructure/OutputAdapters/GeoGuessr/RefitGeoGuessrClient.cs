@@ -28,4 +28,10 @@ public class RefitGeoGuessrClient(IGeoGuessrApi api) : IGeoGuessrClient
 
     public Task<DailyMissionsResponseDto> ReadDailyMissionsAsync(CancellationToken cancellationToken = default) =>
         api.ReadDailyMissionsAsync(cancellationToken);
+
+    public Task<RankedProgressResponseDto> ReadRankedProgressOfUserAsync(string userId, CancellationToken cancellationToken = default) =>
+        api.ReadRankedProgressOfUserAsync(userId, cancellationToken);
+
+    public Task<RankedPeakRatingResponseDto> ReadRankedPeakRatingOfUserAsync(string userId, CancellationToken cancellationToken = default) =>
+        api.ReadRankedPeakRatingOfUserAsync(userId, cancellationToken);
 }

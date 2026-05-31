@@ -46,6 +46,16 @@ public class MockGeoGuessrDataStore
     /// </summary>
     public DateTimeOffset NextMissionDate { get; set; } = DateTimeOffset.UtcNow.Date.AddDays(1);
 
+    /// <summary>
+    /// Ranked system progress indexed by UserId.
+    /// </summary>
+    public ConcurrentDictionary<string, RankedProgressResponseDto> RankedProgress { get; } = new();
+
+    /// <summary>
+    /// Ranked system peak ratings indexed by UserId.
+    /// </summary>
+    public ConcurrentDictionary<string, RankedPeakRatingResponseDto> RankedPeakRatings { get; } = new();
+
     private int _challengeCounter;
 
     public string GenerateChallengeToken()

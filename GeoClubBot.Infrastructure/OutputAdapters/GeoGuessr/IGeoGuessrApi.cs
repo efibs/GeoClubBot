@@ -25,4 +25,10 @@ public interface IGeoGuessrApi
 
     [Get("/v4/missions")]
     Task<DailyMissionsResponseDto> ReadDailyMissionsAsync(CancellationToken cancellationToken = default);
+
+    [Get("/v4/ranked-system/progress/{userId}")]
+    Task<RankedProgressResponseDto> ReadRankedProgressOfUserAsync(string userId, CancellationToken cancellationToken = default);
+
+    [Get("/v4/ranked-system/peak-rating/{userId}")]
+    Task<RankedPeakRatingResponseDto> ReadRankedPeakRatingOfUserAsync(string userId, CancellationToken cancellationToken = default);
 }

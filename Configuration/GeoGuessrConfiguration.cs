@@ -22,6 +22,8 @@ public class GeoGuessrConfiguration : IValidatableObject
 
     public TimeSpan UserProfileCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(30);
 
+    public TimeSpan UserRankedSystemCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(30);
+
     [Required]
     [MinLength(1)]
     public required List<GeoGuessrClubEntry> Clubs { get; set; }

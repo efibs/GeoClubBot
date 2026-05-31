@@ -9,6 +9,7 @@ public static class GeoGuessrIntegrationModule
     {
         services.AddTransient<IGeoGuessrActivityReader, CachingGeoGuessrActivityReader>();
         services.AddTransient<IGeoGuessrUserProfileReader, CachingGeoGuessrUserProfileReader>();
+        services.AddTransient<IGeoGuessrUserRankedSystemReader, CachingGeoGuessrUserRankedSystemReader>();
 
         return services;
     }

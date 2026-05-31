@@ -15,4 +15,8 @@ public interface IGeoGuessrClient
     Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default);
 
     Task<DailyMissionsResponseDto> ReadDailyMissionsAsync(CancellationToken cancellationToken = default);
+
+    Task<RankedProgressResponseDto> ReadRankedProgressOfUserAsync(string userId, CancellationToken cancellationToken = default);
+
+    Task<RankedPeakRatingResponseDto> ReadRankedPeakRatingOfUserAsync(string userId, CancellationToken cancellationToken = default);
 }
