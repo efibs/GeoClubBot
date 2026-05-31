@@ -1,6 +1,7 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
+using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -156,6 +157,58 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
         stats.MedianAveragePoints.Should().Be(40);                       // sorted[count/2] = sorted[2]
         stats.ThirdQuartileAveragePoints.Should().Be(50);               // sorted[count*3/4] = sorted[3]
         stats.MaxAveragePoints.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task ClubStatistics_AveragesSnapshotsChronologically_RegardlessOfStorageOrder()
+    {
+        var mainClubId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(mainClubId, "Main", 1));
+
+            // Member A: snapshots 100 → 120 → 150 over time ⇒ gains 100, 20, 30 ⇒ average 50.
+            // Seeded newest-first so the result is only correct if the handler orders by timestamp
+            // rather than storage order. (avg 50 ≠ min-of-gains 20, which also kills Average→Min.)
+            var memberA = AddMember(seed, mainClubId, latestXp: 150);
+            seed.Add(ClubMemberHistoryEntry.Create(memberA, mainClubId, xp: 150, now.AddDays(-10)));
+            seed.Add(ClubMemberHistoryEntry.Create(memberA, mainClubId, xp: 100, now.AddDays(-30)));
+            seed.Add(ClubMemberHistoryEntry.Create(memberA, mainClubId, xp: 120, now.AddDays(-20)));
+
+            // Member B: 200 → 260 ⇒ gains 200, 60 ⇒ average 130.
+            var memberB = AddMember(seed, mainClubId, latestXp: 260);
+            seed.Add(ClubMemberHistoryEntry.Create(memberB, mainClubId, xp: 260, now.AddDays(-5)));
+            seed.Add(ClubMemberHistoryEntry.Create(memberB, mainClubId, xp: 200, now.AddDays(-15)));
+
+            // Member C: a single snapshot ⇒ average 90.
+            var memberC = AddMember(seed, mainClubId, latestXp: 90);
+            seed.Add(ClubMemberHistoryEntry.Create(memberC, mainClubId, xp: 90, now.AddDays(-8)));
+
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost(mainClubId);
+        var stats = await host.SendAsync(new ClubStatisticsQuery());
+
+        // Per-member averages sorted: [50, 90, 130]. These hold only when each member's snapshots
+        // are summed in chronological order.
+        stats.Should().NotBeNull();
+        stats!.MinAveragePoints.Should().Be(50);
+        stats.MedianAveragePoints.Should().Be(90);
+        stats.MaxAveragePoints.Should().Be(130);
+        stats.AverageAveragePoints.Should().Be(90);                      // (50 + 90 + 130) / 3
+    }
+
+    /// <summary>Seeds a club member (with a linked user) and returns its user id.</summary>
+    private static string AddMember(GeoClubBotDbContext seed, Guid clubId, int latestXp)
+    {
+        var userId = NewUserId();
+        var user = GeoGuessrUser.Create(userId, NewNickname());
+        seed.Add(user);
+        seed.Add(ClubMember.Create(user, clubId, xp: latestXp, joinedAt: DateTimeOffset.UtcNow.AddMonths(-3)));
+        return userId;
     }
 
     [Fact]
