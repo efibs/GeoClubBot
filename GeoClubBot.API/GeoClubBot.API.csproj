@@ -35,7 +35,7 @@
         <PackageReference Include="Quartz.Extensions.Hosting" Version="3.18.1" />
         <PackageReference Include="Refit" Version="10.1.6" />
         <PackageReference Include="Refit.HttpClientFactory" Version="10.1.6" />
-        <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.0" />
     </ItemGroup>
 
     <ItemGroup>
