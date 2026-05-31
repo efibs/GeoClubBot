@@ -47,6 +47,26 @@ PostgreSQL via **Testcontainers** — they require a running Docker daemon. They
 container (`PostgresCollection`/`PostgresFixture`) and each test namespaces its own seed data
 by random `Club`/`UserId` so the container is reused safely.
 
+**Test types beyond unit + integration:**
+
+- **End-to-end** (`Integration/E2E/`, also `Category=Integration`): `GeoClubBotApiFactory` boots
+  the real API in-process via `WebApplicationFactory<Program>` against the Postgres container,
+  exercising routing → controller → middleware → EF. The factory strips background hosted services
+  (Discord gateway, `InitialSyncService`, Quartz) so the host starts cleanly, and re-registers the
+  `DbContext` against the test container. `Program` is exposed via `public partial class Program`.
+- **Architecture** (`Architecture/`, fast): `NetArchTest` rules enforce the Clean Architecture
+  boundaries (Domain/Application don't depend on outer layers, EF stays behind a port). Use
+  fully-qualified namespaces in rules — NetArchTest matches string constants, so a bare
+  `GeoClubBot` token false-flags the `"GeoClubBot.Application"` meter-name literals.
+- **Snapshot** (`Discord/*FormatterTests`, fast): `Verify.Xunit` captures whole rendered messages
+  into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
+  the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
+  is gitignored.
+- **Mutation** (`stryker-config.json`, manual/nightly): `dotnet stryker` mutates the Application
+  project and runs the full suite to measure how effectively tests catch bugs. Not on the PR gate
+  (see `.github/workflows/mutation.yml`); `break: 0` so it reports without failing. Run locally with
+  `dotnet tool restore && dotnet stryker`.
+
 ### Local dev without real credentials
 
 Set `GeoGuessr:UseMock=true` (default in `appsettings.Development.json`) to run against the
