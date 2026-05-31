@@ -44,6 +44,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "scripts", "scripts", "{3F934AC8-F1B8-41A8-B556-15ABDD05DF38}"
 	ProjectSection(SolutionItems) = preProject
 		scripts\new-usecase.sh = scripts\new-usecase.sh
+		scripts\README.md = scripts\README.md
+		scripts\new-usecase-gui.sh = scripts\new-usecase-gui.sh
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Documentation", "Documentation", "{4549EE6A-17B1-43C6-A33B-F6010BC4C752}"
