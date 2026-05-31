@@ -5,7 +5,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.ClubMemberActivity;
 
-namespace GeoClubBot.Discord.InputAdapters.Interactions.Activity;
+namespace GeoClubBot.Discord.InputAdapters.Interactions;
 
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]

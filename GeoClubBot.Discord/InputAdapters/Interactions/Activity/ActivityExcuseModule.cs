@@ -144,5 +144,51 @@ public partial class ActivityModule
                     ephemeral: true).ConfigureAwait(false);
             }
         }
+
+        [SlashCommand("read-relevant", "Read the relevant excuses in the system")]
+        public async Task ReadRelevantExcusesAsync(int upcomingExcusesNumDays = 7)
+        {
+            var result = await Mediator.Send(new ReadRelevantExcusesQuery(upcomingExcusesNumDays)).ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                return;
+            }
+
+            var excuses = result.Value;
+
+            if (excuses.Count == 0)
+            {
+                await RespondAsync($"There are currently no relevant excuses in the system.", ephemeral: true).ConfigureAwait(false);
+            }
+            else
+            {
+                var activeExcuses = excuses
+                    .Where(e => !e.IsUpcoming).ToList();
+                var upcomingExcuses = excuses
+                    .Where(e => e.IsUpcoming).ToList();
+
+                var activeExcusesString = string.Join("\n", activeExcuses.Select(e => $"* {e}"));
+                var upcomingExcusesString = string.Join("\n", upcomingExcuses.Select(e => $"* {e}"));
+
+                var responseString = string.Empty;
+
+                if (activeExcuses.Count > 0)
+                {
+                    responseString = "## Here are the currently active excuses:\n" +
+                                     activeExcusesString;
+                }
+
+                if (upcomingExcuses.Count > 0)
+                {
+                    responseString += "\n\n" +
+                                      "## Here are the upcoming excuses:\n" +
+                                      upcomingExcusesString;
+                }
+
+                await RespondAsync(responseString,
+                    ephemeral: true).ConfigureAwait(false);
+            }
+        }
     }
 }

@@ -20,4 +20,6 @@ public interface IExcusesRepository
     void DeleteExcuse(ClubMemberExcuse excuse);
 
     Task<int> DeleteExcusesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default);
+
+    Task<List<ClubMemberRelevantExcuse>> ReadAllRelevantExcusesAsync(int upcomingExcusesNumDays, CancellationToken cancellationToken = default);
 }

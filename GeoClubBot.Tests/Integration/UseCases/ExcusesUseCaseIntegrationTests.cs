@@ -1,6 +1,7 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
+using FluentValidation;
 using Infrastructure.OutputAdapters.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -197,5 +198,67 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
         var excuses = await host.SendAsync(new ReadExcusesQuery());
 
         excuses.Should().Contain(e => e.ExcuseId == excuse.ExcuseId);
+    }
+
+    // ---- ReadRelevantExcuses -----------------------------------------------
+
+    [Fact]
+    public async Task ReadRelevantExcuses_ReturnsActiveExcuse_ThroughFullPipeline()
+    {
+        var (nickname, _) = await SeedMemberWithExcuseAsync(
+            DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(4));
+
+        using var host = CreateHost();
+        var result = await host.SendAsync(new ReadRelevantExcusesQuery(7));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Contain(r => r.MemberNickname == nickname && !r.IsUpcoming);
+    }
+
+    [Fact]
+    public async Task ReadRelevantExcuses_ReturnsUpcomingExcuse_ThroughFullPipeline()
+    {
+        var (nickname, _) = await SeedMemberWithExcuseAsync(
+            DateTimeOffset.UtcNow.AddDays(3), DateTimeOffset.UtcNow.AddDays(9));
+
+        using var host = CreateHost();
+        var result = await host.SendAsync(new ReadRelevantExcusesQuery(7));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Contain(r => r.MemberNickname == nickname && r.IsUpcoming);
+    }
+
+    [Fact]
+    public async Task ReadRelevantExcuses_DoesNotReturnPastExcuse()
+    {
+        var (nickname, _) = await SeedMemberWithExcuseAsync(
+            DateTimeOffset.UtcNow.AddDays(-5), DateTimeOffset.UtcNow.AddDays(-1));
+
+        using var host = CreateHost();
+        var result = await host.SendAsync(new ReadRelevantExcusesQuery(7));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotContain(r => r.MemberNickname == nickname,
+            "the excuse ended before now");
+    }
+
+    [Fact]
+    public async Task ReadRelevantExcuses_ThrowsValidationException_WhenUpcomingDaysIsZero()
+    {
+        using var host = CreateHost();
+
+        var act = async () => await host.SendAsync(new ReadRelevantExcusesQuery(0));
+
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task ReadRelevantExcuses_ThrowsValidationException_WhenUpcomingDaysIsNegative()
+    {
+        using var host = CreateHost();
+
+        var act = async () => await host.SendAsync(new ReadRelevantExcusesQuery(-3));
+
+        await act.Should().ThrowAsync<ValidationException>();
     }
 }
