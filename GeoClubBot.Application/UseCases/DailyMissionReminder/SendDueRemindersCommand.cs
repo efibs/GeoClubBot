@@ -67,6 +67,14 @@ public sealed partial class SendDueRemindersHandler(
                 reminder.MarkSent(today);
                 LogReminderSent(reminder.DiscordUserId);
             }
+            else if (dmResult.Error.Code == DiscordDmErrorCodes.NoMutualGuild)
+            {
+                // The user has left the server but the reminder is still active. Normally it is
+                // deactivated by the UserLeft event the moment they leave, so reaching here means
+                // that event was missed (e.g. the bot was down when they left) — clean up and warn.
+                reminders.DeleteReminder(reminder);
+                LogReminderUserLeftWhileActive(reminder.DiscordUserId);
+            }
             else if (dmResult.Error.Type == ErrorType.Forbidden)
             {
                 // The user has DMs from the bot disabled/blocked — retrying won't help until they fix it,
@@ -120,6 +128,9 @@ public sealed partial class SendDueRemindersHandler(
 
     [LoggerMessage(LogLevel.Error, "Could not deliver daily mission reminder to user {DiscordUserId} - they have DMs from the bot disabled or blocked the bot; not retrying today.")]
     partial void LogReminderDmsDisabled(ulong discordUserId);
+
+    [LoggerMessage(LogLevel.Warning, "Daily mission reminder for user {DiscordUserId} was still active after they left the server (UserLeft event missed); deactivating it now.")]
+    partial void LogReminderUserLeftWhileActive(ulong discordUserId);
 
     [LoggerMessage(LogLevel.Debug, "Daily mission reminder skipped for user {DiscordUserId} - already completed today.")]
     partial void LogReminderSkippedAlreadyDone(ulong discordUserId);
