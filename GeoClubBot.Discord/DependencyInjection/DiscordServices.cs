@@ -16,7 +16,11 @@ public static class DiscordServices
         // Add the discord socket client
         services.AddSingleton<DiscordSocketClient>(_ => new DiscordSocketClient(new DiscordSocketConfig
         {
-            GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.GuildMembers,
+            // AllUnprivileged includes GuildScheduledEvents and GuildInvites, which
+            // we don't listen to. Excluding them avoids Discord.Net's unused-intent warnings.
+            GatewayIntents = (GatewayIntents.AllUnprivileged | GatewayIntents.GuildMembers)
+                & ~GatewayIntents.GuildScheduledEvents
+                & ~GatewayIntents.GuildInvites,
             AlwaysDownloadUsers = true
         }));
 
