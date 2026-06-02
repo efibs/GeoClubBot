@@ -97,6 +97,30 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
     }
 
     [Fact]
+    public async Task SendDueReminders_DeletesReminder_WhenUserHasLeftTheServer()
+    {
+        // Seed a reminder that is due right now (matched to the minute, as the handler truncates).
+        var discordId = NewDiscordId();
+        var now = DateTime.UtcNow;
+        var dueNow = new TimeOnly(now.Hour, now.Minute);
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(DomainReminder.Create(discordId, dueNow, null, null));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost();
+        // Discord reports "no mutual guild" → the user has left the server.
+        host.Mock<IDiscordDirectMessageAccess>()
+            .SendDirectMessageAsync(discordId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result.Failure(Error.NotFound(DiscordDmErrorCodes.NoMutualGuild, "No mutual guild.")));
+
+        await host.SendAsync(new SendDueRemindersCommand());
+
+        (await host.SendAsync(new GetDailyMissionReminderStatusQuery(discordId))).Should().BeNull();
+    }
+
+    [Fact]
     public async Task SendDueReminders_SendsNothing_WhenNoReminderIsDue()
     {
         // Seed a reminder scheduled two hours from now so it is never "due" during the run.

@@ -153,4 +153,26 @@ public sealed class SendDueRemindersHandlerTests
         // DMs-disabled is permanent for the day, so it is marked sent to avoid re-attempting.
         reminder.LastSentDateUtc.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task Handle_DeletesReminder_WhenUserHasLeftTheServer()
+    {
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
+        _reminders.ReadDueRemindersForUpdateAsync(
+                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns([reminder]);
+
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+                Arg.Any<CancellationToken>())
+            .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
+
+        // Discord reports no mutual guild → the user has left the server and can never be DMed again.
+        _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result.Failure(Error.NotFound(DiscordDmErrorCodes.NoMutualGuild, "No mutual guild.")));
+
+        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
+
+        _reminders.Received(1).DeleteReminder(reminder);
+        reminder.LastSentDateUtc.Should().BeNull("a reminder for a departed user is removed, not marked sent");
+    }
 }
