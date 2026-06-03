@@ -1,0 +1,23 @@
+name: Dependency review
+
+# Blocks a pull request that introduces a dependency with a known high-severity
+# vulnerability (or a disallowed licence). Complements Dependabot: Dependabot opens
+# update PRs on a schedule, this gates new dependencies as they are added.
+on:
+  pull_request:
+    branches: [ dev, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Review dependencies
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
