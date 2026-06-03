@@ -29,6 +29,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Configuration\Configuration.csproj" />
+      <ProjectReference Include="..\Extensions\Extensions.csproj" />
       <ProjectReference Include="..\GeoClubBot.Application\GeoClubBot.Application.csproj" />
     </ItemGroup>
 

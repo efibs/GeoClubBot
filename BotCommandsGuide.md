@@ -118,6 +118,14 @@ Shows a full GeoGuessr profile for a Discord user — country, member-since date
 
 Also available as a **user command**: right-click a member → **Apps** → **GeoGuessr Profile**.
 
+### `/user-info gg-ranked`
+Shows a GeoGuessr ranked-stats card for a Discord user — division, current and peak rating per game mode (overall / move / no-move / NMPZ), win streak, guessed-first rate, a visualization of their recent games (🟩 won / 🟥 lost), and their best and worst countries by flag.
+
+**Parameters:**
+- `user` *(required)* — pick a member of the server.
+
+Also available as a **user command**: right-click a member → **Apps** → **GeoGuessr Ranked Stats**.
+
 ### `/user-info discord-user`
 The reverse lookup: give it a GeoGuessr nickname and it tells you which Discord user that is.
 
