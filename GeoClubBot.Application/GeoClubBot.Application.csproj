@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <RootNamespace>UseCases</RootNamespace>
         <LangVersion>14</LangVersion>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>
