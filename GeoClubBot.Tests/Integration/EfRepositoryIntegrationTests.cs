@@ -197,4 +197,49 @@ public sealed class EfRepositoryIntegrationTests(PostgresFixture fixture)
 
         result.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task ReadLatestFetchedMissionsAsync_ReturnsOnlyNewestBatchInInsertionOrder()
+    {
+        // The table is append-only and not namespaced; use UtcNow-relative timestamps so this
+        // run's newest batch is the global maximum (earlier runs have strictly smaller timestamps).
+        var newest = DateTimeOffset.UtcNow;
+        var older = newest.AddDays(-1);
+
+        var newBatchIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(CreateMission(Guid.NewGuid(), older));
+            seed.Add(CreateMission(Guid.NewGuid(), older));
+
+            foreach (var missionId in newBatchIds)
+            {
+                seed.Add(CreateMission(missionId, newest));
+            }
+
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var repo = new EfDailyMissionRepository(read);
+
+        var latest = await repo.ReadLatestFetchedMissionsAsync(CancellationToken.None);
+
+        latest.Should().HaveCount(3, "only the newest fetch batch is returned");
+        latest.Select(m => m.MissionId).Should().Equal(newBatchIds, "rows are ordered by ascending Id (insertion order)");
+    }
+
+    private static DailyMission CreateMission(Guid missionId, DateTimeOffset fetchedAt) =>
+        DailyMission.Create(
+            missionId,
+            type: "PlayGames",
+            gameMode: "Classic",
+            currentProgress: 0,
+            targetProgress: 1,
+            completed: false,
+            endDate: DateTimeOffset.UtcNow.AddDays(1),
+            rewardAmount: 20,
+            rewardType: "Xp",
+            fetchedAtUtc: fetchedAt);
 }
