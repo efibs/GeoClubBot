@@ -25,10 +25,11 @@ public sealed class DiscordLogEmbedFormatter
         var title = Truncate($"{LevelEmoji(entry.Level)} {entry.Level} · {ShortCategory(entry.Category)}",
             MaxTitleLength);
 
-        var description = Truncate(entry.Message, MaxDescriptionLength);
+        // Redact before truncating so the scrubbed (not raw) text is what gets length-limited.
+        var description = Truncate(LogRedactor.Redact(entry.Message), MaxDescriptionLength);
         if (entry.ExceptionLine is not null)
         {
-            description = $"{description}\n{entry.ExceptionLine}";
+            description = $"{description}\n{LogRedactor.Redact(entry.ExceptionLine)}";
         }
 
         return new EmbedBuilder()

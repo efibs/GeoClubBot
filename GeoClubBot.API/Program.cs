@@ -160,6 +160,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    // HSTS is intentionally off in Development so it can't poison localhost over plain HTTP.
+    app.UseHsts();
+}
 
 // If the db migrations should be applied
 if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
@@ -171,6 +176,17 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 }
 
 app.UseExceptionHandler();
+
+// Baseline security response headers on every response.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "no-referrer";
+    await next().ConfigureAwait(false);
+});
+
 app.UseHttpsRedirection();
 app.UseCors(ConfiguredCorsPolicy);
 
