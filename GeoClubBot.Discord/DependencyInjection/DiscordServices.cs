@@ -1,8 +1,10 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using GeoClubBot.Discord.Logging;
 using GeoClubBot.Discord.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace GeoClubBot.Discord.DependencyInjection;
 
@@ -33,5 +35,13 @@ public static class DiscordServices
         services.AddHostedService<UpdateSelfRolesMessageService>();
         services.AddSingleton(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()));
         services.AddActivatedSingleton<InteractionHandler>();
+
+        // Optional Discord channel log sink. The provider plugs into the logging pipeline; the
+        // hosted processor drains the queue and delivers embeds. Both are no-ops while the sink is
+        // disabled (no ChannelId configured), so they are safe to register unconditionally.
+        services.AddSingleton<DiscordChannelLogQueue>();
+        services.AddSingleton<DiscordLogEmbedFormatter>();
+        services.AddSingleton<ILoggerProvider, DiscordChannelLoggerProvider>();
+        services.AddHostedService<DiscordChannelLogProcessor>();
     }
 }
