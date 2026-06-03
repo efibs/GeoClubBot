@@ -18,7 +18,7 @@ public class DailyMissionReminderModule(
     public Task SetReminderAsync(
         [Summary(description: "Time in HH:mm format (e.g. 09:00)")] string time,
         [Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
-        [Summary(description: "Custom reminder message")] string? message = null) =>
+        [Summary(description: "Custom reminder message. Use {{mission_text}} to insert today's mission.")] string? message = null) =>
         ExecuteAsync(
             async ct =>
             {

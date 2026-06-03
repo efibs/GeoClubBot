@@ -109,7 +109,14 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
             await seed.SaveChangesAsync();
         }
 
-        using var host = CreateHost();
+        // DefaultMessage is [Required] in production; supply it so the handler can build the DM text.
+        using var host = new MediatorTestHost(
+            fixture.ConnectionString,
+            configurationValues: new Dictionary<string, string?>
+            {
+                ["DailyMissionReminder:Schedule"] = "0 * * ? * * *",
+                ["DailyMissionReminder:DefaultMessage"] = "Don't forget your daily mission! {{mission_text}}"
+            });
         // Discord reports "no mutual guild" → the user has left the server.
         host.Mock<IDiscordDirectMessageAccess>()
             .SendDirectMessageAsync(discordId, Arg.Any<string>(), Arg.Any<CancellationToken>())

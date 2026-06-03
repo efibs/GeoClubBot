@@ -51,7 +51,7 @@ Starts the linking process for your account.
 ---
 
 ## ⏰ Feature: Daily Mission Reminder
-Reminds you (via DM) every day to do your GeoGuessr daily mission, at a time you choose. The reminder is sent as a direct message from the bot.
+Reminds you (via DM) every day to do your GeoGuessr daily mission, at a time you choose. The reminder is sent as a direct message from the bot. By default the reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do.
 
 ### `/daily-reminder set`
 Sets up (or updates) your reminder.
@@ -59,7 +59,29 @@ Sets up (or updates) your reminder.
 **Parameters:**
 - `time` *(required)* — the time you want to be reminded, in 24-hour `HH:mm` format. Example: `09:00`, `21:30`.
 - `timezone` *(optional)* — an IANA timezone ID, e.g. `Europe/Berlin`, `America/New_York`, `Asia/Tokyo`. If you leave it blank, the bot uses **UTC**.
-- `message` *(optional)* — a custom reminder message. If left blank, the bot uses a default message.
+- `message` *(optional)* — your own reminder message. If you leave it blank, the bot uses its default message, which already includes today's missions.
+
+**Showing the missions in your own message**
+If you write your own message, you can choose **where** the list of today's missions appears. Just type `{{mission_text}}` (copy it exactly, with the double curly braces) at the spot where you want the missions to show up. When the reminder is sent, the bot replaces `{{mission_text}}` with the real missions for that day.
+
+- ✅ If you include `{{mission_text}}`, the missions appear right there.
+- ⚠️ If you **don't** include `{{mission_text}}` in your custom message, the missions won't be shown — only your text will be sent.
+
+**Example** — you set this custom message:
+
+```
+Time for GeoGuessr! 🌍
+{{mission_text}}
+Good luck!
+```
+
+The DM you actually receive looks like this:
+
+```
+Time for GeoGuessr! 🌍
+Play the Daily Challenge
+Good luck!
+```
 
 ### `/daily-reminder stop`
 Turns off your daily reminder. No parameters.

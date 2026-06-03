@@ -1,10 +1,12 @@
 using Configuration;
+using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.Rendering;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;
@@ -19,6 +21,8 @@ public sealed partial class SendDueRemindersHandler(
     IDiscordDirectMessageAccess directMessageAccess,
     ISender mediator,
     IGeoGuessrActivityReader activityReader,
+    IDailyMissionRepository dailyMissions,
+    IDailyMissionRenderer renderer,
     IOptions<DailyMissionReminderConfiguration> config,
     ILogger<SendDueRemindersHandler> logger) : IRequestHandler<SendDueRemindersCommand, Unit>
 {
@@ -42,6 +46,10 @@ public sealed partial class SendDueRemindersHandler(
         var defaultMessage = config.Value.DefaultMessage;
         var dailyMissionXpReward = config.Value.DailyMissionXpReward;
 
+        // Today's mission text is the same for everyone, so render it once on demand and reuse it.
+        // Left null until the first reminder that will actually be sent, so an all-skipped run does no DB query.
+        string? missionText = null;
+
         foreach (var reminder in dueReminders)
         {
             var alreadyDone = await HasUserCompletedDailyMissionTodayAsync(reminder.DiscordUserId, dailyMissionXpReward, cancellationToken)
@@ -54,9 +62,20 @@ public sealed partial class SendDueRemindersHandler(
                 continue;
             }
 
-            var message = string.IsNullOrWhiteSpace(reminder.CustomMessage)
+            missionText ??= await BuildMissionTextAsync(cancellationToken).ConfigureAwait(false);
+
+            var template = string.IsNullOrWhiteSpace(reminder.CustomMessage)
                 ? defaultMessage
                 : reminder.CustomMessage;
+
+            var message = template.Replace("{{mission_text}}", missionText).Trim();
+
+            // A custom message that is only the placeholder collapses to empty when no missions are
+            // stored; Discord rejects empty messages, so fall back to the default in that edge case.
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                message = defaultMessage.Replace("{{mission_text}}", missionText).Trim();
+            }
 
             var dmResult = await directMessageAccess
                 .SendDirectMessageAsync(reminder.DiscordUserId, message, cancellationToken)
@@ -116,6 +135,27 @@ public sealed partial class SendDueRemindersHandler(
 
         return todaysActivities.Any(a => a.UserId == linkedUser.Value.UserId && a.XpReward == dailyMissionXpReward);
     }
+
+    private async Task<string> BuildMissionTextAsync(CancellationToken cancellationToken)
+    {
+        var missions = await dailyMissions.ReadLatestFetchedMissionsAsync(cancellationToken).ConfigureAwait(false);
+        return string.Join("\n", missions.Select(m => renderer.RenderMission(ToDto(m))));
+    }
+
+    private static DailyMissionDto ToDto(DailyMission mission) => new()
+    {
+        Id = mission.MissionId,
+        Type = mission.Type,
+        GameMode = mission.GameMode,
+        CurrentProgress = mission.CurrentProgress,
+        TargetProgress = mission.TargetProgress,
+        Completed = mission.Completed,
+        EndDate = mission.EndDate,
+        RewardAmount = mission.RewardAmount,
+        RewardType = mission.RewardType,
+        MapSlug = mission.MapSlug,
+        MapName = mission.MapName
+    };
 
     [LoggerMessage(LogLevel.Information, "Sending {Count} daily mission reminders.")]
     partial void LogSendingReminders(int count);
