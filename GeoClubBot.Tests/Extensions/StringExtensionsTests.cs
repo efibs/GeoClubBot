@@ -65,4 +65,25 @@ public sealed class StringExtensionsTests
         result.Should().OnlyContain(chunk => chunk.Length <= 6);
         string.Join("::", result).Replace("::", "").Should().Be("abbccc");
     }
+
+    [Theory]
+    [InlineData("DE", "🇩🇪")]
+    [InlineData("us", "🇺🇸")]
+    [InlineData(" fr ", "🇫🇷")]
+    public void ToFlagEmoji_ValidCountryCode_ReturnsRegionalIndicatorPair(string code, string expected)
+    {
+        code.ToFlagEmoji().Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("D")]
+    [InlineData("DEU")]
+    [InlineData("D1")]
+    public void ToFlagEmoji_InvalidInput_ReturnsEmptyString(string? code)
+    {
+        code.ToFlagEmoji().Should().BeEmpty();
+    }
 }
