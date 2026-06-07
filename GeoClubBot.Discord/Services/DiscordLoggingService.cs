@@ -36,6 +36,16 @@ public partial class DiscordLoggingService
     {
         var logger = _loggerFactory.CreateLogger(message.Source);
 
+        // Discord periodically asks clients to reconnect for load-balancing/maintenance.
+        // The library reconnects automatically, so this is routine rather than a real
+        // problem. It surfaces as a warning carrying a GatewayReconnectException; downgrade
+        // it to information to avoid noisy periodic warnings.
+        if (message.Exception is GatewayReconnectException)
+        {
+            LogDiscordInfo(logger, message.Exception, message.Message);
+            return Task.CompletedTask;
+        }
+
         switch (message.Severity)
         {
             case LogSeverity.Critical:
@@ -69,7 +79,20 @@ public partial class DiscordLoggingService
 
     private Task OnDisconnectedAsync(Exception ex)
     {
-        LogDisconnectedFromGateway(_loggerFactory.CreateLogger("Connection"), ex);
+        var logger = _loggerFactory.CreateLogger("Connection");
+
+        // A server-requested reconnect is expected and handled automatically by the
+        // library, so log it as information. Other disconnects may indicate a real
+        // problem and stay at warning.
+        if (ex is GatewayReconnectException)
+        {
+            LogGatewayRequestedReconnect(logger);
+        }
+        else
+        {
+            LogDisconnectedFromGateway(logger, ex);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -83,6 +106,9 @@ public partial class DiscordLoggingService
 
     [LoggerMessage(LogLevel.Warning, "Disconnected from the Discord Gateway.")]
     static partial void LogDisconnectedFromGateway(ILogger logger, Exception ex);
+
+    [LoggerMessage(LogLevel.Information, "Disconnected from the Discord Gateway: server requested a reconnect.")]
+    static partial void LogGatewayRequestedReconnect(ILogger logger);
 
     // The Discord library emits arbitrary message text at runtime; we forward it as a
     // structured "{Message}" property so the placeholder name is stable.

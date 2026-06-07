@@ -51,7 +51,7 @@ Starts the linking process for your account.
 ---
 
 ## ⏰ Feature: Daily Mission Reminder
-Reminds you (via DM) every day to do your GeoGuessr daily mission, at a time you choose. The reminder is sent as a direct message from the bot.
+Reminds you (via DM) every day to do your GeoGuessr daily mission, at a time you choose. The reminder is sent as a direct message from the bot. By default the reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do.
 
 ### `/daily-reminder set`
 Sets up (or updates) your reminder.
@@ -59,7 +59,29 @@ Sets up (or updates) your reminder.
 **Parameters:**
 - `time` *(required)* — the time you want to be reminded, in 24-hour `HH:mm` format. Example: `09:00`, `21:30`.
 - `timezone` *(optional)* — an IANA timezone ID, e.g. `Europe/Berlin`, `America/New_York`, `Asia/Tokyo`. If you leave it blank, the bot uses **UTC**.
-- `message` *(optional)* — a custom reminder message. If left blank, the bot uses a default message.
+- `message` *(optional)* — your own reminder message. If you leave it blank, the bot uses its default message, which already includes today's missions.
+
+**Showing the missions in your own message**
+If you write your own message, you can choose **where** the list of today's missions appears. Just type `{{mission_text}}` (copy it exactly, with the double curly braces) at the spot where you want the missions to show up. When the reminder is sent, the bot replaces `{{mission_text}}` with the real missions for that day.
+
+- ✅ If you include `{{mission_text}}`, the missions appear right there.
+- ⚠️ If you **don't** include `{{mission_text}}` in your custom message, the missions won't be shown — only your text will be sent.
+
+**Example** — you set this custom message:
+
+```
+Time for GeoGuessr! 🌍
+{{mission_text}}
+Good luck!
+```
+
+The DM you actually receive looks like this:
+
+```
+Time for GeoGuessr! 🌍
+Play the Daily Challenge
+Good luck!
+```
 
 ### `/daily-reminder stop`
 Turns off your daily reminder. No parameters.
@@ -70,12 +92,20 @@ Shows your current reminder settings: time, timezone, custom message, and when i
 ---
 
 ## 📊 Feature: Your Personal Activity
-See how you're doing in the club this week.
+See how you're doing in the club.
 
 ### `/my-activity current-week`
 Shows your daily mission progress for the current week: total XP earned, days completed, and a visual progress bar (🟩 done, ⬛ missed) for each day.
 
 No parameters. Requires your GeoGuessr account to be linked (see `/gg-account link`).
+
+### `/my-activity last-days`
+Shows your daily mission progress over the last several days — handy if you want to see a rolling window instead of just the current calendar week.
+
+**Parameters:**
+- `days` *(optional)* — how many days back to include, from `1` to `14`. Defaults to `7`.
+
+Requires your GeoGuessr account to be linked (see `/gg-account link`).
 
 ---
 
@@ -100,7 +130,7 @@ Tells you what GeoGuessr nickname a Discord user is linked to.
 **Parameters:**
 - `user` *(required)* — pick a member of the server.
 
-Also available as a **user command**: right-click a member → **Apps** → `gg-nickname`.
+Also available as a **user command**: right-click a member → **Apps** → **GeoGuessr Nickname**.
 
 ### `/user-info gg-profile`
 Shows a full GeoGuessr profile for a Discord user — country, member-since date, account type, level, rating, status (good standing / banned / suspended / chat banned), and their club.
@@ -108,7 +138,15 @@ Shows a full GeoGuessr profile for a Discord user — country, member-since date
 **Parameters:**
 - `user` *(required)* — pick a member of the server.
 
-Also available as a **user command**: right-click a member → **Apps** → `gg-profile`.
+Also available as a **user command**: right-click a member → **Apps** → **GeoGuessr Profile**.
+
+### `/user-info gg-ranked`
+Shows a GeoGuessr ranked-stats card for a Discord user — division, current and peak rating per game mode (overall / move / no-move / NMPZ), win streak, guessed-first rate, a visualization of their recent games (🟩 won / 🟥 lost), and their best and worst countries by flag.
+
+**Parameters:**
+- `user` *(required)* — pick a member of the server.
+
+Also available as a **user command**: right-click a member → **Apps** → **GeoGuessr Ranked Stats**.
 
 ### `/user-info discord-user`
 The reverse lookup: give it a GeoGuessr nickname and it tells you which Discord user that is.
