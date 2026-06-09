@@ -21,6 +21,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     IHistoryRepository history,
     IClubRepository clubs,
     IActivityStatusMessageSender activityStatusMessageSender,
+    IActivityReportPublishGate publishGate,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
     ILogger<CheckGeoGuessrPlayerActivityHandler> logger)
@@ -65,19 +66,25 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         var club = await clubs.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
         var clubName = club?.Name ?? clubId.ToString();
 
-        await activityStatusMessageSender
-            .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement, cancellationToken)
-            .ConfigureAwait(false);
-
         var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);
         var averageXpBottomN = clubEntry.GetAverageXpBottomN(defaults);
 
-        if (averageXpTopN.HasValue || averageXpBottomN.HasValue)
+        // Clubs are checked in parallel but share one report channel. Hold the publish gate across
+        // the whole send region so all of this club's messages land contiguously, before any other
+        // club's messages start.
+        await using (await publishGate.AcquireAsync(cancellationToken).ConfigureAwait(false))
         {
-            await averageXpStep.ExecuteAsync(
-                    clubId, clubName, averageXpTopN, averageXpBottomN,
-                    clubEntry.GetAverageXpHistoryDepth(defaults), cancellationToken)
+            await activityStatusMessageSender
+                .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement, cancellationToken)
                 .ConfigureAwait(false);
+
+            if (averageXpTopN.HasValue || averageXpBottomN.HasValue)
+            {
+                await averageXpStep.ExecuteAsync(
+                        clubId, clubName, averageXpTopN, averageXpBottomN,
+                        clubEntry.GetAverageXpHistoryDepth(defaults), cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         LogPlayerActivityCheckDone(logger, clubId);
