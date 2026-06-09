@@ -53,4 +53,13 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
             .FirstOrDefaultAsync(c => c.Name == clubName, cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public async Task<IReadOnlyList<Club>> ReadAllClubsAsync(CancellationToken cancellationToken = default)
+    {
+        return await dbContext.Clubs
+            .AsNoTracking()
+            .OrderBy(c => c.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 }

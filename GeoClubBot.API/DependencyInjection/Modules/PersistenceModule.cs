@@ -29,6 +29,7 @@ public static class PersistenceModule
         services.AddTransient<IClubChallengeRepository, EfClubChallengeRepository>();
         services.AddTransient<IDailyMissionReminderRepository, EfDailyMissionReminderRepository>();
         services.AddTransient<IDailyMissionRepository, EfDailyMissionRepository>();
+        services.AddTransient<IDailyMissionCompletionRepository, EfDailyMissionCompletionRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
 
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

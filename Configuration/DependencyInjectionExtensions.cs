@@ -42,6 +42,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<DailyMissionStatisticsConfiguration>()
+            .Bind(config.GetSection(DailyMissionStatisticsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<GeoGuessrConfiguration>()
             .Bind(config.GetSection(GeoGuessrConfiguration.SectionName))
             .ValidateDataAnnotations()

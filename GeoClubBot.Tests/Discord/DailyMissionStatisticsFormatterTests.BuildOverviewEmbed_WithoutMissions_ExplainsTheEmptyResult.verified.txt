@@ -1,0 +1,12 @@
+﻿Title: 📊 Daily Mission Statistics
+Description:
+**Range:** 2026-05-11 – 2026-06-09
+**Club:** My Club
+**Days with data:** 0
+**Avg club completion:** —
+
+No daily missions were logged in this period.
+
+
+
+Footer: Appeared = share of days with data · Done = avg club completion when present
