@@ -1,0 +1,18 @@
+﻿Title: 📊 Daily Mission Statistics
+Description:
+**Range:** 2026-05-11 – 2026-06-09
+**Club:** All clubs
+**Days with data:** 28
+**Avg club completion:** 62%
+
+```
+Mission                 │   # │ Appeared │ Avg cnt │ Done │ Last seen
+──────────────────────────────────────────────────────────────────────
+Win Duels               │  12 │      43% │       3 │  71% │ 2026-06-08
+Score points in Classic │   9 │      32% │  21,667 │  55% │ 2026-06-09
+Play Daily Challenge    │   7 │      25% │       1 │    — │ 2026-05-30
+```
+
+
+
+Footer: Appeared = share of days with data · Done = avg club completion when present

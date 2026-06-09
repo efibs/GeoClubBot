@@ -1,0 +1,12 @@
+﻿Title: 📊 Score points in Classic
+Description:
+**Range:** 2026-05-11 – 2026-06-09
+**Club:** All clubs
+
+[🔢 Appearances] 3
+[📆 Appeared on] 11% of days
+[🕐 Last appearance] 2026-06-01 (<t:1780272000:R>)
+[🎯 Avg target count] 15,000
+[✅ Club completion] —
+
+Footer: Completion = avg share of members completing the missions on days this mission appeared

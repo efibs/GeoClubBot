@@ -32,4 +32,34 @@ public class EfDailyMissionRepository(GeoClubBotDbContext dbContext) : IDailyMis
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public async Task<IReadOnlyList<DailyMission>> ReadMissionsFetchedBetweenAsync(
+        DateTimeOffset fromUtc,
+        DateTimeOffset toUtc,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.DailyMissions
+            .AsNoTracking()
+            .Where(m => m.FetchedAtUtc >= fromUtc && m.FetchedAtUtc < toUtc)
+            .OrderBy(m => m.FetchedAtUtc)
+            .ThenBy(m => m.Id)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<DailyMissionKind>> ReadDistinctMissionKindsAsync(CancellationToken cancellationToken)
+    {
+        // Distinct over a constructor-projected record does not translate to SQL,
+        // so project to an anonymous type first and map afterwards.
+        var kinds = await dbContext.DailyMissions
+            .AsNoTracking()
+            .Select(m => new { m.Type, m.GameMode })
+            .Distinct()
+            .OrderBy(k => k.Type)
+            .ThenBy(k => k.GameMode)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return kinds.Select(k => new DailyMissionKind(k.Type, k.GameMode)).ToList();
+    }
 }

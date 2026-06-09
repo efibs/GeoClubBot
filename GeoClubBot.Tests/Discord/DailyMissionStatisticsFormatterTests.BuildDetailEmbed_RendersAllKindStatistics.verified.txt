@@ -1,0 +1,12 @@
+﻿Title: 📊 Win Team Duels
+Description:
+**Range:** 2026-05-11 – 2026-06-09
+**Club:** My Club
+
+[🔢 Appearances] 6
+[📆 Appeared on] 21% of days
+[🕐 Last appearance] 2026-06-07 (<t:1780790400:R>)
+[🎯 Avg target count] 4 (between 2 and 5)
+[✅ Club completion] 43%
+
+Footer: Completion = avg share of members completing the missions on days this mission appeared

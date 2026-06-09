@@ -64,6 +64,13 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
         return club;
     }
 
+    public Task<IReadOnlyList<Club>> ReadAllClubsAsync(CancellationToken cancellationToken = default)
+    {
+        // Only used for autocomplete over a handful of clubs; not worth caching
+        // (a list entry would also need invalidation on every club mutation).
+        return inner.ReadAllClubsAsync(cancellationToken);
+    }
+
     private void InvalidateCacheFor(Club club)
     {
         cache.Remove(ByIdKey(club.ClubId));
