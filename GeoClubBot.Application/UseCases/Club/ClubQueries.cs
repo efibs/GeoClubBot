@@ -13,12 +13,15 @@ public sealed record GetClubTodaysXpQuery(string? ClubName, bool IncludeWeeklies
 
 public sealed record GetClubTodaysXpResult(int? Xp, string? ClubName);
 
+public sealed record GetAllClubsQuery : IQuery<IReadOnlyList<Entities.Club>>;
+
 public sealed class ClubQueriesHandler(
     IClubRepository clubs,
     IGeoGuessrActivityReader activityReader,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
     : IRequestHandler<GetClubByNameOrDefaultQuery, Entities.Club?>,
-      IRequestHandler<GetClubTodaysXpQuery, GetClubTodaysXpResult>
+      IRequestHandler<GetClubTodaysXpQuery, GetClubTodaysXpResult>,
+      IRequestHandler<GetAllClubsQuery, IReadOnlyList<Entities.Club>>
 {
     private readonly Guid _defaultClubId = geoGuessrConfig.Value.MainClub.ClubId;
 
@@ -61,4 +64,7 @@ public sealed class ClubQueriesHandler(
 
         return new GetClubTodaysXpResult(xp, club.Name);
     }
+
+    public Task<IReadOnlyList<Entities.Club>> Handle(GetAllClubsQuery request, CancellationToken cancellationToken) =>
+        clubs.ReadAllClubsAsync(cancellationToken);
 }

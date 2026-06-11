@@ -121,6 +121,23 @@ Shows how much XP a club has earned today.
 
 ---
 
+## 📈 Feature: Daily Mission Statistics
+Curious which daily missions show up the most, how big they usually are, or how often the club actually finishes them? This command crunches the bot's daily mission history for you.
+
+### `/daily-missions stats`
+Shows an overview table with one row per mission kind (for example "Win Duels" or "Score points in Classic"): how often it appeared, on what share of days, the average target count (e.g. how many duels you have to play), the club's average completion rate on the days it appeared, and when it was last seen.
+
+**Parameters:**
+- `days` *(optional)* — how many days back to include, from `1` to `365`. Defaults to `30`.
+- `mission` *(optional)* — pick one mission kind from the suggestions to get a detailed view of just that mission instead of the overview table.
+- `club` *(optional)* — pick a club from the suggestions to compute the completion rate for that club only. If left blank, all tracked clubs are combined.
+
+The reply is ephemeral — only you can see it, so feel free to experiment.
+
+> ℹ️ Completion rates are computed from a daily snapshot the bot started taking when this feature was released. Days before that show `—` (no data), so the completion column fills up over time.
+
+---
+
 ## 👤 Feature: User Info
 Look up information about other members and connect Discord ↔ GeoGuessr identities.
 

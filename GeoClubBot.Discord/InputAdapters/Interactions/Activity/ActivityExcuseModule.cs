@@ -1,7 +1,9 @@
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.Excuses;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -13,7 +15,8 @@ public partial class ActivityModule
         ILogger<ActivityExcuseModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
         [SlashCommand("add", "Add an excuse for a player")]
-        public async Task AddExcuseAsync(string memberNickname,
+        public async Task AddExcuseAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
             [Summary(description: "From date in format YYYY-MM-DD")]
             DateTime from,
             [Summary(description: "To date in format YYYY-MM-DD")]
@@ -50,7 +53,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("update", "Update an excuse for a player")]
-        public async Task UpdateExcuseAsync(string excuseId,
+        public async Task UpdateExcuseAsync(
+            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))] string excuseId,
             [Summary(description: "The new from date in format YYYY-MM-DD")]
             DateTime from,
             [Summary(description: "The new to date in format YYYY-MM-DD")]
@@ -92,7 +96,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("remove", "Remove an excuse for a player given its id")]
-        public async Task RemoveExcuseAsync(string excuseId)
+        public async Task RemoveExcuseAsync(
+            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))] string excuseId)
         {
             if (!Guid.TryParse(excuseId, out var excuseIdGuid))
             {
@@ -110,7 +115,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("read", "Read the excuses for a player")]
-        public async Task ReadExcusesAsync(string memberNickname)
+        public async Task ReadExcusesAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
         {
             var excuses = await Mediator.Send(new ReadExcusesQuery(memberNickname)).ConfigureAwait(false);
 
@@ -148,7 +154,10 @@ public partial class ActivityModule
         [SlashCommand("read-relevant", "Read the relevant excuses in the system")]
         public async Task ReadRelevantExcusesAsync(int upcomingExcusesNumDays = 7)
         {
-            var result = await Mediator.Send(new ReadRelevantExcusesQuery(upcomingExcusesNumDays)).ConfigureAwait(false);
+            var lastActivityCheckTime = await Mediator.Send(new GetLastCheckTimeQuery()).ConfigureAwait(false);
+            var result = await Mediator
+                .Send(new ReadRelevantExcusesQuery(upcomingExcusesNumDays, lastActivityCheckTime))
+                .ConfigureAwait(false);
 
             if (result.IsFailure)
             {
@@ -164,12 +173,15 @@ public partial class ActivityModule
             else
             {
                 var activeExcuses = excuses
-                    .Where(e => !e.IsUpcoming).ToList();
+                    .Where(e => !e.IsUpcoming && !e.IsPrevious).ToList();
                 var upcomingExcuses = excuses
                     .Where(e => e.IsUpcoming).ToList();
+                var previousExcuses = excuses
+                    .Where(e => e.IsPrevious).ToList();
 
                 var activeExcusesString = string.Join("\n", activeExcuses.Select(e => $"* {e}"));
                 var upcomingExcusesString = string.Join("\n", upcomingExcuses.Select(e => $"* {e}"));
+                var previousExcusesString = string.Join("\n", previousExcuses.Select(e => $"* {e}"));
 
                 var responseString = string.Empty;
 
@@ -184,6 +196,13 @@ public partial class ActivityModule
                     responseString += "\n\n" +
                                       "## Here are the upcoming excuses:\n" +
                                       upcomingExcusesString;
+                }
+
+                if (previousExcuses.Count > 0)
+                {
+                    responseString += "\n\n" +
+                                      "## Here are the previously active excuses:\n" +
+                                      previousExcusesString;
                 }
 
                 await RespondAsync(responseString,

@@ -66,6 +66,18 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .ConfigureAwait(false);
     }
 
+    public async Task<List<string>> ReadAllNicknamesAsync(CancellationToken cancellationToken = default)
+    {
+        // Projection-only read for autocomplete: never materializes full ClubMember graphs.
+        return await dbContext.ClubMembers
+            .AsNoTracking()
+            .Select(m => m.User.Nickname)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers

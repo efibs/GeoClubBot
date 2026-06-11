@@ -232,4 +232,52 @@ public sealed class ExcusesRepositoryIntegrationTests(PostgresFixture fixture)
         results.Should().NotContain(r => r.MemberNickname == pastNickname, "the past excuse ended before now");
         results.Should().NotContain(r => r.MemberNickname == futurNickname, "the far-future excuse starts after the threshold");
     }
+
+    [Fact]
+    public async Task ReadAllRelevantExcusesAsync_ReturnsPreviousExcuse_WhenItOverlapsWithActivityCheckInterval()
+    {
+        // An excuse that ended yesterday but started after the last activity check is still
+        // relevant because it reduced the member's individual XP target for the interval.
+        var lastActivityCheckTime = DateTimeOffset.UtcNow.AddDays(-7);
+        var (nickname, _) = await SeedExcuseAsync(
+            DateTimeOffset.UtcNow.AddDays(-5), DateTimeOffset.UtcNow.AddDays(-1));
+
+        await using var read = fixture.CreateDbContext();
+        var results = await new EfExcusesRepository(read)
+            .ReadAllRelevantExcusesAsync(7, lastActivityCheckTime);
+
+        var match = results.SingleOrDefault(r => r.MemberNickname == nickname);
+        match.Should().NotBeNull("the excuse overlaps with the activity check interval");
+        match!.IsPrevious.Should().BeTrue();
+        match.IsUpcoming.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReadAllRelevantExcusesAsync_ExcludesPreviousExcuse_WhenItPredatesLastActivityCheck()
+    {
+        // An excuse that ended before the last activity check is irrelevant.
+        var lastActivityCheckTime = DateTimeOffset.UtcNow.AddDays(-3);
+        var (nickname, _) = await SeedExcuseAsync(
+            DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddDays(-5));
+
+        await using var read = fixture.CreateDbContext();
+        var results = await new EfExcusesRepository(read)
+            .ReadAllRelevantExcusesAsync(7, lastActivityCheckTime);
+
+        results.Should().NotContain(r => r.MemberNickname == nickname,
+            "the excuse ended before the last activity check");
+    }
+
+    [Fact]
+    public async Task ReadAllRelevantExcusesAsync_ExcludesPastExcuse_WhenNoLastActivityCheckTimeProvided()
+    {
+        var (nickname, _) = await SeedExcuseAsync(
+            DateTimeOffset.UtcNow.AddDays(-5), DateTimeOffset.UtcNow.AddDays(-1));
+
+        await using var read = fixture.CreateDbContext();
+        var results = await new EfExcusesRepository(read).ReadAllRelevantExcusesAsync(7);
+
+        results.Should().NotContain(r => r.MemberNickname == nickname,
+            "no last activity check time was provided, so previously active excuses are not shown");
+    }
 }

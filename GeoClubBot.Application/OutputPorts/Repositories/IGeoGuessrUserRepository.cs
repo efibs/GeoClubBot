@@ -15,4 +15,6 @@ public interface IGeoGuessrUserRepository
     Task<GeoGuessrUser?> ReadForUpdateByDiscordUserIdAsync(ulong discordUserId, CancellationToken cancellationToken = default);
 
     Task<List<GeoGuessrUser>> ReadAllLinkedUsersAsync(CancellationToken cancellationToken = default);
+
+    Task<List<string>> ReadAllLinkedNicknamesAsync(CancellationToken cancellationToken = default);
 }

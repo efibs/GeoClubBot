@@ -13,4 +13,6 @@ public interface IClubRepository
     Task<Club?> ReadForUpdateByIdAsync(Guid clubId, CancellationToken cancellationToken = default);
 
     Task<Club?> ReadClubByNameAsync(string clubName, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Club>> ReadAllClubsAsync(CancellationToken cancellationToken = default);
 }

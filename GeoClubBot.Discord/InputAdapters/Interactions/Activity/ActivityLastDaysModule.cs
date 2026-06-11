@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,7 @@ public partial class ActivityModule
     {
         [SlashCommand("by-nickname", "Show a member's activity over the last N days by GeoGuessr nickname")]
         public Task LastDaysByNicknameAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))]
             [Summary(description: "The GeoGuessr nickname of the member")] string nickname,
             [Summary(description: "How many days back to include (1-14, default 7)")]
             [MinValue(1)] [MaxValue(14)] int days = 7) =>

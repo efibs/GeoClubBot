@@ -229,6 +229,36 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("DailyMissions");
                 });
 
+            modelBuilder.Entity("Entities.DailyMissionMemberCompletion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CompletedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "Date", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("DailyMissionMemberCompletions");
+                });
+
             modelBuilder.Entity("Entities.DailyMissionReminder", b =>
                 {
                     b.Property<decimal>("DiscordUserId")

@@ -75,6 +75,7 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
     }
 
     public async Task<List<ClubMemberRelevantExcuse>> ReadAllRelevantExcusesAsync(int upcomingExcusesNumDays,
+        DateTimeOffset? lastActivityCheckTime = null,
         CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
@@ -82,21 +83,25 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
 
         // Project to an anonymous type so EF Core can translate the navigation JOIN to SQL.
         // TimeRange construction happens client-side after the data is fetched.
+        // "Previous" excuses have already ended but overlapped with the current activity-check
+        // interval [lastActivityCheckTime, now], so they still affect individual XP targets.
         var rows = await dbContext.ClubMemberExcuses
             .AsNoTracking()
-            .Where(e => e.To >= now && e.From <= upcomingThreshold)
+            .Where(e => (e.To >= now && e.From <= upcomingThreshold)
+                        || (lastActivityCheckTime.HasValue && e.To < now && e.To >= lastActivityCheckTime.Value))
             .Select(e => new
             {
                 Nickname = e.ClubMember!.User.Nickname,
                 e.From,
                 e.To,
-                IsUpcoming = e.From > now
+                IsUpcoming = e.From > now,
+                IsPrevious = e.To < now
             })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         return rows
-            .Select(r => new ClubMemberRelevantExcuse(r.Nickname, new TimeRange(r.From, r.To), r.IsUpcoming))
+            .Select(r => new ClubMemberRelevantExcuse(r.Nickname, new TimeRange(r.From, r.To), r.IsUpcoming, r.IsPrevious))
             .ToList();
     }
 }

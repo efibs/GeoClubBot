@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -36,11 +37,12 @@ public partial class DiscordLoggingService
     {
         var logger = _loggerFactory.CreateLogger(message.Source);
 
-        // Discord periodically asks clients to reconnect for load-balancing/maintenance.
+        // Discord periodically recycles gateway connections for load-balancing/maintenance.
         // The library reconnects automatically, so this is routine rather than a real
-        // problem. It surfaces as a warning carrying a GatewayReconnectException; downgrade
-        // it to information to avoid noisy periodic warnings.
-        if (message.Exception is GatewayReconnectException)
+        // problem. It surfaces as a warning carrying a GatewayReconnectException or a
+        // WebSocketException (Discord often drops the socket without a clean close
+        // handshake); downgrade it to information to avoid noisy periodic warnings.
+        if (IsExpectedGatewayDisconnect(message.Exception))
         {
             LogDiscordInfo(logger, message.Exception, message.Message);
             return Task.CompletedTask;
@@ -81,10 +83,10 @@ public partial class DiscordLoggingService
     {
         var logger = _loggerFactory.CreateLogger("Connection");
 
-        // A server-requested reconnect is expected and handled automatically by the
-        // library, so log it as information. Other disconnects may indicate a real
-        // problem and stay at warning.
-        if (ex is GatewayReconnectException)
+        // A server-requested reconnect or a socket the remote closed without a clean
+        // handshake is expected and handled automatically by the library, so log it as
+        // information. Other disconnects may indicate a real problem and stay at warning.
+        if (IsExpectedGatewayDisconnect(ex))
         {
             LogGatewayRequestedReconnect(logger);
         }
@@ -94,6 +96,27 @@ public partial class DiscordLoggingService
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Determines whether an exception represents a routine gateway disconnect that the
+    /// library recovers from automatically. Discord recycles connections regularly: it may
+    /// send a <see cref="GatewayReconnectException"/>, or simply drop the WebSocket without
+    /// completing the close handshake, which surfaces as a <see cref="WebSocketException"/>.
+    /// </summary>
+    private static bool IsExpectedGatewayDisconnect(Exception? exception)
+    {
+        // Walk the exception chain because the socket failure can be nested inside an
+        // outer WebSocketException (e.g. "WebSocket connection was closed").
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is GatewayReconnectException or WebSocketException)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private readonly ILoggerFactory _loggerFactory;

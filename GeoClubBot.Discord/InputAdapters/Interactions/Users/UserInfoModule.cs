@@ -2,6 +2,7 @@ using System.Globalization;
 using Discord;
 using Discord.Interactions;
 using Extensions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -113,7 +114,8 @@ public class UserInfoModule(
             failureMessage: "Reading the GeoGuessr ranked statistics failed. Try again later. If the problem persists, please contact an admin.");
 
     [SlashCommand("discord-user", "Get the Discord user for a GeoGuessr nickname")]
-    public Task GetDiscordUserAsync(string nickname) =>
+    public Task GetDiscordUserAsync(
+        [Autocomplete(typeof(LinkedUserNicknameAutocompleteHandler))] string nickname) =>
         ExecuteAsync(
             async ct =>
             {

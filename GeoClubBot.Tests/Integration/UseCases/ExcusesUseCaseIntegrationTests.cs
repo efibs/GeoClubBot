@@ -212,7 +212,7 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
         var result = await host.SendAsync(new ReadRelevantExcusesQuery(7));
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Contain(r => r.MemberNickname == nickname && !r.IsUpcoming);
+        result.Value.Should().Contain(r => r.MemberNickname == nickname && !r.IsUpcoming && !r.IsPrevious);
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task ReadRelevantExcuses_DoesNotReturnPastExcuse()
+    public async Task ReadRelevantExcuses_DoesNotReturnPastExcuse_WhenNoLastActivityCheckTimeProvided()
     {
         var (nickname, _) = await SeedMemberWithExcuseAsync(
             DateTimeOffset.UtcNow.AddDays(-5), DateTimeOffset.UtcNow.AddDays(-1));
@@ -239,7 +239,22 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().NotContain(r => r.MemberNickname == nickname,
-            "the excuse ended before now");
+            "no last activity check time was provided, so previously active excuses are not shown");
+    }
+
+    [Fact]
+    public async Task ReadRelevantExcuses_ReturnsPreviousExcuse_WhenItOverlapsWithActivityCheckInterval()
+    {
+        var lastActivityCheckTime = DateTimeOffset.UtcNow.AddDays(-7);
+        var (nickname, _) = await SeedMemberWithExcuseAsync(
+            DateTimeOffset.UtcNow.AddDays(-5), DateTimeOffset.UtcNow.AddDays(-1));
+
+        using var host = CreateHost();
+        var result = await host.SendAsync(new ReadRelevantExcusesQuery(7, lastActivityCheckTime));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Contain(r => r.MemberNickname == nickname && r.IsPrevious,
+            "the excuse overlaps with the activity check interval and reduced the member's XP target");
     }
 
     [Fact]
