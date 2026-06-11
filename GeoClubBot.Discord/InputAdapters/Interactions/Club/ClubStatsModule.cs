@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -15,7 +16,7 @@ public class ClubStatsModule(
 {
     [SlashCommand("todays-xp", "Get how much XP a club has achieved today so far")]
     public Task GetTodaysXpAsync(
-        [Summary(description: "[optional] The clubs name")] string? clubName = null,
+        [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null,
         [Summary(description: "[optional] include weeklies")] bool includeWeeklies = false) =>
         ExecuteAsync(
             async ct =>

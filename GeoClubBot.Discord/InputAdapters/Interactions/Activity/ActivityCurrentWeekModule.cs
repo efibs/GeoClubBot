@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,7 @@ public partial class ActivityModule
     {
         [SlashCommand("by-nickname", "Show a member's current week activity by GeoGuessr nickname")]
         public Task CurrentWeekByNicknameAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))]
             [Summary(description: "The GeoGuessr nickname of the member")] string nickname) =>
             ExecuteAsync(
                 async ct =>

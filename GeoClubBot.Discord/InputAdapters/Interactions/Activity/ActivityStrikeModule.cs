@@ -1,5 +1,6 @@
 using Configuration;
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -18,7 +19,8 @@ public partial class ActivityModule
         private readonly TimeSpan _strikeDecayTimeSpan = activityCheckerOptions.Value.StrikeDecayTimeSpan;
 
         [SlashCommand("add", "Create a new strike for a player")]
-        public async Task CreateStrikeAsync(string memberNickname,
+        public async Task CreateStrikeAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
             [Summary(description: "Strike date in format YYYY-MM-DD")]
             DateTime strikeDate)
         {
@@ -43,7 +45,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("read", "Read the strikes a player currently has")]
-        public async Task ReadStrikesAsync(string memberNickname)
+        public async Task ReadStrikesAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
         {
             var result = await Mediator
                 .Send(new ReadMemberStrikesQuery(memberNickname))
@@ -155,7 +158,8 @@ public partial class ActivityModule
                 failureMessage: "Reading relevant strikes failed: Internal error. Try again later. If the problem persists, please contact an admin.");
 
         [SlashCommand("revoke", "Revoke a strike")]
-        public async Task RevokeStrikeAsync(string strikeId)
+        public async Task RevokeStrikeAsync(
+            [Autocomplete(typeof(StrikeIdAutocompleteHandler))] string strikeId)
         {
             if (!Guid.TryParse(strikeId, out var strikeIdGuid))
             {
@@ -180,7 +184,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("unrevoke", "Remove a revocation of a strike")]
-        public async Task UnrevokeStrikeAsync(string strikeId)
+        public async Task UnrevokeStrikeAsync(
+            [Autocomplete(typeof(StrikeIdAutocompleteHandler))] string strikeId)
         {
             if (!Guid.TryParse(strikeId, out var strikeIdGuid))
             {

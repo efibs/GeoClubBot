@@ -16,6 +16,8 @@ public interface IClubMemberRepository
 
     Task<List<ClubMember>> ReadClubMembersAsync(CancellationToken cancellationToken = default);
 
+    Task<List<string>> ReadAllNicknamesAsync(CancellationToken cancellationToken = default);
+
     Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
 
     Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync(CancellationToken cancellationToken = default);
