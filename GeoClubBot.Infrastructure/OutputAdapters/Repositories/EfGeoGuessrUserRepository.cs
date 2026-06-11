@@ -50,4 +50,17 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public async Task<List<string>> ReadAllLinkedNicknamesAsync(CancellationToken cancellationToken = default)
+    {
+        // Projection-only read for autocomplete: never materializes full GeoGuessrUser entities.
+        return await dbContext.GeoGuessrUsers
+            .AsNoTracking()
+            .Where(u => u.DiscordUserId.HasValue)
+            .Select(u => u.Nickname)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 }

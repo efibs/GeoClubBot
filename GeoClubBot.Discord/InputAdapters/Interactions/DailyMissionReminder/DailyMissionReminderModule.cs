@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -17,7 +18,7 @@ public class DailyMissionReminderModule(
     [SlashCommand("set", "Set a daily reminder to complete your GeoGuessr daily mission")]
     public Task SetReminderAsync(
         [Summary(description: "Time in HH:mm format (e.g. 09:00)")] string time,
-        [Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
+        [Autocomplete(typeof(TimezoneAutocompleteHandler))][Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
         [Summary(description: "Custom reminder message. Use {{mission_text}} to insert today's mission.")] string? message = null) =>
         ExecuteAsync(
             async ct =>

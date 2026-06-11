@@ -1,4 +1,5 @@
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -13,7 +14,8 @@ public partial class ActivityModule
         ILogger<ActivityExcuseModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
         [SlashCommand("add", "Add an excuse for a player")]
-        public async Task AddExcuseAsync(string memberNickname,
+        public async Task AddExcuseAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
             [Summary(description: "From date in format YYYY-MM-DD")]
             DateTime from,
             [Summary(description: "To date in format YYYY-MM-DD")]
@@ -50,7 +52,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("update", "Update an excuse for a player")]
-        public async Task UpdateExcuseAsync(string excuseId,
+        public async Task UpdateExcuseAsync(
+            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))] string excuseId,
             [Summary(description: "The new from date in format YYYY-MM-DD")]
             DateTime from,
             [Summary(description: "The new to date in format YYYY-MM-DD")]
@@ -92,7 +95,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("remove", "Remove an excuse for a player given its id")]
-        public async Task RemoveExcuseAsync(string excuseId)
+        public async Task RemoveExcuseAsync(
+            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))] string excuseId)
         {
             if (!Guid.TryParse(excuseId, out var excuseIdGuid))
             {
@@ -110,7 +114,8 @@ public partial class ActivityModule
         }
 
         [SlashCommand("read", "Read the excuses for a player")]
-        public async Task ReadExcusesAsync(string memberNickname)
+        public async Task ReadExcusesAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
         {
             var excuses = await Mediator.Send(new ReadExcusesQuery(memberNickname)).ConfigureAwait(false);
 

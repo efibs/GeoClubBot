@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Discord.Interactions;
 using Entities;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -16,7 +17,8 @@ public partial class ActivityModule
         ILogger<ActivityStatisticsModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
         [SlashCommand("player", "Read the statistics of a player")]
-        public async Task ReadPlayerStatisticsAsync(string memberNickname)
+        public async Task ReadPlayerStatisticsAsync(
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
         {
             var stats = await Mediator.Send(new PlayerStatisticsQuery(memberNickname)).ConfigureAwait(false);
 
@@ -79,9 +81,9 @@ public partial class ActivityModule
 
         [SlashCommand("player-history", "Read the history of a player")]
         public Task ReadPlayerHistoryAsync(
-            string memberNickname,
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
             [MinValue(1)][Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries,
-            [Summary(description: "[optional] The clubs name")] string? clubName = null) =>
+            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null) =>
             ExecuteAsync(
                 async ct =>
                 {
@@ -103,7 +105,7 @@ public partial class ActivityModule
 
         [SlashCommand("average-leaderboard", "Read the leaderboard of members by average club xp")]
         public Task ReadAverageLeaderboardAsync(
-            [Summary(description: "[optional] The clubs name")] string? clubName = null,
+            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null,
             [MinValue(1)][Summary(description: "[optional] The number of intervals to include in the average")] int periods = 4) =>
             ExecuteAsync(
                 async ct =>
