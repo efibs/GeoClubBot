@@ -21,5 +21,5 @@ public interface IExcusesRepository
 
     Task<int> DeleteExcusesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default);
 
-    Task<List<ClubMemberRelevantExcuse>> ReadAllRelevantExcusesAsync(int upcomingExcusesNumDays, CancellationToken cancellationToken = default);
+    Task<List<ClubMemberRelevantExcuse>> ReadAllRelevantExcusesAsync(int upcomingExcusesNumDays, DateTimeOffset? lastActivityCheckTime = null, CancellationToken cancellationToken = default);
 }

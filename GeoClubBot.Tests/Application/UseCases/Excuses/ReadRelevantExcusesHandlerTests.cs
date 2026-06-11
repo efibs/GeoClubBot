@@ -23,7 +23,7 @@ public sealed class ReadRelevantExcusesHandlerTests
             new("Player1", new TimeRange(now.AddDays(-1), now.AddDays(3)), false),
             new("Player2", new TimeRange(now.AddDays(1), now.AddDays(5)), true)
         };
-        _excuses.ReadAllRelevantExcusesAsync(7, Arg.Any<CancellationToken>()).Returns(expected);
+        _excuses.ReadAllRelevantExcusesAsync(7, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>()).Returns(expected);
 
         var result = await CreateHandler().Handle(new ReadRelevantExcusesQuery(7), CancellationToken.None);
 
@@ -34,18 +34,30 @@ public sealed class ReadRelevantExcusesHandlerTests
     [Fact]
     public async Task Handle_PassesUpcomingExcusesNumDays_ToRepository()
     {
-        _excuses.ReadAllRelevantExcusesAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+        _excuses.ReadAllRelevantExcusesAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns([]);
 
         await CreateHandler().Handle(new ReadRelevantExcusesQuery(14), CancellationToken.None);
 
-        await _excuses.Received(1).ReadAllRelevantExcusesAsync(14, Arg.Any<CancellationToken>());
+        await _excuses.Received(1).ReadAllRelevantExcusesAsync(14, null, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_PassesLastActivityCheckTime_ToRepository()
+    {
+        var lastCheckTime = DateTimeOffset.UtcNow.AddDays(-7);
+        _excuses.ReadAllRelevantExcusesAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        await CreateHandler().Handle(new ReadRelevantExcusesQuery(7, lastCheckTime), CancellationToken.None);
+
+        await _excuses.Received(1).ReadAllRelevantExcusesAsync(7, lastCheckTime, Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Handle_ReturnsEmptySuccess_WhenRepositoryReturnsNoExcuses()
     {
-        _excuses.ReadAllRelevantExcusesAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns([]);
+        _excuses.ReadAllRelevantExcusesAsync(Arg.Any<int>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>()).Returns([]);
 
         var result = await CreateHandler().Handle(new ReadRelevantExcusesQuery(7), CancellationToken.None);
 
