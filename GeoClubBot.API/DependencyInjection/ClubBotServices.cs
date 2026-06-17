@@ -13,6 +13,7 @@ public static class ClubBotServices
     {
         services.AddPersistenceModule(configuration);
         services.AddDiscordAdaptersModule();
+        services.AddDiscordActivityModule();
         services.AddGeoGuessrIntegrationModule();
         services.AddRenderingModule();
         services.AddClubMembersModule();

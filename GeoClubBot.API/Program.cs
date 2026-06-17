@@ -1,6 +1,7 @@
 using Configuration;
 using Constants;
 using FluentValidation;
+using GeoClubBot.Authentication;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
 using GeoClubBot.Discord.Services;
@@ -10,6 +11,7 @@ using GeoClubBot.MockGeoGuessr.Endpoints;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -56,6 +58,14 @@ builder.Services.AddCors(options =>
         }
     });
 });
+
+// Authenticate the Club Dashboard Activity's data endpoints by validating the Discord OAuth2
+// access token carried as a bearer token. There is no default scheme — only endpoints that opt in
+// via [Authorize(AuthenticationSchemes = DiscordActivity)] are gated.
+builder.Services.AddAuthentication()
+    .AddScheme<AuthenticationSchemeOptions, DiscordActivityAuthenticationHandler>(
+        DiscordActivityAuthenticationHandler.SchemeName, _ => { });
+builder.Services.AddAuthorization();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -189,16 +199,33 @@ app.Use(async (context, next) =>
 
 app.UseHttpsRedirection();
 app.UseCors(ConfiguredCorsPolicy);
+app.UseAuthentication();
+app.UseAuthorization();
+
+// When the Club Dashboard Activity is enabled, its built Vue assets are served from wwwroot
+// (the mock GeoGuessr UI also relies on static files).
+var serveActivity = app.Configuration.GetValue("DiscordActivity:Enabled", false);
+
+if (useMockGeoGuessr || serveActivity)
+{
+    app.UseStaticFiles();
+}
 
 if (useMockGeoGuessr)
 {
-    app.UseStaticFiles();
     app.MapMockGeoGuessrEndpoints();
 }
 
 app.MapControllers();
 app.MapHealthChecks("/health");
 app.MapHub<ClubNotificationHub>("/api/clubNotificationHub");
+
+if (serveActivity)
+{
+    // SPA fallback: any route not matched by the API, health check, SignalR hub, or a static
+    // asset returns the activity's index.html so the Vue app can boot and route client-side.
+    app.MapFallbackToFile("index.html");
+}
 
 if (useMockGeoGuessr)
 {

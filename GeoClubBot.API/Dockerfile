@@ -17,6 +17,14 @@ WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
 
+# Build the Vue activity frontend; its static assets are bundled into the API's wwwroot below.
+FROM node:22-alpine AS frontend
+WORKDIR /activity
+COPY GeoClubBot.Activity/package.json GeoClubBot.Activity/package-lock.json ./
+RUN npm ci
+COPY GeoClubBot.Activity/ ./
+RUN npm run build
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:548d93f8a18a1acbe6cc127bc4f47281430d34a9e35c18afa80a8d6741c2adc3 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
@@ -38,6 +46,8 @@ RUN dotnet build "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/build
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+# Bundle the built activity frontend so the API can serve it from wwwroot.
+COPY --from=frontend /activity/dist /app/publish/wwwroot
 
 FROM base AS final
 
