@@ -5,8 +5,13 @@ namespace GeoClubBot.DTOs.Assemblers;
 
 public static class DashboardDtoAssembler
 {
+    /// <summary>
+    /// Assembles the dashboard payload. <paramref name="club"/> is null for a viewer with no club
+    /// (unlinked or not a current member); the club-scoped panels are then empty while the
+    /// club-independent challenge panel is still populated.
+    /// </summary>
     public static DashboardDto Assemble(
-        Club club,
+        Club? club,
         string? viewerNickname,
         IReadOnlyList<ClubMemberAverageXp> leaderboard,
         IReadOnlyList<ClubChallengeResult> challenges,
@@ -29,7 +34,7 @@ public static class DashboardDtoAssembler
             .ToList();
 
         return new DashboardDto(
-            ClubDtoAssembler.AssembleDto(club),
+            club is null ? null : ClubDtoAssembler.AssembleDto(club),
             viewerNickname is null ? null : new ViewerDto(viewerNickname),
             leaderboardDtos,
             challengeDtos,

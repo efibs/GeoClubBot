@@ -27,12 +27,25 @@ describe('dashboard store', () => {
     await store.load();
 
     expect(store.data).toEqual(sample);
+    expect(store.hasClub).toBe(true);
     expect(store.clubName).toBe('Geo Club');
     expect(store.clubLevel).toBe(5);
     expect(store.viewerNickname).toBe('Me');
     expect(store.lastUpdated).not.toBeNull();
     expect(store.loading).toBe(false);
     expect(store.error).toBeNull();
+  });
+
+  it('reports no club when the payload has a null club', async () => {
+    const noClub: DashboardDto = { club: null, viewer: null, leaderboard: [], challenges: [], streaks: [] };
+    vi.mocked(api.fetchDashboard).mockResolvedValue(noClub);
+
+    const store = useDashboardStore();
+    await store.load();
+
+    expect(store.hasClub).toBe(false);
+    expect(store.clubLevel).toBeNull();
+    expect(store.viewerNickname).toBeNull();
   });
 
   it('load captures errors and leaves data untouched', async () => {

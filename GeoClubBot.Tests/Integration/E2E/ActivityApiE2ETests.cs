@@ -20,16 +20,23 @@ namespace GeoClubBot.Tests.Integration.E2E;
 /// exchange and the bearer-gated aggregate dashboard. The Discord OAuth service is stubbed (no
 /// outbound calls) and the activity is enabled via config; everything else travels the real
 /// routing → auth handler → controller → MediatR → EF path against the shared Postgres container.
+///
+/// The dashboard is personalized: it shows the viewing member's own club (resolved via their linked
+/// GeoGuessr account → club membership), and no club data at all when the viewer can't be tied to a
+/// club. Each test uses a unique viewer + club so they don't collide in the shared container.
 /// </summary>
 [Collection(PostgresCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class ActivityApiE2ETests : IAsyncLifetime
 {
-    private const ulong ViewerDiscordId = 999000111UL;
     private const string ValidToken = "valid-token";
 
     private readonly PostgresFixture _fixture;
-    private readonly Guid _clubId = Guid.NewGuid();
+    private readonly Guid _mainClubId = Guid.NewGuid();
+    private readonly ulong _viewerDiscordId = (ulong)Random.Shared.NextInt64(1, long.MaxValue);
+    // GeoGuessr user ids are varchar(24); take a unique 24-char slice so tests don't collide in the
+    // shared container and the value still fits the column.
+    private readonly string _viewerUserId = Guid.NewGuid().ToString("N")[..24];
     private readonly GeoClubBotApiFactory _baseFactory;
     private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
@@ -37,7 +44,7 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
     public ActivityApiE2ETests(PostgresFixture fixture)
     {
         _fixture = fixture;
-        _baseFactory = new GeoClubBotApiFactory(fixture.ConnectionString, _clubId);
+        _baseFactory = new GeoClubBotApiFactory(fixture.ConnectionString, _mainClubId);
         _factory = _baseFactory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
@@ -48,7 +55,7 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IDiscordOAuthService>();
-                services.AddSingleton<IDiscordOAuthService>(new StubDiscordOAuthService(ViewerDiscordId, ValidToken));
+                services.AddSingleton<IDiscordOAuthService>(new StubDiscordOAuthService(_viewerDiscordId, ValidToken));
             });
         });
         _client = _factory.CreateClient();
@@ -71,30 +78,67 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GET_dashboard_returns_404_when_the_main_club_is_not_persisted()
+    public async Task GET_dashboard_returns_no_club_for_an_unlinked_viewer()
     {
-        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/dashboard", ValidToken));
+        // The Discord identity authenticates, but no GeoGuessr account is linked to it.
+        await SeedClubAsync(_mainClubId, "Main Club");
 
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var dto = await GetDashboardAsync();
+
+        dto.Club.Should().BeNull();
+        dto.Viewer.Should().BeNull();
+        dto.Leaderboard.Should().BeEmpty();
+        dto.Challenges.Should().BeEmpty();
+        dto.Streaks.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task GET_dashboard_returns_the_club_and_resolves_the_viewer()
+    public async Task GET_dashboard_returns_no_club_but_keeps_the_viewer_when_linked_without_membership()
     {
-        await SeedClubAsync();
-        await SeedUserAsync("geo-1", "ViewerNick", ViewerDiscordId);
+        await SeedClubAsync(_mainClubId, "Main Club");
+        await SeedUserAsync(_viewerUserId, "ViewerNick", _viewerDiscordId);
 
-        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/dashboard", ValidToken));
+        var dto = await GetDashboardAsync();
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var dto = await response.Content.ReadFromJsonAsync<DashboardDto>();
-        dto.Should().NotBeNull();
-        dto!.Club.Name.Should().Be("Activity E2E Club");
+        // No club to show, but the linked viewer is still resolved so they can be highlighted in the
+        // club-independent challenge standings.
+        dto.Club.Should().BeNull();
+        dto.Viewer.Should().NotBeNull();
+        dto.Viewer!.Nickname.Should().Be("ViewerNick");
+        dto.Leaderboard.Should().BeEmpty();
+        dto.Streaks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GET_dashboard_returns_the_viewers_club_and_resolves_the_viewer()
+    {
+        await SeedClubAsync(_mainClubId, "Main Club");
+        await SeedMemberAsync(_viewerUserId, "ViewerNick", _viewerDiscordId, _mainClubId);
+
+        var dto = await GetDashboardAsync();
+
+        dto.Club.Should().NotBeNull();
+        dto.Club!.Name.Should().Be("Main Club");
         dto.Viewer.Should().NotBeNull();
         dto.Viewer!.Nickname.Should().Be("ViewerNick");
         dto.Leaderboard.Should().BeEmpty();
         dto.Challenges.Should().BeEmpty();
         dto.Streaks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GET_dashboard_shows_the_viewers_own_club_rather_than_the_main_club()
+    {
+        var otherClubId = Guid.NewGuid();
+        await SeedClubAsync(_mainClubId, "Main Club");
+        await SeedClubAsync(otherClubId, "Other Club");
+        await SeedMemberAsync(_viewerUserId, "ViewerNick", _viewerDiscordId, otherClubId);
+
+        var dto = await GetDashboardAsync();
+
+        dto.Club.Should().NotBeNull();
+        dto.Club!.Name.Should().Be("Other Club");
+        dto.Viewer!.Nickname.Should().Be("ViewerNick");
     }
 
     [Fact]
@@ -115,6 +159,16 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    private async Task<DashboardDto> GetDashboardAsync()
+    {
+        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/dashboard", ValidToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await response.Content.ReadFromJsonAsync<DashboardDto>();
+        dto.Should().NotBeNull();
+        return dto!;
+    }
+
     private static HttpRequestMessage AuthorizedGet(string path, string token)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, path);
@@ -122,10 +176,10 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
         return request;
     }
 
-    private async Task SeedClubAsync()
+    private async Task SeedClubAsync(Guid clubId, string name)
     {
         await using var db = _fixture.CreateDbContext();
-        db.Add(Club.Create(_clubId, "Activity E2E Club", level: 3));
+        db.Add(Club.Create(clubId, name, level: 3));
         await db.SaveChangesAsync();
     }
 
@@ -133,6 +187,14 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
     {
         await using var db = _fixture.CreateDbContext();
         db.Add(GeoGuessrUser.Create(userId, nickname, discordUserId));
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SeedMemberAsync(string userId, string nickname, ulong discordUserId, Guid clubId)
+    {
+        await using var db = _fixture.CreateDbContext();
+        var user = GeoGuessrUser.Create(userId, nickname, discordUserId);
+        db.Add(ClubMember.Create(user, clubId, xp: 0, joinedAt: DateTimeOffset.UtcNow));
         await db.SaveChangesAsync();
     }
 

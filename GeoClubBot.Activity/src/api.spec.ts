@@ -36,7 +36,7 @@ describe('api', () => {
 
     const data = await fetchDashboard(8);
 
-    expect(data.club.name).toBe('C');
+    expect(data.club?.name).toBe('C');
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain('/dashboard?historyDepth=8');
     expect(init.headers.Authorization).toBe('Bearer bearer-xyz');

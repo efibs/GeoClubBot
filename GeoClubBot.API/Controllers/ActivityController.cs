@@ -35,8 +35,6 @@ public class ActivityController(
     private const int MinHistoryDepth = 1;
     private const int MaxHistoryDepth = 60;
 
-    private Guid MainClubId => geoGuessrConfig.Value.MainClub.ClubId;
-
     [HttpPost("token")]
     [AllowAnonymous]
     public async Task<ActionResult<ActivityTokenResponse>> ExchangeToken(
@@ -61,55 +59,88 @@ public class ActivityController(
     public async Task<ActionResult<DashboardDto>> GetDashboard(
         [FromQuery] int? historyDepth,
         IClubRepository clubRepository,
+        IClubMemberRepository clubMemberRepository,
         ISender mediator,
         CancellationToken cancellationToken)
     {
-        var club = await clubRepository.ReadClubByIdAsync(MainClubId, cancellationToken).ConfigureAwait(false);
-        if (club is null)
-        {
-            return this.ToProblemDetails(Error.NotFound("club.not_found", $"Club with id {MainClubId} was not found."));
-        }
-
-        var depth = Math.Clamp(
-            historyDepth ?? geoGuessrConfig.Value.MainClub.GetAverageXpHistoryDepth(activityConfig.Value),
-            MinHistoryDepth,
-            MaxHistoryDepth);
-
-        var leaderboard = await mediator
-            .Send(new GetActivityLeaderboardQuery(ClubName: null, HistoryDepth: depth), cancellationToken)
-            .ConfigureAwait(false);
-
+        // The daily challenge is independent of clubs and open to everyone, so it's always included
+        // regardless of who is viewing or whether they belong to a club.
         var challenges = await mediator
             .Send(new GetCurrentChallengeResultsQuery(), cancellationToken)
             .ConfigureAwait(false);
 
-        var streaks = await mediator
-            .Send(new GetDailyMissionStreaksQuery(MainClubId, StreakWindowDays), cancellationToken)
-            .ConfigureAwait(false);
+        // Resolve the viewer's linked GeoGuessr identity (used to highlight their rows wherever they
+        // appear, e.g. the challenge standings) and the club they currently belong to. Only the
+        // club-scoped panels — leaderboard and mission streaks — are tied to that club, and they stay
+        // empty when the viewer isn't a member of any club.
+        var viewer = await ResolveViewerAsync(mediator, clubMemberRepository, cancellationToken).ConfigureAwait(false);
 
-        var viewerNickname = await ResolveViewerNicknameAsync(mediator, cancellationToken).ConfigureAwait(false);
+        Entities.Club? club = null;
+        IReadOnlyList<Entities.ClubMemberAverageXp> leaderboard = [];
+        IReadOnlyList<MemberMissionStreak> streaks = [];
 
-        var dto = DashboardDtoAssembler.Assemble(
-            club,
-            viewerNickname,
-            leaderboard.Leaderboard ?? [],
-            challenges,
-            streaks);
+        if (viewer?.ClubId is { } clubId)
+        {
+            club = await clubRepository.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
+            if (club is not null)
+            {
+                var depth = Math.Clamp(
+                    historyDepth ?? GetDefaultHistoryDepth(clubId),
+                    MinHistoryDepth,
+                    MaxHistoryDepth);
+
+                var leaderboardResult = await mediator
+                    .Send(new GetActivityLeaderboardQuery(ClubName: club.Name, HistoryDepth: depth), cancellationToken)
+                    .ConfigureAwait(false);
+                leaderboard = leaderboardResult.Leaderboard ?? [];
+
+                streaks = await mediator
+                    .Send(new GetDailyMissionStreaksQuery(clubId, StreakWindowDays), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        var dto = DashboardDtoAssembler.Assemble(club, viewer?.Nickname, leaderboard, challenges, streaks);
 
         return Ok(dto);
     }
 
-    private async Task<string?> ResolveViewerNicknameAsync(ISender mediator, CancellationToken cancellationToken)
+    /// <summary>
+    /// Resolves the authenticated Discord viewer to their linked GeoGuessr identity and current club
+    /// membership. Returns null when there's no Discord identity or no linked account (nobody to
+    /// highlight); a linked viewer who isn't in a club is returned with a null <see cref="ViewerContext.ClubId"/>.
+    /// </summary>
+    private async Task<ViewerContext?> ResolveViewerAsync(
+        ISender mediator,
+        IClubMemberRepository clubMemberRepository,
+        CancellationToken cancellationToken)
     {
         if (User.GetDiscordUserId() is not { } discordUserId)
         {
             return null;
         }
 
-        var viewer = await mediator
+        var linked = await mediator
             .Send(new GetLinkedGeoGuessrUserQuery(discordUserId), cancellationToken)
             .ConfigureAwait(false);
+        if (!linked.IsSuccess)
+        {
+            return null;
+        }
 
-        return viewer.IsSuccess ? viewer.Value.Nickname : null;
+        var member = await clubMemberRepository
+            .ReadClubMemberByUserIdAsync(linked.Value.UserId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return new ViewerContext(member?.ClubId, linked.Value.Nickname);
     }
+
+    private int GetDefaultHistoryDepth(Guid clubId)
+    {
+        var clubEntry = geoGuessrConfig.Value.Clubs.FirstOrDefault(c => c.ClubId == clubId)
+                        ?? geoGuessrConfig.Value.MainClub;
+        return clubEntry.GetAverageXpHistoryDepth(activityConfig.Value);
+    }
+
+    private sealed record ViewerContext(Guid? ClubId, string Nickname);
 }

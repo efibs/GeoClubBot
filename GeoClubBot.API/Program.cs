@@ -187,13 +187,32 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 
 app.UseExceptionHandler();
 
+// When the Club Dashboard Activity is enabled, its built Vue assets are served from wwwroot and
+// the dashboard is embedded by the Discord client in an iframe.
+var serveActivity = app.Configuration.GetValue("DiscordActivity:Enabled", false);
+
 // Baseline security response headers on every response.
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
     headers["X-Content-Type-Options"] = "nosniff";
-    headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "no-referrer";
+
+    // The activity's HTML/assets are framed by the Discord client, so they must permit Discord to
+    // embed them; every other response (including the API surface, which is fetched and never
+    // framed) stays frame-denied.
+    var isApiOrHealth = context.Request.Path.StartsWithSegments("/api")
+        || context.Request.Path.StartsWithSegments("/health");
+    if (serveActivity && !isApiOrHealth)
+    {
+        headers["Content-Security-Policy"] =
+            "frame-ancestors https://discord.com https://*.discord.com https://*.discordsays.com";
+    }
+    else
+    {
+        headers["X-Frame-Options"] = "DENY";
+    }
+
     await next().ConfigureAwait(false);
 });
 
@@ -202,10 +221,7 @@ app.UseCors(ConfiguredCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 
-// When the Club Dashboard Activity is enabled, its built Vue assets are served from wwwroot
-// (the mock GeoGuessr UI also relies on static files).
-var serveActivity = app.Configuration.GetValue("DiscordActivity:Enabled", false);
-
+// The mock GeoGuessr UI also relies on static files.
 if (useMockGeoGuessr || serveActivity)
 {
     app.UseStaticFiles();

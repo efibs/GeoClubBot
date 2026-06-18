@@ -6,9 +6,13 @@ public record ActivityTokenRequest(string Code);
 /// <summary>The Discord access token handed back to the Activity frontend.</summary>
 public record ActivityTokenResponse(string AccessToken);
 
-/// <summary>Aggregate payload powering the Club Dashboard Activity — one fetch per refresh.</summary>
+/// <summary>
+/// Aggregate payload powering the Club Dashboard Activity — one fetch per refresh. <see cref="Club"/>
+/// is null when the viewer can't be tied to a club (unlinked, or not currently a member); in that
+/// case all the panels are empty and the frontend shows a "no club" state.
+/// </summary>
 public record DashboardDto(
-    ClubDto Club,
+    ClubDto? Club,
     ViewerDto? Viewer,
     IReadOnlyList<LeaderboardEntryDto> Leaderboard,
     IReadOnlyList<ChallengeResultDto> Challenges,

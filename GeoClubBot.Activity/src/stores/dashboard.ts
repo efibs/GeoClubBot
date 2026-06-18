@@ -20,9 +20,11 @@ export const useDashboardStore = defineStore('dashboard', {
     lastUpdated: null,
   }),
   getters: {
+    // The viewer belongs to a club we can show. When false, the dashboard renders a "no club" state.
+    hasClub: (state): boolean => state.data?.club != null,
     viewerNickname: (state): string | null => state.data?.viewer?.nickname ?? null,
-    clubName: (state): string => state.data?.club.name ?? 'Club Dashboard',
-    clubLevel: (state): number | null => state.data?.club.level ?? null,
+    clubName: (state): string => state.data?.club?.name ?? 'Club Dashboard',
+    clubLevel: (state): number | null => state.data?.club?.level ?? null,
   },
   actions: {
     /** Loads the dashboard for the current depth. The first load shows a spinner; refreshes don't. */

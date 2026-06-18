@@ -34,7 +34,8 @@ export interface MissionStreakDto {
 }
 
 export interface DashboardDto {
-  club: ClubDto;
+  // Null when the viewer can't be tied to a club (unlinked, or not currently a member).
+  club: ClubDto | null;
   viewer: ViewerDto | null;
   leaderboard: LeaderboardEntryDto[];
   challenges: ChallengeResultDto[];
