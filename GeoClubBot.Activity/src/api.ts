@@ -8,6 +8,21 @@ export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
 
+/**
+ * Fetches the activity's public runtime config — currently the Discord client id — from the backend
+ * (anonymous endpoint). The id is resolved at runtime instead of baked into the bundle so the same
+ * image works for any Discord application.
+ */
+export async function fetchConfig(): Promise<{ clientId: string }> {
+  const response = await fetch(`${apiBase}/config`);
+
+  if (!response.ok) {
+    throw new Error(`Failed to load activity configuration (${response.status}).`);
+  }
+
+  return (await response.json()) as { clientId: string };
+}
+
 /** Exchanges an OAuth2 authorization code for a Discord access token (anonymous endpoint). */
 export async function exchangeToken(code: string): Promise<string> {
   const response = await fetch(`${apiBase}/token`, {

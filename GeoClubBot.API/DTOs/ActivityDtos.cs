@@ -7,6 +7,14 @@ public record ActivityTokenRequest(string Code);
 public record ActivityTokenResponse(string AccessToken);
 
 /// <summary>
+/// Runtime configuration the activity frontend fetches at boot. The Discord application (client) id
+/// is public — it's safe to expose — and serving it from server-side config (rather than inlining it
+/// at build time) keeps the shipped image generic: each operator points it at their own Discord
+/// application via <c>DiscordActivity:ClientId</c> without rebuilding.
+/// </summary>
+public record ActivityConfigDto(string ClientId);
+
+/// <summary>
 /// Aggregate payload powering the Club Dashboard Activity — one fetch per refresh. <see cref="Club"/>
 /// is null when the viewer can't be tied to a club (unlinked, or not currently a member); in that
 /// case all the panels are empty and the frontend shows a "no club" state.

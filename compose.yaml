@@ -3,7 +3,7 @@
     image: geoclubbot
     build:
       context: .
-      dockerfile: GeoClubBot/Dockerfile
+      dockerfile: GeoClubBot.API/Dockerfile
     depends_on:
       postgresqldb:
         condition: service_healthy

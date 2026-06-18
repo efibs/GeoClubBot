@@ -12,6 +12,7 @@ using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -52,9 +53,14 @@ builder.Services.AddCors(options =>
         }
         else
         {
+            // Credentials are required for the SignalR hub: the JS client negotiates with
+            // withCredentials=true, and credentialed CORS forbids the "*" origin — hence the
+            // explicit origin list above. Browsers also reject AllowCredentials together with
+            // AllowAnyOrigin, so this branch only runs when concrete origins are configured.
             policy.WithOrigins(allowedOrigins)
                 .AllowAnyMethod()
-                .AllowAnyHeader();
+                .AllowAnyHeader()
+                .AllowCredentials();
         }
     });
 });
@@ -162,6 +168,21 @@ builder.Services.AddOpenTelemetry()
         });
 
 var app = builder.Build();
+
+// Behind a TLS-terminating proxy or tunnel (Tailscale Funnel, Cloudflare Tunnel, nginx, Caddy, …)
+// Kestrel only ever sees plain HTTP from the local proxy. Honour the X-Forwarded-Proto/-For headers
+// it sets so HTTPS redirection, CORS, OAuth redirect URLs and client IP logging all reflect the
+// original public request instead of the loopback hop. KnownProxies/KnownNetworks are cleared
+// because the app is never exposed to the internet directly — only the local proxy can reach it —
+// so there is no untrusted peer that could spoof these headers. Must run before any middleware that
+// inspects the scheme/host (HTTPS redirect, HSTS, CORS, auth).
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

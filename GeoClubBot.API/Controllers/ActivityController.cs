@@ -26,7 +26,8 @@ namespace GeoClubBot.Controllers;
 [Route("/api/v1/activity")]
 public class ActivityController(
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
-    IOptions<ActivityCheckerConfiguration> activityConfig) : ControllerBase
+    IOptions<ActivityCheckerConfiguration> activityConfig,
+    IOptions<DiscordActivityConfiguration> discordActivityConfig) : ControllerBase
 {
     /// <summary>The trailing window used to compute mission streaks (long enough to surface them).</summary>
     private const int StreakWindowDays = 90;
@@ -34,6 +35,17 @@ public class ActivityController(
     /// <summary>Bounds the leaderboard depth so a caller can't degenerate or abuse the query.</summary>
     private const int MinHistoryDepth = 1;
     private const int MaxHistoryDepth = 60;
+
+    /// <summary>
+    /// The activity's public runtime configuration. The frontend fetches the Discord client id from
+    /// here at boot instead of having it baked into the bundle, so the same image works for any
+    /// Discord application (the operator only sets <c>DiscordActivity:ClientId</c>). Anonymous: the
+    /// client id is public, and the frontend needs it before it can run the OAuth handshake.
+    /// </summary>
+    [HttpGet("config")]
+    [AllowAnonymous]
+    public ActionResult<ActivityConfigDto> GetConfig() =>
+        Ok(new ActivityConfigDto(discordActivityConfig.Value.ClientId));
 
     [HttpPost("token")]
     [AllowAnonymous]

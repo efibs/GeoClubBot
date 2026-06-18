@@ -30,6 +30,7 @@ namespace GeoClubBot.Tests.Integration.E2E;
 public sealed class ActivityApiE2ETests : IAsyncLifetime
 {
     private const string ValidToken = "valid-token";
+    private const string TestClientId = "test-discord-client-id";
 
     private readonly PostgresFixture _fixture;
     private readonly Guid _mainClubId = Guid.NewGuid();
@@ -50,7 +51,8 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
             builder.ConfigureAppConfiguration((_, config) =>
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["DiscordActivity:Enabled"] = "true"
+                    ["DiscordActivity:Enabled"] = "true",
+                    ["DiscordActivity:ClientId"] = TestClientId
                 }));
             builder.ConfigureTestServices(services =>
             {
@@ -59,6 +61,18 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
             });
         });
         _client = _factory.CreateClient();
+    }
+
+    [Fact]
+    public async Task GET_config_returns_the_public_discord_client_id()
+    {
+        // Anonymous: the frontend fetches the (public) client id at runtime before the OAuth handshake,
+        // so the shipped bundle isn't tied to one Discord application.
+        var response = await _client.GetAsync("/api/v1/activity/config");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await response.Content.ReadFromJsonAsync<ActivityConfigDto>();
+        dto!.ClientId.Should().Be(TestClientId);
     }
 
     [Fact]

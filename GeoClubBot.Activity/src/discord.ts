@@ -1,6 +1,6 @@
 import { DiscordSDK } from '@discord/embedded-app-sdk';
-import { discordClientId, isBypass } from './config';
-import { exchangeToken, setAccessToken } from './api';
+import { isBypass } from './config';
+import { exchangeToken, fetchConfig, setAccessToken } from './api';
 
 export interface AuthResult {
   accessToken: string;
@@ -33,11 +33,16 @@ export async function initializeDiscord(onStep?: (step: string) => void): Promis
     return { accessToken: token };
   }
 
-  if (!discordClientId) {
-    throw new Error('VITE_DISCORD_CLIENT_ID is not set in this build.');
+  // The Discord client id is served by the backend at runtime (from DiscordActivity:ClientId) rather
+  // than baked into the bundle, so this image isn't tied to one Discord application.
+  onStep?.('Loading configuration…');
+  console.info('[activity] fetching runtime config…');
+  const { clientId } = await withTimeout(fetchConfig(), 15_000, 'Loading configuration');
+  if (!clientId) {
+    throw new Error('The server returned no Discord client id (set DiscordActivity:ClientId).');
   }
 
-  const sdk = new DiscordSDK(discordClientId);
+  const sdk = new DiscordSDK(clientId);
 
   onStep?.('Connecting to Discord…');
   console.info('[activity] sdk.ready()…');
@@ -47,7 +52,7 @@ export async function initializeDiscord(onStep?: (step: string) => void): Promis
   console.info('[activity] authorize()…');
   const { code } = await withTimeout(
     sdk.commands.authorize({
-      client_id: discordClientId,
+      client_id: clientId,
       response_type: 'code',
       state: '',
       prompt: 'none',

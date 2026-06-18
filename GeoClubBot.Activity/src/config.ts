@@ -6,7 +6,8 @@
  */
 export const isBypass = import.meta.env.VITE_DEV_BYPASS === 'true';
 
-export const discordClientId = import.meta.env.VITE_DISCORD_CLIENT_ID;
+// The Discord client id is no longer a build-time constant — it's fetched from the backend at
+// runtime (see api.ts `fetchConfig`) so the shipped bundle isn't locked to one Discord application.
 
 export const apiBase =
   import.meta.env.VITE_API_BASE ?? (isBypass ? '/api/v1/activity' : '/.proxy/api/v1/activity');
