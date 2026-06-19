@@ -24,6 +24,11 @@ namespace GeoClubBot.Controllers;
 /// </summary>
 [ApiController]
 [Route("/api/v1/activity")]
+// Secure by default: every action requires a valid Discord Activity token unless it explicitly
+// opts out with [AllowAnonymous] (the two public endpoints below). [AllowAnonymous] overrides this
+// class-level policy at runtime, so the OAuth handshake endpoints stay open while any future action
+// is authenticated unless deliberately exempted.
+[Authorize(AuthenticationSchemes = DiscordActivityAuthenticationHandler.SchemeName)]
 public class ActivityController(
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityConfig,
@@ -66,8 +71,8 @@ public class ActivityController(
             : this.ToProblemDetails(result.Error);
     }
 
+    // Authorization is inherited from the controller-level [Authorize] above.
     [HttpGet("dashboard")]
-    [Authorize(AuthenticationSchemes = DiscordActivityAuthenticationHandler.SchemeName)]
     public async Task<ActionResult<DashboardDto>> GetDashboard(
         [FromQuery] int? historyDepth,
         IClubRepository clubRepository,
