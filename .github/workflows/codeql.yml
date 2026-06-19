@@ -55,6 +55,8 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           # Broader security suite than the default — appropriate for a security push.
           queries: security-extended
+          # Excludes test code (test doubles fake auth, which trips false positives).
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
