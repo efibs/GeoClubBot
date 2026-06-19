@@ -18,6 +18,10 @@ StrykerOutput/
 appsettings.*.json
 .env.*
 
+# Locally-built Club Dashboard Activity assets, copied here only for "serve from the API" testing.
+# In production the Docker build bundles these into the image's wwwroot instead.
+GeoClubBot.API/wwwroot/
+
 # Misc files
 OldHistory.json
 ChallengesConfig.json

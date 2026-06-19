@@ -1,6 +1,7 @@
 using Configuration;
 using Constants;
 using FluentValidation;
+using GeoClubBot.Authentication;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
 using GeoClubBot.Discord.Services;
@@ -10,6 +11,8 @@ using GeoClubBot.MockGeoGuessr.Endpoints;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -50,12 +53,25 @@ builder.Services.AddCors(options =>
         }
         else
         {
+            // Credentials are required for the SignalR hub: the JS client negotiates with
+            // withCredentials=true, and credentialed CORS forbids the "*" origin — hence the
+            // explicit origin list above. Browsers also reject AllowCredentials together with
+            // AllowAnyOrigin, so this branch only runs when concrete origins are configured.
             policy.WithOrigins(allowedOrigins)
                 .AllowAnyMethod()
-                .AllowAnyHeader();
+                .AllowAnyHeader()
+                .AllowCredentials();
         }
     });
 });
+
+// Authenticate the Club Dashboard Activity's data endpoints by validating the Discord OAuth2
+// access token carried as a bearer token. There is no default scheme — only endpoints that opt in
+// via [Authorize(AuthenticationSchemes = DiscordActivity)] are gated.
+builder.Services.AddAuthentication()
+    .AddScheme<AuthenticationSchemeOptions, DiscordActivityAuthenticationHandler>(
+        DiscordActivityAuthenticationHandler.SchemeName, _ => { });
+builder.Services.AddAuthorization();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -153,6 +169,21 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 
+// Behind a TLS-terminating proxy or tunnel (Tailscale Funnel, Cloudflare Tunnel, nginx, Caddy, …)
+// Kestrel only ever sees plain HTTP from the local proxy. Honour the X-Forwarded-Proto/-For headers
+// it sets so HTTPS redirection, CORS, OAuth redirect URLs and client IP logging all reflect the
+// original public request instead of the loopback hop. KnownProxies/KnownNetworks are cleared
+// because the app is never exposed to the internet directly — only the local proxy can reach it —
+// so there is no untrusted peer that could spoof these headers. Must run before any middleware that
+// inspects the scheme/host (HTTPS redirect, HSTS, CORS, auth).
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -177,28 +208,61 @@ if (app.Configuration.GetValue<bool>(ConfigKeys.SqlMigrateConfigurationKey))
 
 app.UseExceptionHandler();
 
+// When the Club Dashboard Activity is enabled, its built Vue assets are served from wwwroot and
+// the dashboard is embedded by the Discord client in an iframe.
+var serveActivity = app.Configuration.GetValue("DiscordActivity:Enabled", false);
+
 // Baseline security response headers on every response.
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
     headers["X-Content-Type-Options"] = "nosniff";
-    headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "no-referrer";
+
+    // The activity's HTML/assets are framed by the Discord client, so they must permit Discord to
+    // embed them; every other response (including the API surface, which is fetched and never
+    // framed) stays frame-denied.
+    var isApiOrHealth = context.Request.Path.StartsWithSegments("/api")
+        || context.Request.Path.StartsWithSegments("/health");
+    if (serveActivity && !isApiOrHealth)
+    {
+        headers["Content-Security-Policy"] =
+            "frame-ancestors https://discord.com https://*.discord.com https://*.discordsays.com";
+    }
+    else
+    {
+        headers["X-Frame-Options"] = "DENY";
+    }
+
     await next().ConfigureAwait(false);
 });
 
 app.UseHttpsRedirection();
 app.UseCors(ConfiguredCorsPolicy);
+app.UseAuthentication();
+app.UseAuthorization();
+
+// The mock GeoGuessr UI also relies on static files.
+if (useMockGeoGuessr || serveActivity)
+{
+    app.UseStaticFiles();
+}
 
 if (useMockGeoGuessr)
 {
-    app.UseStaticFiles();
     app.MapMockGeoGuessrEndpoints();
 }
 
 app.MapControllers();
 app.MapHealthChecks("/health");
 app.MapHub<ClubNotificationHub>("/api/clubNotificationHub");
+
+if (serveActivity)
+{
+    // SPA fallback: any route not matched by the API, health check, SignalR hub, or a static
+    // asset returns the activity's index.html so the Vue app can boot and route client-side.
+    app.MapFallbackToFile("index.html");
+}
 
 if (useMockGeoGuessr)
 {
