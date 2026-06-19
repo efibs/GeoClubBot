@@ -1,0 +1,13 @@
+name: "GeoClubBot CodeQL config"
+
+# Shared configuration for the analyses defined in ../workflows/codeql.yml.
+#
+# Test code is excluded from security scanning. Test doubles deliberately simulate
+# authentication — e.g. StubDiscordOAuthService returns a fixed access token for a known
+# OAuth code — and tests seed fixed credentials/tokens. The security-extended suite reports
+# these as findings such as cs/user-controlled-bypass ("user-controlled bypass of sensitive
+# method"), because its whole-program data flow links a real RemoteFlowSource in a controller
+# through an interface to the stub's `code == "..."` guard. None of this ships, so scanning it
+# only produces false positives.
+paths-ignore:
+  - GeoClubBot.Tests

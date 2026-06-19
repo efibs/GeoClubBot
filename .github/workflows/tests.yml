@@ -125,3 +125,45 @@ jobs:
           name: integration-test-results
           path: ./TestResults/integration
           retention-days: 7
+
+  # Frontend suite for the Club Dashboard Activity: type-check, Vitest unit/component tests,
+  # and Playwright E2E (the config bypasses the Discord SDK and mocks the API per-test).
+  frontend-tests:
+    name: Frontend tests (Vitest + Playwright)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: GeoClubBot.Activity
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: GeoClubBot.Activity/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit + component tests
+        run: npm run test:unit
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playwright-report
+          path: GeoClubBot.Activity/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

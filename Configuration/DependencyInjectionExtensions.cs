@@ -72,6 +72,12 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // The Discord Activity OAuth client is optional (gated by the Enabled flag), so the section
+        // is bound without start-up validation — the credentials are only required when the activity
+        // is enabled, and dev/test hosts boot without a client secret.
+        services.AddOptions<DiscordActivityConfiguration>()
+            .Bind(config.GetSection(DiscordActivityConfiguration.SectionName));
+
         // AI features are optional (gated by the Active flag), so the section is bound without
         // start-up validation — the values are only required when the AI services are registered.
         services.AddOptions<AiConfiguration>()
