@@ -29,7 +29,7 @@
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
         <PackageReference Include="Microsoft.SemanticKernel" Version="1.77.0" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
-        <PackageReference Include="PuppeteerSharp" Version="25.1.1" />
+        <PackageReference Include="PuppeteerSharp" Version="25.1.2" />
         <PackageReference Include="Qdrant.Client" Version="1.18.1" />
         <PackageReference Include="Refit" Version="11.0.1" />
         <PackageReference Include="SkiaSharp" Version="3.119.4" />
