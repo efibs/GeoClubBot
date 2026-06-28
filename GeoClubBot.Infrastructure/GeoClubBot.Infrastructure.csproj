@@ -31,7 +31,7 @@
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
         <PackageReference Include="PuppeteerSharp" Version="25.1.2" />
         <PackageReference Include="Qdrant.Client" Version="1.18.1" />
-        <PackageReference Include="Refit" Version="11.2.0" />
+        <PackageReference Include="Refit" Version="12.0.0" />
         <PackageReference Include="SkiaSharp" Version="3.119.4" />
         <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
     </ItemGroup>
