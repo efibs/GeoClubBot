@@ -34,8 +34,8 @@
         <PackageReference Include="Polly.RateLimiting" Version="8.7.0" />
         <PackageReference Include="Polly.Extensions" Version="8.7.0" />
         <PackageReference Include="Quartz.Extensions.Hosting" Version="3.18.1" />
-        <PackageReference Include="Refit" Version="11.2.0" />
-        <PackageReference Include="Refit.HttpClientFactory" Version="11.2.0" />
+        <PackageReference Include="Refit" Version="12.0.0" />
+        <PackageReference Include="Refit.HttpClientFactory" Version="12.0.0" />
         <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.1" />
     </ItemGroup>
 
