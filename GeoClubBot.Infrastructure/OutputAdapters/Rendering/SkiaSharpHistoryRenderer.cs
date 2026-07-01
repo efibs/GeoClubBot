@@ -65,7 +65,7 @@ public class SkiaSharpHistoryRenderer : IHistoryRenderer
         {
             var y = (float)valueToY(val);
             canvas.DrawLine(padding, y, width - padding, y, gridPaint);
-            canvas.DrawText(val.ToString("F0"), padding - 35, y + 5, font, textPaint);
+            canvas.DrawText(val.ToString("F0"), padding - 35, y + 5, SKTextAlign.Left, font, textPaint);
         }
     }
 
@@ -124,7 +124,7 @@ public class SkiaSharpHistoryRenderer : IHistoryRenderer
 
         var textFont = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold);
         using var font = new SKFont(textFont, 11);
-        canvas.DrawText($"Target: {thresholdValue:F0}", width - padding + 5, y + 4, font, textPaint);
+        canvas.DrawText($"Target: {thresholdValue:F0}", width - padding + 5, y + 4, SKTextAlign.Left, font, textPaint);
     }
 
     private static void DrawXAxisLabels(SKCanvas canvas, List<DateTimeOffset> timestamps,
@@ -152,7 +152,7 @@ public class SkiaSharpHistoryRenderer : IHistoryRenderer
             canvas.Save();
             canvas.Translate(x, height - bottomPadding + 10);
             canvas.RotateDegrees(45);
-            canvas.DrawText(label, 0, 0, font, textPaint);
+            canvas.DrawText(label, 0, 0, SKTextAlign.Left, font, textPaint);
             canvas.Restore();
         }
     }
@@ -168,17 +168,17 @@ public class SkiaSharpHistoryRenderer : IHistoryRenderer
         var titleFont = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold);
         using var titleSkFont = new SKFont(titleFont, 18);
         // ReSharper disable once PossibleLossOfFraction
-        canvas.DrawText("XP History", width / 2 - 100, 30, titleSkFont, textPaint);
+        canvas.DrawText("XP History", width / 2 - 100, 30, SKTextAlign.Left, titleSkFont, textPaint);
 
         using var axisFont = new SKFont(textFont);
         // ReSharper disable once PossibleLossOfFraction
-        canvas.DrawText("Time", width / 2 - 20, height - 10, axisFont, textPaint);
+        canvas.DrawText("Time", width / 2 - 20, height - 10, SKTextAlign.Left, axisFont, textPaint);
 
         canvas.Save();
         // ReSharper disable once PossibleLossOfFraction
         canvas.Translate(15, height / 2);
         canvas.RotateDegrees(-90);
-        canvas.DrawText("XP", 0, 0, axisFont, textPaint);
+        canvas.DrawText("XP", 0, 0, SKTextAlign.Left, axisFont, textPaint);
         canvas.Restore();
     }
 
