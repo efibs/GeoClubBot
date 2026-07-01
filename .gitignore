@@ -28,3 +28,6 @@ ChallengesConfig.json
 .VSCodeCounter
 qdrant_storage
 .idea/
+
+# graphify knowledge graph (generated, rebuilt via git hooks / `graphify update .`)
+graphify-out/
