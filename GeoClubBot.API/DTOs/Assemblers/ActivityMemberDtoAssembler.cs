@@ -9,8 +9,36 @@ public static class ActivityMemberDtoAssembler
 {
     public static ReminderDto AssembleReminder(DailyMissionReminder reminder) => new(
         reminder.ReminderTimeUtc.ToString("HH\\:mm", CultureInfo.InvariantCulture),
+        ConvertToLocal(reminder.ReminderTimeUtc, reminder.TimeZoneId)
+            .ToString("HH\\:mm", CultureInfo.InvariantCulture),
         reminder.TimeZoneId,
         reminder.CustomMessage);
+
+    /// <summary>
+    /// Renders a UTC reminder time in its stored IANA time zone for display, resolving DST against
+    /// today (mirrors the <c>/daily-reminder status</c> slash command). Falls back to UTC when the
+    /// zone is absent or unknown.
+    /// </summary>
+    private static TimeOnly ConvertToLocal(TimeOnly utcTime, string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            return utcTime;
+        }
+
+        try
+        {
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var utcDateTime = today.ToDateTime(utcTime, DateTimeKind.Utc);
+            var localDateTime = TimeZoneInfo.ConvertTimeFromUtc(utcDateTime, tz);
+            return TimeOnly.FromDateTime(localDateTime);
+        }
+        catch
+        {
+            return utcTime;
+        }
+    }
 
     public static WeekActivityDto AssembleWeekActivity(ClubMemberWeekActivity activity) => new(
         activity.TotalXp,

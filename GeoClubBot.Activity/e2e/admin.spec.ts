@@ -79,19 +79,19 @@ test('adds and revokes a strike with confirmation', async ({ page }) => {
     });
   });
 
-  page.on('dialog', (dialog) => dialog.accept());
-
   await page.goto('/');
   await page.getByTestId('tab-admin').click();
   await expect(page.getByTestId('all-strikes-panel')).toContainText('Ada');
 
-  // Add a strike.
+  // Add a strike — confirmation is an in-app dialog (window.confirm is suppressed in Discord's iframe).
   await page.getByTestId('add-strike-nickname').fill('Ada');
   await page.getByTestId('add-strike-submit').click();
+  await page.getByTestId('confirm-accept').click();
   await expect.poll(() => writes.some((w) => w.endsWith('/admin/strikes'))).toBe(true);
 
   // Revoke the listed strike.
   await page.getByTestId('strike-revoke').click();
+  await page.getByTestId('confirm-accept').click();
   await expect.poll(() => writes.some((w) => w.includes('/revoke'))).toBe(true);
 });
 

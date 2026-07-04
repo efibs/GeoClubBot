@@ -12,7 +12,7 @@ test('sets a daily reminder from the missions tab', async ({ page }) => {
       putBody = route.request().postDataJSON();
       return route.fulfill({
         json: {
-          reminder: { timeUtc: '17:30', timeZoneId: 'Europe/Berlin', customMessage: null },
+          reminder: { timeUtc: '17:30', localTime: '19:30', timeZoneId: 'Europe/Berlin', customMessage: null },
           dmDelivered: true,
           dmErrorCode: null,
         },
@@ -28,7 +28,7 @@ test('sets a daily reminder from the missions tab', async ({ page }) => {
   await page.getByTestId('reminder-time').fill('19:30');
   await page.getByTestId('reminder-save').click();
 
-  await expect(page.getByTestId('reminder-status')).toContainText('17:30 UTC');
+  await expect(page.getByTestId('reminder-status')).toContainText('19:30 (Europe/Berlin)');
   await expect.poll(() => putBody).toMatchObject({ localTime: '19:30' });
 });
 
@@ -40,7 +40,7 @@ test('shows a warning when the confirmation DM is undeliverable', async ({ page 
     if (route.request().method() === 'PUT') {
       return route.fulfill({
         json: {
-          reminder: { timeUtc: '17:30', timeZoneId: null, customMessage: null },
+          reminder: { timeUtc: '17:30', localTime: '17:30', timeZoneId: null, customMessage: null },
           dmDelivered: false,
           dmErrorCode: 'discord.dm.disabled',
         },

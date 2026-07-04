@@ -14,7 +14,12 @@ const mockedFetch = vi.mocked(fetchReminder);
 const mockedPut = vi.mocked(putReminder);
 const mockedDelete = vi.mocked(deleteReminder);
 
-const reminder: ReminderDto = { timeUtc: '18:30', timeZoneId: 'Europe/Berlin', customMessage: null };
+const reminder: ReminderDto = {
+  timeUtc: '18:30',
+  localTime: '20:30',
+  timeZoneId: 'Europe/Berlin',
+  customMessage: null,
+};
 
 describe('reminder store', () => {
   beforeEach(() => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useReminderStore } from '../stores/reminder';
 
@@ -10,6 +10,18 @@ const time = ref('');
 const message = ref('');
 // The browser knows the viewer's time zone; the backend validates it and converts to UTC.
 const timeZoneId = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+
+// Prefill the form from the existing reminder (otherwise the time input just showed "--:--").
+watch(
+  reminder,
+  (value) => {
+    if (value) {
+      time.value = value.localTime;
+      message.value = value.customMessage ?? '';
+    }
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   if (!store.loaded) {
@@ -30,8 +42,9 @@ async function save(): Promise<void> {
     <h2 class="panel-title">⏰ Daily reminder</h2>
 
     <p v-if="reminder" class="stat-caption" data-testid="reminder-status">
-      Reminding you daily at {{ reminder.timeUtc }} UTC
-      <template v-if="reminder.timeZoneId"> ({{ reminder.timeZoneId }})</template>
+      Reminding you daily at {{ reminder.localTime }}
+      <template v-if="reminder.timeZoneId">({{ reminder.timeZoneId }})</template>
+      <template v-else>UTC</template>
       — unless your mission is already done.
     </p>
     <p v-else class="stat-caption" data-testid="reminder-status">

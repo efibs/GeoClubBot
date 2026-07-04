@@ -70,3 +70,17 @@ export function weekdayInitial(isoDate: string): string {
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
+
+/**
+ * The local calendar date ("yyyy-MM-dd") of an ISO timestamp, for `<input type="date">`. Uses the
+ * same local time zone as {@link formatDate}, so a value edited in a form matches the one displayed
+ * in the list — unlike `iso.slice(0, 10)`, which reads the UTC date and is a day off for instants
+ * stored at local midnight.
+ */
+export function toDateInputValue(iso: string): string {
+  const date = new Date(iso);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}

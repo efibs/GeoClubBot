@@ -68,8 +68,12 @@ public record MissionKindStatsDto(
 /// <summary>Today's accumulated XP of the viewer's club (null when nothing is tracked yet).</summary>
 public record TodaysXpDto(int? Xp, string? ClubName);
 
-/// <summary>The viewer's daily-mission reminder; times are UTC "HH:mm" (frontend renders local).</summary>
-public record ReminderDto(string TimeUtc, string? TimeZoneId, string? CustomMessage);
+/// <summary>
+/// The viewer's daily-mission reminder. <see cref="TimeUtc"/> is the stored UTC "HH:mm";
+/// <see cref="LocalTime"/> is that time rendered in <see cref="TimeZoneId"/> (or UTC when it's null),
+/// matching the <c>/daily-reminder status</c> command.
+/// </summary>
+public record ReminderDto(string TimeUtc, string LocalTime, string? TimeZoneId, string? CustomMessage);
 
 /// <summary>Wrapper so "no reminder configured" is a plain 200 instead of a 404.</summary>
 public record ReminderStatusDto(ReminderDto? Reminder);

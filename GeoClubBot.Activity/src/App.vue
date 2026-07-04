@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import TabNav from './components/TabNav.vue';
+import ConfirmDialog from './components/ConfirmDialog.vue';
 import { useSessionStore } from './stores/session';
 import { initializeDiscord } from './discord';
 
@@ -41,5 +42,7 @@ onMounted(async () => {
       <TabNav />
       <router-view />
     </template>
+
+    <ConfirmDialog />
   </div>
 </template>

@@ -6,6 +6,7 @@ import {
   formatXp,
   rankBadge,
   streakFlames,
+  toDateInputValue,
 } from './format';
 
 describe('format', () => {
@@ -36,5 +37,11 @@ describe('format', () => {
 
   it('defaults the depth to the first option', () => {
     expect(defaultHistoryDepth).toBe(depthOptions[0].value);
+  });
+
+  it('extracts the local calendar date for date inputs', () => {
+    // Built and read back in local time, so the round-trip is timezone-independent.
+    const local = new Date(2026, 6, 1, 12, 0, 0); // 2026-07-01, local noon
+    expect(toDateInputValue(local.toISOString())).toBe('2026-07-01');
   });
 });

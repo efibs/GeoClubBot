@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAdminStore } from '../../stores/admin';
 import { formatDate } from '../../format';
+import { confirm } from '../../composables/useConfirm';
 
 const admin = useAdminStore();
 const { strikes } = storeToRefs(admin);
@@ -21,7 +22,7 @@ async function addStrike(): Promise<void> {
   if (!nickname || !newStrikeDate.value) {
     return;
   }
-  if (!window.confirm(`Add a strike to ${nickname}?`)) {
+  if (!(await confirm({ message: `Add a strike to ${nickname}?`, danger: true }))) {
     return;
   }
   if (await admin.addStrike(nickname, newStrikeDate.value)) {
@@ -29,14 +30,14 @@ async function addStrike(): Promise<void> {
   }
 }
 
-function revoke(strikeId: string, nickname: string): void {
-  if (window.confirm(`Revoke this strike of ${nickname}?`)) {
+async function revoke(strikeId: string, nickname: string): Promise<void> {
+  if (await confirm({ message: `Revoke this strike of ${nickname}?`, danger: true })) {
     void admin.revokeStrike(strikeId);
   }
 }
 
-function unrevoke(strikeId: string, nickname: string): void {
-  if (window.confirm(`Restore this strike of ${nickname}?`)) {
+async function unrevoke(strikeId: string, nickname: string): Promise<void> {
+  if (await confirm(`Restore this strike of ${nickname}?`)) {
     void admin.unrevokeStrike(strikeId);
   }
 }

@@ -2,7 +2,8 @@
 import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAdminStore } from '../../stores/admin';
-import { formatDate } from '../../format';
+import { formatDate, toDateInputValue } from '../../format';
+import { confirm } from '../../composables/useConfirm';
 import type { AdminExcuseDto } from '../../types';
 
 const admin = useAdminStore();
@@ -23,8 +24,10 @@ onMounted(() => {
 function startEdit(excuse: AdminExcuseDto): void {
   editingId.value = excuse.excuseId;
   nickname.value = excuse.nickname;
-  from.value = excuse.from.slice(0, 10);
-  to.value = excuse.to.slice(0, 10);
+  // Use the local calendar date (like the list's formatDate), not the raw UTC prefix — an excuse
+  // stored at local midnight comes back as the previous day in UTC, so slice(0, 10) shifted it back.
+  from.value = toDateInputValue(excuse.from);
+  to.value = toDateInputValue(excuse.to);
 }
 
 function resetForm(): void {
@@ -46,8 +49,9 @@ async function submit(): Promise<void> {
   }
 }
 
-function remove(excuse: AdminExcuseDto): void {
-  if (window.confirm(`Remove the excuse of ${excuse.nickname} (${formatDate(excuse.from)} → ${formatDate(excuse.to)})?`)) {
+async function remove(excuse: AdminExcuseDto): Promise<void> {
+  const message = `Remove the excuse of ${excuse.nickname} (${formatDate(excuse.from)} → ${formatDate(excuse.to)})?`;
+  if (await confirm({ message, danger: true })) {
     void admin.removeExcuse(excuse.excuseId);
   }
 }

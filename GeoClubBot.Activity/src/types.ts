@@ -124,6 +124,7 @@ export interface TodaysXpDto {
 
 export interface ReminderDto {
   timeUtc: string; // "HH:mm", UTC
+  localTime: string; // "HH:mm", in timeZoneId (or UTC when it's null)
   timeZoneId: string | null;
   customMessage: string | null;
 }

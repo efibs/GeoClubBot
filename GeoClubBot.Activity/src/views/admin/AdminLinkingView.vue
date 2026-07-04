@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAdminStore } from '../../stores/admin';
+import { confirm } from '../../composables/useConfirm';
 import type { AdminLinkRequestDto } from '../../types';
 
 const admin = useAdminStore();
@@ -39,8 +40,8 @@ async function complete(request: AdminLinkRequestDto): Promise<void> {
   }
 }
 
-function cancel(request: AdminLinkRequestDto): void {
-  if (window.confirm(`Cancel the linking request of Discord user ${request.discordUserId}?`)) {
+async function cancel(request: AdminLinkRequestDto): Promise<void> {
+  if (await confirm({ message: `Cancel the linking request of Discord user ${request.discordUserId}?`, danger: true })) {
     void admin.cancelLinkRequest(request.discordUserId, request.geoGuessrUserId);
   }
 }
@@ -51,7 +52,7 @@ async function unlink(): Promise<void> {
   if (!discordId || !geoGuessrId) {
     return;
   }
-  if (!window.confirm(`Unlink Discord user ${discordId} from GeoGuessr account ${geoGuessrId}?`)) {
+  if (!(await confirm({ message: `Unlink Discord user ${discordId} from GeoGuessr account ${geoGuessrId}?`, danger: true }))) {
     return;
   }
   if (await admin.unlinkAccounts(discordId, geoGuessrId)) {
