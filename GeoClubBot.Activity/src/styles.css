@@ -530,6 +530,29 @@ body {
   animation: spin 0.9s linear infinite;
 }
 
+/* Small inline spinner for buttons and inline "working…" indicators; inherits text color. */
+.spinner-inline {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  margin-right: 6px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  opacity: 0.9;
+  animation: spin 0.7s linear infinite;
+}
+
+/* An inline row that pairs the spinner with a short status label. */
+.loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);

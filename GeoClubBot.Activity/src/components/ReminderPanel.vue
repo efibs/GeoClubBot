@@ -2,12 +2,15 @@
 import { onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useReminderStore } from '../stores/reminder';
+import Spinner from './Spinner.vue';
 
 const store = useReminderStore();
 const { reminder, saving, error, dmWarning } = storeToRefs(store);
 
 const time = ref('');
 const message = ref('');
+// Which action is running, so only the clicked button shows a spinner (both share `saving`).
+const pending = ref<'save' | 'stop' | null>(null);
 // The browser knows the viewer's time zone; the backend validates it and converts to UTC.
 const timeZoneId = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
 
@@ -33,7 +36,15 @@ async function save(): Promise<void> {
   if (!time.value) {
     return;
   }
+  pending.value = 'save';
   await store.save(time.value, timeZoneId, message.value.trim() || null);
+  pending.value = null;
+}
+
+async function stop(): Promise<void> {
+  pending.value = 'stop';
+  await store.stop();
+  pending.value = null;
 }
 </script>
 
@@ -75,7 +86,8 @@ async function save(): Promise<void> {
 
       <div class="form-actions">
         <button type="submit" class="action-button" :disabled="saving || !time" data-testid="reminder-save">
-          {{ reminder ? 'Update reminder' : 'Set reminder' }}
+          <Spinner v-if="pending === 'save'" />
+          {{ pending === 'save' ? 'Saving…' : reminder ? 'Update reminder' : 'Set reminder' }}
         </button>
         <button
           v-if="reminder"
@@ -83,9 +95,10 @@ async function save(): Promise<void> {
           class="action-button danger"
           :disabled="saving"
           data-testid="reminder-stop"
-          @click="store.stop()"
+          @click="stop"
         >
-          Stop reminder
+          <Spinner v-if="pending === 'stop'" />
+          {{ pending === 'stop' ? 'Stopping…' : 'Stop reminder' }}
         </button>
       </div>
     </form>

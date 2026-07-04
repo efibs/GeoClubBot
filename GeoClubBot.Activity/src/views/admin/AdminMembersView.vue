@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAdminStore } from '../../stores/admin';
 import { formatDate, formatXp } from '../../format';
+import Spinner from '../../components/Spinner.vue';
 
 const admin = useAdminStore();
 const { lookup, clubStats } = storeToRefs(admin);
@@ -68,10 +69,14 @@ function search(): void {
         />
         <div class="form-actions">
           <button type="submit" class="action-button" :disabled="lookup.loading || !nickname" data-testid="lookup-submit">
-            Look up
+            <Spinner v-if="lookup.loading" />
+            {{ lookup.loading ? 'Looking up…' : 'Look up' }}
           </button>
         </div>
       </form>
+      <p v-if="lookup.loading" class="loading-inline" data-testid="lookup-loading">
+        <Spinner /> Fetching live stats from GeoGuessr — this can take a moment…
+      </p>
       <p v-if="lookup.error" class="error-banner" data-testid="lookup-error">⚠️ {{ lookup.error }}</p>
     </section>
 

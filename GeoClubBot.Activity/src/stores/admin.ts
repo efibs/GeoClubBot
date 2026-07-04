@@ -34,6 +34,8 @@ import type {
 interface SectionState<T> {
   data: T | null;
   loading: boolean;
+  // True while a write mutation (add/revoke/remove/…) is in flight, including its follow-up refetch.
+  busy: boolean;
   error: string | null;
 }
 
@@ -52,7 +54,7 @@ interface AdminState {
 }
 
 function section<T>(): SectionState<T> {
-  return { data: null, loading: false, error: null };
+  return { data: null, loading: false, busy: false, error: null };
 }
 
 async function loadSection<T>(state: SectionState<T>, fetcher: () => Promise<T>): Promise<void> {
@@ -113,18 +115,22 @@ export const useAdminStore = defineStore('admin', {
     },
 
     // Write actions: run the mutation, surface a ProblemDetails message on the owning section,
-    // and re-fetch the section on success so the list always reflects the server state.
+    // and re-fetch the section on success so the list always reflects the server state. `busy`
+    // stays true across the mutation and its refetch so the view can show an in-flight indicator.
 
     async mutateStrikes(mutation: () => Promise<unknown>): Promise<boolean> {
       this.strikes.error = null;
+      this.strikes.busy = true;
       try {
         await mutation();
+        await this.loadStrikes();
+        return true;
       } catch (err) {
         this.strikes.error = err instanceof Error ? err.message : 'The change failed.';
         return false;
+      } finally {
+        this.strikes.busy = false;
       }
-      await this.loadStrikes();
-      return true;
     },
 
     addStrike(nickname: string, strikeDate: string): Promise<boolean> {
@@ -141,14 +147,17 @@ export const useAdminStore = defineStore('admin', {
 
     async mutateExcuses(mutation: () => Promise<unknown>): Promise<boolean> {
       this.excuses.error = null;
+      this.excuses.busy = true;
       try {
         await mutation();
+        await this.loadExcuses();
+        return true;
       } catch (err) {
         this.excuses.error = err instanceof Error ? err.message : 'The change failed.';
         return false;
+      } finally {
+        this.excuses.busy = false;
       }
-      await this.loadExcuses();
-      return true;
     },
 
     addExcuse(nickname: string, from: string, to: string): Promise<boolean> {
@@ -165,14 +174,17 @@ export const useAdminStore = defineStore('admin', {
 
     async mutateLinking(mutation: () => Promise<unknown>): Promise<boolean> {
       this.linking.error = null;
+      this.linking.busy = true;
       try {
         await mutation();
+        await this.loadLinking();
+        return true;
       } catch (err) {
         this.linking.error = err instanceof Error ? err.message : 'The change failed.';
         return false;
+      } finally {
+        this.linking.busy = false;
       }
-      await this.loadLinking();
-      return true;
     },
 
     completeLinkRequest(discordUserId: string, geoGuessrUserId: string, oneTimePassword: string): Promise<boolean> {

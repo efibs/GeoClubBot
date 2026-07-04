@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useAdminStore } from '../../stores/admin';
 import { formatDate, toDateInputValue } from '../../format';
 import { confirm } from '../../composables/useConfirm';
+import Spinner from '../../components/Spinner.vue';
 import type { AdminExcuseDto } from '../../types';
 
 const admin = useAdminStore();
@@ -14,6 +15,8 @@ const editingId = ref<string | null>(null);
 const nickname = ref('');
 const from = ref('');
 const to = ref('');
+// The excuse whose row action is currently running, so only that button shows a spinner.
+const pendingId = ref<string | null>(null);
 
 onMounted(() => {
   if (!excuses.value.data) {
@@ -52,7 +55,9 @@ async function submit(): Promise<void> {
 async function remove(excuse: AdminExcuseDto): Promise<void> {
   const message = `Remove the excuse of ${excuse.nickname} (${formatDate(excuse.from)} → ${formatDate(excuse.to)})?`;
   if (await confirm({ message, danger: true })) {
-    void admin.removeExcuse(excuse.excuseId);
+    pendingId.value = excuse.excuseId;
+    await admin.removeExcuse(excuse.excuseId);
+    pendingId.value = null;
   }
 }
 </script>
@@ -82,10 +87,11 @@ async function remove(excuse: AdminExcuseDto): Promise<void> {
           <button
             type="submit"
             class="action-button"
-            :disabled="excuses.loading"
+            :disabled="excuses.busy"
             data-testid="excuse-submit"
           >
-            {{ editingId ? 'Save changes' : 'Add excuse' }}
+            <Spinner v-if="excuses.busy" />
+            {{ editingId ? (excuses.busy ? 'Saving…' : 'Save changes') : (excuses.busy ? 'Adding…' : 'Add excuse') }}
           </button>
           <button
             v-if="editingId"
@@ -113,11 +119,24 @@ async function remove(excuse: AdminExcuseDto): Promise<void> {
           <span class="name">{{ excuse.nickname }}</span>
           <span class="value">{{ formatDate(excuse.from) }} → {{ formatDate(excuse.to) }}</span>
           <span class="row-actions">
-            <button type="button" class="action-button small" data-testid="excuse-edit" @click="startEdit(excuse)">
+            <button
+              type="button"
+              class="action-button small"
+              :disabled="excuses.busy"
+              data-testid="excuse-edit"
+              @click="startEdit(excuse)"
+            >
               Edit
             </button>
-            <button type="button" class="action-button danger small" data-testid="excuse-remove" @click="remove(excuse)">
-              Remove
+            <button
+              type="button"
+              class="action-button danger small"
+              :disabled="excuses.busy"
+              data-testid="excuse-remove"
+              @click="remove(excuse)"
+            >
+              <Spinner v-if="pendingId === excuse.excuseId" />
+              {{ pendingId === excuse.excuseId ? 'Removing…' : 'Remove' }}
             </button>
           </span>
         </li>

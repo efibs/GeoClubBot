@@ -4,12 +4,15 @@ import { storeToRefs } from 'pinia';
 import { useAdminStore } from '../../stores/admin';
 import { formatDate } from '../../format';
 import { confirm } from '../../composables/useConfirm';
+import Spinner from '../../components/Spinner.vue';
 
 const admin = useAdminStore();
 const { strikes } = storeToRefs(admin);
 
 const newStrikeNickname = ref('');
 const newStrikeDate = ref(new Date().toISOString().slice(0, 10));
+// The strike whose row action is currently running, so only that button shows a spinner.
+const pendingId = ref<string | null>(null);
 
 onMounted(() => {
   if (!strikes.value.data) {
@@ -32,13 +35,17 @@ async function addStrike(): Promise<void> {
 
 async function revoke(strikeId: string, nickname: string): Promise<void> {
   if (await confirm({ message: `Revoke this strike of ${nickname}?`, danger: true })) {
-    void admin.revokeStrike(strikeId);
+    pendingId.value = strikeId;
+    await admin.revokeStrike(strikeId);
+    pendingId.value = null;
   }
 }
 
 async function unrevoke(strikeId: string, nickname: string): Promise<void> {
   if (await confirm(`Restore this strike of ${nickname}?`)) {
-    void admin.unrevokeStrike(strikeId);
+    pendingId.value = strikeId;
+    await admin.unrevokeStrike(strikeId);
+    pendingId.value = null;
   }
 }
 </script>
@@ -87,10 +94,11 @@ async function unrevoke(strikeId: string, nickname: string): Promise<void> {
           <button
             type="submit"
             class="action-button"
-            :disabled="strikes.loading || !newStrikeNickname"
+            :disabled="strikes.busy || !newStrikeNickname"
             data-testid="add-strike-submit"
           >
-            Add strike
+            <Spinner v-if="strikes.busy" />
+            {{ strikes.busy ? 'Adding…' : 'Add strike' }}
           </button>
         </div>
       </form>
@@ -117,19 +125,23 @@ async function unrevoke(strikeId: string, nickname: string): Promise<void> {
               v-if="!strike.revoked"
               type="button"
               class="action-button danger small"
+              :disabled="strikes.busy"
               data-testid="strike-revoke"
               @click="revoke(strike.strikeId, strike.nickname)"
             >
-              Revoke
+              <Spinner v-if="pendingId === strike.strikeId" />
+              {{ pendingId === strike.strikeId ? 'Revoking…' : 'Revoke' }}
             </button>
             <button
               v-else
               type="button"
               class="action-button small"
+              :disabled="strikes.busy"
               data-testid="strike-unrevoke"
               @click="unrevoke(strike.strikeId, strike.nickname)"
             >
-              Restore
+              <Spinner v-if="pendingId === strike.strikeId" />
+              {{ pendingId === strike.strikeId ? 'Restoring…' : 'Restore' }}
             </button>
           </span>
         </li>

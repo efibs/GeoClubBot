@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useAdminStore } from '../../stores/admin';
 import { confirm } from '../../composables/useConfirm';
+import Spinner from '../../components/Spinner.vue';
 import type { AdminLinkRequestDto } from '../../types';
 
 const admin = useAdminStore();
@@ -11,6 +12,8 @@ const { linking } = storeToRefs(admin);
 // The request whose "Complete" form is open, plus the OTP the member sent via GeoGuessr DM.
 const completingKey = ref<string | null>(null);
 const otp = ref('');
+// The request whose complete/cancel action is currently running, so only that row shows a spinner.
+const pendingKey = ref<string | null>(null);
 
 const unlinkDiscordId = ref('');
 const unlinkGeoGuessrId = ref('');
@@ -34,7 +37,10 @@ async function complete(request: AdminLinkRequestDto): Promise<void> {
   if (!otp.value.trim()) {
     return;
   }
-  if (await admin.completeLinkRequest(request.discordUserId, request.geoGuessrUserId, otp.value.trim())) {
+  pendingKey.value = keyOf(request);
+  const ok = await admin.completeLinkRequest(request.discordUserId, request.geoGuessrUserId, otp.value.trim());
+  pendingKey.value = null;
+  if (ok) {
     completingKey.value = null;
     otp.value = '';
   }
@@ -42,7 +48,9 @@ async function complete(request: AdminLinkRequestDto): Promise<void> {
 
 async function cancel(request: AdminLinkRequestDto): Promise<void> {
   if (await confirm({ message: `Cancel the linking request of Discord user ${request.discordUserId}?`, danger: true })) {
-    void admin.cancelLinkRequest(request.discordUserId, request.geoGuessrUserId);
+    pendingKey.value = keyOf(request);
+    await admin.cancelLinkRequest(request.discordUserId, request.geoGuessrUserId);
+    pendingKey.value = null;
   }
 }
 
@@ -92,16 +100,36 @@ async function unlink(): Promise<void> {
                 data-testid="complete-otp-input"
                 @keyup.enter="complete(request)"
               />
-              <button type="button" class="action-button small" data-testid="complete-confirm" @click="complete(request)">
-                Confirm
+              <button
+                type="button"
+                class="action-button small"
+                :disabled="linking.busy"
+                data-testid="complete-confirm"
+                @click="complete(request)"
+              >
+                <Spinner v-if="pendingKey === keyOf(request)" />
+                {{ pendingKey === keyOf(request) ? 'Linking…' : 'Confirm' }}
               </button>
             </template>
             <template v-else>
-              <button type="button" class="action-button small" data-testid="link-complete" @click="openComplete(request)">
+              <button
+                type="button"
+                class="action-button small"
+                :disabled="linking.busy"
+                data-testid="link-complete"
+                @click="openComplete(request)"
+              >
                 Complete
               </button>
-              <button type="button" class="action-button danger small" data-testid="link-request-cancel" @click="cancel(request)">
-                Cancel
+              <button
+                type="button"
+                class="action-button danger small"
+                :disabled="linking.busy"
+                data-testid="link-request-cancel"
+                @click="cancel(request)"
+              >
+                <Spinner v-if="pendingKey === keyOf(request)" />
+                {{ pendingKey === keyOf(request) ? 'Cancelling…' : 'Cancel' }}
               </button>
             </template>
           </span>
@@ -138,10 +166,11 @@ async function unlink(): Promise<void> {
           <button
             type="submit"
             class="action-button danger"
-            :disabled="linking.loading || !unlinkDiscordId || !unlinkGeoGuessrId"
+            :disabled="linking.busy || !unlinkDiscordId || !unlinkGeoGuessrId"
             data-testid="unlink-submit"
           >
-            Unlink
+            <Spinner v-if="linking.busy" />
+            {{ linking.busy ? 'Unlinking…' : 'Unlink' }}
           </button>
         </div>
       </form>

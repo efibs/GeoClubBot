@@ -72,6 +72,21 @@ describe('admin store', () => {
     expect(mockedStrikes).toHaveBeenCalled();
   });
 
+  it('marks the section busy while a write is in flight and clears it afterwards', async () => {
+    let resolveAdd: (value: { strikeId: string }) => void = () => {};
+    mockedAddStrike.mockReturnValue(new Promise((resolve) => (resolveAdd = resolve)));
+    mockedStrikes.mockResolvedValue([]);
+    mockedRelevant.mockResolvedValue([]);
+    const store = useAdminStore();
+
+    const pending = store.addStrike('Ada', '2026-07-04');
+    expect(store.strikes.busy).toBe(true);
+
+    resolveAdd({ strikeId: 's1' });
+    await pending;
+    expect(store.strikes.busy).toBe(false);
+  });
+
   it('keeps the error and does not reload when a write fails', async () => {
     mockedAddStrike.mockRejectedValue(new ApiError('Member not found.', 404));
     const store = useAdminStore();

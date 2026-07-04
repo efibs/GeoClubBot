@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia';
 import { useSessionStore } from '../stores/session';
 import { cancelLinkRequest, startLinkRequest } from '../api';
 import { copyText } from '../clipboard';
+import Spinner from './Spinner.vue';
 
 const session = useSessionStore();
 const { openLinkRequest } = storeToRefs(session);
@@ -97,7 +98,8 @@ async function copyOtp(): Promise<void> {
           data-testid="link-cancel"
           @click="cancel"
         >
-          Cancel request
+          <Spinner v-if="busy" />
+          {{ busy ? 'Cancelling…' : 'Cancel request' }}
         </button>
       </div>
     </template>
@@ -120,7 +122,8 @@ async function copyOtp(): Promise<void> {
         />
         <div class="form-actions">
           <button type="submit" class="action-button" :disabled="busy || !profileLink" data-testid="link-start">
-            Start linking
+            <Spinner v-if="busy" />
+            {{ busy ? 'Starting…' : 'Start linking' }}
           </button>
         </div>
       </form>
