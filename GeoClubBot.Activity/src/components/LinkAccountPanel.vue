@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSessionStore } from '../stores/session';
 import { cancelLinkRequest, startLinkRequest } from '../api';
+import { copyText } from '../clipboard';
 
 const session = useSessionStore();
 const { openLinkRequest } = storeToRefs(session);
@@ -11,6 +12,7 @@ const profileLink = ref('');
 const busy = ref(false);
 const error = ref<string | null>(null);
 const copied = ref(false);
+const copyFailed = ref(false);
 
 // Accepts either the raw 24-hex GeoGuessr user id or a profile share link ending in /user/<id>.
 const parsedUserId = computed(() => {
@@ -54,11 +56,16 @@ async function copyOtp(): Promise<void> {
   if (!openLinkRequest.value) {
     return;
   }
-  await navigator.clipboard.writeText(openLinkRequest.value.oneTimePassword);
-  copied.value = true;
-  setTimeout(() => {
-    copied.value = false;
-  }, 2000);
+  copyFailed.value = false;
+  if (await copyText(openLinkRequest.value.oneTimePassword)) {
+    copied.value = true;
+    setTimeout(() => {
+      copied.value = false;
+    }, 2000);
+  } else {
+    // Clipboard blocked even via the fallback — prompt the user to copy it by hand.
+    copyFailed.value = true;
+  }
 }
 </script>
 
@@ -78,6 +85,9 @@ async function copyOtp(): Promise<void> {
         <button type="button" class="action-button" data-testid="link-otp-copy" @click="copyOtp">
           {{ copied ? 'Copied!' : 'Copy' }}
         </button>
+      </p>
+      <p v-if="copyFailed" class="stat-caption" data-testid="link-otp-copy-failed">
+        Couldn't copy automatically — select the code above and copy it manually.
       </p>
       <div class="form-actions">
         <button
