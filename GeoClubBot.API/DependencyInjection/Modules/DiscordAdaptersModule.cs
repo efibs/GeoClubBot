@@ -21,6 +21,7 @@ public static class DiscordAdaptersModule
         services.AddTransient<IDiscordStatusUpdater, DiscordDiscordStatusUpdater>();
         services.AddTransient<IDiscordMessageAccess, DiscordDiscordMessageAccess>();
         services.AddTransient<IDiscordServerRolesAccess, DiscordDiscordServerRolesAccess>();
+        services.AddTransient<IDiscordMemberPermissionAccess, DiscordDiscordMemberPermissionAccess>();
         services.AddTransient<IDiscordTextChannelAccess, DiscordDiscordTextChannelAccess>();
         services.AddTransient<IDiscordSelfUserAccess, DiscordDiscordSelfUserAccess>();
         services.AddTransient<IDiscordDirectMessageAccess, DiscordDirectMessageAccess>();

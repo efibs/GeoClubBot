@@ -1,4 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mockMe } from './fixtures';
+
+// The shell always fetches /me after the handshake; keep it mocked so the overview scenarios below
+// stay focused on the dashboard payload.
+test.beforeEach(async ({ page }) => {
+  await mockMe(page);
+});
 
 const baseDashboard = {
   club: { name: 'Globetrotters', level: 12 },

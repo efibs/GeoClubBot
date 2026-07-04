@@ -43,3 +43,30 @@ export function streakFlames(currentStreak: number): string {
 export function formatStreak(days: number): string {
   return `${days} ${days === 1 ? 'day' : 'days'}`;
 }
+
+/** Turns an ISO country code into its flag emoji; falls back to a globe for odd values. */
+export function countryFlag(countryCode: string): string {
+  const code = countryCode.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return '🌍';
+  }
+  return String.fromCodePoint(...[...code].map((char) => 0x1f1e6 + char.charCodeAt(0) - 65));
+}
+
+/** Formats a 0..1 rate as a whole percent, with an em dash for missing values. */
+export function formatPercent(rate: number | null | undefined): string {
+  return rate == null ? '—' : `${Math.round(rate * 100)}%`;
+}
+
+/** The narrow weekday label ("M", "T", …) of an ISO date, computed in UTC like the backend. */
+export function weekdayInitial(isoDate: string): string {
+  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-US', {
+    weekday: 'narrow',
+    timeZone: 'UTC',
+  });
+}
+
+/** A compact date like "Jul 4, 2026" from an ISO timestamp. */
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}

@@ -49,6 +49,35 @@ body {
   min-height: 100%;
 }
 
+/* Tab navigation */
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  align-self: flex-start;
+}
+
+.tab-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: 9px;
+  padding: 7px 16px;
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab-link:hover {
+  color: var(--text);
+}
+
+.tab-link.active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+}
+
 /* Header */
 .dashboard-header {
   display: flex;
@@ -253,6 +282,208 @@ body {
 
 .empty-state.small {
   font-size: 0.85rem;
+}
+
+/* Stat tiles & fact rows */
+.stat-value {
+  margin: 4px 0 0;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.stat-caption {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.fact-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fact-row:last-of-type {
+  border-bottom: none;
+}
+
+.fact-row span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Day completion strip (status is icon + color, never color alone) */
+.day-strip {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.day-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 34px;
+  padding: 6px 4px;
+  background: var(--bg-row);
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.day-cell.done {
+  background: var(--viewer);
+  border-color: var(--viewer-border);
+}
+
+.day-label {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.day-mark {
+  font-weight: 700;
+}
+
+.day-cell.done .day-mark {
+  color: var(--viewer-border);
+}
+
+/* Admin area */
+.admin-area {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sub-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sub-nav .tab-link {
+  padding: 5px 12px;
+  font-size: 0.9rem;
+}
+
+.sub-nav .tab-link.router-link-active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+}
+
+.sub-nav .updated {
+  margin-left: auto;
+}
+
+.panel-wide {
+  grid-column: 1 / -1;
+}
+
+.row.revoked {
+  opacity: 0.55;
+}
+
+.row-with-actions {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+.row-actions {
+  grid-column: 4;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.action-button.small {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.field-input.small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  width: 160px;
+}
+
+/* Forms & actions */
+.reminder-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.field-label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.field-input {
+  background: var(--bg-row);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.action-button {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.action-button.danger {
+  background: #5a2733;
+  border: 1px solid #7a3b48;
+  color: #ffd7dd;
+}
+
+.otp-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-row);
+  border: 1px dashed var(--viewer-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.otp-display code {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 /* Error + loading */

@@ -165,6 +165,27 @@ dotnet test GeoClubBot.Tests/GeoClubBot.Tests.csproj
 The CI pipeline runs the fast unit job and the Docker-backed integration job on every PR — see the
 badges at the top of this file for current status.
 
+### Testing the Club Dashboard Activity
+
+The Activity (`GeoClubBot.Activity`) has its own test suite (Vitest unit/component tests +
+Playwright E2E — see [`GeoClubBot.Activity/README.md`](GeoClubBot.Activity/README.md#testing)),
+plus a mock-data mode and a dev-bypass mode that exercise it against the real local API without
+any Discord setup.
+
+To test it embedded in a real Discord client (the full OAuth handshake + iframe), you serve the
+built frontend from the API and tunnel the API over HTTPS:
+
+```bash
+scripts/rebuild-activity.sh                    # npm build + copy dist/ into GeoClubBot.API/wwwroot
+dotnet run --project GeoClubBot.API            # serves the Activity from wwwroot on :5194
+cloudflared tunnel --url http://localhost:5194 # public HTTPS URL for Discord to load
+```
+
+Re-run `scripts/rebuild-activity.sh` any time the Activity's source changes; the API picks it up
+without a restart. See
+[`GeoClubBot.Activity/README.md`](GeoClubBot.Activity/README.md#testing-inside-a-real-discord-client-via-tunnel)
+for the one-time Discord Developer Portal setup (URL Mappings, OAuth client) this requires.
+
 ## Building & publishing
 
 CI/CD is fully automated via GitHub Actions ([`.github/workflows/`](.github/workflows)). The full
