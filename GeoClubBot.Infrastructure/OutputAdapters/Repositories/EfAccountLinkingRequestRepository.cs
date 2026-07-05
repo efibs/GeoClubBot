@@ -28,6 +28,14 @@ public class EfAccountLinkingRequestRepository(GeoClubBotDbContext dbContext) : 
             .ConfigureAwait(false);
     }
 
+    public async Task<List<GeoGuessrAccountLinkingRequest>> ReadAllRequestsAsync(CancellationToken cancellationToken = default)
+    {
+        return await dbContext.GeoGuessrAccountLinkingRequests
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public void DeleteRequest(GeoGuessrAccountLinkingRequest request)
     {
         dbContext.GeoGuessrAccountLinkingRequests.Remove(request);

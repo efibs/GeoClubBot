@@ -1,0 +1,19 @@
+/* Design tokens: the color palette and global color-scheme. Referenced via var() everywhere,
+   including inside components' scoped styles. */
+:root {
+  --bg: #0b1020;
+  --bg-elevated: #151c33;
+  --bg-row: #1b2440;
+  --border: #283357;
+  --text: #e9edff;
+  --text-muted: #9aa6cf;
+  --accent: #6c7dff;
+  --accent-strong: #8a98ff;
+  --viewer: #2a3a22;
+  --viewer-border: #5fd06a;
+  --gold: #ffd54a;
+  --silver: #cfd6e6;
+  --bronze: #e0925a;
+  font-synthesis: none;
+  color-scheme: dark;
+}

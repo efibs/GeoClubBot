@@ -1,18 +1,24 @@
+using System.Globalization;
 using Configuration;
 using GeoClubBot.Authentication;
 using GeoClubBot.DTOs;
 using GeoClubBot.DTOs.Assemblers;
 using GeoClubBot.Middleware;
+using GeoClubBot.Services;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.DailyChallenge;
+using UseCases.UseCases.DailyMissionReminder;
 using UseCases.UseCases.DailyMissionStatistics;
 using UseCases.UseCases.GeoGuessrAccountLinking;
+using UseCases.UseCases.RankedSystem;
 using Utilities;
 
 namespace GeoClubBot.Controllers;
@@ -41,6 +47,18 @@ public class ActivityController(
     private const int MinHistoryDepth = 1;
     private const int MaxHistoryDepth = 60;
 
+    /// <summary>Bounds for the self-activity window (defaults to the last week).</summary>
+    private const int DefaultActivityDaysBack = 7;
+    private const int MaxActivityDaysBack = 60;
+
+    /// <summary>Bounds for the mission-statistics window (mirrors the query handler's own clamp).</summary>
+    private const int DefaultMissionStatsDaysBack = 30;
+    private const int MaxMissionStatsDaysBack = 365;
+
+    private static readonly Error NotLinkedError = Error.NotFound(
+        "activity.not_linked",
+        "No GeoGuessr account is linked to your Discord account.");
+
     /// <summary>
     /// The activity's public runtime configuration. The frontend fetches the Discord client id from
     /// here at boot instead of having it baked into the bundle, so the same image works for any
@@ -54,6 +72,7 @@ public class ActivityController(
 
     [HttpPost("token")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.ActivityTokenExchange)]
     public async Task<ActionResult<ActivityTokenResponse>> ExchangeToken(
         [FromBody] ActivityTokenRequest request,
         IDiscordOAuthService oauth,
@@ -76,7 +95,7 @@ public class ActivityController(
     public async Task<ActionResult<DashboardDto>> GetDashboard(
         [FromQuery] int? historyDepth,
         IClubRepository clubRepository,
-        IClubMemberRepository clubMemberRepository,
+        ActivityViewerResolver viewerResolver,
         ISender mediator,
         CancellationToken cancellationToken)
     {
@@ -90,7 +109,7 @@ public class ActivityController(
         // appear, e.g. the challenge standings) and the club they currently belong to. Only the
         // club-scoped panels — leaderboard and mission streaks — are tied to that club, and they stay
         // empty when the viewer isn't a member of any club.
-        var viewer = await ResolveViewerAsync(mediator, clubMemberRepository, cancellationToken).ConfigureAwait(false);
+        var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
 
         Entities.Club? club = null;
         IReadOnlyList<Entities.ClubMemberAverageXp> leaderboard = [];
@@ -123,33 +142,355 @@ public class ActivityController(
     }
 
     /// <summary>
-    /// Resolves the authenticated Discord viewer to their linked GeoGuessr identity and current club
-    /// membership. Returns null when there's no Discord identity or no linked account (nobody to
-    /// highlight); a linked viewer who isn't in a club is returned with a null <see cref="ViewerContext.ClubId"/>.
+    /// The viewer's own session context: identity, linked GeoGuessr account, club, any open linking
+    /// request (with its one-time password — the caller owns it), and whether they pass the admin
+    /// policy. Fetched once by the frontend after the handshake to decide which tabs to offer; the
+    /// admin flag is purely cosmetic there because every admin endpoint re-evaluates the same policy.
     /// </summary>
-    private async Task<ViewerContext?> ResolveViewerAsync(
+    [HttpGet("me")]
+    public async Task<ActionResult<MeDto>> GetMe(
+        ActivityViewerResolver viewerResolver,
+        IClubRepository clubRepository,
+        IAuthorizationService authorizationService,
         ISender mediator,
-        IClubMemberRepository clubMemberRepository,
         CancellationToken cancellationToken)
     {
         if (User.GetDiscordUserId() is not { } discordUserId)
         {
-            return null;
+            return Unauthorized();
         }
 
-        var linked = await mediator
+        // The exact policy the admin endpoints enforce — evaluated here so the frontend's admin
+        // flag can never diverge from what the server would actually allow.
+        var isAdmin = (await authorizationService
+            .AuthorizeAsync(User, ActivityAdminRequirement.PolicyName)
+            .ConfigureAwait(false)).Succeeded;
+
+        var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
+
+        Entities.Club? club = null;
+        if (viewer?.ClubId is { } clubId)
+        {
+            club = await clubRepository.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Only the caller's own open request is ever looked up, so exposing its OTP is safe here.
+        var openRequest = await mediator
+            .Send(new GetOpenAccountLinkingRequestQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+
+        var dto = new MeDto(
+            discordUserId.ToString(),
+            isAdmin,
+            viewer is null ? null : new LinkedAccountDto(viewer.UserId, viewer.Nickname),
+            club is null ? null : ClubDtoAssembler.AssembleDto(club),
+            openRequest.IsSuccess
+                ? new LinkRequestDto(openRequest.Value.GeoGuessrUserId, openRequest.Value.OneTimePassword)
+                : null);
+
+        return Ok(dto);
+    }
+
+    /// <summary>The viewer's own XP + daily-mission activity over the last <paramref name="daysBack"/> days.</summary>
+    [HttpGet("me/activity")]
+    public async Task<ActionResult<WeekActivityDto>> GetMyActivity(
+        [FromQuery] int? daysBack,
+        ActivityViewerResolver viewerResolver,
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
+        if (viewer is null)
+        {
+            return this.ToProblemDetails(NotLinkedError);
+        }
+
+        var days = Math.Clamp(daysBack ?? DefaultActivityDaysBack, 1, MaxActivityDaysBack);
+        var activity = await mediator
+            .Send(new GetActivityLastDaysQuery(viewer.UserId, days), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(ActivityMemberDtoAssembler.AssembleWeekActivity(activity));
+    }
+
+    /// <summary>The viewer's GeoGuessr profile plus ranked stats (fetched live from GeoGuessr).</summary>
+    [HttpGet("me/profile")]
+    public async Task<ActionResult<ProfileDto>> GetMyProfile(
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetDiscordUserId() is not { } discordUserId)
+        {
+            return Unauthorized();
+        }
+
+        var profile = await mediator
+            .Send(new GetGeoGuessrProfileQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+        if (!profile.IsSuccess)
+        {
+            return this.ToProblemDetails(profile.Error);
+        }
+
+        // Ranked stats are a nice-to-have: they 404 for players who never touched ranked, so a
+        // failure degrades to "no ranked section" instead of failing the whole profile.
+        var rankedProgress = await mediator
+            .Send(new GetUserRankedProgressQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+        var rankedPeak = await mediator
+            .Send(new GetUserRankedPeakRatingQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+
+        var dto = ActivityMemberDtoAssembler.AssembleProfile(
+            profile.Value,
+            rankedProgress.IsSuccess ? rankedProgress.Value : null,
+            rankedPeak.IsSuccess ? rankedPeak.Value : null);
+
+        return Ok(dto);
+    }
+
+    /// <summary>
+    /// Aggregated daily-mission statistics, scoped to the viewer's club when they belong to one and
+    /// across all clubs otherwise (the same aggregate the public slash command shows).
+    /// </summary>
+    [HttpGet("missions/stats")]
+    public async Task<ActionResult<MissionStatsDto>> GetMissionStats(
+        [FromQuery] int? daysBack,
+        ActivityViewerResolver viewerResolver,
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
+        var days = Math.Clamp(daysBack ?? DefaultMissionStatsDaysBack, 1, MaxMissionStatsDaysBack);
+
+        var statistics = await mediator
+            .Send(new GetDailyMissionStatisticsQuery(viewer?.ClubId, days), cancellationToken)
+            .ConfigureAwait(false);
+
+        return statistics.IsSuccess
+            ? Ok(ActivityMemberDtoAssembler.AssembleMissionStats(statistics.Value))
+            : this.ToProblemDetails(statistics.Error);
+    }
+
+    /// <summary>Today's XP of the viewer's club (falls back to the configured default club).</summary>
+    [HttpGet("club/todays-xp")]
+    public async Task<ActionResult<TodaysXpDto>> GetClubTodaysXp(
+        [FromQuery] bool includeWeeklies,
+        ActivityViewerResolver viewerResolver,
+        IClubRepository clubRepository,
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        string? clubName = null;
+        var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
+        if (viewer?.ClubId is { } clubId)
+        {
+            clubName = (await clubRepository.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false))?.Name;
+        }
+
+        var result = await mediator
+            .Send(new GetClubTodaysXpQuery(clubName, includeWeeklies), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(new TodaysXpDto(result.Xp, result.ClubName));
+    }
+
+    /// <summary>The viewer's daily-mission reminder, if configured.</summary>
+    [HttpGet("me/reminder")]
+    public async Task<ActionResult<ReminderStatusDto>> GetMyReminder(
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetDiscordUserId() is not { } discordUserId)
+        {
+            return Unauthorized();
+        }
+
+        var reminder = await mediator
+            .Send(new GetDailyMissionReminderStatusQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(new ReminderStatusDto(
+            reminder is null ? null : ActivityMemberDtoAssembler.AssembleReminder(reminder)));
+    }
+
+    /// <summary>
+    /// Sets (or updates) the viewer's daily-mission reminder. The reminder is persisted even when
+    /// the confirmation DM can't be delivered — the response reports the DM outcome separately so
+    /// the frontend can tell the viewer to enable DMs.
+    /// </summary>
+    [HttpPut("me/reminder")]
+    public async Task<ActionResult<ReminderUpdateResultDto>> SetMyReminder(
+        [FromBody] SetReminderRequest request,
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetDiscordUserId() is not { } discordUserId)
+        {
+            return Unauthorized();
+        }
+
+        if (!TimeOnly.TryParseExact(request.LocalTime, "HH\\:mm", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var localTime))
+        {
+            return this.ToProblemDetails(Error.Validation(
+                "activity.invalid_reminder_time",
+                "The reminder time must be in HH:mm format."));
+        }
+
+        var timeZoneId = string.IsNullOrWhiteSpace(request.TimeZoneId) ? null : request.TimeZoneId.Trim();
+        var customMessage = string.IsNullOrWhiteSpace(request.CustomMessage) ? null : request.CustomMessage.Trim();
+
+        // The command validates the time zone + message length (FluentValidation) and reports the
+        // confirmation-DM delivery as its Result; the reminder itself is persisted regardless.
+        var dmResult = await mediator
+            .Send(new SetDailyMissionReminderCommand(discordUserId, localTime, timeZoneId, customMessage), cancellationToken)
+            .ConfigureAwait(false);
+
+        var reminder = await mediator
+            .Send(new GetDailyMissionReminderStatusQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+        if (reminder is null)
+        {
+            return this.ToProblemDetails(Error.Unexpected(
+                "activity.reminder_not_persisted",
+                "The reminder could not be saved."));
+        }
+
+        return Ok(new ReminderUpdateResultDto(
+            ActivityMemberDtoAssembler.AssembleReminder(reminder),
+            dmResult.IsSuccess,
+            dmResult.IsSuccess ? null : dmResult.Error.Code));
+    }
+
+    /// <summary>Stops the viewer's daily-mission reminder.</summary>
+    [HttpDelete("me/reminder")]
+    public async Task<IActionResult> StopMyReminder(
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetDiscordUserId() is not { } discordUserId)
+        {
+            return Unauthorized();
+        }
+
+        var result = await mediator
+            .Send(new StopDailyMissionReminderCommand(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+
+        return result.IsSuccess ? NoContent() : this.ToProblemDetails(result.Error);
+    }
+
+    /// <summary>
+    /// Starts linking the viewer's Discord account to a GeoGuessr account, mirroring the
+    /// <c>/gg-account link</c> slash-command flow: the response carries the one-time password the
+    /// viewer must send to an admin via GeoGuessr DM. Admins get a heads-up in their channel and
+    /// see the open request in the dashboard's admin area.
+    /// </summary>
+    [HttpPost("me/link-request")]
+    public async Task<ActionResult<LinkRequestDto>> StartMyLinkRequest(
+        [FromBody] StartLinkRequest request,
+        ISender mediator,
+        IDiscordMessageAccess discordMessageAccess,
+        IOptions<GeoGuessrAccountLinkingConfiguration> linkingConfig,
+        ILogger<ActivityController> logger,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetDiscordUserId() is not { } discordUserId)
+        {
+            return Unauthorized();
+        }
+
+        var geoGuessrUserId = request.GeoGuessrUserId.Trim();
+
+        // Pre-checks mirroring GeoGuessrAccountLinkPublicModule: neither side may already be
+        // linked, and only one open request per user.
+        var linkedDiscordUser = await mediator
+            .Send(new GetLinkedDiscordUserIdQuery(geoGuessrUserId), cancellationToken)
+            .ConfigureAwait(false);
+        if (linkedDiscordUser.IsSuccess)
+        {
+            return this.ToProblemDetails(Error.Conflict(
+                "account_linking.geoguessr_already_linked",
+                "This GeoGuessr account is already linked to a Discord account. Contact an admin if you think this is a mistake."));
+        }
+
+        var linkedGeoGuessrUser = await mediator
             .Send(new GetLinkedGeoGuessrUserQuery(discordUserId), cancellationToken)
             .ConfigureAwait(false);
-        if (!linked.IsSuccess)
+        if (linkedGeoGuessrUser.IsSuccess)
         {
-            return null;
+            return this.ToProblemDetails(Error.Conflict(
+                "account_linking.already_linked",
+                "Your Discord account is already linked to a GeoGuessr account. Contact an admin if you think this is a mistake."));
         }
 
-        var member = await clubMemberRepository
-            .ReadClubMemberByUserIdAsync(linked.Value.UserId, cancellationToken)
+        var openRequest = await mediator
+            .Send(new GetOpenAccountLinkingRequestQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+        if (openRequest.IsSuccess)
+        {
+            return this.ToProblemDetails(Error.Conflict(
+                "account_linking.request_pending",
+                "You already have an open linking request. Cancel it first to start over."));
+        }
+
+        var oneTimePassword = await mediator
+            .Send(new StartAccountLinkingCommand(discordUserId, geoGuessrUserId), cancellationToken)
+            .ConfigureAwait(false);
+        if (!oneTimePassword.IsSuccess)
+        {
+            return this.ToProblemDetails(oneTimePassword.Error);
+        }
+
+        // Heads-up for the admins (the dashboard flow has no slash-command message). Best effort:
+        // the request is already persisted, so a Discord hiccup must not fail the response — the
+        // admin area lists open requests either way.
+        try
+        {
+            await discordMessageAccess.SendMessageAsync(
+                    $"User <@{discordUserId}> (id: {discordUserId}) started the linking process for GeoGuessr " +
+                    $"account {geoGuessrUserId} from the Club Dashboard. Complete or cancel it in the " +
+                    "dashboard's admin area once they've sent you their password inside GeoGuessr.\n\n" +
+                    "**Only accept the password if it was sent to you by the correct user inside GeoGuessr!**",
+                    linkingConfig.Value.AdminChannelId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception,
+                "Failed to post the account-linking heads-up to the admin channel for user {DiscordUserId}.",
+                discordUserId);
+        }
+
+        return Ok(new LinkRequestDto(geoGuessrUserId, oneTimePassword.Value));
+    }
+
+    /// <summary>Cancels the viewer's own open linking request.</summary>
+    [HttpDelete("me/link-request")]
+    public async Task<IActionResult> CancelMyLinkRequest(
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetDiscordUserId() is not { } discordUserId)
+        {
+            return Unauthorized();
+        }
+
+        var openRequest = await mediator
+            .Send(new GetOpenAccountLinkingRequestQuery(discordUserId), cancellationToken)
+            .ConfigureAwait(false);
+        if (!openRequest.IsSuccess)
+        {
+            return this.ToProblemDetails(openRequest.Error);
+        }
+
+        var result = await mediator
+            .Send(new CancelAccountLinkingCommand(discordUserId, openRequest.Value.GeoGuessrUserId), cancellationToken)
             .ConfigureAwait(false);
 
-        return new ViewerContext(member?.ClubId, linked.Value.Nickname);
+        return result.IsSuccess ? NoContent() : this.ToProblemDetails(result.Error);
     }
 
     private int GetDefaultHistoryDepth(Guid clubId)
@@ -158,6 +499,4 @@ public class ActivityController(
                         ?? geoGuessrConfig.Value.MainClub;
         return clubEntry.GetAverageXpHistoryDepth(activityConfig.Value);
     }
-
-    private sealed record ViewerContext(Guid? ClubId, string Nickname);
 }

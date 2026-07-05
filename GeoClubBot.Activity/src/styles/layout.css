@@ -1,0 +1,143 @@
+/* Cross-cutting structural utilities and small primitives applied as bare classes by many views:
+   the panel grid, forms, navigation, and shared text helpers. Component-specific styling lives in
+   each component's scoped block. */
+
+/* Panel grid */
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.panel-wide {
+  grid-column: 1 / -1;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Forms (`.form-stack` was the misnamed `.reminder-form` — it's the generic vertical form layout) */
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.field-label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.field-input {
+  background: var(--bg-row);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font: inherit;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field-input.small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  width: 160px;
+}
+
+/* Shared text helpers */
+.stat-value {
+  margin: 4px 0 0;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.stat-caption {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 8px 0;
+}
+
+.empty-state.small {
+  font-size: 0.85rem;
+}
+
+.updated {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Navigation (top tabs and the admin sub-nav share the tab-link primitive) */
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  align-self: flex-start;
+}
+
+.tab-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: 9px;
+  padding: 7px 16px;
+  font-weight: 600;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.tab-link:hover {
+  color: var(--text);
+}
+
+.tab-link.active,
+.sub-nav .tab-link.router-link-active {
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: #fff;
+}
+
+.admin-area {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sub-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sub-nav .tab-link {
+  padding: 5px 12px;
+  font-size: 0.9rem;
+}
+
+.sub-nav .updated {
+  margin-left: auto;
+}

@@ -1,6 +1,8 @@
+using System.Threading.RateLimiting;
 using Configuration;
 using Constants;
 using FluentValidation;
+using GeoClubBot;
 using GeoClubBot.Authentication;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
@@ -12,7 +14,9 @@ using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -71,7 +75,35 @@ builder.Services.AddCors(options =>
 builder.Services.AddAuthentication()
     .AddScheme<AuthenticationSchemeOptions, DiscordActivityAuthenticationHandler>(
         DiscordActivityAuthenticationHandler.SchemeName, _ => { });
-builder.Services.AddAuthorization();
+
+// The activity's admin-only endpoints additionally require the Discord Administrator permission in
+// the configured guild — the same gate the admin slash commands use. Evaluated per request (via the
+// gateway's live guild-member cache), so revoking someone's admin takes effect on their next call.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(ActivityAdminRequirement.PolicyName, policy => policy
+        .AddAuthenticationSchemes(DiscordActivityAuthenticationHandler.SchemeName)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new ActivityAdminRequirement()));
+});
+builder.Services.AddScoped<IAuthorizationHandler, ActivityAdminAuthorizationHandler>();
+
+// The anonymous token exchange is the one endpoint an unauthenticated caller can use to make this
+// server talk to Discord, so it gets a per-client-IP throttle (the forwarded-headers middleware
+// below restores the real client IP behind the TLS-terminating proxy). Everything else is either
+// authenticated or served from local data.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(RateLimitPolicies.ActivityTokenExchange, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+});
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -241,6 +273,7 @@ app.UseHttpsRedirection();
 app.UseCors(ConfiguredCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // The mock GeoGuessr UI also relies on static files.
 if (useMockGeoGuessr || serveActivity)
