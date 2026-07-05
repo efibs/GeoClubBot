@@ -46,16 +46,20 @@ public sealed class GeoClubBotApiFactory(string connectionString, Guid mainClubI
         builder.ConfigureTestServices(services =>
         {
             // Strip every background worker the app would normally start: the Discord gateway
-            // login, the self-roles updater, the Discord member-join/leave handlers, and the
-            // initial GeoGuessr sync (all in our GeoClubBot.* assemblies), plus the Quartz cron
-            // scheduler. Left running, InitialSyncService in particular blocks host startup while
-            // it calls GeoGuessr. Framework hosted services (Kestrel/TestServer, health checks,
-            // OpenTelemetry, auto-activation) live in other assemblies and are left intact.
+            // login, the self-roles updater, the entry-point ("Launch") command config + gateway
+            // listener, the Discord channel log sink, and the initial GeoGuessr sync (all in our
+            // GeoClubBot.* assemblies), plus the Quartz cron scheduler. Left running, InitialSyncService
+            // blocks host startup while it calls GeoGuessr, and EntryPointCommandConfigurationService
+            // deadlocks it outright: its StartAsync awaits the Discord "ready" signal that only the
+            // (stripped) gateway login can ever fire. Framework hosted services (Kestrel/TestServer,
+            // health checks, OpenTelemetry, auto-activation) live in other assemblies and stay intact.
+            //
+            // Some of these are registered with a factory delegate (AddHostedService(p => ...)) rather
+            // than AddHostedService<T>(), so their ServiceDescriptor.ImplementationType is null. Fall
+            // back to the factory delegate's declaring type — the compiler-generated closure lives in
+            // the assembly that registered it — so those are matched too.
             var backgroundServices = services
-                .Where(d => d.ServiceType == typeof(IHostedService)
-                            && d.ImplementationType is { } impl
-                            && (impl.Assembly.GetName().Name?.StartsWith("GeoClubBot", StringComparison.Ordinal) == true
-                                || impl.Namespace?.StartsWith("Quartz", StringComparison.Ordinal) == true))
+                .Where(d => d.ServiceType == typeof(IHostedService) && IsOwnBackgroundService(d))
                 .ToList();
 
             foreach (var descriptor in backgroundServices)
@@ -71,5 +75,26 @@ public sealed class GeoClubBotApiFactory(string connectionString, Guid mainClubI
             services.RemoveAll<GeoClubBotDbContext>();
             services.AddDbContext<GeoClubBotDbContext>(options => options.UseNpgsql(connectionString));
         });
+    }
+
+    /// <summary>
+    /// True when the hosted-service descriptor originates from one of our GeoClubBot.* assemblies or
+    /// the Quartz scheduler. Handles both <c>AddHostedService&lt;T&gt;()</c> (ImplementationType set)
+    /// and the factory form <c>AddHostedService(p =&gt; ...)</c> (ImplementationType null — the type is
+    /// recovered from the delegate's declaring type, i.e. the compiler-generated closure).
+    /// </summary>
+    private static bool IsOwnBackgroundService(ServiceDescriptor descriptor)
+    {
+        var implementationType = descriptor.ImplementationType
+                                 ?? descriptor.ImplementationInstance?.GetType()
+                                 ?? descriptor.ImplementationFactory?.Method.DeclaringType;
+
+        if (implementationType is null)
+        {
+            return false;
+        }
+
+        return implementationType.Assembly.GetName().Name?.StartsWith("GeoClubBot", StringComparison.Ordinal) == true
+               || implementationType.Namespace?.StartsWith("Quartz", StringComparison.Ordinal) == true;
     }
 }
