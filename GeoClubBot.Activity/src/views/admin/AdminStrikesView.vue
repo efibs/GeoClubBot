@@ -1,24 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { storeToRefs } from 'pinia';
-import { useAdminStore } from '../../stores/admin';
-import { formatDate } from '../../format';
+import { ref } from 'vue';
+import PanelSection from '../../components/PanelSection.vue';
+import FormField from '../../components/FormField.vue';
+import ActionButton from '../../components/ActionButton.vue';
+import ErrorBanner from '../../components/ErrorBanner.vue';
+import { useAdminStrikes } from '../../queries/admin';
+import { formatDate, todayAsDateInputValue } from '../../format';
 import { confirm } from '../../composables/useConfirm';
-import Spinner from '../../components/Spinner.vue';
 
-const admin = useAdminStore();
-const { strikes } = storeToRefs(admin);
+const strikes = useAdminStrikes();
 
 const newStrikeNickname = ref('');
-const newStrikeDate = ref(new Date().toISOString().slice(0, 10));
-// The strike whose row action is currently running, so only that button shows a spinner.
-const pendingId = ref<string | null>(null);
-
-onMounted(() => {
-  if (!strikes.value.data) {
-    void admin.loadStrikes();
-  }
-});
+const newStrikeDate = ref(todayAsDateInputValue());
 
 async function addStrike(): Promise<void> {
   const nickname = newStrikeNickname.value.trim();
@@ -28,34 +21,32 @@ async function addStrike(): Promise<void> {
   if (!(await confirm({ message: `Add a strike to ${nickname}?`, danger: true }))) {
     return;
   }
-  if (await admin.addStrike(nickname, newStrikeDate.value)) {
+  try {
+    await strikes.add(nickname, newStrikeDate.value);
     newStrikeNickname.value = '';
+  } catch {
+    // Surfaced via strikes.error.
   }
 }
 
 async function revoke(strikeId: string, nickname: string): Promise<void> {
   if (await confirm({ message: `Revoke this strike of ${nickname}?`, danger: true })) {
-    pendingId.value = strikeId;
-    await admin.revokeStrike(strikeId);
-    pendingId.value = null;
+    await strikes.revoke(strikeId).catch(() => {});
   }
 }
 
 async function unrevoke(strikeId: string, nickname: string): Promise<void> {
   if (await confirm(`Restore this strike of ${nickname}?`)) {
-    pendingId.value = strikeId;
-    await admin.unrevokeStrike(strikeId);
-    pendingId.value = null;
+    await strikes.unrevoke(strikeId).catch(() => {});
   }
 }
 </script>
 
 <template>
   <main class="panels" data-testid="admin-strikes-view">
-    <p v-if="strikes.error" class="error-banner" data-testid="error-banner">⚠️ {{ strikes.error }}</p>
+    <ErrorBanner v-if="strikes.error" data-testid="error-banner">{{ strikes.error }}</ErrorBanner>
 
-    <section class="panel" data-testid="relevant-strikes-panel">
-      <h2 class="panel-title">🚨 Members with active strikes</h2>
+    <PanelSection title="🚨 Members with active strikes" data-testid="relevant-strikes-panel">
       <ul v-if="strikes.data && strikes.data.relevant.length > 0" class="rows">
         <li v-for="entry in strikes.data.relevant" :key="entry.nickname" class="row">
           <span class="rank">⚠️</span>
@@ -66,46 +57,41 @@ async function unrevoke(strikeId: string, nickname: string): Promise<void> {
       <p v-else-if="strikes.data" class="empty-state" data-testid="relevant-strikes-empty">
         Nobody has an active strike. 🎉
       </p>
-      <p v-else-if="strikes.loading" class="empty-state">Loading…</p>
-    </section>
+      <p v-else-if="strikes.isPending" class="empty-state">Loading…</p>
+    </PanelSection>
 
-    <section class="panel" data-testid="add-strike-panel">
-      <h2 class="panel-title">➕ Add strike</h2>
-      <form class="reminder-form" @submit.prevent="addStrike">
-        <label class="field-label" for="strike-nickname">GeoGuessr nickname</label>
-        <input
+    <PanelSection title="➕ Add strike" data-testid="add-strike-panel">
+      <form class="form-stack" @submit.prevent="addStrike">
+        <FormField
           id="strike-nickname"
           v-model="newStrikeNickname"
-          type="text"
+          label="GeoGuessr nickname"
           required
-          class="field-input"
           data-testid="add-strike-nickname"
         />
-        <label class="field-label" for="strike-date">Strike date</label>
-        <input
+        <FormField
           id="strike-date"
           v-model="newStrikeDate"
+          label="Strike date"
           type="date"
           required
-          class="field-input"
           data-testid="add-strike-date"
         />
         <div class="form-actions">
-          <button
+          <ActionButton
             type="submit"
-            class="action-button"
+            :busy="strikes.addPending"
+            busy-label="Adding…"
             :disabled="strikes.busy || !newStrikeNickname"
             data-testid="add-strike-submit"
           >
-            <Spinner v-if="strikes.busy" />
-            {{ strikes.busy ? 'Adding…' : 'Add strike' }}
-          </button>
+            Add strike
+          </ActionButton>
         </div>
       </form>
-    </section>
+    </PanelSection>
 
-    <section class="panel panel-wide" data-testid="all-strikes-panel">
-      <h2 class="panel-title">📜 All strikes</h2>
+    <PanelSection title="📜 All strikes" wide data-testid="all-strikes-panel">
       <ul v-if="strikes.data && strikes.data.all.length > 0" class="rows">
         <li
           v-for="strike in strikes.data.all"
@@ -121,33 +107,36 @@ async function unrevoke(strikeId: string, nickname: string): Promise<void> {
             {{ strike.revoked ? 'revoked' : `expires ${formatDate(strike.expiresAt)}` }}
           </span>
           <span class="row-actions">
-            <button
+            <ActionButton
               v-if="!strike.revoked"
-              type="button"
-              class="action-button danger small"
+              danger
+              small
+              :busy="strikes.pendingStrikeId === strike.strikeId"
+              busy-label="Revoking…"
               :disabled="strikes.busy"
               data-testid="strike-revoke"
               @click="revoke(strike.strikeId, strike.nickname)"
             >
-              <Spinner v-if="pendingId === strike.strikeId" />
-              {{ pendingId === strike.strikeId ? 'Revoking…' : 'Revoke' }}
-            </button>
-            <button
+              Revoke
+            </ActionButton>
+            <ActionButton
               v-else
-              type="button"
-              class="action-button small"
+              small
+              :busy="strikes.pendingStrikeId === strike.strikeId"
+              busy-label="Restoring…"
               :disabled="strikes.busy"
               data-testid="strike-unrevoke"
               @click="unrevoke(strike.strikeId, strike.nickname)"
             >
-              <Spinner v-if="pendingId === strike.strikeId" />
-              {{ pendingId === strike.strikeId ? 'Restoring…' : 'Restore' }}
-            </button>
+              Restore
+            </ActionButton>
           </span>
         </li>
       </ul>
-      <p v-else-if="strikes.data" class="empty-state" data-testid="all-strikes-empty">No strikes recorded.</p>
-      <p v-else-if="strikes.loading" class="empty-state">Loading…</p>
-    </section>
+      <p v-else-if="strikes.data" class="empty-state" data-testid="all-strikes-empty">
+        No strikes recorded.
+      </p>
+      <p v-else-if="strikes.isPending" class="empty-state">Loading…</p>
+    </PanelSection>
   </main>
 </template>

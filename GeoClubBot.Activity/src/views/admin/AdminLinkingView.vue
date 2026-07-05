@@ -1,28 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { storeToRefs } from 'pinia';
-import { useAdminStore } from '../../stores/admin';
+import { ref } from 'vue';
+import PanelSection from '../../components/PanelSection.vue';
+import FormField from '../../components/FormField.vue';
+import ActionButton from '../../components/ActionButton.vue';
+import ErrorBanner from '../../components/ErrorBanner.vue';
+import { useAdminLinking } from '../../queries/admin';
 import { confirm } from '../../composables/useConfirm';
-import Spinner from '../../components/Spinner.vue';
 import type { AdminLinkRequestDto } from '../../types';
 
-const admin = useAdminStore();
-const { linking } = storeToRefs(admin);
+const linking = useAdminLinking();
 
 // The request whose "Complete" form is open, plus the OTP the member sent via GeoGuessr DM.
 const completingKey = ref<string | null>(null);
 const otp = ref('');
-// The request whose complete/cancel action is currently running, so only that row shows a spinner.
-const pendingKey = ref<string | null>(null);
 
 const unlinkDiscordId = ref('');
 const unlinkGeoGuessrId = ref('');
-
-onMounted(() => {
-  if (!linking.value.data) {
-    void admin.loadLinking();
-  }
-});
 
 function keyOf(request: AdminLinkRequestDto): string {
   return `${request.discordUserId}:${request.geoGuessrUserId}`;
@@ -37,20 +30,23 @@ async function complete(request: AdminLinkRequestDto): Promise<void> {
   if (!otp.value.trim()) {
     return;
   }
-  pendingKey.value = keyOf(request);
-  const ok = await admin.completeLinkRequest(request.discordUserId, request.geoGuessrUserId, otp.value.trim());
-  pendingKey.value = null;
-  if (ok) {
+  try {
+    await linking.complete(request.discordUserId, request.geoGuessrUserId, otp.value.trim());
     completingKey.value = null;
     otp.value = '';
+  } catch {
+    // Surfaced via linking.error.
   }
 }
 
 async function cancel(request: AdminLinkRequestDto): Promise<void> {
-  if (await confirm({ message: `Cancel the linking request of Discord user ${request.discordUserId}?`, danger: true })) {
-    pendingKey.value = keyOf(request);
-    await admin.cancelLinkRequest(request.discordUserId, request.geoGuessrUserId);
-    pendingKey.value = null;
+  if (
+    await confirm({
+      message: `Cancel the linking request of Discord user ${request.discordUserId}?`,
+      danger: true,
+    })
+  ) {
+    await linking.cancel(request.discordUserId, request.geoGuessrUserId).catch(() => {});
   }
 }
 
@@ -60,22 +56,29 @@ async function unlink(): Promise<void> {
   if (!discordId || !geoGuessrId) {
     return;
   }
-  if (!(await confirm({ message: `Unlink Discord user ${discordId} from GeoGuessr account ${geoGuessrId}?`, danger: true }))) {
+  if (
+    !(await confirm({
+      message: `Unlink Discord user ${discordId} from GeoGuessr account ${geoGuessrId}?`,
+      danger: true,
+    }))
+  ) {
     return;
   }
-  if (await admin.unlinkAccounts(discordId, geoGuessrId)) {
+  try {
+    await linking.unlink(discordId, geoGuessrId);
     unlinkDiscordId.value = '';
     unlinkGeoGuessrId.value = '';
+  } catch {
+    // Surfaced via linking.error.
   }
 }
 </script>
 
 <template>
   <main class="panels" data-testid="admin-linking-view">
-    <p v-if="linking.error" class="error-banner" data-testid="error-banner">⚠️ {{ linking.error }}</p>
+    <ErrorBanner v-if="linking.error" data-testid="error-banner">{{ linking.error }}</ErrorBanner>
 
-    <section class="panel panel-wide" data-testid="link-requests-panel">
-      <h2 class="panel-title">🔗 Open linking requests</h2>
+    <PanelSection title="🔗 Open linking requests" wide data-testid="link-requests-panel">
       <p class="stat-caption">
         Complete a request only after the member sent you their one-time password as a direct
         message <strong>inside GeoGuessr</strong> — that's what proves they own the account.
@@ -100,37 +103,37 @@ async function unlink(): Promise<void> {
                 data-testid="complete-otp-input"
                 @keyup.enter="complete(request)"
               />
-              <button
-                type="button"
-                class="action-button small"
+              <ActionButton
+                small
+                :busy="linking.pendingKey === keyOf(request)"
+                busy-label="Linking…"
                 :disabled="linking.busy"
                 data-testid="complete-confirm"
                 @click="complete(request)"
               >
-                <Spinner v-if="pendingKey === keyOf(request)" />
-                {{ pendingKey === keyOf(request) ? 'Linking…' : 'Confirm' }}
-              </button>
+                Confirm
+              </ActionButton>
             </template>
             <template v-else>
-              <button
-                type="button"
-                class="action-button small"
+              <ActionButton
+                small
                 :disabled="linking.busy"
                 data-testid="link-complete"
                 @click="openComplete(request)"
               >
                 Complete
-              </button>
-              <button
-                type="button"
-                class="action-button danger small"
+              </ActionButton>
+              <ActionButton
+                danger
+                small
+                :busy="linking.pendingKey === keyOf(request)"
+                busy-label="Cancelling…"
                 :disabled="linking.busy"
                 data-testid="link-request-cancel"
                 @click="cancel(request)"
               >
-                <Spinner v-if="pendingKey === keyOf(request)" />
-                {{ pendingKey === keyOf(request) ? 'Cancelling…' : 'Cancel' }}
-              </button>
+                Cancel
+              </ActionButton>
             </template>
           </span>
         </li>
@@ -138,42 +141,38 @@ async function unlink(): Promise<void> {
       <p v-else-if="linking.data" class="empty-state" data-testid="link-requests-empty">
         No open linking requests.
       </p>
-      <p v-else-if="linking.loading" class="empty-state">Loading…</p>
-    </section>
+      <p v-else-if="linking.isPending" class="empty-state">Loading…</p>
+    </PanelSection>
 
-    <section class="panel" data-testid="unlink-panel">
-      <h2 class="panel-title">✂️ Unlink accounts</h2>
-      <form class="reminder-form" @submit.prevent="unlink">
-        <label class="field-label" for="unlink-discord">Discord user id</label>
-        <input
+    <PanelSection title="✂️ Unlink accounts" data-testid="unlink-panel">
+      <form class="form-stack" @submit.prevent="unlink">
+        <FormField
           id="unlink-discord"
           v-model="unlinkDiscordId"
-          type="text"
+          label="Discord user id"
           required
-          class="field-input"
           data-testid="unlink-discord-input"
         />
-        <label class="field-label" for="unlink-gg">GeoGuessr user id</label>
-        <input
+        <FormField
           id="unlink-gg"
           v-model="unlinkGeoGuessrId"
-          type="text"
+          label="GeoGuessr user id"
           required
-          class="field-input"
           data-testid="unlink-gg-input"
         />
         <div class="form-actions">
-          <button
+          <ActionButton
             type="submit"
-            class="action-button danger"
+            danger
+            :busy="linking.unlinking"
+            busy-label="Unlinking…"
             :disabled="linking.busy || !unlinkDiscordId || !unlinkGeoGuessrId"
             data-testid="unlink-submit"
           >
-            <Spinner v-if="linking.busy" />
-            {{ linking.busy ? 'Unlinking…' : 'Unlink' }}
-          </button>
+            Unlink
+          </ActionButton>
         </div>
       </form>
-    </section>
+    </PanelSection>
   </main>
 </template>

@@ -1,37 +1,27 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue';
-import { storeToRefs } from 'pinia';
+import { computed } from 'vue';
+import PanelSection from '../components/PanelSection.vue';
+import FactRow from '../components/FactRow.vue';
 import LinkAccountPanel from '../components/LinkAccountPanel.vue';
-import { useSessionStore } from '../stores/session';
-import { useProfileStore } from '../stores/profile';
+import ErrorBanner from '../components/ErrorBanner.vue';
+import { useSession } from '../queries/session';
+import { useMyActivityQuery, useProfileQuery } from '../queries/profile';
 import { countryFlag, formatXp, weekdayInitial } from '../format';
-import { usePolling } from '../composables/usePolling';
+import { toErrorMessage } from '../api';
 
-const session = useSessionStore();
-const profileStore = useProfileStore();
-const { profile, activity, loading, error } = storeToRefs(profileStore);
-const { isLinked } = storeToRefs(session);
+const { isLinked, nickname } = useSession();
 
-function loadIfLinked(showSpinner: boolean): void {
-  if (session.isLinked) {
-    void profileStore.load(showSpinner);
-  }
-}
+// The profile/activity queries are enabled only while linked; if the account gets linked while this
+// tab is open (an admin completes the request), `isLinked` flips and they fetch on their own.
+const profileQuery = useProfileQuery(isLinked);
+const activityQuery = useMyActivityQuery(isLinked);
+const { data: profile } = profileQuery;
+const { data: activity } = activityQuery;
+const loadingProfile = profileQuery.isPending;
 
-onMounted(() => {
-  loadIfLinked(profile.value === null);
-});
-
-usePolling(() => {
-  loadIfLinked(false);
-});
-
-// If the account gets linked while this tab is open (e.g. an admin completes the request), the
-// profile appears without a manual refresh.
-watch(isLinked, (linked) => {
-  if (linked) {
-    void profileStore.load(true);
-  }
+const errorMessage = computed(() => {
+  const err = profileQuery.error.value ?? activityQuery.error.value;
+  return err ? toErrorMessage(err, 'Failed to load your profile.') : null;
 });
 </script>
 
@@ -40,46 +30,34 @@ watch(isLinked, (linked) => {
     <LinkAccountPanel v-if="!isLinked" />
 
     <template v-else>
-      <section class="panel" data-testid="profile-panel">
-        <h2 class="panel-title">👤 {{ profile?.nickname ?? session.nickname }}</h2>
+      <PanelSection
+        :title="`👤 ${profile?.nickname ?? nickname ?? ''}`"
+        data-testid="profile-panel"
+      >
         <template v-if="profile">
-          <div class="fact-row">
-            <span>Country</span>
-            <strong>{{ countryFlag(profile.countryCode) }} {{ profile.countryCode.toUpperCase() }}</strong>
-          </div>
-          <div v-if="profile.level != null" class="fact-row">
-            <span>Level</span>
-            <strong>{{ profile.level }}</strong>
-          </div>
-          <div class="fact-row">
-            <span>Playing since</span>
-            <strong>{{ new Date(profile.createdAt).getFullYear() }}</strong>
-          </div>
-          <div v-if="profile.isProUser" class="fact-row">
-            <span>Subscription</span>
-            <strong>Pro</strong>
-          </div>
+          <FactRow label="Country">
+            {{ countryFlag(profile.countryCode) }} {{ profile.countryCode.toUpperCase() }}
+          </FactRow>
+          <FactRow v-if="profile.level != null" label="Level">{{ profile.level }}</FactRow>
+          <FactRow label="Playing since">{{ new Date(profile.createdAt).getFullYear() }}</FactRow>
+          <FactRow v-if="profile.isProUser" label="Subscription">Pro</FactRow>
           <template v-if="profile.ranked">
-            <div v-if="profile.ranked.rating != null" class="fact-row">
-              <span>Ranked rating</span>
-              <strong>{{ profile.ranked.rating }}</strong>
-            </div>
-            <div v-if="profile.ranked.divisionName" class="fact-row">
-              <span>Division</span>
-              <strong>{{ profile.ranked.divisionName }}</strong>
-            </div>
-            <div v-if="profile.ranked.peakRating != null" class="fact-row">
-              <span>Peak rating</span>
-              <strong>{{ profile.ranked.peakRating }}</strong>
-            </div>
+            <FactRow v-if="profile.ranked.rating != null" label="Ranked rating">
+              {{ profile.ranked.rating }}
+            </FactRow>
+            <FactRow v-if="profile.ranked.divisionName" label="Division">
+              {{ profile.ranked.divisionName }}
+            </FactRow>
+            <FactRow v-if="profile.ranked.peakRating != null" label="Peak rating">
+              {{ profile.ranked.peakRating }}
+            </FactRow>
           </template>
         </template>
-        <p v-else-if="loading" class="empty-state">Loading your profile…</p>
+        <p v-else-if="loadingProfile" class="empty-state">Loading your profile…</p>
         <p v-else class="empty-state">Profile unavailable right now.</p>
-      </section>
+      </PanelSection>
 
-      <section class="panel" data-testid="my-activity-panel">
-        <h2 class="panel-title">📅 My last 7 days</h2>
+      <PanelSection title="📅 My last 7 days" data-testid="my-activity-panel">
         <template v-if="activity">
           <p class="stat-value">{{ formatXp(activity.totalXp) }}</p>
           <p class="stat-caption">
@@ -100,9 +78,53 @@ watch(isLinked, (linked) => {
           </ul>
         </template>
         <p v-else class="empty-state">No activity data yet.</p>
-      </section>
+      </PanelSection>
 
-      <p v-if="error" class="error-banner error-banner-wide" data-testid="error-banner">⚠️ {{ error }}</p>
+      <ErrorBanner v-if="errorMessage" class="error-banner-wide" data-testid="error-banner">
+        {{ errorMessage }}
+      </ErrorBanner>
     </template>
   </main>
 </template>
+
+<style scoped>
+.day-strip {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.day-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 34px;
+  padding: 6px 4px;
+  background: var(--bg-row);
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.day-cell.done {
+  background: var(--viewer);
+  border-color: var(--viewer-border);
+}
+
+.day-label {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.day-mark {
+  font-weight: 700;
+}
+
+.day-cell.done .day-mark {
+  color: var(--viewer-border);
+}
+</style>

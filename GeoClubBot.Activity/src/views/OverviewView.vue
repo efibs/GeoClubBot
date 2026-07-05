@@ -1,61 +1,61 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
-import { storeToRefs } from 'pinia';
+import { computed } from 'vue';
 import DashboardHeader from '../components/DashboardHeader.vue';
 import PeriodFilter from '../components/PeriodFilter.vue';
 import LeaderboardPanel from '../components/LeaderboardPanel.vue';
 import ChallengePanel from '../components/ChallengePanel.vue';
 import StreaksPanel from '../components/StreaksPanel.vue';
-import { useDashboardStore } from '../stores/dashboard';
+import LoadingScreen from '../components/LoadingScreen.vue';
+import ErrorScreen from '../components/ErrorScreen.vue';
+import ErrorBanner from '../components/ErrorBanner.vue';
+import { useDashboardQuery } from '../queries/dashboard';
+import { historyDepth } from '../state/ui';
 import { depthOptions } from '../format';
-import { usePolling } from '../composables/usePolling';
+import { toErrorMessage } from '../api';
 
-const store = useDashboardStore();
-const { data, loading, error, historyDepth, lastUpdated, viewerNickname, clubName, clubLevel, hasClub } =
-  storeToRefs(store);
+const { data, isPending, isFetching, error, refetch, dataUpdatedAt } =
+  useDashboardQuery(historyDepth);
 
 const leaderboard = computed(() => data.value?.leaderboard ?? []);
 const challenges = computed(() => data.value?.challenges ?? []);
 const streaks = computed(() => data.value?.streaks ?? []);
+const viewerNickname = computed(() => data.value?.viewer?.nickname ?? null);
+const clubName = computed(() => data.value?.club?.name ?? 'Club Dashboard');
+const clubLevel = computed(() => data.value?.club?.level ?? null);
+const hasClub = computed(() => data.value?.club != null);
+const lastUpdated = computed(() => (dataUpdatedAt.value ? new Date(dataUpdatedAt.value) : null));
+const errorMessage = computed(() =>
+  error.value ? toErrorMessage(error.value, 'Failed to load the dashboard.') : null,
+);
 
-onMounted(() => {
-  // First visit fetches with a spinner; returning to the tab refreshes silently behind the
-  // already-rendered data.
-  void store.load(data.value === null);
-});
-
-usePolling(() => {
-  void store.load(false);
-});
+function setDepth(value: number): void {
+  historyDepth.value = value;
+}
 </script>
 
 <template>
-  <div v-if="loading && !data" class="screen-message" data-testid="overview-loading">
-    <div class="spinner" />
-  </div>
+  <LoadingScreen v-if="isPending" data-testid="overview-loading" />
 
-  <div v-else-if="error && !data" class="screen-message error" data-testid="load-error">
-    <p>⚠️ {{ error }}</p>
-  </div>
+  <ErrorScreen v-else-if="errorMessage && !data" :message="errorMessage" data-testid="load-error" />
 
   <template v-else>
     <DashboardHeader
       :club-name="clubName"
       :club-level="clubLevel"
       :last-updated="lastUpdated"
-      :loading="loading"
-      @refresh="store.load()"
+      :loading="isFetching"
+      @refresh="refetch()"
     />
 
     <div v-if="hasClub" class="toolbar">
       <PeriodFilter
         :model-value="historyDepth"
         :options="depthOptions"
-        @update:model-value="store.setHistoryDepth"
+        @update:model-value="setDepth"
       />
     </div>
 
-    <p v-if="error" class="error-banner" data-testid="error-banner">⚠️ {{ error }}</p>
+    <ErrorBanner v-if="errorMessage" data-testid="error-banner">{{ errorMessage }}</ErrorBanner>
 
     <main class="panels">
       <!-- Leaderboard and streaks are club-scoped; only shown when the viewer is in a club. The
@@ -71,3 +71,16 @@ usePolling(() => {
     </main>
   </template>
 </template>
+
+<style scoped>
+.no-club-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  text-align: center;
+}
+</style>

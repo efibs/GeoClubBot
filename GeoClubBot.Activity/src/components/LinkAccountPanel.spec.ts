@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
-import { createPinia, setActivePinia } from 'pinia';
+import { flushPromises, mount } from '@vue/test-utils';
 import LinkAccountPanel from './LinkAccountPanel.vue';
-import { useSessionStore } from '../stores/session';
 import { startLinkRequest } from '../api';
+import { queryPlugin, testQueryClient } from '../test/query';
 import type { MeDto } from '../types';
 
-vi.mock('../api', () => ({
-  fetchMe: vi.fn(),
-  startLinkRequest: vi.fn(),
-  cancelLinkRequest: vi.fn(),
-}));
+vi.mock('../api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api')>();
+  return {
+    ...actual,
+    fetchMe: vi.fn(() => Promise.reject(new Error('no session'))),
+    startLinkRequest: vi.fn(),
+    cancelLinkRequest: vi.fn(),
+  };
+});
 
 const mockedStart = vi.mocked(startLinkRequest);
 
@@ -23,11 +26,8 @@ const unlinkedMe: MeDto = {
 };
 
 function mountPanel(me: MeDto) {
-  const pinia = createPinia();
-  setActivePinia(pinia);
-  const session = useSessionStore();
-  session.me = me;
-  return mount(LinkAccountPanel, { global: { plugins: [pinia] } });
+  const client = testQueryClient(me);
+  return mount(LinkAccountPanel, { global: { plugins: [queryPlugin(client)] } });
 }
 
 describe('LinkAccountPanel', () => {
@@ -58,8 +58,11 @@ describe('LinkAccountPanel', () => {
     mockedStart.mockResolvedValue({ geoGuessrUserId: userId, oneTimePassword: 'otp' });
     const wrapper = mountPanel(unlinkedMe);
 
-    await wrapper.find('[data-testid="link-profile-input"]').setValue(`https://www.geoguessr.com/user/${userId}`);
+    await wrapper
+      .find('[data-testid="link-profile-input"]')
+      .setValue(`https://www.geoguessr.com/user/${userId}`);
     await wrapper.find('form').trigger('submit');
+    await flushPromises();
 
     expect(mockedStart).toHaveBeenCalledWith(userId);
   });
@@ -67,7 +70,9 @@ describe('LinkAccountPanel', () => {
   it('rejects a malformed profile link without calling the API', async () => {
     const wrapper = mountPanel(unlinkedMe);
 
-    await wrapper.find('[data-testid="link-profile-input"]').setValue('https://example.com/not-a-profile');
+    await wrapper
+      .find('[data-testid="link-profile-input"]')
+      .setValue('https://example.com/not-a-profile');
     await wrapper.find('form').trigger('submit');
 
     expect(mockedStart).not.toHaveBeenCalled();

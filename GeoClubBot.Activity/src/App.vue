@@ -2,10 +2,12 @@
 import { onMounted, ref } from 'vue';
 import TabNav from './components/TabNav.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
-import { useSessionStore } from './stores/session';
+import LoadingScreen from './components/LoadingScreen.vue';
+import ErrorScreen from './components/ErrorScreen.vue';
+import { fetchMe, toErrorMessage } from './api';
+import { queryClient } from './queryClient';
+import { queryKeys } from './queries/keys';
 import { initializeDiscord } from './discord';
-
-const session = useSessionStore();
 
 const initializing = ref(true);
 const initError = ref<string | null>(null);
@@ -17,10 +19,12 @@ onMounted(async () => {
       initStatus.value = step;
     });
     initStatus.value = 'Loading your profile…';
-    // Non-fatal: a /me failure still renders the shell with the non-admin, unlinked defaults.
-    await session.loadMe();
+    // Non-fatal: prefetchQuery swallows errors, so a /me failure still renders the shell with the
+    // non-admin, unlinked defaults. Priming the cache here also lets the router's admin guard read
+    // the session synchronously before the first navigation.
+    await queryClient.prefetchQuery({ queryKey: queryKeys.session, queryFn: fetchMe });
   } catch (err) {
-    initError.value = err instanceof Error ? err.message : 'Failed to start the dashboard.';
+    initError.value = toErrorMessage(err, 'Failed to start the dashboard.');
   } finally {
     initializing.value = false;
   }
@@ -29,14 +33,9 @@ onMounted(async () => {
 
 <template>
   <div class="app">
-    <div v-if="initializing" class="screen-message" data-testid="initializing">
-      <div class="spinner" />
-      <p>{{ initStatus }}</p>
-    </div>
+    <LoadingScreen v-if="initializing" :message="initStatus" data-testid="initializing" />
 
-    <div v-else-if="initError" class="screen-message error" data-testid="init-error">
-      <p>⚠️ {{ initError }}</p>
-    </div>
+    <ErrorScreen v-else-if="initError" :message="initError" data-testid="init-error" />
 
     <template v-else>
       <TabNav />

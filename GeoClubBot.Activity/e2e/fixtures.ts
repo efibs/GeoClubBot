@@ -79,7 +79,9 @@ export async function mockMe(page: Page, me: unknown = memberMe): Promise<void> 
 }
 
 export async function mockDashboard(page: Page, json: unknown = baseDashboard): Promise<void> {
-  await page.route('**/api/v1/activity/dashboard**', (route) => route.fulfill({ json: json as object }));
+  await page.route('**/api/v1/activity/dashboard**', (route) =>
+    route.fulfill({ json: json as object }),
+  );
 }
 
 /** Mocks the admin read endpoints with one strike, one excuse, and one open link request. */
@@ -131,7 +133,9 @@ export async function mockMemberTabs(page: Page): Promise<void> {
   await page.route('**/api/v1/activity/club/todays-xp**', (route) =>
     route.fulfill({ json: { xp: 51230, clubName: 'Globetrotters' } }),
   );
-  await page.route('**/api/v1/activity/me/profile', (route) => route.fulfill({ json: baseProfile }));
+  await page.route('**/api/v1/activity/me/profile', (route) =>
+    route.fulfill({ json: baseProfile }),
+  );
   await page.route('**/api/v1/activity/me/activity**', (route) =>
     route.fulfill({ json: baseWeekActivity }),
   );

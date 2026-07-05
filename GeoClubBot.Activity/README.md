@@ -22,6 +22,29 @@ GET /api/v1/activity/dashboard ── aggregates ──▶ leaderboard + challen
 Inside Discord the API is reached through the activity proxy at `/.proxy/api/...`; in local dev the
 Vite dev server proxies `/api` to the backend.
 
+## Project structure
+
+```
+src/
+  api/          HTTP layer — one shared request() helper (bearer + ProblemDetails → ApiError)
+                split by area: client, auth, dashboard, member, admin (+ index barrel)
+  queries/      Server state via TanStack Vue Query — one composable module per feature
+                (session, dashboard, missions, profile, reminder, linking, admin) + keys.ts
+  state/        Client-only UI state (leaderboard depth, member-lookup nickname) as module refs
+  components/   Reusable UI: ActionButton, PanelSection, FactRow, FormField, ErrorBanner,
+                LoadingSpinner/Screen, DashboardHeader, TabNav, ConfirmDialog, feature panels
+  composables/  useConfirm (in-iframe replacement for window.confirm)
+  views/        Route views (Overview / Missions / Me + admin/*), thin over queries + components
+  styles/       Global CSS: tokens, base (reset/shell), layout utilities, the shared row primitive
+                — everything else lives in components' <style scoped> blocks
+  discord.ts    Embedded App SDK handshake seam (bypassed in dev/E2E)
+  router.ts     vue-router (hash history); the admin guard reads the cached session
+```
+
+Data flow: components call `useXxxQuery()` / `useXxxMutation()` composables; Vue Query owns caching,
+background polling (per-view `refetchInterval`) and invalidation. Mutations invalidate the affected
+query so lists refresh automatically. There is no Pinia store.
+
 ## Prerequisites (Discord Developer Portal — one-time, manual)
 
 1. Open your application → **Activities** → enable it.
@@ -91,14 +114,15 @@ static files by the API, and the API needs to be reachable over public HTTPS.
    `ClientId` / `ClientSecret` match your Discord application (already set up for the repo's
    default dev app — see [Prerequisites](#prerequisites-discord-developer-portal--one-time-manual)
    above if you're using your own).
-2. Point the frontend at the same application and disable the bypass — create
-   `GeoClubBot.Activity/.env.production.local` (gitignored, `npm run build` picks it up
-   automatically):
+2. Disable the bypass — create `GeoClubBot.Activity/.env.production.local` (gitignored,
+   `npm run build` picks it up automatically):
 
    ```
-   VITE_DISCORD_CLIENT_ID=<your application's client id>
    VITE_DEV_BYPASS=false
    ```
+
+   (The Discord client id is **not** a build-time constant — the frontend fetches it at runtime from
+   the backend's `GET /api/v1/activity/config`, so the same build works for any Discord application.)
 
 3. Build the frontend and copy it into the API's `wwwroot`. Repeat this step any time the
    Activity's source changes — or just run `scripts/rebuild-activity.sh` from the repo root, which
@@ -122,6 +146,7 @@ static files by the API, and the API needs to be reachable over public HTTPS.
    them, so you'll need to update the URL Mapping below again after every restart. For a hostname
    that survives restarts, create a named tunnel instead (`cloudflared tunnel create` +
    `cloudflared tunnel route dns` + `cloudflared tunnel run`).
+
 6. In the Developer Portal → **Activities → URL Mappings**, point `/` and `/api` at the tunnel's
    hostname.
 7. Launch the Activity from a voice channel in your test server. If a code change doesn't seem to
@@ -133,6 +158,8 @@ static files by the API, and the API needs to be reachable over public HTTPS.
 npm run test:unit     # Vitest unit + component tests
 npm run test:e2e      # Playwright E2E (SDK bypassed, API mocked via route interception)
 npm run typecheck     # vue-tsc
+npm run lint          # ESLint (typescript-eslint + eslint-plugin-vue)
+npm run format        # Prettier write (format:check verifies in CI)
 ```
 
 ## Build & deploy

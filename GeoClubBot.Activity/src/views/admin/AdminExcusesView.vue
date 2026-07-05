@@ -1,28 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { storeToRefs } from 'pinia';
-import { useAdminStore } from '../../stores/admin';
+import { ref } from 'vue';
+import PanelSection from '../../components/PanelSection.vue';
+import FormField from '../../components/FormField.vue';
+import ActionButton from '../../components/ActionButton.vue';
+import ErrorBanner from '../../components/ErrorBanner.vue';
+import { useAdminExcuses } from '../../queries/admin';
 import { formatDate, toDateInputValue } from '../../format';
 import { confirm } from '../../composables/useConfirm';
-import Spinner from '../../components/Spinner.vue';
 import type { AdminExcuseDto } from '../../types';
 
-const admin = useAdminStore();
-const { excuses } = storeToRefs(admin);
+const excuses = useAdminExcuses();
 
 // One form serves both adding and editing; editingId decides which.
 const editingId = ref<string | null>(null);
 const nickname = ref('');
 const from = ref('');
 const to = ref('');
-// The excuse whose row action is currently running, so only that button shows a spinner.
-const pendingId = ref<string | null>(null);
-
-onMounted(() => {
-  if (!excuses.value.data) {
-    void admin.loadExcuses();
-  }
-});
 
 function startEdit(excuse: AdminExcuseDto): void {
   editingId.value = excuse.excuseId;
@@ -44,70 +37,77 @@ async function submit(): Promise<void> {
   if (!from.value || !to.value) {
     return;
   }
-  const succeeded = editingId.value
-    ? await admin.updateExcuse(editingId.value, from.value, to.value)
-    : await admin.addExcuse(nickname.value.trim(), from.value, to.value);
-  if (succeeded) {
+  try {
+    if (editingId.value) {
+      await excuses.update(editingId.value, from.value, to.value);
+    } else {
+      await excuses.add(nickname.value.trim(), from.value, to.value);
+    }
     resetForm();
+  } catch {
+    // Surfaced via excuses.error.
   }
 }
 
 async function remove(excuse: AdminExcuseDto): Promise<void> {
   const message = `Remove the excuse of ${excuse.nickname} (${formatDate(excuse.from)} → ${formatDate(excuse.to)})?`;
   if (await confirm({ message, danger: true })) {
-    pendingId.value = excuse.excuseId;
-    await admin.removeExcuse(excuse.excuseId);
-    pendingId.value = null;
+    await excuses.remove(excuse.excuseId).catch(() => {});
   }
 }
 </script>
 
 <template>
   <main class="panels" data-testid="admin-excuses-view">
-    <p v-if="excuses.error" class="error-banner" data-testid="error-banner">⚠️ {{ excuses.error }}</p>
+    <ErrorBanner v-if="excuses.error" data-testid="error-banner">{{ excuses.error }}</ErrorBanner>
 
-    <section class="panel" data-testid="excuse-form-panel">
-      <h2 class="panel-title">{{ editingId ? '✏️ Edit excuse' : '➕ Add excuse' }}</h2>
-      <form class="reminder-form" @submit.prevent="submit">
-        <label class="field-label" for="excuse-nickname">GeoGuessr nickname</label>
-        <input
+    <PanelSection
+      :title="editingId ? '✏️ Edit excuse' : '➕ Add excuse'"
+      data-testid="excuse-form-panel"
+    >
+      <form class="form-stack" @submit.prevent="submit">
+        <FormField
           id="excuse-nickname"
           v-model="nickname"
-          type="text"
+          label="GeoGuessr nickname"
           :required="!editingId"
           :disabled="editingId !== null"
-          class="field-input"
           data-testid="excuse-nickname"
         />
-        <label class="field-label" for="excuse-from">From</label>
-        <input id="excuse-from" v-model="from" type="date" required class="field-input" data-testid="excuse-from" />
-        <label class="field-label" for="excuse-to">To</label>
-        <input id="excuse-to" v-model="to" type="date" required class="field-input" data-testid="excuse-to" />
+        <FormField
+          id="excuse-from"
+          v-model="from"
+          label="From"
+          type="date"
+          required
+          data-testid="excuse-from"
+        />
+        <FormField
+          id="excuse-to"
+          v-model="to"
+          label="To"
+          type="date"
+          required
+          data-testid="excuse-to"
+        />
         <div class="form-actions">
-          <button
+          <ActionButton
             type="submit"
-            class="action-button"
+            :busy="excuses.submitting"
+            :busy-label="editingId ? 'Saving…' : 'Adding…'"
             :disabled="excuses.busy"
             data-testid="excuse-submit"
           >
-            <Spinner v-if="excuses.busy" />
-            {{ editingId ? (excuses.busy ? 'Saving…' : 'Save changes') : (excuses.busy ? 'Adding…' : 'Add excuse') }}
-          </button>
-          <button
-            v-if="editingId"
-            type="button"
-            class="action-button danger"
-            data-testid="excuse-cancel-edit"
-            @click="resetForm"
-          >
+            {{ editingId ? 'Save changes' : 'Add excuse' }}
+          </ActionButton>
+          <ActionButton v-if="editingId" danger data-testid="excuse-cancel-edit" @click="resetForm">
             Cancel
-          </button>
+          </ActionButton>
         </div>
       </form>
-    </section>
+    </PanelSection>
 
-    <section class="panel panel-wide" data-testid="excuses-panel">
-      <h2 class="panel-title">🏖️ Excuses</h2>
+    <PanelSection title="🏖️ Excuses" wide data-testid="excuses-panel">
       <ul v-if="excuses.data && excuses.data.length > 0" class="rows">
         <li
           v-for="excuse in excuses.data"
@@ -119,30 +119,32 @@ async function remove(excuse: AdminExcuseDto): Promise<void> {
           <span class="name">{{ excuse.nickname }}</span>
           <span class="value">{{ formatDate(excuse.from) }} → {{ formatDate(excuse.to) }}</span>
           <span class="row-actions">
-            <button
-              type="button"
-              class="action-button small"
+            <ActionButton
+              small
               :disabled="excuses.busy"
               data-testid="excuse-edit"
               @click="startEdit(excuse)"
             >
               Edit
-            </button>
-            <button
-              type="button"
-              class="action-button danger small"
+            </ActionButton>
+            <ActionButton
+              danger
+              small
+              :busy="excuses.removingId === excuse.excuseId"
+              busy-label="Removing…"
               :disabled="excuses.busy"
               data-testid="excuse-remove"
               @click="remove(excuse)"
             >
-              <Spinner v-if="pendingId === excuse.excuseId" />
-              {{ pendingId === excuse.excuseId ? 'Removing…' : 'Remove' }}
-            </button>
+              Remove
+            </ActionButton>
           </span>
         </li>
       </ul>
-      <p v-else-if="excuses.data" class="empty-state" data-testid="excuses-empty">No excuses recorded.</p>
-      <p v-else-if="excuses.loading" class="empty-state">Loading…</p>
-    </section>
+      <p v-else-if="excuses.data" class="empty-state" data-testid="excuses-empty">
+        No excuses recorded.
+      </p>
+      <p v-else-if="excuses.isPending" class="empty-state">Loading…</p>
+    </PanelSection>
   </main>
 </template>

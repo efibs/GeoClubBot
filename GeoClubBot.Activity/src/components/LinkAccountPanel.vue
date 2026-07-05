@@ -1,55 +1,56 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { storeToRefs } from 'pinia';
-import { useSessionStore } from '../stores/session';
-import { cancelLinkRequest, startLinkRequest } from '../api';
+import PanelSection from './PanelSection.vue';
+import FormField from './FormField.vue';
+import ActionButton from './ActionButton.vue';
+import ErrorBanner from './ErrorBanner.vue';
+import { useSession } from '../queries/session';
+import { useCancelLinkMutation, useStartLinkMutation } from '../queries/linking';
 import { copyText } from '../clipboard';
-import Spinner from './Spinner.vue';
+import { parseGeoGuessrUserId } from '../parse';
+import { toErrorMessage } from '../api';
 
-const session = useSessionStore();
-const { openLinkRequest } = storeToRefs(session);
+const { openLinkRequest } = useSession();
+const start = useStartLinkMutation();
+const cancel = useCancelLinkMutation();
+const starting = start.isPending;
+const cancelling = cancel.isPending;
 
 const profileLink = ref('');
-const busy = ref(false);
-const error = ref<string | null>(null);
+const validationError = ref<string | null>(null);
 const copied = ref(false);
 const copyFailed = ref(false);
 
-// Accepts either the raw 24-hex GeoGuessr user id or a profile share link ending in /user/<id>.
-const parsedUserId = computed(() => {
-  const match = profileLink.value.trim().match(/([a-f0-9]{24})\s*$/i);
-  return match ? match[1].toLowerCase() : null;
+const errorMessage = computed(() => {
+  if (validationError.value) {
+    return validationError.value;
+  }
+  const err = start.error.value ?? cancel.error.value;
+  return err ? toErrorMessage(err, 'Something went wrong. Try again.') : null;
 });
 
-async function start(): Promise<void> {
-  if (!parsedUserId.value) {
-    error.value = 'That doesn’t look like a GeoGuessr profile link. It should end in /user/<24 characters>.';
+async function onStart(): Promise<void> {
+  const userId = parseGeoGuessrUserId(profileLink.value);
+  if (!userId) {
+    validationError.value =
+      'That doesn’t look like a GeoGuessr profile link. It should end in /user/<24 characters>.';
     return;
   }
-  busy.value = true;
-  error.value = null;
+  validationError.value = null;
   try {
-    await startLinkRequest(parsedUserId.value);
-    // Reload the session so the open request (and its OTP) comes from the server.
-    await session.loadMe();
+    await start.mutateAsync(userId);
     profileLink.value = '';
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to start the linking process.';
-  } finally {
-    busy.value = false;
+  } catch {
+    // Surfaced via errorMessage.
   }
 }
 
-async function cancel(): Promise<void> {
-  busy.value = true;
-  error.value = null;
+async function onCancel(): Promise<void> {
+  validationError.value = null;
   try {
-    await cancelLinkRequest();
-    await session.loadMe();
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to cancel the linking request.';
-  } finally {
-    busy.value = false;
+    await cancel.mutateAsync();
+  } catch {
+    // Surfaced via errorMessage.
   }
 }
 
@@ -71,9 +72,7 @@ async function copyOtp(): Promise<void> {
 </script>
 
 <template>
-  <section class="panel" data-testid="link-account-panel">
-    <h2 class="panel-title">🔗 Link your GeoGuessr account</h2>
-
+  <PanelSection title="🔗 Link your GeoGuessr account" data-testid="link-account-panel">
     <template v-if="openLinkRequest">
       <p data-testid="link-otp-intro">
         Your linking request for GeoGuessr account
@@ -83,24 +82,23 @@ async function copyOtp(): Promise<void> {
       </p>
       <p class="otp-display" data-testid="link-otp">
         <code>{{ openLinkRequest.oneTimePassword }}</code>
-        <button type="button" class="action-button" data-testid="link-otp-copy" @click="copyOtp">
+        <ActionButton data-testid="link-otp-copy" @click="copyOtp">
           {{ copied ? 'Copied!' : 'Copy' }}
-        </button>
+        </ActionButton>
       </p>
       <p v-if="copyFailed" class="stat-caption" data-testid="link-otp-copy-failed">
         Couldn't copy automatically — select the code above and copy it manually.
       </p>
       <div class="form-actions">
-        <button
-          type="button"
-          class="action-button danger"
-          :disabled="busy"
+        <ActionButton
+          danger
+          :busy="cancelling"
+          busy-label="Cancelling…"
           data-testid="link-cancel"
-          @click="cancel"
+          @click="onCancel"
         >
-          <Spinner v-if="busy" />
-          {{ busy ? 'Cancelling…' : 'Cancel request' }}
-        </button>
+          Cancel request
+        </ActionButton>
       </div>
     </template>
 
@@ -109,26 +107,47 @@ async function copyOtp(): Promise<void> {
         Open your GeoGuessr profile, hit the share button and paste the link here (it looks like
         https://www.geoguessr.com/user/62c353a29d0d57e7b9a3383f).
       </p>
-      <form class="reminder-form" @submit.prevent="start">
-        <label class="field-label" for="profile-link">Profile link</label>
-        <input
+      <form class="form-stack" @submit.prevent="onStart">
+        <FormField
           id="profile-link"
           v-model="profileLink"
-          type="text"
-          required
+          label="Profile link"
           placeholder="https://www.geoguessr.com/user/…"
-          class="field-input"
+          required
           data-testid="link-profile-input"
         />
         <div class="form-actions">
-          <button type="submit" class="action-button" :disabled="busy || !profileLink" data-testid="link-start">
-            <Spinner v-if="busy" />
-            {{ busy ? 'Starting…' : 'Start linking' }}
-          </button>
+          <ActionButton
+            type="submit"
+            :busy="starting"
+            busy-label="Starting…"
+            :disabled="!profileLink"
+            data-testid="link-start"
+          >
+            Start linking
+          </ActionButton>
         </div>
       </form>
     </template>
 
-    <p v-if="error" class="error-banner" data-testid="link-error">⚠️ {{ error }}</p>
-  </section>
+    <ErrorBanner v-if="errorMessage" data-testid="link-error">{{ errorMessage }}</ErrorBanner>
+  </PanelSection>
 </template>
+
+<style scoped>
+.otp-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-row);
+  border: 1px dashed var(--viewer-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.otp-display code {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+</style>

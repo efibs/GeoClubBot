@@ -1,5 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
-import { useSessionStore } from './stores/session';
+import { cachedSession } from './queries/session';
 
 /**
  * Hash history keeps routing entirely client-side, which is the safe choice inside the Discord
@@ -30,9 +30,8 @@ export const router = createRouter({
 router.beforeEach((to) => {
   if (to.path.startsWith('/admin')) {
     // Cosmetic gate only — every admin endpoint enforces the same policy server-side. This just
-    // keeps non-admins from landing on a shell full of 403s.
-    const session = useSessionStore();
-    if (!session.isAdmin) {
+    // keeps non-admins from landing on a shell full of 403s. Reads the session primed at boot.
+    if (!cachedSession()?.isAdmin) {
       return { path: '/' };
     }
   }

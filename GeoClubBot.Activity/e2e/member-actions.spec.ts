@@ -12,7 +12,12 @@ test('sets a daily reminder from the missions tab', async ({ page }) => {
       putBody = route.request().postDataJSON();
       return route.fulfill({
         json: {
-          reminder: { timeUtc: '17:30', localTime: '19:30', timeZoneId: 'Europe/Berlin', customMessage: null },
+          reminder: {
+            timeUtc: '17:30',
+            localTime: '19:30',
+            timeZoneId: 'Europe/Berlin',
+            customMessage: null,
+          },
           dmDelivered: true,
           dmErrorCode: null,
         },
@@ -78,7 +83,13 @@ test('walks through the account-linking flow', async ({ page }) => {
     started = false;
     return route.fulfill({ status: 204 });
   });
-  await mockDashboard(page, { club: null, viewer: null, leaderboard: [], challenges: [], streaks: [] });
+  await mockDashboard(page, {
+    club: null,
+    viewer: null,
+    leaderboard: [],
+    challenges: [],
+    streaks: [],
+  });
 
   await page.goto('/');
   await page.getByTestId('tab-me').click();

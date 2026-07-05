@@ -68,7 +68,11 @@ export function weekdayInitial(isoDate: string): string {
 
 /** A compact date like "Jul 4, 2026" from an ISO timestamp. */
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 /**
@@ -83,4 +87,9 @@ export function toDateInputValue(iso: string): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/** Today's local calendar date ("yyyy-MM-dd"), for seeding an `<input type="date">`. */
+export function todayAsDateInputValue(): string {
+  return toDateInputValue(new Date().toISOString());
 }

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { useSessionStore } from '../stores/session';
+import { useSession } from '../queries/session';
 
-const session = useSessionStore();
+const { isAdmin } = useSession();
 const route = useRoute();
 
 const tabs = computed(() => {
@@ -12,7 +12,7 @@ const tabs = computed(() => {
     { to: '/missions', label: 'Missions', testId: 'tab-missions' },
     { to: '/me', label: 'My Profile', testId: 'tab-me' },
   ];
-  if (session.isAdmin) {
+  if (isAdmin.value) {
     // Cosmetic only: hiding the tab is UX, not security — the admin endpoints re-check the
     // Administrator permission on every request.
     entries.push({ to: '/admin', label: 'Admin', testId: 'tab-admin' });

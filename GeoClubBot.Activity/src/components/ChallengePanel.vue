@@ -25,7 +25,9 @@ defineProps<{
             class="row"
             :class="{ 'is-viewer': player.nickname === viewerNickname }"
           >
-            <span class="rank" :class="{ medal: player.rank <= 3 }">{{ rankBadge(player.rank) }}</span>
+            <span class="rank" :class="{ medal: player.rank <= 3 }">{{
+              rankBadge(player.rank)
+            }}</span>
             <span class="name">{{ player.nickname }}</span>
             <span class="value">{{ player.totalScore }}</span>
             <span class="sub">{{ player.totalDistance }}</span>
@@ -35,3 +37,19 @@ defineProps<{
     </div>
   </section>
 </template>
+
+<style scoped>
+.challenge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.challenge-difficulty {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: var(--accent-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+</style>

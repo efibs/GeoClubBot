@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { adminMe, mockAdminArea, mockDashboard, mockMe } from './fixtures';
 
-test('hides the admin tab from regular members and redirects direct navigation', async ({ page }) => {
+test('hides the admin tab from regular members and redirects direct navigation', async ({
+  page,
+}) => {
   await mockMe(page); // non-admin member
   await mockDashboard(page);
 
@@ -52,7 +54,10 @@ test('adds and revokes a strike with confirmation', async ({ page }) => {
   await page.route('**/api/v1/activity/admin/strikes', (route) => {
     if (route.request().method() === 'POST') {
       writes.push(`POST ${route.request().url()}`);
-      return route.fulfill({ status: 201, json: { strikeId: '33333333-3333-3333-3333-333333333333' } });
+      return route.fulfill({
+        status: 201,
+        json: { strikeId: '33333333-3333-3333-3333-333333333333' },
+      });
     }
     return route.fulfill({
       json: [

@@ -1,27 +1,11 @@
-import { expect, test, type Page } from '@playwright/test';
-import { mockMe } from './fixtures';
+import { expect, test } from '@playwright/test';
+import { baseDashboard, mockDashboard, mockMe } from './fixtures';
 
 // The shell always fetches /me after the handshake; keep it mocked so the overview scenarios below
 // stay focused on the dashboard payload.
 test.beforeEach(async ({ page }) => {
   await mockMe(page);
 });
-
-const baseDashboard = {
-  club: { name: 'Globetrotters', level: 12 },
-  viewer: { nickname: 'You' },
-  leaderboard: [
-    { rank: 1, nickname: 'Ada', averageXp: 1500 },
-    { rank: 2, nickname: 'You', averageXp: 1400 },
-  ],
-  challenges: [
-    {
-      difficulty: 'Hard',
-      players: [{ rank: 1, nickname: 'Ada', totalScore: '24000 points', totalDistance: '12km' }],
-    },
-  ],
-  streaks: [{ nickname: 'You', currentStreak: 9, longestStreak: 30 }],
-};
 
 // In a club, but nothing to show yet (e.g. a brand-new club): panels render their empty states.
 const emptyClubDashboard = {
@@ -47,10 +31,6 @@ const noClubDashboard = {
   streaks: [],
 };
 
-async function mockDashboard(page: Page, json: unknown): Promise<void> {
-  await page.route('**/api/v1/activity/dashboard**', (route) => route.fulfill({ json: json as object }));
-}
-
 test('renders the three panels and highlights the viewer', async ({ page }) => {
   await mockDashboard(page, baseDashboard);
   await page.goto('/');
@@ -63,7 +43,9 @@ test('renders the three panels and highlights the viewer', async ({ page }) => {
   await expect(page.getByTestId('viewer-row')).toContainText('You');
 });
 
-test('shows panel empty states and no highlight when the club has no data yet', async ({ page }) => {
+test('shows panel empty states and no highlight when the club has no data yet', async ({
+  page,
+}) => {
   await mockDashboard(page, emptyClubDashboard);
   await page.goto('/');
 
@@ -74,7 +56,9 @@ test('shows panel empty states and no highlight when the club has no data yet', 
   await expect(page.getByTestId('viewer-row')).toHaveCount(0);
 });
 
-test('hides club panels but still shows the daily challenge when the viewer has no club', async ({ page }) => {
+test('hides club panels but still shows the daily challenge when the viewer has no club', async ({
+  page,
+}) => {
   await mockDashboard(page, noClubDashboard);
   await page.goto('/');
 
