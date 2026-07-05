@@ -46,6 +46,15 @@ public partial class InteractionHandler
 
     private async Task HandleInteractionAsync(SocketInteraction interaction)
     {
+        if (interaction is null)
+        {
+            // Discord.Net's ApplicationCommandType predates some command types Discord has since
+            // added (e.g. the Entry Point "Launch" command - see EntryPointCommandGatewayListener),
+            // and SocketInteraction.Create returns null instead of a usable object for those.
+            // Nothing to do here; they're handled elsewhere.
+            return;
+        }
+
         // Log debug
         LogHandlingInteractionOnGuildInChannel(interaction.GuildId, interaction.ChannelId);
 
