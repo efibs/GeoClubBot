@@ -69,21 +69,18 @@ public record MissionKindStatsDto(
 public record TodaysXpDto(int? Xp, string? ClubName);
 
 /// <summary>
-/// The viewer's daily-mission reminder. <see cref="TimeUtc"/> is the stored UTC "HH:mm";
-/// <see cref="LocalTime"/> is that time rendered in <see cref="TimeZoneId"/> (or UTC when it's null),
-/// matching the <c>/daily-reminder status</c> command.
+/// One of the viewer's daily-mission reminders. <see cref="Id"/> identifies it for removal;
+/// <see cref="TimeUtc"/> is the stored UTC "HH:mm"; <see cref="LocalTime"/> is that time rendered in
+/// <see cref="TimeZoneId"/> (or UTC when it's null), matching the <c>/daily-reminder list</c> command.
 /// </summary>
-public record ReminderDto(string TimeUtc, string LocalTime, string? TimeZoneId, string? CustomMessage);
+public record ReminderDto(string Id, string TimeUtc, string LocalTime, string? TimeZoneId, string? CustomMessage);
 
-/// <summary>Wrapper so "no reminder configured" is a plain 200 instead of a 404.</summary>
-public record ReminderStatusDto(ReminderDto? Reminder);
-
-public record SetReminderRequest(string LocalTime, string? TimeZoneId, string? CustomMessage);
+public record AddReminderRequest(string LocalTime, string? TimeZoneId, string? CustomMessage);
 
 /// <summary>
-/// Result of setting a reminder. The reminder is always persisted; <see cref="DmDelivered"/>
+/// Result of adding a reminder. The reminder is always persisted; <see cref="DmDelivered"/>
 /// reports whether the confirmation DM reached the user (false usually means DMs are disabled).
 /// </summary>
-public record ReminderUpdateResultDto(ReminderDto Reminder, bool DmDelivered, string? DmErrorCode);
+public record AddReminderResultDto(ReminderDto Reminder, bool DmDelivered, string? DmErrorCode);
 
 public record StartLinkRequest(string GeoGuessrUserId);

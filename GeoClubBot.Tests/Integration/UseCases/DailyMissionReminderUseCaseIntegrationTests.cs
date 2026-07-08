@@ -10,7 +10,7 @@ using DomainReminder = Entities.DailyMissionReminder;
 namespace GeoClubBot.Tests.Integration.UseCases;
 
 /// <summary>
-/// Exercises the daily-mission-reminder use cases (set / stop / status / send-due) through the
+/// Exercises the daily-mission-reminder use cases (add / remove / clear / list / send-due) through the
 /// real MediatR pipeline against the shared Postgres container.
 /// </summary>
 [Collection(PostgresCollection.Name)]
@@ -22,78 +22,163 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
     private MediatorTestHost CreateHost() => new(fixture.ConnectionString);
 
     [Fact]
-    public async Task SetReminder_CreatesANewReminder()
+    public async Task AddReminder_CreatesANewReminder()
     {
         var discordId = NewDiscordId();
         var time = new TimeOnly(8, 30);
 
         using var host = CreateHost();
-        await host.SendAsync(new SetDailyMissionReminderCommand(discordId, time, null, "wake up"));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, time, null, "wake up"));
 
-        var status = await host.SendAsync(new GetDailyMissionReminderStatusQuery(discordId));
-        status.Should().NotBeNull();
-        status!.ReminderTimeUtc.Should().Be(time);
-        status.CustomMessage.Should().Be("wake up");
+        var reminders = await host.SendAsync(new ListDailyMissionRemindersQuery(discordId));
+        reminders.Should().ContainSingle();
+        reminders[0].ReminderTimeUtc.Should().Be(time);
+        reminders[0].CustomMessage.Should().Be("wake up");
     }
 
     [Fact]
-    public async Task SetReminder_UpdatesAnExistingReminder()
+    public async Task AddReminder_KeepsSeparateRemindersForDifferentTimes()
     {
         var discordId = NewDiscordId();
 
         using var host = CreateHost();
-        await host.SendAsync(new SetDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, "first"));
-        await host.SendAsync(new SetDailyMissionReminderCommand(discordId, new TimeOnly(9, 15), null, "second"));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, "first"));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(9, 15), null, "second"));
 
-        var status = await host.SendAsync(new GetDailyMissionReminderStatusQuery(discordId));
-        status.Should().NotBeNull();
-        status!.ReminderTimeUtc.Should().Be(new TimeOnly(9, 15));
-        status.CustomMessage.Should().Be("second");
+        var reminders = await host.SendAsync(new ListDailyMissionRemindersQuery(discordId));
+        reminders.Should().HaveCount(2);
+        reminders.Select(r => r.ReminderTimeUtc).Should().Equal(new TimeOnly(8, 0), new TimeOnly(9, 15));
     }
 
     [Fact]
-    public async Task SetReminder_ThrowsValidationException_ForZeroDiscordUserId()
+    public async Task AddReminder_UpdatesInPlace_WhenAddedAtTheSameTime()
+    {
+        var discordId = NewDiscordId();
+
+        using var host = CreateHost();
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, "first"));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, "second"));
+
+        var reminders = await host.SendAsync(new ListDailyMissionRemindersQuery(discordId));
+        reminders.Should().ContainSingle();
+        reminders[0].CustomMessage.Should().Be("second");
+    }
+
+    [Fact]
+    public async Task AddReminder_ReturnsConflict_WhenAtLimit()
+    {
+        var discordId = NewDiscordId();
+
+        // The default configured limit is 5.
+        using var host = new MediatorTestHost(
+            fixture.ConnectionString,
+            configurationValues: new Dictionary<string, string?>
+            {
+                ["DailyMissionReminder:MaxRemindersPerUser"] = "2"
+            });
+
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, null));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(9, 0), null, null));
+
+        var result = await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(10, 0), null, null));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Type.Should().Be(ErrorType.Conflict);
+    }
+
+    [Fact]
+    public async Task AddReminder_ThrowsValidationException_ForZeroDiscordUserId()
     {
         using var host = CreateHost();
 
-        var act = () => host.SendAsync(new SetDailyMissionReminderCommand(0, new TimeOnly(8, 0), null, null));
+        var act = () => host.SendAsync(new AddDailyMissionReminderCommand(0, new TimeOnly(8, 0), null, null));
 
         await act.Should().ThrowAsync<ValidationException>();
     }
 
     [Fact]
-    public async Task StopReminder_RemovesAnExistingReminder()
+    public async Task RemoveReminder_RemovesASingleReminder()
     {
         var discordId = NewDiscordId();
 
         using var host = CreateHost();
-        await host.SendAsync(new SetDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, null));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, null));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(20, 0), null, null));
 
-        var result = await host.SendAsync(new StopDailyMissionReminderCommand(discordId));
+        var reminders = await host.SendAsync(new ListDailyMissionRemindersQuery(discordId));
+        var toRemove = reminders.First(r => r.ReminderTimeUtc == new TimeOnly(8, 0));
+
+        var result = await host.SendAsync(new RemoveDailyMissionReminderCommand(discordId, toRemove.Id));
 
         result.IsSuccess.Should().BeTrue();
-        (await host.SendAsync(new GetDailyMissionReminderStatusQuery(discordId))).Should().BeNull();
+        var remaining = await host.SendAsync(new ListDailyMissionRemindersQuery(discordId));
+        remaining.Should().ContainSingle().Which.ReminderTimeUtc.Should().Be(new TimeOnly(20, 0));
     }
 
     [Fact]
-    public async Task StopReminder_ReturnsNotFound_WhenNoneConfigured()
+    public async Task RemoveReminder_ReturnsNotFound_WhenUnknownId()
     {
         using var host = CreateHost();
 
-        var result = await host.SendAsync(new StopDailyMissionReminderCommand(NewDiscordId()));
+        var result = await host.SendAsync(new RemoveDailyMissionReminderCommand(NewDiscordId(), Guid.NewGuid()));
 
         result.IsFailure.Should().BeTrue();
         result.Error.Type.Should().Be(ErrorType.NotFound);
     }
 
     [Fact]
-    public async Task GetStatus_ReturnsNull_WhenNoneConfigured()
+    public async Task RemoveReminder_DoesNotRemoveAnotherUsersReminder()
+    {
+        var owner = NewDiscordId();
+        var stranger = NewDiscordId();
+
+        using var host = CreateHost();
+        await host.SendAsync(new AddDailyMissionReminderCommand(owner, new TimeOnly(8, 0), null, null));
+        var ownerReminders = await host.SendAsync(new ListDailyMissionRemindersQuery(owner));
+        var ownerReminderId = ownerReminders.Single().Id;
+
+        // The stranger tries to remove the owner's reminder by id — scoped by owner, so it is not found.
+        var result = await host.SendAsync(new RemoveDailyMissionReminderCommand(stranger, ownerReminderId));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Type.Should().Be(ErrorType.NotFound);
+        (await host.SendAsync(new ListDailyMissionRemindersQuery(owner))).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ClearReminders_RemovesAllRemindersForTheUser()
+    {
+        var discordId = NewDiscordId();
+
+        using var host = CreateHost();
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(8, 0), null, null));
+        await host.SendAsync(new AddDailyMissionReminderCommand(discordId, new TimeOnly(20, 0), null, null));
+
+        var result = await host.SendAsync(new ClearDailyMissionRemindersCommand(discordId));
+
+        result.IsSuccess.Should().BeTrue();
+        (await host.SendAsync(new ListDailyMissionRemindersQuery(discordId))).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ClearReminders_ReturnsNotFound_WhenNoneConfigured()
     {
         using var host = CreateHost();
 
-        var status = await host.SendAsync(new GetDailyMissionReminderStatusQuery(NewDiscordId()));
+        var result = await host.SendAsync(new ClearDailyMissionRemindersCommand(NewDiscordId()));
 
-        status.Should().BeNull();
+        result.IsFailure.Should().BeTrue();
+        result.Error.Type.Should().Be(ErrorType.NotFound);
+    }
+
+    [Fact]
+    public async Task ListReminders_ReturnsEmpty_WhenNoneConfigured()
+    {
+        using var host = CreateHost();
+
+        var reminders = await host.SendAsync(new ListDailyMissionRemindersQuery(NewDiscordId()));
+
+        reminders.Should().BeEmpty();
     }
 
     [Fact]
@@ -124,7 +209,7 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
 
         await host.SendAsync(new SendDueRemindersCommand());
 
-        (await host.SendAsync(new GetDailyMissionReminderStatusQuery(discordId))).Should().BeNull();
+        (await host.SendAsync(new ListDailyMissionRemindersQuery(discordId))).Should().BeEmpty();
     }
 
     [Fact]

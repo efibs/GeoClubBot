@@ -1,43 +1,48 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
-import { deleteReminder, fetchReminder, putReminder } from '../api';
+import { addReminder, deleteReminder, fetchReminders } from '../api';
 import { queryKeys } from './keys';
 import type { ReminderDto } from '../types';
 
-/** The viewer's current daily-mission reminder (null when none is set). */
-export function useReminderQuery() {
+/** The viewer's daily-mission reminders (empty array when none are set). */
+export function useRemindersQuery() {
   return useQuery({
-    queryKey: queryKeys.reminder,
-    queryFn: async () => (await fetchReminder()).reminder,
+    queryKey: queryKeys.reminders,
+    queryFn: () => fetchReminders(),
   });
 }
 
-interface SaveReminderVars {
+interface AddReminderVars {
   localTime: string;
   timeZoneId: string | null;
   customMessage: string | null;
 }
 
 /**
- * Saves the reminder and writes the server's echo straight into the cache (no extra refetch). The
+ * Adds a reminder and merges the server's echo into the cached list (no extra refetch). The
  * mutation's `data.dmDelivered` lets the panel show the "DM couldn't be delivered" warning.
  */
-export function useSaveReminderMutation() {
+export function useAddReminderMutation() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (vars: SaveReminderVars) => putReminder(vars),
+    mutationFn: (vars: AddReminderVars) => addReminder(vars),
     onSuccess: (result) => {
-      client.setQueryData<ReminderDto | null>(queryKeys.reminder, result.reminder);
+      client.setQueryData<ReminderDto[]>(queryKeys.reminders, (current) => {
+        const others = (current ?? []).filter((r) => r.id !== result.reminder.id);
+        return [...others, result.reminder].sort((a, b) => a.timeUtc.localeCompare(b.timeUtc));
+      });
     },
   });
 }
 
-/** Stops the reminder and clears it from the cache. */
-export function useStopReminderMutation() {
+/** Removes a reminder and drops it from the cached list. */
+export function useRemoveReminderMutation() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () => deleteReminder(),
-    onSuccess: () => {
-      client.setQueryData<ReminderDto | null>(queryKeys.reminder, null);
+    mutationFn: (id: string) => deleteReminder(id),
+    onSuccess: (_result, id) => {
+      client.setQueryData<ReminderDto[]>(queryKeys.reminders, (current) =>
+        (current ?? []).filter((r) => r.id !== id),
+      );
     },
   });
 }

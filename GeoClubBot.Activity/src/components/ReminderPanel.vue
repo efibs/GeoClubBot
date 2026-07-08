@@ -1,64 +1,58 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import PanelSection from './PanelSection.vue';
 import FormField from './FormField.vue';
 import ActionButton from './ActionButton.vue';
 import ErrorBanner from './ErrorBanner.vue';
 import {
-  useReminderQuery,
-  useSaveReminderMutation,
-  useStopReminderMutation,
+  useRemindersQuery,
+  useAddReminderMutation,
+  useRemoveReminderMutation,
 } from '../queries/reminder';
 import { toErrorMessage } from '../api';
 
-const { data: reminder } = useReminderQuery();
-const save = useSaveReminderMutation();
-const stop = useStopReminderMutation();
-const saving = save.isPending;
-const stopping = stop.isPending;
+const { data: reminders } = useRemindersQuery();
+const add = useAddReminderMutation();
+const remove = useRemoveReminderMutation();
+const adding = add.isPending;
 
 const time = ref('');
 const message = ref('');
 // The browser knows the viewer's time zone; the backend validates it and converts to UTC.
 const timeZoneId = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
 
-// Prefill the form from the existing reminder (otherwise the time input just showed "--:--").
-watch(
-  reminder,
-  (value) => {
-    if (value) {
-      time.value = value.localTime;
-      message.value = value.customMessage ?? '';
-    }
-  },
-  { immediate: true },
-);
+const list = computed(() => reminders.value ?? []);
 
-// The last save persisted but its confirmation DM couldn't be delivered.
-const dmWarning = computed(() => reminder.value != null && save.data.value?.dmDelivered === false);
+// The last add persisted but its confirmation DM couldn't be delivered.
+const dmWarning = computed(() => add.data.value?.dmDelivered === false);
 const errorMessage = computed(() => {
-  const err = save.error.value ?? stop.error.value;
-  return err ? toErrorMessage(err, 'Failed to save your reminder.') : null;
+  const err = add.error.value ?? remove.error.value;
+  return err ? toErrorMessage(err, 'Failed to update your reminders.') : null;
 });
 
-async function onSave(): Promise<void> {
+// Which reminder is currently being removed, so only its button shows the busy state.
+const removingId = computed(() => (remove.isPending.value ? (remove.variables.value ?? null) : null));
+
+async function onAdd(): Promise<void> {
   if (!time.value) {
     return;
   }
   try {
-    await save.mutateAsync({
+    await add.mutateAsync({
       localTime: time.value,
       timeZoneId,
       customMessage: message.value.trim() || null,
     });
+    // Keep the time so adjacent reminders are quick to add; clear the one-off message.
+    message.value = '';
   } catch {
     // Surfaced via errorMessage.
   }
 }
 
-async function onStop(): Promise<void> {
+async function onRemove(id: string): Promise<void> {
   try {
-    await stop.mutateAsync();
+    await remove.mutateAsync(id);
   } catch {
     // Surfaced via errorMessage.
   }
@@ -66,22 +60,46 @@ async function onStop(): Promise<void> {
 </script>
 
 <template>
-  <PanelSection title="⏰ Daily reminder" data-testid="reminder-panel">
-    <p v-if="reminder" class="stat-caption" data-testid="reminder-status">
-      Reminding you daily at {{ reminder.localTime }}
-      <template v-if="reminder.timeZoneId">({{ reminder.timeZoneId }})</template>
-      <template v-else>UTC</template>
-      — unless your mission is already done.
-    </p>
-    <p v-else class="stat-caption" data-testid="reminder-status">
-      No reminder yet. Pick a time and the bot DMs you each day until your mission is done.
+  <PanelSection title="⏰ Daily reminders" data-testid="reminder-panel">
+    <p class="stat-caption" data-testid="reminder-status">
+      <template v-if="list.length">
+        The bot DMs you at each time below — unless your mission is already done.
+      </template>
+      <template v-else>
+        No reminders yet. Pick a time and the bot DMs you each day until your mission is done.
+      </template>
     </p>
 
-    <form class="form-stack" @submit.prevent="onSave">
+    <ul v-if="list.length" class="reminder-list" data-testid="reminder-list">
+      <li v-for="reminder in list" :key="reminder.id" class="reminder-item" data-testid="reminder-item">
+        <div class="reminder-item-info">
+          <span class="reminder-item-time">
+            {{ reminder.localTime }}
+            <template v-if="reminder.timeZoneId">({{ reminder.timeZoneId }})</template>
+            <template v-else>UTC</template>
+          </span>
+          <span v-if="reminder.customMessage" class="reminder-item-message">
+            {{ reminder.customMessage }}
+          </span>
+        </div>
+        <ActionButton
+          danger
+          :busy="removingId === reminder.id"
+          busy-label="Removing…"
+          :disabled="adding"
+          data-testid="reminder-remove"
+          @click="onRemove(reminder.id)"
+        >
+          Remove
+        </ActionButton>
+      </li>
+    </ul>
+
+    <form class="form-stack" @submit.prevent="onAdd">
       <FormField
         id="reminder-time"
         v-model="time"
-        :label="`Time (${timeZoneId ?? 'UTC'})`"
+        :label="`Add a time (${timeZoneId ?? 'UTC'})`"
         type="time"
         required
         data-testid="reminder-time"
@@ -98,23 +116,12 @@ async function onStop(): Promise<void> {
       <div class="form-actions">
         <ActionButton
           type="submit"
-          :busy="saving"
-          busy-label="Saving…"
-          :disabled="!time || stopping"
+          :busy="adding"
+          busy-label="Adding…"
+          :disabled="!time"
           data-testid="reminder-save"
         >
-          {{ reminder ? 'Update reminder' : 'Set reminder' }}
-        </ActionButton>
-        <ActionButton
-          v-if="reminder"
-          danger
-          :busy="stopping"
-          busy-label="Stopping…"
-          :disabled="saving"
-          data-testid="reminder-stop"
-          @click="onStop"
-        >
-          Stop reminder
+          Add reminder
         </ActionButton>
       </div>
     </form>
@@ -126,3 +133,41 @@ async function onStop(): Promise<void> {
     <ErrorBanner v-if="errorMessage" data-testid="reminder-error">{{ errorMessage }}</ErrorBanner>
   </PanelSection>
 </template>
+
+<style scoped>
+.reminder-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reminder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.3));
+  border-radius: 0.5rem;
+}
+
+.reminder-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.reminder-item-time {
+  font-weight: 600;
+}
+
+.reminder-item-message {
+  font-size: 0.85em;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+</style>

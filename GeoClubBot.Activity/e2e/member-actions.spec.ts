@@ -1,18 +1,19 @@
 import { expect, test } from '@playwright/test';
 import { mockDashboard, mockMe, mockMemberTabs, memberMe } from './fixtures';
 
-test('sets a daily reminder from the missions tab', async ({ page }) => {
+test('adds a daily reminder from the missions tab', async ({ page }) => {
   await mockMe(page);
   await mockDashboard(page);
   await mockMemberTabs(page);
 
-  let putBody: unknown = null;
-  await page.route('**/api/v1/activity/me/reminder', (route) => {
-    if (route.request().method() === 'PUT') {
-      putBody = route.request().postDataJSON();
+  let postBody: unknown = null;
+  await page.route('**/api/v1/activity/me/reminders', (route) => {
+    if (route.request().method() === 'POST') {
+      postBody = route.request().postDataJSON();
       return route.fulfill({
         json: {
           reminder: {
+            id: '11111111-1111-1111-1111-111111111111',
             timeUtc: '17:30',
             localTime: '19:30',
             timeZoneId: 'Europe/Berlin',
@@ -23,7 +24,8 @@ test('sets a daily reminder from the missions tab', async ({ page }) => {
         },
       });
     }
-    return route.fulfill({ json: { reminder: null } });
+    // GET: no reminders yet.
+    return route.fulfill({ json: [] });
   });
 
   await page.goto('/');
@@ -33,25 +35,31 @@ test('sets a daily reminder from the missions tab', async ({ page }) => {
   await page.getByTestId('reminder-time').fill('19:30');
   await page.getByTestId('reminder-save').click();
 
-  await expect(page.getByTestId('reminder-status')).toContainText('19:30 (Europe/Berlin)');
-  await expect.poll(() => putBody).toMatchObject({ localTime: '19:30' });
+  await expect(page.getByTestId('reminder-item')).toContainText('19:30 (Europe/Berlin)');
+  await expect.poll(() => postBody).toMatchObject({ localTime: '19:30' });
 });
 
 test('shows a warning when the confirmation DM is undeliverable', async ({ page }) => {
   await mockMe(page);
   await mockDashboard(page);
   await mockMemberTabs(page);
-  await page.route('**/api/v1/activity/me/reminder', (route) => {
-    if (route.request().method() === 'PUT') {
+  await page.route('**/api/v1/activity/me/reminders', (route) => {
+    if (route.request().method() === 'POST') {
       return route.fulfill({
         json: {
-          reminder: { timeUtc: '17:30', localTime: '17:30', timeZoneId: null, customMessage: null },
+          reminder: {
+            id: '22222222-2222-2222-2222-222222222222',
+            timeUtc: '17:30',
+            localTime: '17:30',
+            timeZoneId: null,
+            customMessage: null,
+          },
           dmDelivered: false,
           dmErrorCode: 'discord.dm.disabled',
         },
       });
     }
-    return route.fulfill({ json: { reminder: null } });
+    return route.fulfill({ json: [] });
   });
 
   await page.goto('/');

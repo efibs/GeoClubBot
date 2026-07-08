@@ -6,11 +6,11 @@ using Xunit;
 
 namespace GeoClubBot.Tests.Application.UseCases.DailyMissionReminder;
 
-public sealed class SetDailyMissionReminderCommandValidatorTests
+public sealed class AddDailyMissionReminderCommandValidatorTests
 {
-    private readonly SetDailyMissionReminderCommandValidator _validator = new();
+    private readonly AddDailyMissionReminderCommandValidator _validator = new();
 
-    private static SetDailyMissionReminderCommand Command(
+    private static AddDailyMissionReminderCommand Command(
         ulong discordUserId = 123UL,
         string? timeZoneId = null,
         string? customMessage = null) =>

@@ -16,7 +16,7 @@ Slash commands are the main way to interact with the bot. To use one:
 4. Click the command, then fill in any parameters Discord asks you for.
 5. Press **Enter** to send it.
 
-Commands in this bot are grouped under a prefix (for example, everything for reminders lives under `/daily-reminder`). When you type `/daily-reminder`, Discord will show you the available sub-commands like `set`, `stop`, or `status`.
+Commands in this bot are grouped under a prefix (for example, everything for reminders lives under `/daily-reminder`). When you type `/daily-reminder`, Discord will show you the available sub-commands like `add`, `remove`, `clear`, or `list`.
 
 Most of the bot's replies are **ephemeral** — meaning only *you* can see the response. So feel free to experiment without spamming the channel.
 
@@ -51,10 +51,10 @@ Starts the linking process for your account.
 ---
 
 ## ⏰ Feature: Daily Mission Reminder
-Reminds you (via DM) every day to do your GeoGuessr daily mission, at a time you choose. The reminder is sent as a direct message from the bot. By default the reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do.
+Reminds you (via DM) every day to do your GeoGuessr daily mission, at times you choose. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. By default a reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do.
 
-### `/daily-reminder set`
-Sets up (or updates) your reminder.
+### `/daily-reminder add`
+Adds a new reminder (or updates the one already set at that time).
 
 **Parameters:**
 - `time` *(required)* — the time you want to be reminded, in 24-hour `HH:mm` format. Example: `09:00`, `21:30`.
@@ -83,11 +83,14 @@ Play the Daily Challenge
 Good luck!
 ```
 
-### `/daily-reminder stop`
-Turns off your daily reminder. No parameters.
+### `/daily-reminder remove`
+Removes one of your reminders. The `reminder` parameter offers a pick-list of your existing reminders (shown by time), so you just choose the one to delete.
 
-### `/daily-reminder status`
-Shows your current reminder settings: time, timezone, custom message, and when it was last sent. No parameters.
+### `/daily-reminder clear`
+Removes **all** of your daily reminders at once. No parameters.
+
+### `/daily-reminder list`
+Lists all of your reminders: their times, timezones, custom messages, and when each was last sent. No parameters.
 
 ---
 

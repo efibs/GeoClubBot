@@ -123,17 +123,14 @@ export interface TodaysXpDto {
 }
 
 export interface ReminderDto {
+  id: string; // GUID, identifies the reminder for removal
   timeUtc: string; // "HH:mm", UTC
   localTime: string; // "HH:mm", in timeZoneId (or UTC when it's null)
   timeZoneId: string | null;
   customMessage: string | null;
 }
 
-export interface ReminderStatusDto {
-  reminder: ReminderDto | null;
-}
-
-export interface ReminderUpdateResultDto {
+export interface AddReminderResultDto {
   reminder: ReminderDto;
   // False usually means the viewer has DMs from server members disabled.
   dmDelivered: boolean;

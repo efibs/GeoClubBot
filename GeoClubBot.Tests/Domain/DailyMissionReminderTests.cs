@@ -15,11 +15,21 @@ public sealed class DailyMissionReminderTests
             timeZoneId: "Europe/Zurich",
             customMessage: "Go play!");
 
+        reminder.Id.Should().NotBeEmpty();
         reminder.DiscordUserId.Should().Be(1UL);
         reminder.ReminderTimeUtc.Should().Be(new TimeOnly(8, 30));
         reminder.TimeZoneId.Should().Be("Europe/Zurich");
         reminder.CustomMessage.Should().Be("Go play!");
         reminder.LastSentDateUtc.Should().BeNull();
+    }
+
+    [Fact]
+    public void Create_GivesEachReminderAUniqueId()
+    {
+        var first = DailyMissionReminder.Create(1UL, new TimeOnly(8, 0), null, null);
+        var second = DailyMissionReminder.Create(1UL, new TimeOnly(9, 0), null, null);
+
+        first.Id.Should().NotBe(second.Id);
     }
 
     [Fact]

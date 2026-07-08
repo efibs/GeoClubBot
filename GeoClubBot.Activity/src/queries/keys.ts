@@ -9,7 +9,7 @@ export const queryKeys = {
   todaysXp: ['todays-xp'] as const,
   profile: ['profile'] as const,
   myActivity: ['my-activity'] as const,
-  reminder: ['reminder'] as const,
+  reminders: ['reminders'] as const,
   admin: {
     lastCheckTime: ['admin', 'last-check-time'] as const,
     strikes: ['admin', 'strikes'] as const,
