@@ -9,10 +9,16 @@ public class DailyMissionReminderEntityConfiguration : IEntityTypeConfiguration<
 {
     public void Configure(EntityTypeBuilder<DailyMissionReminder> builder)
     {
-        builder.HasKey(x => x.DiscordUserId);
-        builder.Property(x => x.DiscordUserId)
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Id)
             .ValueGeneratedNever()
             .IsRequired();
+
+        builder.Property(x => x.DiscordUserId)
+            .IsRequired();
+
+        // A user can have several reminders; index the owner so the per-user reads stay fast.
+        builder.HasIndex(x => x.DiscordUserId);
 
         builder.Property(x => x.ReminderTimeUtc).IsRequired();
 

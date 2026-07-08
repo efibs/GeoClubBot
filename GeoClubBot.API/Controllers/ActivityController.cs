@@ -295,9 +295,9 @@ public class ActivityController(
         return Ok(new TodaysXpDto(result.Xp, result.ClubName));
     }
 
-    /// <summary>The viewer's daily-mission reminder, if configured.</summary>
-    [HttpGet("me/reminder")]
-    public async Task<ActionResult<ReminderStatusDto>> GetMyReminder(
+    /// <summary>The viewer's daily-mission reminders, ordered by time (empty when none are configured).</summary>
+    [HttpGet("me/reminders")]
+    public async Task<ActionResult<IReadOnlyList<ReminderDto>>> GetMyReminders(
         ISender mediator,
         CancellationToken cancellationToken)
     {
@@ -306,22 +306,22 @@ public class ActivityController(
             return Unauthorized();
         }
 
-        var reminder = await mediator
-            .Send(new GetDailyMissionReminderStatusQuery(discordUserId), cancellationToken)
+        var reminders = await mediator
+            .Send(new ListDailyMissionRemindersQuery(discordUserId), cancellationToken)
             .ConfigureAwait(false);
 
-        return Ok(new ReminderStatusDto(
-            reminder is null ? null : ActivityMemberDtoAssembler.AssembleReminder(reminder)));
+        return Ok(reminders.Select(ActivityMemberDtoAssembler.AssembleReminder).ToList());
     }
 
     /// <summary>
-    /// Sets (or updates) the viewer's daily-mission reminder. The reminder is persisted even when
-    /// the confirmation DM can't be delivered — the response reports the DM outcome separately so
-    /// the frontend can tell the viewer to enable DMs.
+    /// Adds a daily-mission reminder for the viewer (or updates the one at the same time). The reminder
+    /// is persisted even when the confirmation DM can't be delivered — the response reports the DM
+    /// outcome separately so the frontend can tell the viewer to enable DMs. Returns 409 when the viewer
+    /// already has the maximum number of reminders.
     /// </summary>
-    [HttpPut("me/reminder")]
-    public async Task<ActionResult<ReminderUpdateResultDto>> SetMyReminder(
-        [FromBody] SetReminderRequest request,
+    [HttpPost("me/reminders")]
+    public async Task<ActionResult<AddReminderResultDto>> AddMyReminder(
+        [FromBody] AddReminderRequest request,
         ISender mediator,
         CancellationToken cancellationToken)
     {
@@ -341,31 +341,40 @@ public class ActivityController(
         var timeZoneId = string.IsNullOrWhiteSpace(request.TimeZoneId) ? null : request.TimeZoneId.Trim();
         var customMessage = string.IsNullOrWhiteSpace(request.CustomMessage) ? null : request.CustomMessage.Trim();
 
-        // The command validates the time zone + message length (FluentValidation) and reports the
-        // confirmation-DM delivery as its Result; the reminder itself is persisted regardless.
-        var dmResult = await mediator
-            .Send(new SetDailyMissionReminderCommand(discordUserId, localTime, timeZoneId, customMessage), cancellationToken)
+        // The command validates the time zone + message length (FluentValidation), enforces the per-user
+        // limit (Conflict), and reports the confirmation-DM delivery inside its result value; the reminder
+        // itself is persisted regardless of DM delivery.
+        var result = await mediator
+            .Send(new AddDailyMissionReminderCommand(discordUserId, localTime, timeZoneId, customMessage), cancellationToken)
             .ConfigureAwait(false);
 
-        var reminder = await mediator
-            .Send(new GetDailyMissionReminderStatusQuery(discordUserId), cancellationToken)
+        if (result.IsFailure)
+        {
+            return this.ToProblemDetails(result.Error);
+        }
+
+        var reminders = await mediator
+            .Send(new ListDailyMissionRemindersQuery(discordUserId), cancellationToken)
             .ConfigureAwait(false);
-        if (reminder is null)
+        var added = reminders.FirstOrDefault(r => r.Id == result.Value.ReminderId);
+        if (added is null)
         {
             return this.ToProblemDetails(Error.Unexpected(
                 "activity.reminder_not_persisted",
                 "The reminder could not be saved."));
         }
 
-        return Ok(new ReminderUpdateResultDto(
-            ActivityMemberDtoAssembler.AssembleReminder(reminder),
+        var dmResult = result.Value.DmDelivery;
+        return Ok(new AddReminderResultDto(
+            ActivityMemberDtoAssembler.AssembleReminder(added),
             dmResult.IsSuccess,
             dmResult.IsSuccess ? null : dmResult.Error.Code));
     }
 
-    /// <summary>Stops the viewer's daily-mission reminder.</summary>
-    [HttpDelete("me/reminder")]
-    public async Task<IActionResult> StopMyReminder(
+    /// <summary>Removes one of the viewer's daily-mission reminders.</summary>
+    [HttpDelete("me/reminders/{id:guid}")]
+    public async Task<IActionResult> RemoveMyReminder(
+        Guid id,
         ISender mediator,
         CancellationToken cancellationToken)
     {
@@ -375,7 +384,7 @@ public class ActivityController(
         }
 
         var result = await mediator
-            .Send(new StopDailyMissionReminderCommand(discordUserId), cancellationToken)
+            .Send(new RemoveDailyMissionReminderCommand(discordUserId, id), cancellationToken)
             .ConfigureAwait(false);
 
         return result.IsSuccess ? NoContent() : this.ToProblemDetails(result.Error);

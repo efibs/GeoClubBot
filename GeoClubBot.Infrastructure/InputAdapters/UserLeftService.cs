@@ -51,8 +51,8 @@ public partial class UserLeftService(
             await using var scope = scopeFactory.CreateAsyncScope();
             var mediator = scope.ServiceProvider.GetRequiredService<ISender>();
 
-            // A NotFound result simply means the user had no reminder configured — nothing to do.
-            await mediator.Send(new StopDailyMissionReminderCommand(discordUserId)).ConfigureAwait(false);
+            // A NotFound result simply means the user had no reminders configured — nothing to do.
+            await mediator.Send(new ClearDailyMissionRemindersCommand(discordUserId)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

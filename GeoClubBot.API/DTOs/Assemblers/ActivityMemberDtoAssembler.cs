@@ -8,6 +8,7 @@ namespace GeoClubBot.DTOs.Assemblers;
 public static class ActivityMemberDtoAssembler
 {
     public static ReminderDto AssembleReminder(DailyMissionReminder reminder) => new(
+        reminder.Id.ToString(),
         reminder.ReminderTimeUtc.ToString("HH\\:mm", CultureInfo.InvariantCulture),
         ConvertToLocal(reminder.ReminderTimeUtc, reminder.TimeZoneId)
             .ToString("HH\\:mm", CultureInfo.InvariantCulture),
@@ -16,7 +17,7 @@ public static class ActivityMemberDtoAssembler
 
     /// <summary>
     /// Renders a UTC reminder time in its stored IANA time zone for display, resolving DST against
-    /// today (mirrors the <c>/daily-reminder status</c> slash command). Falls back to UTC when the
+    /// today (mirrors the <c>/daily-reminder list</c> slash command). Falls back to UTC when the
     /// zone is absent or unknown.
     /// </summary>
     private static TimeOnly ConvertToLocal(TimeOnly utcTime, string? timeZoneId)

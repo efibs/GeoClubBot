@@ -292,66 +292,82 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
     [Fact]
     public async Task Reminder_round_trip_works()
     {
-        // No reminder yet.
-        var status = await GetJsonAsync<ReminderStatusDto>("/api/v1/activity/me/reminder");
-        status.Reminder.Should().BeNull();
+        // No reminders yet.
+        var reminders = await GetJsonAsync<List<ReminderDto>>("/api/v1/activity/me/reminders");
+        reminders.Should().BeEmpty();
 
-        // Set one (UTC, no time zone) — the confirmation DM is delivered by the stub.
-        var putResponse = await SendJsonAsync(HttpMethod.Put, "/api/v1/activity/me/reminder",
-            new SetReminderRequest("18:30", null, "Go play!"));
-        putResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = await putResponse.Content.ReadFromJsonAsync<ReminderUpdateResultDto>();
-        updated!.DmDelivered.Should().BeTrue();
-        updated.Reminder.TimeUtc.Should().Be("18:30");
-        updated.Reminder.CustomMessage.Should().Be("Go play!");
+        // Add one (UTC, no time zone) — the confirmation DM is delivered by the stub.
+        var postResponse = await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/me/reminders",
+            new AddReminderRequest("18:30", null, "Go play!"));
+        postResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var added = await postResponse.Content.ReadFromJsonAsync<AddReminderResultDto>();
+        added!.DmDelivered.Should().BeTrue();
+        added.Reminder.TimeUtc.Should().Be("18:30");
+        added.Reminder.CustomMessage.Should().Be("Go play!");
         _directMessages.SentMessages.Should().HaveCount(1);
 
-        // Read it back, then stop it.
-        status = await GetJsonAsync<ReminderStatusDto>("/api/v1/activity/me/reminder");
-        status.Reminder.Should().NotBeNull();
+        // Read it back, then remove it by id.
+        reminders = await GetJsonAsync<List<ReminderDto>>("/api/v1/activity/me/reminders");
+        reminders.Should().ContainSingle();
 
-        var deleteResponse = await _client.SendAsync(Authorized(HttpMethod.Delete, "/api/v1/activity/me/reminder"));
+        var deleteResponse = await _client.SendAsync(
+            Authorized(HttpMethod.Delete, $"/api/v1/activity/me/reminders/{added.Reminder.Id}"));
         deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        status = await GetJsonAsync<ReminderStatusDto>("/api/v1/activity/me/reminder");
-        status.Reminder.Should().BeNull();
+        reminders = await GetJsonAsync<List<ReminderDto>>("/api/v1/activity/me/reminders");
+        reminders.Should().BeEmpty();
 
-        // Stopping again reports the missing reminder.
-        deleteResponse = await _client.SendAsync(Authorized(HttpMethod.Delete, "/api/v1/activity/me/reminder"));
+        // Removing again reports the missing reminder.
+        deleteResponse = await _client.SendAsync(
+            Authorized(HttpMethod.Delete, $"/api/v1/activity/me/reminders/{added.Reminder.Id}"));
         deleteResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
-    public async Task PUT_reminder_still_persists_when_the_confirmation_dm_fails()
+    public async Task Adding_multiple_reminders_keeps_them_all()
     {
-        _directMessages.DmsDisabled = true;
+        await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/me/reminders",
+            new AddReminderRequest("07:00", null, null));
+        await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/me/reminders",
+            new AddReminderRequest("19:30", null, "evening"));
 
-        var putResponse = await SendJsonAsync(HttpMethod.Put, "/api/v1/activity/me/reminder",
-            new SetReminderRequest("07:00", null, null));
+        var reminders = await GetJsonAsync<List<ReminderDto>>("/api/v1/activity/me/reminders");
 
-        putResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updated = await putResponse.Content.ReadFromJsonAsync<ReminderUpdateResultDto>();
-        updated!.DmDelivered.Should().BeFalse();
-        updated.DmErrorCode.Should().Be("discord.dm.disabled");
-
-        var status = await GetJsonAsync<ReminderStatusDto>("/api/v1/activity/me/reminder");
-        status.Reminder.Should().NotBeNull();
+        reminders.Should().HaveCount(2);
+        reminders.Select(r => r.TimeUtc).Should().Equal("07:00", "19:30");
     }
 
     [Fact]
-    public async Task PUT_reminder_rejects_a_malformed_time()
+    public async Task POST_reminder_still_persists_when_the_confirmation_dm_fails()
     {
-        var response = await SendJsonAsync(HttpMethod.Put, "/api/v1/activity/me/reminder",
-            new SetReminderRequest("half past six", null, null));
+        _directMessages.DmsDisabled = true;
+
+        var postResponse = await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/me/reminders",
+            new AddReminderRequest("07:00", null, null));
+
+        postResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var added = await postResponse.Content.ReadFromJsonAsync<AddReminderResultDto>();
+        added!.DmDelivered.Should().BeFalse();
+        added.DmErrorCode.Should().Be("discord.dm.disabled");
+
+        var reminders = await GetJsonAsync<List<ReminderDto>>("/api/v1/activity/me/reminders");
+        reminders.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task POST_reminder_rejects_a_malformed_time()
+    {
+        var response = await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/me/reminders",
+            new AddReminderRequest("half past six", null, null));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
-    public async Task PUT_reminder_rejects_an_unknown_time_zone()
+    public async Task POST_reminder_rejects_an_unknown_time_zone()
     {
-        var response = await SendJsonAsync(HttpMethod.Put, "/api/v1/activity/me/reminder",
-            new SetReminderRequest("18:30", "Mars/Olympus_Mons", null));
+        var response = await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/me/reminders",
+            new AddReminderRequest("18:30", "Mars/Olympus_Mons", null));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

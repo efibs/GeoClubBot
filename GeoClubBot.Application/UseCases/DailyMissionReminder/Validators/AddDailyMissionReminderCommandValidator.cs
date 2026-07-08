@@ -3,9 +3,9 @@ using FluentValidation;
 
 namespace UseCases.UseCases.DailyMissionReminder.Validators;
 
-public sealed class SetDailyMissionReminderCommandValidator : AbstractValidator<SetDailyMissionReminderCommand>
+public sealed class AddDailyMissionReminderCommandValidator : AbstractValidator<AddDailyMissionReminderCommand>
 {
-    public SetDailyMissionReminderCommandValidator()
+    public AddDailyMissionReminderCommandValidator()
     {
         RuleFor(x => x.DiscordUserId)
             .GreaterThan(0ul).WithMessage("Discord user id must be greater than zero.");

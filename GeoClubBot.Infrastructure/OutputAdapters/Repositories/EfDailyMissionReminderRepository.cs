@@ -12,18 +12,29 @@ public class EfDailyMissionReminderRepository(GeoClubBotDbContext dbContext) : I
         dbContext.Add(reminder);
     }
 
-    public async Task<DailyMissionReminder?> ReadReminderAsync(ulong discordUserId, CancellationToken cancellationToken = default)
+    public async Task<List<DailyMissionReminder>> ReadRemindersAsync(ulong discordUserId, CancellationToken cancellationToken = default)
     {
         return await dbContext.DailyMissionReminders
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.DiscordUserId == discordUserId, cancellationToken)
+            .Where(r => r.DiscordUserId == discordUserId)
+            .OrderBy(r => r.ReminderTimeUtc)
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<DailyMissionReminder?> ReadReminderForUpdateAsync(ulong discordUserId, CancellationToken cancellationToken = default)
+    public async Task<List<DailyMissionReminder>> ReadRemindersForUpdateAsync(ulong discordUserId, CancellationToken cancellationToken = default)
     {
         return await dbContext.DailyMissionReminders
-            .FindAsync([discordUserId], cancellationToken)
+            .Where(r => r.DiscordUserId == discordUserId)
+            .OrderBy(r => r.ReminderTimeUtc)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<DailyMissionReminder?> ReadReminderForUpdateAsync(Guid id, ulong discordUserId, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.DailyMissionReminders
+            .FirstOrDefaultAsync(r => r.Id == id && r.DiscordUserId == discordUserId, cancellationToken)
             .ConfigureAwait(false);
     }
 

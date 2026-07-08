@@ -143,7 +143,7 @@ lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
 | Command | What it does |
 |---|---|
 | `/gg-account link` | Link your Discord account to your GeoGuessr profile |
-| `/daily-reminder set\|stop\|status` | Manage your daily mission reminder |
+| `/daily-reminder add\|remove\|clear\|list` | Manage your daily mission reminders |
 | `/my-activity current-week\|last-days` | See your own XP / mission progress |
 | `/club-stats todays-xp` | See how much XP the club earned today |
 | `/user-info gg-nickname\|gg-profile\|discord-user` | Look up GeoGuessr ↔ Discord identities |

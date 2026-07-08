@@ -1,11 +1,11 @@
 import { request } from './client';
 import type {
+  AddReminderResultDto,
   LinkRequestDto,
   MeDto,
   MissionStatsDto,
   ProfileDto,
-  ReminderStatusDto,
-  ReminderUpdateResultDto,
+  ReminderDto,
   TodaysXpDto,
   WeekActivityDto,
 } from '../types';
@@ -35,26 +35,26 @@ export function fetchTodaysXp(): Promise<TodaysXpDto> {
   return request<TodaysXpDto>('/club/todays-xp');
 }
 
-/** The viewer's daily-mission reminder status. */
-export function fetchReminder(): Promise<ReminderStatusDto> {
-  return request<ReminderStatusDto>('/me/reminder');
+/** The viewer's daily-mission reminders, ordered by time (empty when none are set). */
+export function fetchReminders(): Promise<ReminderDto[]> {
+  return request<ReminderDto[]>('/me/reminders');
 }
 
-/** Sets or updates the viewer's daily-mission reminder. */
-export function putReminder(body: {
+/** Adds a daily-mission reminder (or updates the one at the same time). */
+export function addReminder(body: {
   localTime: string;
   timeZoneId: string | null;
   customMessage: string | null;
-}): Promise<ReminderUpdateResultDto> {
-  return request<ReminderUpdateResultDto>('/me/reminder', {
-    method: 'PUT',
+}): Promise<AddReminderResultDto> {
+  return request<AddReminderResultDto>('/me/reminders', {
+    method: 'POST',
     body: JSON.stringify(body),
   });
 }
 
-/** Stops the viewer's daily-mission reminder. */
-export function deleteReminder(): Promise<void> {
-  return request<void>('/me/reminder', { method: 'DELETE' });
+/** Removes one of the viewer's daily-mission reminders. */
+export function deleteReminder(id: string): Promise<void> {
+  return request<void>(`/me/reminders/${id}`, { method: 'DELETE' });
 }
 
 /** Starts the account-linking flow; the response carries the viewer's one-time password. */

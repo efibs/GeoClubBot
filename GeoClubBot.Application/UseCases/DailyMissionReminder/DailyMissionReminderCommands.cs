@@ -10,48 +10,84 @@ using DomainDailyMissionReminder = Entities.DailyMissionReminder;
 
 namespace UseCases.UseCases.DailyMissionReminder;
 
+/// <summary>Whether an <see cref="AddDailyMissionReminderCommand"/> created a new reminder or updated one at the same time.</summary>
+public enum AddReminderOutcome
+{
+    Added,
+    Updated
+}
+
 /// <summary>
-/// Sets (or updates) the caller's daily mission reminder and sends a confirmation/test DM.
-/// The reminder is always persisted; the returned <see cref="Result"/> reports the DM delivery:
-/// success when delivered, a <see cref="ErrorType.Forbidden"/> error when the user has DMs from
-/// the bot disabled/blocked (they must enable them), or a <see cref="ErrorType.Unexpected"/> error
-/// for a transient failure (worth retrying). This lets the caller tell the two cases apart.
+/// Result of adding a reminder. The reminder is always persisted; <see cref="DmDelivery"/> reports
+/// the confirmation/test DM delivery separately (success, an <see cref="ErrorType.Forbidden"/> error
+/// when the user has DMs disabled, or an <see cref="ErrorType.Unexpected"/> transient failure) so the
+/// caller can tell the user to enable DMs without treating a failed DM as a failed add.
 /// </summary>
-public sealed record SetDailyMissionReminderCommand(
+public sealed record AddReminderResult(Guid ReminderId, AddReminderOutcome Outcome, Result DmDelivery);
+
+/// <summary>
+/// Adds a new daily mission reminder for the caller (or updates the message of an existing reminder at
+/// the same time) and sends a confirmation/test DM. Fails with <see cref="ErrorType.Conflict"/> when the
+/// user already has the maximum number of reminders and is adding at a new time.
+/// </summary>
+public sealed record AddDailyMissionReminderCommand(
     ulong DiscordUserId,
     TimeOnly LocalTime,
     string? TimeZoneId,
-    string? CustomMessage) : ICommand<Result>;
+    string? CustomMessage) : ICommand<Result<AddReminderResult>>;
 
-public sealed record StopDailyMissionReminderCommand(ulong DiscordUserId) : ICommand<Result>;
+/// <summary>Removes a single reminder owned by the caller.</summary>
+public sealed record RemoveDailyMissionReminderCommand(ulong DiscordUserId, Guid ReminderId) : ICommand<Result>;
 
-public sealed record GetDailyMissionReminderStatusQuery(ulong DiscordUserId) : IQuery<DomainDailyMissionReminder?>;
+/// <summary>Removes all of the caller's reminders.</summary>
+public sealed record ClearDailyMissionRemindersCommand(ulong DiscordUserId) : ICommand<Result>;
+
+/// <summary>Lists all of the caller's reminders, ordered by time.</summary>
+public sealed record ListDailyMissionRemindersQuery(ulong DiscordUserId) : IQuery<IReadOnlyList<DomainDailyMissionReminder>>;
 
 public sealed partial class DailyMissionReminderHandlers(
     IDailyMissionReminderRepository reminders,
     IDiscordDirectMessageAccess directMessageAccess,
     IOptions<DailyMissionReminderConfiguration> config,
     ILogger<DailyMissionReminderHandlers> logger)
-    : IRequestHandler<SetDailyMissionReminderCommand, Result>,
-      IRequestHandler<StopDailyMissionReminderCommand, Result>,
-      IRequestHandler<GetDailyMissionReminderStatusQuery, DomainDailyMissionReminder?>
+    : IRequestHandler<AddDailyMissionReminderCommand, Result<AddReminderResult>>,
+      IRequestHandler<RemoveDailyMissionReminderCommand, Result>,
+      IRequestHandler<ClearDailyMissionRemindersCommand, Result>,
+      IRequestHandler<ListDailyMissionRemindersQuery, IReadOnlyList<DomainDailyMissionReminder>>
 {
-    public async Task<Result> Handle(SetDailyMissionReminderCommand request, CancellationToken cancellationToken)
+    public async Task<Result<AddReminderResult>> Handle(AddDailyMissionReminderCommand request, CancellationToken cancellationToken)
     {
         var utcTime = ConvertToUtc(request.LocalTime, request.TimeZoneId);
 
-        var existing = await reminders.ReadReminderForUpdateAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
+        var existing = await reminders.ReadRemindersForUpdateAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
 
-        if (existing is not null)
+        // Adding at a time the user already has updates that reminder instead of creating a duplicate.
+        var sameTime = existing.FirstOrDefault(r => r.ReminderTimeUtc == utcTime);
+
+        DomainDailyMissionReminder reminder;
+        AddReminderOutcome outcome;
+        if (sameTime is not null)
         {
-            existing.UpdateSchedule(utcTime, request.TimeZoneId, request.CustomMessage);
+            sameTime.UpdateSchedule(utcTime, request.TimeZoneId, request.CustomMessage);
+            reminder = sameTime;
+            outcome = AddReminderOutcome.Updated;
             LogReminderUpdated(request.DiscordUserId, utcTime);
         }
         else
         {
-            var reminder = DomainDailyMissionReminder.Create(
+            var maxReminders = config.Value.MaxRemindersPerUser;
+            if (existing.Count >= maxReminders)
+            {
+                LogReminderLimitReached(request.DiscordUserId, maxReminders);
+                return Error.Conflict(
+                    "daily_mission_reminder.limit_reached",
+                    $"You already have the maximum of {maxReminders} daily reminders. Remove one before adding another.");
+            }
+
+            reminder = DomainDailyMissionReminder.Create(
                 request.DiscordUserId, utcTime, request.TimeZoneId, request.CustomMessage);
             reminders.AddReminder(reminder);
+            outcome = AddReminderOutcome.Added;
             LogReminderCreated(request.DiscordUserId, utcTime);
         }
 
@@ -68,10 +104,10 @@ public sealed partial class DailyMissionReminderHandlers(
             LogTestDmFailed(request.DiscordUserId, dmResult.Error.Code);
         }
 
-        return dmResult;
+        return new AddReminderResult(reminder.Id, outcome, dmResult);
     }
 
-    private string BuildConfirmationMessage(SetDailyMissionReminderCommand request)
+    private string BuildConfirmationMessage(AddDailyMissionReminderCommand request)
     {
         var tzDisplay = string.IsNullOrWhiteSpace(request.TimeZoneId) ? "UTC" : request.TimeZoneId;
         var messageDisplay = string.IsNullOrWhiteSpace(request.CustomMessage)
@@ -86,16 +122,18 @@ public sealed partial class DailyMissionReminderHandlers(
             + "time, unless you've already completed your daily mission.";
     }
 
-    public async Task<Result> Handle(StopDailyMissionReminderCommand request, CancellationToken cancellationToken)
+    public async Task<Result> Handle(RemoveDailyMissionReminderCommand request, CancellationToken cancellationToken)
     {
-        var existing = await reminders.ReadReminderForUpdateAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
+        var existing = await reminders
+            .ReadReminderForUpdateAsync(request.ReminderId, request.DiscordUserId, cancellationToken)
+            .ConfigureAwait(false);
 
         if (existing is null)
         {
             LogNoReminderFound(request.DiscordUserId);
             return Error.NotFound(
                 "daily_mission_reminder.not_found",
-                "No daily mission reminder is configured for this Discord user.");
+                "That daily mission reminder does not exist.");
         }
 
         reminders.DeleteReminder(existing);
@@ -103,8 +141,29 @@ public sealed partial class DailyMissionReminderHandlers(
         return Result.Success();
     }
 
-    public Task<DomainDailyMissionReminder?> Handle(GetDailyMissionReminderStatusQuery request, CancellationToken cancellationToken) =>
-        reminders.ReadReminderAsync(request.DiscordUserId, cancellationToken);
+    public async Task<Result> Handle(ClearDailyMissionRemindersCommand request, CancellationToken cancellationToken)
+    {
+        var existing = await reminders.ReadRemindersForUpdateAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
+
+        if (existing.Count == 0)
+        {
+            LogNoReminderFound(request.DiscordUserId);
+            return Error.NotFound(
+                "daily_mission_reminder.not_found",
+                "No daily mission reminders are configured for this Discord user.");
+        }
+
+        foreach (var reminder in existing)
+        {
+            reminders.DeleteReminder(reminder);
+        }
+
+        LogRemindersCleared(request.DiscordUserId, existing.Count);
+        return Result.Success();
+    }
+
+    public async Task<IReadOnlyList<DomainDailyMissionReminder>> Handle(ListDailyMissionRemindersQuery request, CancellationToken cancellationToken) =>
+        await reminders.ReadRemindersAsync(request.DiscordUserId, cancellationToken).ConfigureAwait(false);
 
     private static TimeOnly ConvertToUtc(TimeOnly localTime, string? timeZoneId)
     {
@@ -127,15 +186,21 @@ public sealed partial class DailyMissionReminderHandlers(
     [LoggerMessage(LogLevel.Information, "Daily mission reminder created for user {DiscordUserId} at {UtcTime} UTC.")]
     partial void LogReminderCreated(ulong discordUserId, TimeOnly utcTime);
 
+    [LoggerMessage(LogLevel.Information, "User {DiscordUserId} tried to add a reminder but is already at the limit of {MaxReminders}.")]
+    partial void LogReminderLimitReached(ulong discordUserId, int maxReminders);
+
     [LoggerMessage(LogLevel.Debug, "No daily mission reminder found for user {DiscordUserId}.")]
     partial void LogNoReminderFound(ulong discordUserId);
 
     [LoggerMessage(LogLevel.Information, "Daily mission reminder stopped for user {DiscordUserId}.")]
     partial void LogReminderStopped(ulong discordUserId);
 
-    [LoggerMessage(LogLevel.Debug, "Confirmation DM sent to user {DiscordUserId} after setting daily mission reminder.")]
+    [LoggerMessage(LogLevel.Information, "Cleared {Count} daily mission reminders for user {DiscordUserId}.")]
+    partial void LogRemindersCleared(ulong discordUserId, int count);
+
+    [LoggerMessage(LogLevel.Debug, "Confirmation DM sent to user {DiscordUserId} after adding daily mission reminder.")]
     partial void LogTestDmSent(ulong discordUserId);
 
-    [LoggerMessage(LogLevel.Warning, "Failed to send confirmation DM to user {DiscordUserId} after setting daily mission reminder ({ErrorCode}).")]
+    [LoggerMessage(LogLevel.Warning, "Failed to send confirmation DM to user {DiscordUserId} after adding daily mission reminder ({ErrorCode}).")]
     partial void LogTestDmFailed(ulong discordUserId, string errorCode);
 }
