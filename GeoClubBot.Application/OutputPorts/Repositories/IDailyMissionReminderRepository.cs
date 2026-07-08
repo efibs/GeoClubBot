@@ -20,5 +20,13 @@ public interface IDailyMissionReminderRepository
 
     Task<List<DailyMissionReminder>> ReadDueRemindersForUpdateAsync(TimeOnly currentTimeUtc, DateOnly todayUtc, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Read all tracked reminders that should already have fired today but were not sent today —
+    /// i.e. reminders missed while the bot was down. A reminder whose time is still ahead today is
+    /// not missed (the regular schedule will fire it), and misses from previous days are moot
+    /// because those days' missions have expired.
+    /// </summary>
+    Task<List<DailyMissionReminder>> ReadMissedRemindersForUpdateAsync(TimeOnly currentTimeUtc, DateOnly todayUtc, CancellationToken cancellationToken = default);
+
     void DeleteReminder(DailyMissionReminder reminder);
 }
