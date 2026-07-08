@@ -12,6 +12,9 @@ public static class DiscordAdaptersModule
     public static IServiceCollection AddDiscordAdaptersModule(this IServiceCollection services)
     {
         services.AddHostedService<InitialSyncService>();
+        // Must stay registered before AddQuartzModule() so the startup catch-up finishes before
+        // the per-minute reminder job starts (hosted services start in registration order).
+        services.AddHostedService<MissedReminderCatchUpService>();
         services.AddHostedService<UserJoinedService>();
         services.AddHostedService<UserLeftService>();
 

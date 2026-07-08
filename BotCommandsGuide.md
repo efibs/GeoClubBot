@@ -51,7 +51,7 @@ Starts the linking process for your account.
 ---
 
 ## ⏰ Feature: Daily Mission Reminder
-Reminds you (via DM) every day to do your GeoGuessr daily mission, at times you choose. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. By default a reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do.
+Reminds you (via DM) every day to do your GeoGuessr daily mission, at times you choose. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. By default a reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do. If the bot happens to be offline right when a reminder is due (for example during an update), it catches up as soon as it's back online: you'll get the missed reminder shortly after the bot starts — at most one catch-up message, even if the bot was down for a long time or you missed several reminder times that day.
 
 ### `/daily-reminder add`
 Adds a new reminder (or updates the one already set at that time).

@@ -213,6 +213,38 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
     }
 
     [Fact]
+    public async Task CatchUpMissedReminders_SendsAMissedReminderOnce_AcrossRestarts()
+    {
+        // A reminder at 00:00 UTC has always already passed "now", so seeding it unsent
+        // deterministically models a reminder whose time went by while the bot was down.
+        var discordId = NewDiscordId();
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(DomainReminder.Create(discordId, TimeOnly.MinValue, null, null));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = new MediatorTestHost(
+            fixture.ConnectionString,
+            configurationValues: new Dictionary<string, string?>
+            {
+                ["DailyMissionReminder:Schedule"] = "0 * * ? * * *",
+                ["DailyMissionReminder:DefaultMessage"] = "Don't forget your daily mission! {{mission_text}}"
+            });
+        host.Mock<IDiscordDirectMessageAccess>()
+            .SendDirectMessageAsync(discordId, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result.Success());
+
+        await host.SendAsync(new CatchUpMissedRemindersCommand());
+        // A second catch-up — the bot restarting again the same day — must not send a duplicate.
+        await host.SendAsync(new CatchUpMissedRemindersCommand());
+
+        await host.Mock<IDiscordDirectMessageAccess>()
+            .Received(1)
+            .SendDirectMessageAsync(discordId, Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SendDueReminders_SendsNothing_WhenNoReminderIsDue()
     {
         // Seed a reminder scheduled two hours from now so it is never "due" during the run.

@@ -154,6 +154,65 @@ public sealed class EfRepositoryIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task ReadMissedRemindersForUpdateAsync_ReturnsRemindersWhoseTimePassedTodayUnsent()
+    {
+        // Models a bot that went down at 19:55 and came back up at 20:05 the same day: everything
+        // that should have fired by 20:05 but wasn't sent today is missed, exactly once.
+        var rebootTime = new TimeOnly(20, 5);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+        var yesterday = today.AddDays(-1);
+
+        var baseUser = (ulong)Random.Shared.NextInt64(1_000_000_000_000_000L, long.MaxValue);
+        var missedDuringDowntime = baseUser;
+        var missedNeverSent = baseUser + 1;
+        var missedForDays = baseUser + 2;
+        var dueThisMinute = baseUser + 3;
+        var alreadySentToday = baseUser + 4;
+        var stillAheadToday = baseUser + 5;
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            // 20:00 reminder that fired yesterday but was skipped today by the downtime.
+            var duringDowntime = DomainDailyMissionReminder.Create(missedDuringDowntime, new TimeOnly(20, 0), null, null);
+            duringDowntime.MarkSent(yesterday);
+            seed.Add(duringDowntime);
+
+            seed.Add(DomainDailyMissionReminder.Create(missedNeverSent, new TimeOnly(19, 0), null, null));
+
+            // Offline for several days: still just one catch-up, for today.
+            var forDays = DomainDailyMissionReminder.Create(missedForDays, new TimeOnly(8, 0), null, null);
+            forDays.MarkSent(today.AddDays(-3));
+            seed.Add(forDays);
+
+            // Due at the very minute of the reboot — the boundary is inclusive.
+            seed.Add(DomainDailyMissionReminder.Create(dueThisMinute, new TimeOnly(20, 5), null, null));
+
+            var sentToday = DomainDailyMissionReminder.Create(alreadySentToday, new TimeOnly(20, 0), null, null);
+            sentToday.MarkSent(today);
+            seed.Add(sentToday);
+
+            var ahead = DomainDailyMissionReminder.Create(stillAheadToday, new TimeOnly(22, 0), null, null);
+            ahead.MarkSent(yesterday);
+            seed.Add(ahead);
+
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var repo = new EfDailyMissionReminderRepository(read);
+
+        var found = await repo.ReadMissedRemindersForUpdateAsync(rebootTime, today);
+
+        var foundIds = found.Select(r => r.DiscordUserId).ToHashSet();
+        foundIds.Should().Contain(missedDuringDowntime, "a 20:00 reminder skipped by 19:55–20:05 downtime must be caught up");
+        foundIds.Should().Contain(missedNeverSent, "a never-sent reminder whose time passed today is missed");
+        foundIds.Should().Contain(missedForDays, "multi-day downtime still yields exactly one catch-up (today's)");
+        foundIds.Should().Contain(dueThisMinute, "a reminder due at the reboot minute itself is included");
+        foundIds.Should().NotContain(alreadySentToday, "already-sent-today must not be re-sent");
+        foundIds.Should().NotContain(stillAheadToday, "a reminder still ahead today will fire on its regular schedule");
+    }
+
+    [Fact]
     public async Task ReadClubMembersByUserIdsAsync_ReturnsOnlyRequestedMembers()
     {
         var clubId = Guid.NewGuid();

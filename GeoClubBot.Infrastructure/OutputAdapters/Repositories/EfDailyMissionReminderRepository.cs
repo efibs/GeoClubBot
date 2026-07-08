@@ -47,6 +47,15 @@ public class EfDailyMissionReminderRepository(GeoClubBotDbContext dbContext) : I
             .ConfigureAwait(false);
     }
 
+    public async Task<List<DailyMissionReminder>> ReadMissedRemindersForUpdateAsync(TimeOnly currentTimeUtc, DateOnly todayUtc, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.DailyMissionReminders
+            .Where(r => r.ReminderTimeUtc <= currentTimeUtc
+                        && (r.LastSentDateUtc == null || r.LastSentDateUtc < todayUtc))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public void DeleteReminder(DailyMissionReminder reminder)
     {
         dbContext.DailyMissionReminders.Remove(reminder);
