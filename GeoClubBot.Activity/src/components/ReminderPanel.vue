@@ -31,7 +31,9 @@ const errorMessage = computed(() => {
 });
 
 // Which reminder is currently being removed, so only its button shows the busy state.
-const removingId = computed(() => (remove.isPending.value ? (remove.variables.value ?? null) : null));
+const removingId = computed(() =>
+  remove.isPending.value ? (remove.variables.value ?? null) : null,
+);
 
 async function onAdd(): Promise<void> {
   if (!time.value) {
@@ -71,7 +73,12 @@ async function onRemove(id: string): Promise<void> {
     </p>
 
     <ul v-if="list.length" class="reminder-list" data-testid="reminder-list">
-      <li v-for="reminder in list" :key="reminder.id" class="reminder-item" data-testid="reminder-item">
+      <li
+        v-for="reminder in list"
+        :key="reminder.id"
+        class="reminder-item"
+        data-testid="reminder-item"
+      >
         <div class="reminder-item-info">
           <span class="reminder-item-time">
             {{ reminder.localTime }}
