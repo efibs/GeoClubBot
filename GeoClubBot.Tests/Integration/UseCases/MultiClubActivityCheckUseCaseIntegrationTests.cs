@@ -78,10 +78,11 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
         host.Mock<IGeoGuessrClientFactory>().CreateClient(clubId).Returns(client);
     }
 
-    private async Task SeedClubAsync(Guid clubId)
+    private async Task SeedClubAsync(Guid clubId, DateTimeOffset lastCheck)
     {
         await using var seed = fixture.CreateDbContext();
-        seed.Add(Entities.Club.Create(clubId, $"club-{clubId:N}", level: 1));
+        // The activity-check interval starts at the club's recorded check time.
+        seed.Add(Entities.Club.Create(clubId, $"club-{clubId:N}", level: 1, latestActivityCheckTime: lastCheck));
         await seed.SaveChangesAsync();
     }
 
@@ -107,8 +108,8 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
         var activeB = (userId: NewUserId(), nickname: NewNickname());
         var laggingB = (userId: NewUserId(), nickname: NewNickname());
 
-        await SeedClubAsync(clubA);
-        await SeedClubAsync(clubB);
+        await SeedClubAsync(clubA, lastCheck);
+        await SeedClubAsync(clubB, lastCheck);
         foreach (var (clubId, member) in new[] { (clubA, activeA), (clubA, laggingA), (clubB, activeB), (clubB, laggingB) })
         {
             await SeedHistoryMemberAsync(clubId, member.userId, member.nickname, lastCheck);
@@ -156,8 +157,8 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
         var memberA = (userId: NewUserId(), nickname: NewNickname());
         var memberB = (userId: NewUserId(), nickname: NewNickname());
 
-        await SeedClubAsync(clubA);
-        await SeedClubAsync(clubB);
+        await SeedClubAsync(clubA, lastCheck);
+        await SeedClubAsync(clubB, lastCheck);
         await SeedHistoryMemberAsync(clubA, memberA.userId, memberA.nickname, lastCheck);
         await SeedHistoryMemberAsync(clubB, memberB.userId, memberB.nickname, lastCheck);
 

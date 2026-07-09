@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.ClubMemberActivity;
+using UseCases.UseCases.Excuses;
 using Xunit;
 
 namespace GeoClubBot.Tests.Integration.UseCases;
@@ -212,8 +213,10 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
-    public async Task GetLastCheckTime_ReturnsTheStoredTime()
+    public async Task GetLastCheckTime_ReturnsTheClubsRecordedCheckTime()
     {
+        // The last check time is read from Club.LatestActivityCheckTime, which the activity check
+        // records on every run (see CheckGeoGuessrPlayerActivityHandler).
         var mainClubId = Guid.NewGuid();
         var checkTime = DateTimeOffset.UtcNow.AddHours(-3);
         await using (var seed = fixture.CreateDbContext())
@@ -227,6 +230,60 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
 
         lastCheck.Should().NotBeNull();
         lastCheck!.Value.Should().BeCloseTo(checkTime, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task GetLastCheckTime_ReturnsNull_WhenTheClubWasNeverChecked()
+    {
+        var mainClubId = Guid.NewGuid();
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(mainClubId, $"club-{mainClubId:N}", 1));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost(mainClubId);
+        var lastCheck = await host.SendAsync(new GetLastCheckTimeQuery());
+
+        lastCheck.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ReadRelevantExcuses_ShowsRecentlyEndedExcuse_UsingTheClubsLastCheckTime()
+    {
+        // Reproduces issue #200: an excuse that ended after the last activity check but before "now"
+        // overlaps the current activity-check interval and must still be listed as a previous excuse.
+        // The regression was that GetLastCheckTimeQuery read the never-persisted
+        // Club.LatestActivityCheckTime, always returned null, and so every previous excuse was hidden.
+        var mainClubId = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        var userId = NewUserId();
+        var nickname = NewNickname();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            // The last check ran two days ago.
+            seed.Add(Club.Create(mainClubId, $"club-{mainClubId:N}", 1, now.AddDays(-2)));
+            var user = GeoGuessrUser.Create(userId, nickname);
+            seed.Add(user);
+            var member = ClubMember.Create(user, mainClubId, xp: 400, joinedAt: now.AddMonths(-3));
+            // Excuse ended yesterday: after the last check (-2 days), before now.
+            member.Excuses.Add(ClubMemberExcuse.Create(userId, now.AddDays(-4), now.AddDays(-1)));
+            seed.Add(member);
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost(mainClubId);
+
+        // Mirror ActivityExcuseModule.ReadRelevantExcusesAsync: resolve the last check time, then query.
+        var lastCheck = await host.SendAsync(new GetLastCheckTimeQuery());
+        lastCheck.Should().NotBeNull("the club recorded a check time, so it must be returned");
+
+        var result = await host.SendAsync(new ReadRelevantExcusesQuery(7, lastCheck));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().Contain(r => r.MemberNickname == nickname && r.IsPrevious,
+            "the excuse ended within the current activity-check interval [lastCheck, now]");
     }
 
     [Fact]
