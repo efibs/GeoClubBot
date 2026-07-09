@@ -172,6 +172,35 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
     }
 
     [Fact]
+    public async Task CheckGeoGuessrPlayerActivity_CreatesTheClubAndSyncsMembers_WhenTheClubEntityIsMissing()
+    {
+        // The configured club was never synced (initial sync failed / hasn't run) and is checked
+        // before any club sync. ClubMembers/ClubMemberHistoryEntries FK-require the club, so the check
+        // must create it first; otherwise the member sync throws and the club is never checked.
+        var clubId = Guid.NewGuid();
+        var member = (userId: NewUserId(), nickname: NewNickname());
+
+        // Nothing is seeded — no Club, no user, no member. The roster is the only source.
+        using var host = CreateActivityHost(clubId);
+        ArrangeRoster(host, clubId, BuildMemberDto(member.userId, member.nickname, xp: 600));
+
+        await host.SendAsync(new CheckGeoGuessrPlayerActivityCommand(clubId));
+
+        await using var read = fixture.CreateDbContext();
+        var club = await read.Clubs.AsNoTracking().SingleOrDefaultAsync(c => c.ClubId == clubId);
+        club.Should().NotBeNull("the check must create the configured club if it was never synced");
+        club!.LatestActivityCheckTime.Should().NotBeNull();
+        club.LatestActivityCheckTime!.Value.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+
+        // The roster member was synced under the newly-created club and got a history snapshot.
+        var syncedMember = await read.ClubMembers.AsNoTracking().SingleOrDefaultAsync(m => m.UserId == member.userId);
+        syncedMember.Should().NotBeNull();
+        syncedMember!.ClubId.Should().Be(clubId);
+        (await read.ClubMemberHistoryEntries.AsNoTracking().CountAsync(h => h.UserId == member.userId))
+            .Should().Be(1);
+    }
+
+    [Fact]
     public async Task CheckGeoGuessrPlayerActivity_UsesTheClubsCheckTimeForTheInterval_NotTheNewestHistory()
     {
         // Guards that the interval start comes from Club.LatestActivityCheckTime, not max(history):
