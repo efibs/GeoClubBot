@@ -53,7 +53,7 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
             }));
         });
 
-    private static ClubMemberDto BuildMemberDto(string userId, string nickname, int xp) => new()
+    private static ClubMemberDto BuildMemberDto(string userId, string nickname, int xp, DateTimeOffset? joinedAt = null) => new()
     {
         User = new ClubMemberUserDto
         {
@@ -69,7 +69,7 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
             ClubUserType = 0,
         },
         Role = 0,
-        JoinedAt = DateTimeOffset.UtcNow.AddMonths(-2),
+        JoinedAt = joinedAt ?? DateTimeOffset.UtcNow.AddMonths(-2),
         Xp = xp,
         WeeklyXp = 0,
     };
@@ -92,7 +92,8 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
 
         await using (var seed = fixture.CreateDbContext())
         {
-            seed.Add(Entities.Club.Create(clubId, $"club-{clubId:N}", level: 1));
+            // The interval start comes from the club's recorded check time, not from history.
+            seed.Add(Entities.Club.Create(clubId, $"club-{clubId:N}", level: 1, latestActivityCheckTime: lastCheck));
             foreach (var (userId, nickname) in new[] { active, inactive })
             {
                 var user = GeoGuessrUser.Create(userId, nickname);
@@ -130,10 +131,79 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
             .CountAsync(h => h.UserId == inactive.userId);
         inactiveHistoryCount.Should().Be(2);
 
+        // The check must advance the club's recorded check time to ~now.
+        var club = await read.Clubs.AsNoTracking().SingleAsync(c => c.ClubId == clubId);
+        club.LatestActivityCheckTime.Should().NotBeNull();
+        club.LatestActivityCheckTime!.Value.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+
         await host.Mock<IActivityStatusMessageSender>()
             .Received()
             .SendActivityStatusUpdateMessageAsync(
                 Arg.Any<List<ClubMemberActivityStatus>>(), Arg.Any<string>(), 500, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CheckGeoGuessrPlayerActivity_RecordsTheCheckTime_EvenWhenTheClubHasNoMembers()
+    {
+        // A check still ran even if the club is empty, so the recorded check time must advance —
+        // otherwise the interval would never move on for a memberless club (there is no history to
+        // derive it from).
+        var clubId = Guid.NewGuid();
+        var staleCheckTime = DateTimeOffset.UtcNow.AddDays(-30);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Entities.Club.Create(clubId, $"club-{clubId:N}", level: 1, latestActivityCheckTime: staleCheckTime));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateActivityHost(clubId);
+        ArrangeRoster(host, clubId); // empty roster
+
+        var statuses = await host.SendAsync(new CheckGeoGuessrPlayerActivityCommand(clubId));
+
+        statuses.Should().BeEmpty();
+
+        await using var read = fixture.CreateDbContext();
+        var club = await read.Clubs.AsNoTracking().SingleAsync(c => c.ClubId == clubId);
+        club.LatestActivityCheckTime.Should().NotBeNull();
+        club.LatestActivityCheckTime!.Value.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+        club.LatestActivityCheckTime.Value.Should().BeAfter(staleCheckTime);
+    }
+
+    [Fact]
+    public async Task CheckGeoGuessrPlayerActivity_UsesTheClubsCheckTimeForTheInterval_NotTheNewestHistory()
+    {
+        // Guards that the interval start comes from Club.LatestActivityCheckTime, not max(history):
+        // the member joined AFTER the newest history entry but BEFORE the club's recorded check time,
+        // so they only count as "new" (partial target) when the older club check time bounds the
+        // interval. If the newest history timestamp were used, they would fall outside the interval
+        // and not be flagged as a new member.
+        var clubId = Guid.NewGuid();
+        var clubCheckTime = DateTimeOffset.UtcNow.AddDays(-10);
+        var newestHistory = DateTimeOffset.UtcNow.AddDays(-2);
+        var joinedAt = DateTimeOffset.UtcNow.AddDays(-5); // between clubCheckTime and newestHistory
+        var member = (userId: NewUserId(), nickname: NewNickname());
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Entities.Club.Create(clubId, $"club-{clubId:N}", level: 1, latestActivityCheckTime: clubCheckTime));
+            var user = GeoGuessrUser.Create(member.userId, member.nickname);
+            seed.Add(user);
+            seed.Add(ClubMember.Create(user, clubId, xp: 500, joinedAt: joinedAt));
+            // Newest history entry is more recent than the club's recorded check time.
+            seed.Add(ClubMemberHistoryEntry.Create(member.userId, clubId, xp: 500, newestHistory));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateActivityHost(clubId);
+        ArrangeRoster(host, clubId, BuildMemberDto(member.userId, member.nickname, xp: 500, joinedAt: joinedAt));
+
+        var statuses = await host.SendAsync(new CheckGeoGuessrPlayerActivityCommand(clubId));
+
+        var status = statuses.Single(s => s.UserId == member.userId);
+        status.IndividualTargetReason.Should().Contain("New member",
+            "the member joined within the interval bounded by the club's recorded check time");
     }
 
     [Fact]

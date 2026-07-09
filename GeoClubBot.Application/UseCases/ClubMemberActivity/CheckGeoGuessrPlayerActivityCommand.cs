@@ -45,9 +45,11 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
             .ConfigureAwait(false);
         var allExcuses = await excuses.ReadExcuseProjectionsAsync(cancellationToken).ConfigureAwait(false);
 
-        var lastActivityCheckTime = latestHistoryEntries.Any()
-            ? latestHistoryEntries.Select(a => a.Timestamp).Max()
-            : DateTimeOffset.MinValue;
+        // The last check time is tracked on the club itself and is the single source of truth for the
+        // activity-check interval. We deliberately do NOT derive it from the newest history entry: a
+        // club with no members writes no history, yet a check still ran and must move the interval on.
+        var club = await clubs.ReadForUpdateByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
+        var lastActivityCheckTime = club?.LatestActivityCheckTime ?? DateTimeOffset.MinValue;
 
         LogLastActivityCheckTime(logger, lastActivityCheckTime);
 
@@ -58,12 +60,14 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
             m => ClubMemberHistoryEntry.Create(m.User.UserId, clubId, m.Xp, now));
         history.CreateHistoryEntries(newLatestHistoryEntries.Values);
 
+        // Record the check on the club unconditionally: a check ran regardless of the member count.
+        club?.RecordActivityCheck(now);
+
         var newStatuses = await statusCalculator.ExecuteAsync(
                 members, latestHistoryEntries, allExcuses, lastActivityCheckTime, now,
                 xpRequirement, gracePeriod, maxNumStrikes, cancellationToken)
             .ConfigureAwait(false);
 
-        var club = await clubs.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
         var clubName = club?.Name ?? clubId.ToString();
 
         var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);

@@ -15,20 +15,22 @@ public class EfClubRepository(GeoClubBotDbContext dbContext) : IClubRepository
 
     public async Task<Club> CreateOrUpdateClubAsync(Club club, CancellationToken cancellationToken = default)
     {
-        var clubExists = await dbContext.Clubs
-            .AnyAsync(c => c.ClubId == club.ClubId, cancellationToken)
+        var existing = await dbContext.Clubs
+            .FirstOrDefaultAsync(c => c.ClubId == club.ClubId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (clubExists)
-        {
-            dbContext.Update(club);
-        }
-        else
+        if (existing is null)
         {
             dbContext.Add(club);
+            return club;
         }
 
-        return club;
+        // Refresh only the fields carried by the GeoGuessr sync payload. Mutating the tracked entity
+        // in place preserves server-owned columns such as LatestActivityCheckTime — a blind
+        // Update(club) would reset them to the incoming (null) value on every sync.
+        existing.Rename(club.Name);
+        existing.UpdateLevel(club.Level);
+        return existing;
     }
 
     public async Task<Club?> ReadClubByIdAsync(Guid clubId, CancellationToken cancellationToken = default)
