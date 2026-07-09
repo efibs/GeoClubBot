@@ -22,8 +22,13 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
 
     public async Task<GeoGuessrUser?> ReadForUpdateByUserIdAsync(string userId, CancellationToken cancellationToken = default)
     {
+        // FindAsync checks the change tracker (including entities that were Added but not yet saved)
+        // before querying the database. A LINQ query hits the database only, so it would miss a user
+        // that was just synced into the same unit of work but not yet committed — the cause of the
+        // "user not found after syncing" error on the first account-linking attempt for a new user.
+        // UserId is the primary key (ValueGeneratedNever), so a key lookup is exact here.
         return await dbContext.GeoGuessrUsers
-            .FirstOrDefaultAsync(u => u.UserId == userId, cancellationToken)
+            .FindAsync([userId], cancellationToken)
             .ConfigureAwait(false);
     }
 
