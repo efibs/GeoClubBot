@@ -101,6 +101,50 @@ test('keeps the page fixed and scrolls an overflowing tile internally', async ({
   expect(listScrolls).toBe(true);
 });
 
+test('a long streak nickname truncates instead of breaking the flame/day count onto extra lines', async ({
+  page,
+}) => {
+  // Baseline: a short nickname, so the value cell (flames + day count) is a single line.
+  await mockDashboard(page, {
+    ...baseDashboard,
+    streaks: [{ nickname: 'Ab', currentStreak: 8, longestStreak: 8 }],
+  });
+  await page.goto('/');
+  const shortValueHeight = await page
+    .getByTestId('streaks-panel')
+    .locator('.row .value')
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().height);
+
+  // A very long, unbreakable nickname must be clipped with an ellipsis rather than pushing the
+  // flames + day count in the value cell onto extra lines (the reported bug).
+  await mockDashboard(page, {
+    ...baseDashboard,
+    streaks: [
+      {
+        nickname: 'Averyveryverylongnicknamethatwouldoverflowtherow',
+        currentStreak: 8,
+        longestStreak: 8,
+      },
+    ],
+  });
+  await page.reload();
+
+  const row = page.getByTestId('streaks-panel').locator('.row').first();
+
+  // The name is clipped: its content is wider than the (shrunk) cell, so the ellipsis is active.
+  const nameTruncated = await row
+    .locator('.name')
+    .evaluate((el) => el.scrollWidth > el.clientWidth);
+  expect(nameTruncated).toBe(true);
+
+  // The value cell stays a single line — the same height as with the short name, not taller.
+  const longValueHeight = await row
+    .locator('.value')
+    .evaluate((el) => el.getBoundingClientRect().height);
+  expect(Math.abs(longValueHeight - shortValueHeight)).toBeLessThan(2);
+});
+
 test('switching the period refetches with the new history depth', async ({ page }) => {
   let lastDepth = '';
   await page.route('**/api/v1/activity/dashboard**', (route) => {
