@@ -36,8 +36,13 @@ public partial class DiscordDiscordServerRolesAccess(
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
 
-        // Get the user
-        var user = guild.GetUser(userId);
+        // Get the user. They may already have left the guild (e.g. an admin unlinks a departed
+        // member from the dashboard) — then there are no roles left to remove.
+        var user = guild?.GetUser(userId);
+        if (user is null)
+        {
+            return;
+        }
 
         // Remove all the roles from the user
         await user.RemoveRolesAsync(roleIds).ConfigureAwait(false);

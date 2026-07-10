@@ -17,7 +17,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.8")
+                .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -261,12 +261,15 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
             modelBuilder.Entity("Entities.DailyMissionReminder", b =>
                 {
-                    b.Property<decimal>("DiscordUserId")
-                        .HasColumnType("numeric(20,0)");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("CustomMessage")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<decimal>("DiscordUserId")
+                        .HasColumnType("numeric(20,0)");
 
                     b.Property<DateOnly?>("LastSentDateUtc")
                         .HasColumnType("date");
@@ -278,7 +281,9 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.HasKey("DiscordUserId");
+                    b.HasKey("Id");
+
+                    b.HasIndex("DiscordUserId");
 
                     b.HasIndex("ReminderTimeUtc", "LastSentDateUtc");
 

@@ -141,6 +141,44 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task GetClubTodaysXp_CountsDistinctParticipatingMembersAndClubSize()
+    {
+        var clubId = Guid.NewGuid();
+        var name = $"xpclub-{Guid.NewGuid():N}";
+
+        // Three members in the club; only the first two do a mission today.
+        var userIds = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid().ToString("N")[..24]).ToArray();
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(DomainClub.Create(clubId, name, 1));
+
+            foreach (var userId in userIds)
+            {
+                var user = Entities.GeoGuessrUser.Create(userId, $"nick-{Guid.NewGuid():N}"[..30]);
+                seed.Add(Entities.ClubMember.Create(user, clubId, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-1)));
+            }
+
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost(clubId);
+        host.Mock<IGeoGuessrActivityReader>()
+            .ReadTodaysActivitiesAsync(clubId, Arg.Any<CancellationToken>())
+            .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
+            [
+                // The first member has two activities and must still count once.
+                new ReadClubActivitiesItemDto { UserId = userIds[0], XpReward = 100, RecordedAt = DateTimeOffset.UtcNow },
+                new ReadClubActivitiesItemDto { UserId = userIds[0], XpReward = 100, RecordedAt = DateTimeOffset.UtcNow },
+                new ReadClubActivitiesItemDto { UserId = userIds[1], XpReward = 100, RecordedAt = DateTimeOffset.UtcNow },
+            ]);
+
+        var result = await host.SendAsync(new GetClubTodaysXpQuery(name, IncludeWeeklies: false));
+
+        result.CompletedMemberCount.Should().Be(2);
+        result.TotalMemberCount.Should().Be(3);
+    }
+
+    [Fact]
     public async Task GetClubTodaysXp_ReturnsNullResult_WhenClubIsUnknown()
     {
         using var host = CreateHost(Guid.NewGuid());
@@ -149,5 +187,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
 
         result.Xp.Should().BeNull();
         result.ClubName.Should().BeNull();
+        result.CompletedMemberCount.Should().BeNull();
+        result.TotalMemberCount.Should().BeNull();
     }
 }

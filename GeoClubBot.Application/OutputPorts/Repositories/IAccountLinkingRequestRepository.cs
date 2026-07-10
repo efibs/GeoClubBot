@@ -10,5 +10,7 @@ public interface IAccountLinkingRequestRepository
 
     Task<GeoGuessrAccountLinkingRequest?> ReadRequestAsync(ulong discordUserId, CancellationToken cancellationToken = default);
 
+    Task<List<GeoGuessrAccountLinkingRequest>> ReadAllRequestsAsync(CancellationToken cancellationToken = default);
+
     void DeleteRequest(GeoGuessrAccountLinkingRequest request);
 }

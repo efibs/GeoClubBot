@@ -36,6 +36,28 @@ public static class DiscordServices
         services.AddSingleton(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()));
         services.AddActivatedSingleton<InteractionHandler>();
 
+        // Entry point ("Launch") command: Discord.Net has no support for this command type, so these
+        // two services talk to Discord's REST/Gateway APIs directly to stop it from posting a
+        // channel message on every click. See EntryPointCommandGatewayListener for why.
+        //
+        // AddHostedService<T>() is deliberately NOT used here: when T is also registered via
+        // AddHttpClient<T>(), AddHostedService<T>() constructs a second T directly from its
+        // ImplementationType, bypassing the typed-client factory - it ends up with
+        // Microsoft.Extensions.Http's default *unnamed* HttpClient (no BaseAddress) instead of the
+        // one configured below. Routing through GetRequiredService<T>() reuses the correctly-wired
+        // instance instead.
+        services.AddHttpClient<EntryPointCommandConfigurationService>(client =>
+        {
+            client.BaseAddress = new Uri("https://discord.com/api/v10/");
+        });
+        services.AddHostedService(p => p.GetRequiredService<EntryPointCommandConfigurationService>());
+
+        services.AddHttpClient<EntryPointCommandGatewayListener>(client =>
+        {
+            client.BaseAddress = new Uri("https://discord.com/api/v10/");
+        });
+        services.AddHostedService(p => p.GetRequiredService<EntryPointCommandGatewayListener>());
+
         // Optional Discord channel log sink. The provider plugs into the logging pipeline; the
         // hosted processor drains the queue and delivers embeds. Both are no-ops while the sink is
         // disabled (no ChannelId configured), so they are safe to register unconditionally.

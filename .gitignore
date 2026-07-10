@@ -18,6 +18,9 @@ StrykerOutput/
 appsettings.*.json
 .env.*
 
+# Local Data Protection key ring (see DataProtection:KeyRingPath in appsettings.json)
+/GeoClubBot.API/dataprotection-keys/
+
 # Locally-built Club Dashboard Activity assets, copied here only for "serve from the API" testing.
 # In production the Docker build bundles these into the image's wwwroot instead.
 GeoClubBot.API/wwwroot/
@@ -28,3 +31,6 @@ ChallengesConfig.json
 .VSCodeCounter
 qdrant_storage
 .idea/
+
+# graphify knowledge graph (generated, rebuilt via git hooks / `graphify update .`)
+graphify-out/

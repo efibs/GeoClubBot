@@ -14,4 +14,8 @@ public class DailyMissionReminderConfiguration
 
     [Range(1, int.MaxValue)]
     public int DailyMissionXpReward { get; set; } = 20;
+
+    /// <summary>How many reminders a single user may configure at once.</summary>
+    [Range(1, 100)]
+    public int MaxRemindersPerUser { get; set; } = 5;
 }

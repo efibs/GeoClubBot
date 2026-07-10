@@ -149,3 +149,13 @@ API + Discord (controllers, slash command modules)
 
 - .NET 10.0, C# 14, nullable reference types enabled, implicit usings enabled
 - Conventions are enforced by `.editorconfig` (no `Directory.Build.props`): file-scoped namespaces, `using` directives **outside** the namespace, `_camelCase` private fields, 4-space indent (2 for JSON/YAML), Allman braces, `var` when the type is apparent.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

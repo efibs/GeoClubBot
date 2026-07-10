@@ -1,0 +1,90 @@
+/* The shared list-row primitive: a ranked/labelled row used by the leaderboard, challenge, streaks,
+   mission-kind and admin list panels. Kept global because it's one design primitive populated with
+   different cell slots by many views; each cell (`.rank`/`.name`/`.value`/`.sub`) is a plain span. */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-row);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 9px 12px;
+}
+
+.row .sub {
+  grid-column: 3;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.row.is-viewer {
+  background: var(--viewer);
+  border-color: var(--viewer-border);
+}
+
+.row.revoked {
+  opacity: 0.55;
+}
+
+.row-with-actions {
+  grid-template-columns: auto 1fr auto auto;
+}
+
+/* Rank-less rows (streaks) place the name in the first column. The default template makes the
+   *second* column the flexible one, so without a rank the name sits in a content-sized `auto`
+   track that refuses to shrink — a long nickname then pushes the flame/day count in the `1fr`
+   column onto extra lines. Flip it: the name column flexes (and ellipses via `.name`), while the
+   value + sub stay sized to their single-line content. */
+.row-no-rank {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.row-no-rank .value {
+  white-space: nowrap;
+}
+
+.row-actions {
+  grid-column: 4;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.rank {
+  min-width: 2ch;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.rank.medal {
+  font-size: 1.15rem;
+}
+
+.name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.value {
+  font-weight: 700;
+  text-align: right;
+}
+
+.flames {
+  margin-right: 2px;
+}

@@ -38,6 +38,19 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
 
         LogCheckingPlayerActivity(logger, clubId);
 
+        // Ensure the club entity exists BEFORE syncing members. Both ClubMembers and
+        // ClubMemberHistoryEntries have a required foreign key to Clubs, so syncing/recording a
+        // not-yet-persisted club would fail. The club is configured (GetClub above would have thrown
+        // otherwise) but its entity may not have been persisted yet — the initial club sync can fail or
+        // not have run before this check fires. Creating it here keeps the checker self-sufficient
+        // instead of throwing until the next club sync. The regular club sync later refreshes the
+        // name/level and preserves the check time recorded below.
+        var club = await clubs.ReadForUpdateByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
+        if (club is null)
+        {
+            club = clubs.CreateClub(Entities.Club.Create(clubId, clubId.ToString(), level: 0));
+        }
+
         var members = await syncStep.ExecuteAsync(clubId, cancellationToken).ConfigureAwait(false);
 
         var latestHistoryEntries = await history
@@ -45,9 +58,10 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
             .ConfigureAwait(false);
         var allExcuses = await excuses.ReadExcuseProjectionsAsync(cancellationToken).ConfigureAwait(false);
 
-        var lastActivityCheckTime = latestHistoryEntries.Any()
-            ? latestHistoryEntries.Select(a => a.Timestamp).Max()
-            : DateTimeOffset.MinValue;
+        // The last check time is tracked on the club itself and is the single source of truth for the
+        // activity-check interval. We deliberately do NOT derive it from the newest history entry: a
+        // club with no members writes no history, yet a check still ran and must move the interval on.
+        var lastActivityCheckTime = club.LatestActivityCheckTime ?? DateTimeOffset.MinValue;
 
         LogLastActivityCheckTime(logger, lastActivityCheckTime);
 
@@ -58,13 +72,15 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
             m => ClubMemberHistoryEntry.Create(m.User.UserId, clubId, m.Xp, now));
         history.CreateHistoryEntries(newLatestHistoryEntries.Values);
 
+        // Record the check on the club unconditionally: a check ran regardless of the member count.
+        club.RecordActivityCheck(now);
+
         var newStatuses = await statusCalculator.ExecuteAsync(
                 members, latestHistoryEntries, allExcuses, lastActivityCheckTime, now,
                 xpRequirement, gracePeriod, maxNumStrikes, cancellationToken)
             .ConfigureAwait(false);
 
-        var club = await clubs.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false);
-        var clubName = club?.Name ?? clubId.ToString();
+        var clubName = club.Name;
 
         var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);
         var averageXpBottomN = clubEntry.GetAverageXpBottomN(defaults);

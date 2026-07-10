@@ -18,7 +18,7 @@ defineProps<{
       <li
         v-for="streak in streaks"
         :key="streak.nickname"
-        class="row"
+        class="row row-no-rank"
         :class="{ 'is-viewer': streak.nickname === viewerNickname }"
       >
         <span class="name">{{ streak.nickname }}</span>

@@ -1,3 +1,4 @@
+using System.Text;
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
@@ -15,8 +16,8 @@ public class DailyMissionReminderModule(
     ISender mediator,
     ILogger<DailyMissionReminderModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("set", "Set a daily reminder to complete your GeoGuessr daily mission")]
-    public Task SetReminderAsync(
+    [SlashCommand("add", "Add a daily reminder to complete your GeoGuessr daily mission")]
+    public Task AddReminderAsync(
         [Summary(description: "Time in HH:mm format (e.g. 09:00)")] string time,
         [Autocomplete(typeof(TimezoneAutocompleteHandler))][Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
         [Summary(description: "Custom reminder message. Use {{mission_text}} to insert today's mission.")] string? message = null) =>
@@ -46,13 +47,22 @@ public class DailyMissionReminderModule(
                     }
                 }
 
-                var dmResult = await Mediator
-                    .Send(new SetDailyMissionReminderCommand(Context.User.Id, localTime, timezone, message), ct)
+                var result = await Mediator
+                    .Send(new AddDailyMissionReminderCommand(Context.User.Id, localTime, timezone, message), ct)
                     .ConfigureAwait(false);
 
-                var tzDisplay = timezone ?? "UTC";
-                var baseMessage = $"Daily reminder set for **{time}** ({tzDisplay}). You will receive a DM each day at that time.";
+                if (result.IsFailure)
+                {
+                    // Currently only the per-user limit (Conflict); surface its message.
+                    await FollowupAsync(FriendlyMessageFor(result.Error), ephemeral: true).ConfigureAwait(false);
+                    return;
+                }
 
+                var tzDisplay = timezone ?? "UTC";
+                var verb = result.Value.Outcome == AddReminderOutcome.Updated ? "updated" : "set";
+                var baseMessage = $"Daily reminder {verb} for **{time}** ({tzDisplay}). You will receive a DM each day at that time.";
+
+                var dmResult = result.Value.DmDelivery;
                 string followup;
                 if (dmResult.IsSuccess)
                 {
@@ -77,59 +87,89 @@ public class DailyMissionReminderModule(
                 await FollowupAsync(followup, ephemeral: true).ConfigureAwait(false);
             },
             ephemeral: true,
-            failureMessage: "Failed to set the daily reminder. Please try again later.");
+            failureMessage: "Failed to add the daily reminder. Please try again later.");
 
-    [SlashCommand("stop", "Stop your daily mission reminder")]
-    public Task StopReminderAsync() =>
+    [SlashCommand("remove", "Remove one of your daily mission reminders")]
+    public Task RemoveReminderAsync(
+        [Autocomplete(typeof(ReminderAutocompleteHandler))][Summary(description: "The reminder to remove")] string reminder) =>
         ExecuteAsync(
             async ct =>
             {
+                if (!Guid.TryParse(reminder, out var reminderId))
+                {
+                    await FollowupAsync("Please pick a reminder from the list.", ephemeral: true).ConfigureAwait(false);
+                    return;
+                }
+
                 var result = await Mediator
-                    .Send(new StopDailyMissionReminderCommand(Context.User.Id), ct)
+                    .Send(new RemoveDailyMissionReminderCommand(Context.User.Id, reminderId), ct)
                     .ConfigureAwait(false);
 
                 await FollowupAsync(
                         result.IsSuccess
-                            ? "Your daily mission reminder has been stopped."
-                            : "You don't have an active daily mission reminder.",
+                            ? "That daily mission reminder has been removed."
+                            : "That daily mission reminder could not be found.",
                         ephemeral: true)
                     .ConfigureAwait(false);
             },
             ephemeral: true,
-            failureMessage: "Failed to stop the daily reminder. Please try again later.");
+            failureMessage: "Failed to remove the daily reminder. Please try again later.");
 
-    [SlashCommand("status", "Check the status of your daily mission reminder")]
-    public Task StatusAsync() =>
+    [SlashCommand("clear", "Remove all of your daily mission reminders")]
+    public Task ClearRemindersAsync() =>
         ExecuteAsync(
             async ct =>
             {
-                var reminder = await Mediator
-                    .Send(new GetDailyMissionReminderStatusQuery(Context.User.Id), ct)
+                var result = await Mediator
+                    .Send(new ClearDailyMissionRemindersCommand(Context.User.Id), ct)
                     .ConfigureAwait(false);
 
-                if (reminder == null)
+                await FollowupAsync(
+                        result.IsSuccess
+                            ? "All of your daily mission reminders have been removed."
+                            : "You don't have any daily mission reminders.",
+                        ephemeral: true)
+                    .ConfigureAwait(false);
+            },
+            ephemeral: true,
+            failureMessage: "Failed to clear the daily reminders. Please try again later.");
+
+    [SlashCommand("list", "List your daily mission reminders")]
+    public Task ListAsync() =>
+        ExecuteAsync(
+            async ct =>
+            {
+                var reminders = await Mediator
+                    .Send(new ListDailyMissionRemindersQuery(Context.User.Id), ct)
+                    .ConfigureAwait(false);
+
+                if (reminders.Count == 0)
                 {
-                    await FollowupAsync("You don't have an active daily mission reminder.", ephemeral: true)
+                    await FollowupAsync("You don't have any daily mission reminders.", ephemeral: true)
                         .ConfigureAwait(false);
                     return;
                 }
 
-                // Convert UTC time back to local for display
-                var displayTime = ConvertToLocal(reminder.ReminderTimeUtc, reminder.TimeZoneId);
-                var tzDisplay = reminder.TimeZoneId ?? "UTC";
-                var messageDisplay = string.IsNullOrWhiteSpace(reminder.CustomMessage) ? "Default" : reminder.CustomMessage;
-                var lastSentDisplay = reminder.LastSentDateUtc?.ToString("yyyy-MM-dd") ?? "Never";
+                var builder = new StringBuilder();
+                builder.AppendLine($"**Your Daily Mission Reminders** ({reminders.Count})");
 
-                await FollowupAsync(
-                        $"**Daily Mission Reminder**\n" +
-                        $"Time: **{displayTime:HH\\:mm}** ({tzDisplay})\n" +
-                        $"Message: {messageDisplay}\n" +
-                        $"Last sent: {lastSentDisplay}",
-                        ephemeral: true)
-                    .ConfigureAwait(false);
+                foreach (var reminder in reminders)
+                {
+                    var displayTime = ConvertToLocal(reminder.ReminderTimeUtc, reminder.TimeZoneId);
+                    var tzDisplay = reminder.TimeZoneId ?? "UTC";
+                    var messageDisplay = string.IsNullOrWhiteSpace(reminder.CustomMessage) ? "Default" : reminder.CustomMessage;
+                    var lastSentDisplay = reminder.LastSentDateUtc?.ToString("yyyy-MM-dd") ?? "Never";
+
+                    builder.AppendLine();
+                    builder.AppendLine($"• **{displayTime:HH\\:mm}** ({tzDisplay})");
+                    builder.AppendLine($"  Message: {messageDisplay}");
+                    builder.AppendLine($"  Last sent: {lastSentDisplay}");
+                }
+
+                await FollowupAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
             },
             ephemeral: true,
-            failureMessage: "Failed to check the daily reminder status. Please try again later.");
+            failureMessage: "Failed to list your daily reminders. Please try again later.");
 
     private static TimeOnly ConvertToLocal(TimeOnly utcTime, string? timeZoneId)
     {

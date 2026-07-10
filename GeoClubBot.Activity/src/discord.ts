@@ -6,6 +6,11 @@ export interface AuthResult {
   accessToken: string;
 }
 
+// Per-step handshake timeouts. `authorize` waits on the member clicking "Authorize", so it gets the
+// longer budget; the rest are network round-trips.
+const STEP_TIMEOUT_MS = 15_000;
+const AUTHORIZE_TIMEOUT_MS = 20_000;
+
 /** Rejects with a descriptive error if the wrapped promise hasn't settled in time. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -37,7 +42,7 @@ export async function initializeDiscord(onStep?: (step: string) => void): Promis
   // than baked into the bundle, so this image isn't tied to one Discord application.
   onStep?.('Loading configuration…');
   console.info('[activity] fetching runtime config…');
-  const { clientId } = await withTimeout(fetchConfig(), 15_000, 'Loading configuration');
+  const { clientId } = await withTimeout(fetchConfig(), STEP_TIMEOUT_MS, 'Loading configuration');
   if (!clientId) {
     throw new Error('The server returned no Discord client id (set DiscordActivity:ClientId).');
   }
@@ -46,7 +51,7 @@ export async function initializeDiscord(onStep?: (step: string) => void): Promis
 
   onStep?.('Connecting to Discord…');
   console.info('[activity] sdk.ready()…');
-  await withTimeout(sdk.ready(), 15_000, 'Discord handshake (ready)');
+  await withTimeout(sdk.ready(), STEP_TIMEOUT_MS, 'Discord handshake (ready)');
 
   onStep?.('Authorizing…');
   console.info('[activity] authorize()…');
@@ -58,20 +63,20 @@ export async function initializeDiscord(onStep?: (step: string) => void): Promis
       prompt: 'none',
       scope: ['identify'],
     }),
-    20_000,
+    AUTHORIZE_TIMEOUT_MS,
     'Discord authorization',
   );
 
   onStep?.('Signing in…');
   console.info('[activity] exchanging code for token…');
-  const accessToken = await withTimeout(exchangeToken(code), 15_000, 'Token exchange');
+  const accessToken = await withTimeout(exchangeToken(code), STEP_TIMEOUT_MS, 'Token exchange');
   setAccessToken(accessToken);
 
   onStep?.('Finishing up…');
   console.info('[activity] authenticate()…');
   await withTimeout(
     sdk.commands.authenticate({ access_token: accessToken }),
-    15_000,
+    STEP_TIMEOUT_MS,
     'Discord authentication',
   );
 

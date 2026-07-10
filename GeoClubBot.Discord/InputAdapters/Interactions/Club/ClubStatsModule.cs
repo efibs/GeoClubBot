@@ -34,7 +34,7 @@ public class ClubStatsModule(
                     return;
                 }
 
-                await FollowupAsync($"{result.ClubName} currently has {result.Xp} XP today.", ephemeral: false)
+                await FollowupAsync($"{result.ClubName} currently has {result.Xp} XP today. ({result.CompletedMemberCount}/{result.TotalMemberCount})", ephemeral: false)
                     .ConfigureAwait(false);
             },
             failureMessage: "Failed to fetch the clubs current XP. Please try again later. If the issue persists, please contact an admin.");

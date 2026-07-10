@@ -35,7 +35,7 @@ public partial class UserLeftService(
         }
 
         var channel = guild.GetTextChannel(config.Value.LeftTextChannelId);
-        var messageContent = config.Value.LeftMessage.Replace("{{User}}", user.Mention);
+        var messageContent = config.Value.LeftMessage.Replace("{{User}}", $"{user.Mention} ({user.Username})");
         await channel.SendMessageAsync(messageContent).ConfigureAwait(false);
 
         await DeactivateDailyMissionReminderAsync(user.Id).ConfigureAwait(false);
@@ -51,8 +51,8 @@ public partial class UserLeftService(
             await using var scope = scopeFactory.CreateAsyncScope();
             var mediator = scope.ServiceProvider.GetRequiredService<ISender>();
 
-            // A NotFound result simply means the user had no reminder configured — nothing to do.
-            await mediator.Send(new StopDailyMissionReminderCommand(discordUserId)).ConfigureAwait(false);
+            // A NotFound result simply means the user had no reminders configured — nothing to do.
+            await mediator.Send(new ClearDailyMissionRemindersCommand(discordUserId)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

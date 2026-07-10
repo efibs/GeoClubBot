@@ -2,6 +2,10 @@ namespace Entities;
 
 public class DailyMissionReminder : BaseEntity
 {
+    // A user can have several reminders, so the identity is a surrogate key rather than the
+    // Discord user id (which is now just an indexed foreign-key-style column).
+    public Guid Id { get; private set; }
+
     public ulong DiscordUserId { get; private set; }
 
     public TimeOnly ReminderTimeUtc { get; private set; }
@@ -20,6 +24,7 @@ public class DailyMissionReminder : BaseEntity
     {
         return new DailyMissionReminder
         {
+            Id = Guid.NewGuid(),
             DiscordUserId = discordUserId,
             ReminderTimeUtc = reminderTimeUtc,
             TimeZoneId = timeZoneId,

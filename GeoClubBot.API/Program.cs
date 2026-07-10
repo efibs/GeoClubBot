@@ -1,6 +1,9 @@
+using System.Security.Cryptography.X509Certificates;
+using System.Threading.RateLimiting;
 using Configuration;
 using Constants;
 using FluentValidation;
+using GeoClubBot;
 using GeoClubBot.Authentication;
 using GeoClubBot.DependencyInjection;
 using GeoClubBot.Discord.DependencyInjection;
@@ -12,7 +15,10 @@ using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -71,7 +77,59 @@ builder.Services.AddCors(options =>
 builder.Services.AddAuthentication()
     .AddScheme<AuthenticationSchemeOptions, DiscordActivityAuthenticationHandler>(
         DiscordActivityAuthenticationHandler.SchemeName, _ => { });
-builder.Services.AddAuthorization();
+
+// The activity's admin-only endpoints additionally require the Discord Administrator permission in
+// the configured guild — the same gate the admin slash commands use. Evaluated per request (via the
+// gateway's live guild-member cache), so revoking someone's admin takes effect on their next call.
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(ActivityAdminRequirement.PolicyName, policy => policy
+        .AddAuthenticationSchemes(DiscordActivityAuthenticationHandler.SchemeName)
+        .RequireAuthenticatedUser()
+        .AddRequirements(new ActivityAdminRequirement()));
+});
+builder.Services.AddScoped<IAuthorizationHandler, ActivityAdminAuthorizationHandler>();
+
+// The anonymous token exchange is the one endpoint an unauthenticated caller can use to make this
+// server talk to Discord, so it gets a per-client-IP throttle (the forwarded-headers middleware
+// below restores the real client IP behind the TLS-terminating proxy). Everything else is either
+// authenticated or served from local data.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(RateLimitPolicies.ActivityTokenExchange, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+});
+
+// The Data Protection key ring (used by SignalR's negotiated connection tokens, and by anything
+// else that protects data under the hood) defaults to an ephemeral path inside the container's
+// writable layer — keys are lost, and everything protected with them silently invalidated, on
+// every redeploy. Persist it to a volume-backed directory instead. On top of that, encrypt the key
+// ring at rest with a certificate: unlike Windows (which can fall back to DPAPI), Linux has no
+// OS-level encryption for the key files, so without this they'd sit on the volume as plain XML.
+// The certificate's password is supplied separately (env var/secret), never alongside the pfx on
+// the same volume, so a copy of the volume alone isn't enough to decrypt the keys.
+var dataProtectionBuilder = builder.Services.AddDataProtection().SetApplicationName("GeoClubBot");
+var keyRingPath = builder.Configuration.GetValue<string?>("DataProtection:KeyRingPath");
+if (!string.IsNullOrWhiteSpace(keyRingPath))
+{
+    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(keyRingPath));
+}
+
+var certificatePath = builder.Configuration.GetValue<string?>("DataProtection:CertificatePath");
+if (!string.IsNullOrWhiteSpace(certificatePath))
+{
+    var certificatePassword = builder.Configuration.GetValue<string?>("DataProtection:CertificatePassword");
+    var certificate = X509CertificateLoader.LoadPkcs12FromFile(
+        certificatePath, certificatePassword, X509KeyStorageFlags.EphemeralKeySet);
+    dataProtectionBuilder.ProtectKeysWithCertificate(certificate);
+}
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -237,10 +295,13 @@ app.Use(async (context, next) =>
     await next().ConfigureAwait(false);
 });
 
-app.UseHttpsRedirection();
+// No app.UseHttpsRedirection(): Kestrel only ever serves plain HTTP here (see the forwarded-headers
+// comment above) and is never reachable directly, so there is no insecure request to redirect —
+// the middleware could only ever warn that it has no HTTPS port to redirect to.
 app.UseCors(ConfiguredCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // The mock GeoGuessr UI also relies on static files.
 if (useMockGeoGuessr || serveActivity)

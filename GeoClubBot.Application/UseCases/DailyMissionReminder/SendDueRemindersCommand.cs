@@ -10,10 +10,19 @@ using UseCases.OutputPorts.Rendering;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;
+using DomainDailyMissionReminder = Entities.DailyMissionReminder;
 
 namespace UseCases.UseCases.DailyMissionReminder;
 
 public sealed record SendDueRemindersCommand : ICommand;
+
+/// <summary>
+/// Sends reminders that were missed while the bot was down: reminders whose time already passed
+/// today but that were not sent today. Sent once at startup. Reminders still ahead of "now" fire
+/// via the regular schedule, and misses from previous days are moot (those missions expired), so
+/// each user gets at most one catch-up DM no matter how long the bot was offline.
+/// </summary>
+public sealed record CatchUpMissedRemindersCommand : ICommand;
 
 public sealed partial class SendDueRemindersHandler(
     IDailyMissionReminderRepository reminders,
@@ -24,21 +33,56 @@ public sealed partial class SendDueRemindersHandler(
     IDailyMissionRepository dailyMissions,
     IDailyMissionRenderer renderer,
     IOptions<DailyMissionReminderConfiguration> config,
-    ILogger<SendDueRemindersHandler> logger) : IRequestHandler<SendDueRemindersCommand, Unit>
+    ILogger<SendDueRemindersHandler> logger)
+    : IRequestHandler<SendDueRemindersCommand, Unit>,
+      IRequestHandler<CatchUpMissedRemindersCommand, Unit>
 {
     public async Task<Unit> Handle(SendDueRemindersCommand request, CancellationToken cancellationToken)
     {
-        var now = DateTime.UtcNow;
-        var currentTime = new TimeOnly(now.Hour, now.Minute);
-        var today = DateOnly.FromDateTime(now);
+        var (currentTime, today) = GetCurrentUtcMinuteAndDate();
 
         var dueReminders = await reminders
             .ReadDueRemindersForUpdateAsync(currentTime, today, cancellationToken)
             .ConfigureAwait(false);
 
+        await SendRemindersAsync(dueReminders, today, cancellationToken).ConfigureAwait(false);
+
+        return Unit.Value;
+    }
+
+    public async Task<Unit> Handle(CatchUpMissedRemindersCommand request, CancellationToken cancellationToken)
+    {
+        var (currentTime, today) = GetCurrentUtcMinuteAndDate();
+
+        var missedReminders = await reminders
+            .ReadMissedRemindersForUpdateAsync(currentTime, today, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (missedReminders.Count > 0)
+        {
+            LogCatchingUpMissedReminders(missedReminders.Count);
+        }
+
+        await SendRemindersAsync(missedReminders, today, cancellationToken).ConfigureAwait(false);
+
+        return Unit.Value;
+    }
+
+    private static (TimeOnly CurrentTime, DateOnly Today) GetCurrentUtcMinuteAndDate()
+    {
+        var now = DateTime.UtcNow;
+        return (new TimeOnly(now.Hour, now.Minute), DateOnly.FromDateTime(now));
+    }
+
+    // Sends the given reminders, one DM per user. In the regular per-minute run each user has at
+    // most one due reminder (adding at an existing time updates it instead of duplicating), so the
+    // grouping is a no-op there; after a catch-up sweep a user may have missed several reminders
+    // and only the latest one is sent, so a restart never bursts multiple DMs at the same person.
+    private async Task SendRemindersAsync(List<DomainDailyMissionReminder> dueReminders, DateOnly today, CancellationToken cancellationToken)
+    {
         if (dueReminders.Count == 0)
         {
-            return Unit.Value;
+            return;
         }
 
         LogSendingReminders(dueReminders.Count);
@@ -50,15 +94,18 @@ public sealed partial class SendDueRemindersHandler(
         // Left null until the first reminder that will actually be sent, so an all-skipped run does no DB query.
         string? missionText = null;
 
-        foreach (var reminder in dueReminders)
+        foreach (var userReminders in dueReminders.GroupBy(r => r.DiscordUserId))
         {
-            var alreadyDone = await HasUserCompletedDailyMissionTodayAsync(reminder.DiscordUserId, dailyMissionXpReward, cancellationToken)
+            var discordUserId = userReminders.Key;
+            var reminder = userReminders.MaxBy(r => r.ReminderTimeUtc)!;
+
+            var alreadyDone = await HasUserCompletedDailyMissionTodayAsync(discordUserId, dailyMissionXpReward, cancellationToken)
                 .ConfigureAwait(false);
 
             if (alreadyDone)
             {
-                reminder.MarkSent(today);
-                LogReminderSkippedAlreadyDone(reminder.DiscordUserId);
+                MarkAllSent(userReminders, today);
+                LogReminderSkippedAlreadyDone(discordUserId);
                 continue;
             }
 
@@ -78,37 +125,47 @@ public sealed partial class SendDueRemindersHandler(
             }
 
             var dmResult = await directMessageAccess
-                .SendDirectMessageAsync(reminder.DiscordUserId, message, cancellationToken)
+                .SendDirectMessageAsync(discordUserId, message, cancellationToken)
                 .ConfigureAwait(false);
 
             if (dmResult.IsSuccess)
             {
-                reminder.MarkSent(today);
-                LogReminderSent(reminder.DiscordUserId);
+                MarkAllSent(userReminders, today);
+                LogReminderSent(discordUserId);
             }
             else if (dmResult.Error.Code == DiscordDmErrorCodes.NoMutualGuild)
             {
                 // The user has left the server but the reminder is still active. Normally it is
                 // deactivated by the UserLeft event the moment they leave, so reaching here means
                 // that event was missed (e.g. the bot was down when they left) — clean up and warn.
-                reminders.DeleteReminder(reminder);
-                LogReminderUserLeftWhileActive(reminder.DiscordUserId);
+                foreach (var stale in userReminders)
+                {
+                    reminders.DeleteReminder(stale);
+                }
+
+                LogReminderUserLeftWhileActive(discordUserId);
             }
             else if (dmResult.Error.Type == ErrorType.Forbidden)
             {
                 // The user has DMs from the bot disabled/blocked — retrying won't help until they fix it,
                 // so mark it sent to stop this run (and the rest of the due window) from hammering Discord.
-                reminder.MarkSent(today);
-                LogReminderDmsDisabled(reminder.DiscordUserId);
+                MarkAllSent(userReminders, today);
+                LogReminderDmsDisabled(discordUserId);
             }
             else
             {
-                // Transient failure — left unmarked so a later run can retry.
-                LogReminderFailed(reminder.DiscordUserId);
+                // Transient failure — left unmarked so a later run (or the next startup catch-up) can retry.
+                LogReminderFailed(discordUserId);
             }
         }
+    }
 
-        return Unit.Value;
+    private static void MarkAllSent(IEnumerable<DomainDailyMissionReminder> userReminders, DateOnly today)
+    {
+        foreach (var reminder in userReminders)
+        {
+            reminder.MarkSent(today);
+        }
     }
 
     private async Task<bool> HasUserCompletedDailyMissionTodayAsync(ulong discordUserId, int dailyMissionXpReward, CancellationToken cancellationToken)
@@ -159,6 +216,9 @@ public sealed partial class SendDueRemindersHandler(
 
     [LoggerMessage(LogLevel.Information, "Sending {Count} daily mission reminders.")]
     partial void LogSendingReminders(int count);
+
+    [LoggerMessage(LogLevel.Information, "Found {Count} daily mission reminders that were missed while the bot was down.")]
+    partial void LogCatchingUpMissedReminders(int count);
 
     [LoggerMessage(LogLevel.Debug, "Daily mission reminder sent to user {DiscordUserId}.")]
     partial void LogReminderSent(ulong discordUserId);

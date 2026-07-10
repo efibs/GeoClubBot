@@ -9,22 +9,34 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:e2e": "playwright test"
   },
   "dependencies": {
     "@discord/embedded-app-sdk": "^2.5.0",
-    "pinia": "^3.0.0",
-    "vue": "^3.5.0"
+    "@tanstack/vue-query": "^5.101.2",
+    "vue": "^3.5.0",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
     "@types/node": "^22.0.0",
     "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.4.11",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.9.2",
+    "jiti": "^2.7.0",
     "jsdom": "^29.0.0",
+    "prettier": "^3.9.4",
     "typescript": "^6.0.0",
+    "typescript-eslint": "^8.62.1",
     "vite": "^8.0.0",
     "vitest": "^4.1.0",
     "vue-tsc": "^3.3.0"

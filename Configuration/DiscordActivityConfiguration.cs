@@ -27,4 +27,11 @@ public class DiscordActivityConfiguration
     /// "highlight the viewer" path. Leave <c>null</c> in production.
     /// </summary>
     public ulong? DevUserId { get; set; }
+
+    /// <summary>
+    /// Development-only: when true (and the bypass above is active), the bypassed dev user is also
+    /// treated as a dashboard admin, so the admin area can be exercised locally without a real
+    /// Discord guild. Ignored outside the Development environment. Leave <c>false</c> in production.
+    /// </summary>
+    public bool DevUserIsAdmin { get; set; }
 }
