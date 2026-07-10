@@ -11,12 +11,13 @@ public sealed record GetClubByNameOrDefaultQuery(string? ClubName) : IQuery<Enti
 
 public sealed record GetClubTodaysXpQuery(string? ClubName, bool IncludeWeeklies) : IQuery<GetClubTodaysXpResult>;
 
-public sealed record GetClubTodaysXpResult(int? Xp, string? ClubName);
+public sealed record GetClubTodaysXpResult(int? Xp, string? ClubName, int? CompletedMemberCount, int? TotalMemberCount);
 
 public sealed record GetAllClubsQuery : IQuery<IReadOnlyList<Entities.Club>>;
 
 public sealed class ClubQueriesHandler(
     IClubRepository clubs,
+    IClubMemberRepository clubMembers,
     IGeoGuessrActivityReader activityReader,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
     : IRequestHandler<GetClubByNameOrDefaultQuery, Entities.Club?>,
@@ -49,7 +50,7 @@ public sealed class ClubQueriesHandler(
 
         if (club is null)
         {
-            return new GetClubTodaysXpResult(null, null);
+            return new GetClubTodaysXpResult(null, null, null, null);
         }
 
         var activities = await activityReader
@@ -58,11 +59,18 @@ public sealed class ClubQueriesHandler(
 
         // Weekly missions are identified by the 1000 XP reward; everything else is a daily activity.
         const int weeklyMissionXpReward = 1000;
-        var xp = activities
+        var relevantActivities = activities
             .Where(a => request.IncludeWeeklies || a.XpReward != weeklyMissionXpReward)
-            .Sum(a => a.XpReward);
+            .ToList();
 
-        return new GetClubTodaysXpResult(xp, club.Name);
+        var xp = relevantActivities.Sum(a => a.XpReward);
+        var completedMemberCount = relevantActivities.Select(a => a.UserId).Distinct().Count();
+
+        var members = await clubMembers
+            .ReadClubMembersByClubIdAsync(club.ClubId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return new GetClubTodaysXpResult(xp, club.Name, completedMemberCount, members.Count);
     }
 
     public Task<IReadOnlyList<Entities.Club>> Handle(GetAllClubsQuery request, CancellationToken cancellationToken) =>
