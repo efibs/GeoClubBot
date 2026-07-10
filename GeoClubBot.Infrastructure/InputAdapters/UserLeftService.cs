@@ -35,7 +35,7 @@ public partial class UserLeftService(
         }
 
         var channel = guild.GetTextChannel(config.Value.LeftTextChannelId);
-        var messageContent = config.Value.LeftMessage.Replace("{{User}}", user.Mention);
+        var messageContent = config.Value.LeftMessage.Replace("{{User}}", $"{user.Mention} ({user.Username})");
         await channel.SendMessageAsync(messageContent).ConfigureAwait(false);
 
         await DeactivateDailyMissionReminderAsync(user.Id).ConfigureAwait(false);
