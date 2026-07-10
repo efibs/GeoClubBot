@@ -70,6 +70,37 @@ test('hides club panels but still shows the daily challenge when the viewer has 
   await expect(page.getByTestId('streaks-panel')).toHaveCount(0);
 });
 
+test('keeps the page fixed and scrolls an overflowing tile internally', async ({ page }) => {
+  // Far more entries than fit on screen: the regression let this push the whole page taller than the
+  // viewport, so the fixed body gradient tiled with hard edges instead of the tile scrolling.
+  const crowdedLeaderboard = Array.from({ length: 60 }, (_, i) => ({
+    rank: i + 1,
+    nickname: `Player ${i + 1}`,
+    averageXp: 1500 - i,
+  }));
+  await mockDashboard(page, { ...baseDashboard, leaderboard: crowdedLeaderboard });
+  await page.goto('/');
+
+  await expect(page.getByTestId('leaderboard-panel')).toContainText('Player 1');
+
+  // Neither the document nor the app shell may scroll — the page itself stays at viewport height.
+  const documentScrolls = await page.evaluate(() => {
+    const el = document.scrollingElement ?? document.documentElement;
+    return el.scrollHeight - el.clientHeight > 1;
+  });
+  expect(documentScrolls).toBe(false);
+
+  const shellScrolls = await page
+    .locator('.app')
+    .evaluate((el) => el.scrollHeight - el.clientHeight > 1);
+  expect(shellScrolls).toBe(false);
+
+  // The overflowing leaderboard list scrolls within its own tile instead.
+  const list = page.getByTestId('leaderboard-panel').locator('.rows');
+  const listScrolls = await list.evaluate((el) => el.scrollHeight - el.clientHeight > 1);
+  expect(listScrolls).toBe(true);
+});
+
 test('switching the period refetches with the new history depth', async ({ page }) => {
   let lastDepth = '';
   await page.route('**/api/v1/activity/dashboard**', (route) => {

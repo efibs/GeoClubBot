@@ -8,6 +8,9 @@ html,
 body {
   margin: 0;
   height: 100%;
+  /* The shell owns its own scrolling (see `.app`). Keeping the document itself unscrollable stops
+     the fixed body gradient from tiling with hard edges once content outgrows the viewport. */
+  overflow: hidden;
 }
 
 body {
@@ -33,7 +36,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  min-height: 100%;
+  /* Exactly the viewport height and the app's single scroll container: views that fill it (the
+     overview) scroll their tiles internally; longer stacked views (profile/admin) scroll here
+     instead of the document, so the page itself is never scrollable. */
+  height: 100%;
+  overflow-y: auto;
 }
 
 /* Full-viewport status screens (boot, first-load spinner, load error). */
