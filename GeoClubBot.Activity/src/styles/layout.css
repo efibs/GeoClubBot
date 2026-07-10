@@ -14,6 +14,33 @@
   grid-column: 1 / -1;
 }
 
+/* Overview modifier: grow to fill the remaining shell height and cap every tile to its grid row so
+   a long list (leaderboard, streaks, challenge standings) scrolls *inside its own tile* instead of
+   pushing the page taller than the viewport. `minmax(0, 1fr)` gives each row a definite, equal size
+   the tiles can be constrained against; `stretch` (overriding `.panels` `align-items: start`) makes
+   them fill that row so the inner scroll region has height to work with. */
+.panels-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+  grid-auto-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.panels-fill > .panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panels-fill > .panel > .rows,
+.panels-fill > .panel > .challenge-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .toolbar {
   display: flex;
   justify-content: flex-end;

@@ -57,7 +57,7 @@ function setDepth(value: number): void {
 
     <ErrorBanner v-if="errorMessage" data-testid="error-banner">{{ errorMessage }}</ErrorBanner>
 
-    <main class="panels">
+    <main class="panels panels-fill">
       <!-- Leaderboard and streaks are club-scoped; only shown when the viewer is in a club. The
            daily challenge is club-independent and shown to everyone. -->
       <LeaderboardPanel v-if="hasClub" :entries="leaderboard" :viewer-nickname="viewerNickname" />
@@ -75,6 +75,9 @@ function setDepth(value: number): void {
 <style scoped>
 .no-club-note {
   grid-column: 1 / -1;
+  /* The panels grid stretches its rows to fill the viewport; keep the note at its natural height
+     instead of ballooning to a full row when it's the only club-scoped content. */
+  align-self: start;
   margin: 0;
   padding: 18px;
   border: 1px dashed var(--border);
