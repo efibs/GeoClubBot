@@ -23,7 +23,7 @@
         </PackageReference>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="10.7.0" />
         <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.7.0" />
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
         <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
         <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
         <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
