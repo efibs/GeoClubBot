@@ -1,7 +1,7 @@
 # Base images pinned by digest for reproducible, tamper-evident builds.
 # The :10.0 tag is kept in the comment for readability; Dependabot (docker ecosystem)
 # raises PRs to bump these digests.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:7644f992230d35cf230017189d4038c0ae0f7388b13f4f7ae1900a155bafb597 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7 AS base
 RUN apt-get update && apt-get install -y curl libfontconfig1 libfreetype6 libpng16-16 libjpeg-turbo8 libgif7 libglu1-mesa && rm -rf /var/lib/apt/lists/*
 # Install required dependencies for Chromium
 RUN apt-get update && apt-get install -y \
