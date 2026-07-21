@@ -21,7 +21,7 @@ EXPOSE 8081
 # The Discord client id is deliberately NOT baked in here — the frontend fetches it from the backend
 # at runtime (see ActivityController.GetConfig) so this image stays generic and isn't locked to one
 # Discord application. The .dockerignore excludes all .env files, keeping the build hermetic.
-FROM node:26-alpine@sha256:725aeba2364a9b16beae49e180d83bd597dbd0b15c47f1f28875c290bfd255b9 AS frontend
+FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS frontend
 WORKDIR /activity
 COPY GeoClubBot.Activity/package.json GeoClubBot.Activity/package-lock.json ./
 RUN npm ci
