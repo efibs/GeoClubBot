@@ -263,11 +263,11 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
 
         await host.Mock<IDiscordMessageAccess>()
             .Received()
-            .SendMessageAsync(Arg.Is<string>(m => m.Contains("MVP")), Arg.Any<ulong>(), Arg.Any<CancellationToken>());
+            .SendMessageAsync(Arg.Is<string>(m => m!.Contains("MVP")), Arg.Any<ulong>(), Arg.Any<CancellationToken>());
         await host.Mock<IDiscordServerRolesAccess>()
             .Received()
             .AddRoleToMembersByUserIdsAsync(
-                Arg.Is<IEnumerable<ulong>>(ids => ids.Contains(mvpDiscordId)), Arg.Any<ulong>(), Arg.Any<CancellationToken>());
+                Arg.Is<IEnumerable<ulong>>(ids => ids!.Contains(mvpDiscordId)), Arg.Any<ulong>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

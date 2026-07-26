@@ -204,7 +204,7 @@ public sealed class DailyMissionAndChallengeUseCaseIntegrationTests(PostgresFixt
 
             await host.Mock<IDiscordMessageAccess>()
                 .Received()
-                .SendMessageAsync(Arg.Is<string>(m => m.Contains("Next challenges")), 5UL, Arg.Any<CancellationToken>());
+                .SendMessageAsync(Arg.Is<string>(m => m!.Contains("Next challenges")), 5UL, Arg.Any<CancellationToken>());
         }
         finally
         {

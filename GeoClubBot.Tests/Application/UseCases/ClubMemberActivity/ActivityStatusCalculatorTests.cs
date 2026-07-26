@@ -65,7 +65,7 @@ public sealed class ActivityStatusCalculatorTests
         statuses[0].TargetAchieved.Should().BeFalse();
         statuses[0].NumStrikes.Should().Be(1);
         statuses[0].IsOutOfStrikes.Should().BeFalse();
-        _strikes.Received(1).CreateStrike(Arg.Is<ClubMemberStrike>(s => s.UserId == "user-1"));
+        _strikes.Received(1).CreateStrike(Arg.Is<ClubMemberStrike>(s => s!.UserId == "user-1"));
     }
 
     [Fact]

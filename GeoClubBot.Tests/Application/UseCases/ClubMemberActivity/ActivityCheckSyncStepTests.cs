@@ -39,7 +39,7 @@ public sealed class ActivityCheckSyncStepTests
         members[0].UserId.Should().Be("user-1");
         await _mediator.Received(1).Send(Arg.Any<CheckStrikeDecayCommand>(), Arg.Any<CancellationToken>());
         await _mediator.Received(1).Send(
-            Arg.Is<SaveClubMembersCommand>(c => c.Snapshots.Count == 1 && c.Snapshots[0].UserId == "user-1"),
+            Arg.Is<SaveClubMembersCommand>(c => c!.Snapshots.Count == 1 && c.Snapshots[0].UserId == "user-1"),
             Arg.Any<CancellationToken>());
     }
 

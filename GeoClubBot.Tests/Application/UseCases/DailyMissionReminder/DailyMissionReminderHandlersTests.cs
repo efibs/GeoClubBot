@@ -149,7 +149,7 @@ public sealed class DailyMissionReminderHandlersTests
 
         await _dm.Received(1).SendDirectMessageAsync(
             DiscordUserId,
-            Arg.Is<string>(m => m.Contains("09:05") && m.Contains("Europe/Berlin") && m.Contains("wake up!")),
+            Arg.Is<string>(m => m!.Contains("09:05") && m.Contains("Europe/Berlin") && m.Contains("wake up!")),
             Arg.Any<CancellationToken>());
     }
 

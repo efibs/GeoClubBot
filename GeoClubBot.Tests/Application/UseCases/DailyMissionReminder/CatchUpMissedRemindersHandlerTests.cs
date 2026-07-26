@@ -67,7 +67,7 @@ public sealed class CatchUpMissedRemindersHandlerTests
     // and proceeds to send.
     private void ArrangeUserNotCompleted(ulong discordUserId)
     {
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == discordUserId),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == discordUserId),
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
     }
@@ -144,7 +144,7 @@ public sealed class CatchUpMissedRemindersHandlerTests
         ArrangeMissedReminders(morning, noon);
 
         var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
             Arg.Any<CancellationToken>()).Returns(linkedUser);
 
         var member = new ClubMemberBuilder()

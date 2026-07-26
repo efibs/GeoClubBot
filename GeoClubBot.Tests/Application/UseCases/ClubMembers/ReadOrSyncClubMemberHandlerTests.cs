@@ -63,7 +63,7 @@ public sealed class ReadOrSyncClubMemberHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value.UserId.Should().Be("user-1");
         await _mediator.Received(1).Send(
-            Arg.Is<SaveClubMembersCommand>(c => c.Snapshots.Count == 1 && c.Snapshots[0].UserId == "user-1"),
+            Arg.Is<SaveClubMembersCommand>(c => c!.Snapshots.Count == 1 && c.Snapshots[0].UserId == "user-1"),
             Arg.Any<CancellationToken>());
     }
 

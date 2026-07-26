@@ -40,7 +40,7 @@ public sealed class HandleAccountLinkedForMemberRoleUseCaseTests
         await CreateHandler().Handle(Event(), CancellationToken.None);
 
         await _roles.Received(1).AddRoleToMembersByUserIdsAsync(
-            Arg.Is<IEnumerable<ulong>>(ids => ids.Single() == DiscordUserId),
+            Arg.Is<IEnumerable<ulong>>(ids => ids!.Single() == DiscordUserId),
             ClubRoleId,
             Arg.Any<CancellationToken>());
     }
