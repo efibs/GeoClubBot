@@ -28,7 +28,7 @@ public sealed class StartAndCancelAccountLinkingHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().HaveLength(StringLengthConstants.AccountLinkingRequestOneTimePasswordLength);
         _requests.Received(1).AddRequest(Arg.Is<GeoGuessrAccountLinkingRequest>(r =>
-            r.DiscordUserId == DiscordUserId &&
+            r!.DiscordUserId == DiscordUserId &&
             r.GeoGuessrUserId == GeoGuessrUserId &&
             r.OneTimePassword == result.Value));
     }

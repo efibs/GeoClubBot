@@ -123,6 +123,6 @@ public sealed class SnapshotDailyMissionCompletionsHandlerTests
         await CreateHandler(ClubA, ClubB).Handle(new SnapshotDailyMissionCompletionsCommand(), CancellationToken.None);
 
         _completions.Received(1).AddRange(
-            Arg.Is<IEnumerable<DailyMissionMemberCompletion>>(rows => rows.All(r => r.ClubId == ClubB)));
+            Arg.Is<IEnumerable<DailyMissionMemberCompletion>>(rows => rows!.All(r => r.ClubId == ClubB)));
     }
 }

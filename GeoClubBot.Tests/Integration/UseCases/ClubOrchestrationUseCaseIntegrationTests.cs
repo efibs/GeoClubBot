@@ -121,7 +121,7 @@ public sealed class ClubOrchestrationUseCaseIntegrationTests(PostgresFixture fix
 
         await host.Mock<IClubEventNotifier>()
             .Received()
-            .SendClubLevelUpEvent(Arg.Is<DomainClub>(c => c.ClubId == clubId), Arg.Any<CancellationToken>());
+            .SendClubLevelUpEvent(Arg.Is<DomainClub>(c => c!.ClubId == clubId), Arg.Any<CancellationToken>());
         await host.Mock<IDiscordStatusUpdater>()
             .Received()
             .UpdateStatusAsync("Level 6 club!", Arg.Any<CancellationToken>());
