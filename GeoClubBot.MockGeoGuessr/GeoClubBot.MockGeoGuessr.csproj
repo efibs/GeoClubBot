@@ -22,7 +22,7 @@
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="10.8.0" />
         <PackageReference Include="Microsoft.SemanticKernel" Version="1.78.0" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-        <PackageReference Include="Refit" Version="13.1.0" />
+        <PackageReference Include="Refit" Version="14.0.0" />
         <ProjectReference Include="..\GeoClubBot.Application\GeoClubBot.Application.csproj" />
         <ProjectReference Include="..\GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj" />
         <ProjectReference Include="..\Configuration\Configuration.csproj" />
