@@ -20,6 +20,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     IExcusesRepository excuses,
     IHistoryRepository history,
     IClubRepository clubs,
+    IUnitOfWork unitOfWork,
     IActivityStatusMessageSender activityStatusMessageSender,
     IActivityReportPublishGate publishGate,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
@@ -81,6 +82,15 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
             .ConfigureAwait(false);
 
         var clubName = club.Name;
+
+        // Flush before reporting. The average-XP rollup re-reads the history table through the
+        // repositories (AsNoTracking → straight to the database), so the snapshots recorded above
+        // must already be committed. Left in the change tracker until the UnitOfWorkBehavior commits
+        // after this handler, they are invisible to that query: the newest interval — the one this
+        // check just closed — would be missing and the average would silently cover the N intervals
+        // BEFORE it. Committing here also means the recorded check time and strikes survive a
+        // failure while messaging Discord, instead of being replayed on the next check.
+        await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         var averageXpTopN = clubEntry.GetAverageXpTopN(defaults);
         var averageXpBottomN = clubEntry.GetAverageXpBottomN(defaults);

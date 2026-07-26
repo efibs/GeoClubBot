@@ -29,8 +29,14 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
     private static string NewNickname() => $"nick-{Guid.NewGuid():N}"[..30];
     private static ulong NewDiscordId() => (ulong)Random.Shared.NextInt64(1_000_000_000_000_000L, long.MaxValue);
 
-    /// <summary>Host whose main club is <paramref name="mainClubId"/> and whose default per-check XP target is 500.</summary>
-    private MediatorTestHost CreateActivityHost(Guid mainClubId) =>
+    /// <summary>
+    /// Host whose main club is <paramref name="mainClubId"/> and whose default per-check XP target is 500.
+    /// Passing <paramref name="averageXpTopN"/> also switches on the average-XP rollup phase.
+    /// </summary>
+    private MediatorTestHost CreateActivityHost(
+        Guid mainClubId,
+        int? averageXpTopN = null,
+        int averageXpHistoryDepth = 4) =>
         new(fixture.ConnectionString, services =>
         {
             services.AddSingleton(Options.Create(new GeoGuessrConfiguration
@@ -50,6 +56,8 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
                 MaxNumStrikes = 3,
                 HistoryKeepTimeSpan = TimeSpan.FromDays(60),
                 StrikeDecayTimeSpan = TimeSpan.FromDays(60),
+                AverageXpTopN = averageXpTopN,
+                AverageXpHistoryDepth = averageXpHistoryDepth,
             }));
         });
 
@@ -233,6 +241,47 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
         var status = statuses.Single(s => s.UserId == member.userId);
         status.IndividualTargetReason.Should().Contain("New member",
             "the member joined within the interval bounded by the club's recorded check time");
+    }
+
+    [Fact]
+    public async Task CheckGeoGuessrPlayerActivity_AveragesTheIntervalThatJustClosed()
+    {
+        // Regression for #236: the rollup phase reads the history table, so the snapshot this very
+        // check records must already be persisted. It used to still sit unsaved in the change
+        // tracker, so the average silently covered the N intervals BEFORE the newest one.
+        var clubId = Guid.NewGuid();
+        var member = (userId: NewUserId(), nickname: NewNickname());
+        var lastCheck = DateTimeOffset.UtcNow.AddDays(-10);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Entities.Club.Create(clubId, $"club-{clubId:N}", level: 1, latestActivityCheckTime: lastCheck));
+            var user = GeoGuessrUser.Create(member.userId, member.nickname);
+            seed.Add(user);
+            seed.Add(ClubMember.Create(user, clubId, xp: 200, joinedAt: DateTimeOffset.UtcNow.AddMonths(-3)));
+            // Cumulative snapshots → closed intervals of 60 XP (T-2) and 140 XP (T-1).
+            seed.Add(ClubMemberHistoryEntry.Create(member.userId, clubId, xp: 0, DateTimeOffset.UtcNow.AddDays(-30)));
+            seed.Add(ClubMemberHistoryEntry.Create(member.userId, clubId, xp: 60, DateTimeOffset.UtcNow.AddDays(-20)));
+            seed.Add(ClubMemberHistoryEntry.Create(member.userId, clubId, xp: 200, lastCheck));
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateActivityHost(clubId, averageXpTopN: 1, averageXpHistoryDepth: 2);
+        // Roster XP 320 → the interval closing with this check (T-0) is worth 120 XP.
+        ArrangeRoster(host, clubId, BuildMemberDto(member.userId, member.nickname, xp: 320));
+
+        await host.SendAsync(new CheckGeoGuessrPlayerActivityCommand(clubId));
+
+        // Average over the last 2 intervals = (120 + 140) / 2 = 130 — NOT (140 + 60) / 2 = 100.
+        await host.Mock<IActivityStatusMessageSender>()
+            .Received()
+            .SendAverageXpMessageAsync(
+                Arg.Is<List<ClubMemberAverageXp>>(top =>
+                    top!.Count == 1 && top[0].Nickname == member.nickname && top[0].AverageXp == 130),
+                Arg.Any<List<ClubMemberAverageXp>>(),
+                Arg.Any<string>(),
+                2,
+                Arg.Any<CancellationToken>());
     }
 
     [Fact]
