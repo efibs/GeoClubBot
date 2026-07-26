@@ -1,7 +1,7 @@
 # Base images pinned by digest for reproducible, tamper-evident builds.
 # The :10.0 tag is kept in the comment for readability; Dependabot (docker ecosystem)
 # raises PRs to bump these digests.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:7644f992230d35cf230017189d4038c0ae0f7388b13f4f7ae1900a155bafb597 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7 AS base
 RUN apt-get update && apt-get install -y curl libfontconfig1 libfreetype6 libpng16-16 libjpeg-turbo8 libgif7 libglu1-mesa && rm -rf /var/lib/apt/lists/*
 # Install required dependencies for Chromium
 RUN apt-get update && apt-get install -y \
@@ -28,7 +28,7 @@ RUN npm ci
 COPY GeoClubBot.Activity/ ./
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:ea8bde36c11b6e7eec2656d0e59101d4462f6bd630730f2c8201ed0572b295d5 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:ed034a8bf0b24ded0cbbac07e17825d8e9ebfe21e308191d0f7421eaf5ad4664 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["GeoClubBot.API/GeoClubBot.API.csproj", "GeoClubBot.API/"]
