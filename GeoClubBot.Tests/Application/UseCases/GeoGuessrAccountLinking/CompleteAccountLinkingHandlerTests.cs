@@ -64,7 +64,7 @@ public sealed class CompleteAccountLinkingHandlerTests
 
         var trackedUser = GeoGuessrUser.Create(GeoGuessrUserId, "Player1");
         _mediator
-            .Send(Arg.Is<ReadOrSyncGeoGuessrUserByUserIdQuery>(q => q.UserId == GeoGuessrUserId),
+            .Send(Arg.Is<ReadOrSyncGeoGuessrUserByUserIdQuery>(q => q!.UserId == GeoGuessrUserId),
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Success(trackedUser));
         _users.ReadForUpdateByUserIdAsync(GeoGuessrUserId, Arg.Any<CancellationToken>())
@@ -79,7 +79,7 @@ public sealed class CompleteAccountLinkingHandlerTests
         trackedUser.DiscordUserId.Should().Be(DiscordUserId);
         _requests.Received(1).DeleteRequest(request);
         await _roles.Received(1).AddRoleToMembersByUserIdsAsync(
-            Arg.Is<IEnumerable<ulong>>(ids => ids.Single() == DiscordUserId),
+            Arg.Is<IEnumerable<ulong>>(ids => ids!.Single() == DiscordUserId),
             HasLinkedRoleId,
             Arg.Any<CancellationToken>());
     }
@@ -106,7 +106,7 @@ public sealed class CompleteAccountLinkingHandlerTests
         _requests.ReadRequestAsync(DiscordUserId, GeoGuessrUserId, Arg.Any<CancellationToken>())
             .Returns(request);
         _mediator
-            .Send(Arg.Is<ReadOrSyncGeoGuessrUserByUserIdQuery>(q => q.UserId == GeoGuessrUserId),
+            .Send(Arg.Is<ReadOrSyncGeoGuessrUserByUserIdQuery>(q => q!.UserId == GeoGuessrUserId),
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("user.not_found", "missing")));
 

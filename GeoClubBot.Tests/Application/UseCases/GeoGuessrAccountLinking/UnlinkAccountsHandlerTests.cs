@@ -51,7 +51,7 @@ public sealed class UnlinkAccountsHandlerTests
         user.DiscordUserId.Should().BeNull();
         await _roles.Received(1).RemoveRolesFromUserAsync(
             DiscordUserId,
-            Arg.Is<IEnumerable<ulong>>(ids => ids.Contains(HasLinkedRoleId) && ids.Contains(ClubRoleId)),
+            Arg.Is<IEnumerable<ulong>>(ids => ids!.Contains(HasLinkedRoleId) && ids!.Contains(ClubRoleId)),
             Arg.Any<CancellationToken>());
     }
 

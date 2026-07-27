@@ -226,7 +226,12 @@ public sealed class EntryPointCommandGatewayListener(
             }
             catch (WebSocketException ex)
             {
-                logger.LogWarning(ex, "Entry point activity gateway socket receive failed.");
+                // Expected, routine occurrence: this connection deliberately doesn't support RESUME
+                // (see class remarks), so every disconnect — including ordinary ones where Discord
+                // drops the socket without completing the close handshake — ends up here. Logging
+                // this at Warning spammed the Discord channel sink with non-actionable noise on every
+                // reconnect; Information keeps it visible in regular logs without paging anyone.
+                logger.LogInformation(ex, "Entry point activity gateway socket receive failed; reconnecting.");
                 return null;
             }
 

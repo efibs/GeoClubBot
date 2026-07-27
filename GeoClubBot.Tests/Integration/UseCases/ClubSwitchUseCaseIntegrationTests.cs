@@ -107,7 +107,7 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
         await host.Mock<IDiscordServerRolesAccess>()
             .Received()
             .AddRoleToMembersByUserIdsAsync(
-                Arg.Is<IEnumerable<ulong>>(ids => ids.Contains(discordId)), RoleA, Arg.Any<CancellationToken>());
+                Arg.Is<IEnumerable<ulong>>(ids => ids!.Contains(discordId)), RoleA, Arg.Any<CancellationToken>());
         await host.Mock<IDiscordTextChannelAccess>()
             .Received()
             .CreatePrivateTextChannelAsync(
@@ -137,7 +137,7 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
         await host.Mock<IDiscordServerRolesAccess>()
             .Received()
             .AddRoleToMembersByUserIdsAsync(
-                Arg.Is<IEnumerable<ulong>>(ids => ids.Contains(discordId)), RoleB, Arg.Any<CancellationToken>());
+                Arg.Is<IEnumerable<ulong>>(ids => ids!.Contains(discordId)), RoleB, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
         await host.Mock<IDiscordServerRolesAccess>()
             .Received()
             .RemoveRolesFromUserAsync(
-                discordId, Arg.Is<IEnumerable<ulong>>(roles => roles.Contains(RoleA)), Arg.Any<CancellationToken>());
+                discordId, Arg.Is<IEnumerable<ulong>>(roles => roles!.Contains(RoleA)), Arg.Any<CancellationToken>());
         await host.Mock<IDiscordTextChannelAccess>()
             .Received()
             .DeleteTextChannelAsync(channelId, Arg.Any<CancellationToken>());
@@ -197,10 +197,10 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
         var roles = host.Mock<IDiscordServerRolesAccess>();
         await roles.Received()
             .RemoveRolesFromUserAsync(
-                discordId, Arg.Is<IEnumerable<ulong>>(r => r.Contains(RoleA)), Arg.Any<CancellationToken>());
+                discordId, Arg.Is<IEnumerable<ulong>>(r => r!.Contains(RoleA)), Arg.Any<CancellationToken>());
         await roles.Received()
             .AddRoleToMembersByUserIdsAsync(
-                Arg.Is<IEnumerable<ulong>>(ids => ids.Contains(discordId)), RoleB, Arg.Any<CancellationToken>());
+                Arg.Is<IEnumerable<ulong>>(ids => ids!.Contains(discordId)), RoleB, Arg.Any<CancellationToken>());
 
         // No PlayerSwitchedClubsEvent handler touches private channels, so neither create nor delete fires.
         await host.Mock<IDiscordTextChannelAccess>()

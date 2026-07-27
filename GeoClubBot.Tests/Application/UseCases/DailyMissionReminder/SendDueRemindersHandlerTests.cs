@@ -71,7 +71,7 @@ public sealed class SendDueRemindersHandlerTests
             .Returns([reminder]);
 
         var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
             Arg.Any<CancellationToken>()).Returns(linkedUser);
 
         var member = new ClubMemberBuilder()
@@ -100,7 +100,7 @@ public sealed class SendDueRemindersHandlerTests
             .Returns([reminder]);
 
         var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
             Arg.Any<CancellationToken>()).Returns(linkedUser);
 
         var member = new ClubMemberBuilder()
@@ -131,7 +131,7 @@ public sealed class SendDueRemindersHandlerTests
                 Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns([reminder]);
 
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
 
@@ -151,7 +151,7 @@ public sealed class SendDueRemindersHandlerTests
                 Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns([reminder]);
 
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
 
@@ -172,7 +172,7 @@ public sealed class SendDueRemindersHandlerTests
                 Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns([reminder]);
 
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
 
@@ -236,7 +236,7 @@ public sealed class SendDueRemindersHandlerTests
             .Returns([reminder]);
 
         var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
             Arg.Any<CancellationToken>()).Returns(linkedUser);
 
         var member = new ClubMemberBuilder()
@@ -262,7 +262,7 @@ public sealed class SendDueRemindersHandlerTests
                 Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns([reminder]);
 
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q.DiscordUserId == 123UL),
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
                 Arg.Any<CancellationToken>())
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
     }
@@ -279,7 +279,7 @@ public sealed class SendDueRemindersHandlerTests
 
         foreach (var (type, rendered) in missions)
         {
-            _renderer.RenderMission(Arg.Is<DailyMissionDto>(d => d.Type == type)).Returns(rendered);
+            _renderer.RenderMission(Arg.Is<DailyMissionDto>(d => d!.Type == type)).Returns(rendered);
         }
     }
 
