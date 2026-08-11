@@ -47,6 +47,11 @@ PostgreSQL via **Testcontainers** — they require a running Docker daemon. They
 container (`PostgresCollection`/`PostgresFixture`) and each test namespaces its own seed data
 by random `Club`/`UserId` so the container is reused safely.
 
+A second Testcontainers fixture (`QdrantCollection`/`QdrantFixture`) backs the Qdrant vector-index
+tests. `QdrantClient`'s methods are sealed interface implementations, so NSubstitute can't fake
+them — a real container is the only way to cover `QdrantPlonkItVectorIndex`. Each test takes a
+unique collection name via `QdrantFixture.NewCollectionName()` instead of namespacing rows.
+
 **Test types beyond unit + integration:**
 
 - **End-to-end** (`Integration/E2E/`, also `Category=Integration`): `GeoClubBotApiFactory` boots

@@ -67,9 +67,9 @@ public sealed class QdrantPlonkItVectorIndex(QdrantClient client, string collect
         int limit,
         CancellationToken cancellationToken = default)
     {
-        var results = await client.SearchAsync(
+        var results = await client.QueryAsync(
             collectionName: collectionName,
-            vector: queryVector.ToArray(),
+            query: queryVector.ToArray(),
             limit: (ulong)limit,
             payloadSelector: true,
             cancellationToken: cancellationToken).ConfigureAwait(false);
