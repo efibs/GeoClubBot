@@ -25,35 +25,34 @@ public sealed class DistributeDailyChallengeRolesHandler(
         await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_secondRoleId, cancellationToken).ConfigureAwait(false);
         await discordServerRolesAccess.RemoveRoleFromAllPlayersAsync(_thirdRoleId, cancellationToken).ConfigureAwait(false);
 
-        var firstPlayersUserIds = new HashSet<string>();
-        var secondPlayersUserIds = new HashSet<string>();
-        var thirdPlayersUserIds = new HashSet<string>();
+        var firstPlayersUserIds = new List<string>();
+        var secondPlayersUserIds = new List<string>();
+        var thirdPlayersUserIds = new List<string>();
+        var awardedUserIds = new HashSet<string>(StringComparer.Ordinal);
 
-        var rolePriorityGroupedResults = request.Results
-            .GroupBy(r => r.RolePriority)
-            .OrderByDescending(x => x.Key);
-
-        foreach (var rolePriorityGroup in rolePriorityGroupedResults)
+        // Highest role priority first: every player earns at most one podium role, so a player that
+        // already placed in a higher-priority challenge is skipped here and the players behind them
+        // move up a place. Matching is by user id — nicknames are neither stable nor unique.
+        foreach (var result in request.Results.OrderByDescending(r => r.RolePriority))
         {
-            var cleanedResults = rolePriorityGroup
-                .Select(r => r.Players
-                    .Where(p => !firstPlayersUserIds.Contains(p.Nickname) &&
-                                !secondPlayersUserIds.Contains(p.Nickname) &&
-                                !thirdPlayersUserIds.Contains(p.Nickname))
-                    .ToList())
-                .ToList();
-
-            foreach (var cleanedResult in cleanedResults)
+            var place = 1;
+            foreach (var player in result.Players)
             {
-                var place = 1;
-                foreach (var player in cleanedResult)
+                if (!awardedUserIds.Add(player.UserId))
                 {
-                    switch (place++)
-                    {
-                        case 1: firstPlayersUserIds.Add(player.UserId); break;
-                        case 2: secondPlayersUserIds.Add(player.UserId); break;
-                        case 3: thirdPlayersUserIds.Add(player.UserId); break;
-                    }
+                    continue;
+                }
+
+                switch (place++)
+                {
+                    case 1: firstPlayersUserIds.Add(player.UserId); break;
+                    case 2: secondPlayersUserIds.Add(player.UserId); break;
+                    case 3: thirdPlayersUserIds.Add(player.UserId); break;
+                }
+
+                if (place > 3)
+                {
+                    break;
                 }
             }
         }

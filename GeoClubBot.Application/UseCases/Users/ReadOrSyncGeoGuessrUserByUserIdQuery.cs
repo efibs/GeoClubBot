@@ -18,30 +18,36 @@ public sealed partial class ReadOrSyncGeoGuessrUserByUserIdHandler(
 {
     public async Task<Result<GeoGuessrUser>> Handle(ReadOrSyncGeoGuessrUserByUserIdQuery request, CancellationToken cancellationToken)
     {
-        var existing = await users.ReadUserByUserIdAsync(request.UserId, cancellationToken).ConfigureAwait(false);
+        // Tracker-aware lookup: a caller may sync several users in one unit of work (the daily
+        // challenge resolves the podium of every difficulty), and a database-only read would miss a
+        // user this same unit of work already synced. Adding them a second time throws an identity
+        // conflict that leaves a detached zombie entry behind and poisons the whole SaveChanges.
+        var existing = await users.ReadForUpdateByUserIdAsync(request.UserId, cancellationToken).ConfigureAwait(false);
         if (existing is not null)
         {
             return existing;
         }
 
+        UserDto dto;
         try
         {
             var client = geoGuessrClientFactory.CreateUserProfileClient();
-            var dto = await client.ReadUserAsync(request.UserId, cancellationToken).ConfigureAwait(false);
-
-            var created = GeoGuessrUser.Create(dto.Id, dto.Nick);
-            users.AddUser(created);
-            return created;
+            dto = await client.ReadUserAsync(request.UserId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             // GeoGuessr API surfaces missing users as exceptions. Log the underlying cause and
             // return a typed NotFound so callers can distinguish "doesn't exist" from genuine errors.
+            // Only the API call is guarded: a persistence failure must not be reported as not-found.
             LogUserLookupFailed(logger, ex, request.UserId);
             return Error.NotFound(
                 "geoguessr_user.not_found",
                 $"GeoGuessr user '{request.UserId}' could not be found.");
         }
+
+        var created = GeoGuessrUser.Create(dto.Id, dto.Nick);
+        users.AddUser(created);
+        return created;
     }
 
     [LoggerMessage(LogLevel.Debug, "GeoGuessr user lookup for id '{userId}' failed; treating as not-found.")]
