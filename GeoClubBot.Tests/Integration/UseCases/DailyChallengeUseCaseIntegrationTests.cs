@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.UseCases.DailyChallenge;
@@ -14,14 +15,15 @@ using Xunit;
 namespace GeoClubBot.Tests.Integration.UseCases;
 
 /// <summary>
-/// Exercises the daily-challenge role distribution through the real MediatR pipeline and Postgres.
-/// The interesting cases involve players the bot has never seen before: they are synced into
-/// <see cref="GeoGuessrUser"/> inside the same unit of work, so the same unknown player placing in
-/// several challenges must not be inserted twice.
+/// Exercises the daily challenge through the real MediatR pipeline and Postgres, covering the two
+/// things only a real unit of work can show: players the bot has never seen before are synced into
+/// <see cref="GeoGuessrUser"/> while the roles are handed out (and the same player placing in
+/// several challenges must not be inserted twice), and which challenge links survive a run in which
+/// GeoGuessr refused to create some — or all — of the next challenges.
 /// </summary>
 [Collection(PostgresCollection.Name)]
 [Trait("Category", "Integration")]
-public sealed class DailyChallengeRolesUseCaseIntegrationTests(PostgresFixture fixture)
+public sealed class DailyChallengeUseCaseIntegrationTests(PostgresFixture fixture)
 {
     private const ulong FirstRoleId = 100;
     private const ulong SecondRoleId = 200;
@@ -84,31 +86,15 @@ public sealed class DailyChallengeRolesUseCaseIntegrationTests(PostgresFixture f
         var configFilePath = await WriteChallengeConfigAsync((hard, 2), (easy, 1));
         try
         {
-            var mainClubId = Guid.NewGuid();
-            using var host = CreateHost(services => services.AddSingleton(Options.Create(new GeoGuessrConfiguration
-            {
-                SyncSchedule = "0 0 0 * * ?",
-                ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
-                UserProfileNcfaToken = "x",
-                Clubs = [new GeoGuessrClubEntry { ClubId = mainClubId, NcfaToken = "x", IsMain = true }],
-            })), configFilePath);
-            ArrangeUserProfiles(host);
+            var (host, client) = CreateChallengeHost(configFilePath);
+            using var _ = host;
 
             // The newcomer won yesterday's hard challenge and came second in the easy one, so they
             // are resolved twice while the podium roles are handed out.
-            var client = Substitute.For<IGeoGuessrClient>();
-            client.CreateChallengeAsync(Arg.Any<PostChallengeRequestDto>(), Arg.Any<CancellationToken>())
-                .Returns(new PostChallengeResponseDto { Token = "new-token" });
-            // The links table is shared with the other integration tests, so leftover challenges of
-            // theirs may be read as well — those simply have no results.
-            client.ReadHighscoresAsync(Arg.Any<string>(), Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
-                .Returns(Highscores());
             client.ReadHighscoresAsync(hardToken, Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
                 .Returns(Highscores(newcomerId));
             client.ReadHighscoresAsync(easyToken, Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
                 .Returns(Highscores(regularId, newcomerId));
-            host.Mock<IGeoGuessrClientFactory>().CreateClient(mainClubId).Returns(client);
 
             await host.SendAsync(new DailyChallengeCommand());
 
@@ -125,6 +111,89 @@ public sealed class DailyChallengeRolesUseCaseIntegrationTests(PostgresFixture f
                 .ToListAsync();
             syncedPlayers.Should().BeEquivalentTo([newcomerId, regularId],
                 "the unknown players are synced while handing out the roles");
+        }
+        finally
+        {
+            File.Delete(configFilePath);
+        }
+    }
+
+    /// <summary>
+    /// A difficulty whose new challenge could not be created keeps the one it already has, so its
+    /// players are still rewarded on the next run; the other difficulties move on regardless.
+    /// </summary>
+    [Fact]
+    public async Task DailyChallenge_KeepsTheActiveChallenge_OfTheDifficultyThatCouldNotBeRecreated()
+    {
+        var hard = $"Hard-{Guid.NewGuid():N}"[..16];
+        var easy = $"Easy-{Guid.NewGuid():N}"[..16];
+        var hardToken = $"hard-{Guid.NewGuid():N}"[..16];
+        var easyToken = $"easy-{Guid.NewGuid():N}"[..16];
+
+        await SeedChallengeLinksAsync((hard, 2, hardToken), (easy, 1, easyToken));
+
+        var configFilePath = await WriteChallengeConfigAsync((hard, 2), (easy, 1));
+        try
+        {
+            var (host, client) = CreateChallengeHost(configFilePath);
+            using var _ = host;
+            client.CreateChallengeAsync(
+                    Arg.Is<PostChallengeRequestDto>(r => r!.Map == $"map-{hard}"), Arg.Any<CancellationToken>())
+                .ThrowsAsync(new HttpRequestException("GeoGuessr is down"));
+
+            await host.SendAsync(new DailyChallengeCommand());
+
+            var links = await ReadLinksAsync(hard, easy);
+            links.Should().ContainSingle(l => l.Difficulty == hard)
+                .Which.ChallengeId.Should().Be(hardToken, "the challenge that could not be replaced stays active");
+            links.Should().ContainSingle(l => l.Difficulty == easy)
+                .Which.ChallengeId.Should().Be("new-token", "the other difficulty moves on");
+
+            await host.Mock<IDiscordMessageAccess>()
+                .Received()
+                .SendMessageAsync(Arg.Is<string>(m => m!.Contains($"{hard}: ERROR")), TextChannelId, Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            File.Delete(configFilePath);
+        }
+    }
+
+    /// <summary>
+    /// If no challenge at all could be created, the active ones are left untouched so the next run
+    /// picks up exactly where this one stopped — and the players are told instead of being left with
+    /// a silent gap.
+    /// </summary>
+    [Fact]
+    public async Task DailyChallenge_KeepsAllActiveChallenges_WhenNoneCanBeRecreated()
+    {
+        var hard = $"Hard-{Guid.NewGuid():N}"[..16];
+        var easy = $"Easy-{Guid.NewGuid():N}"[..16];
+        var hardToken = $"hard-{Guid.NewGuid():N}"[..16];
+        var easyToken = $"easy-{Guid.NewGuid():N}"[..16];
+
+        await SeedChallengeLinksAsync((hard, 2, hardToken), (easy, 1, easyToken));
+
+        var configFilePath = await WriteChallengeConfigAsync((hard, 2), (easy, 1));
+        try
+        {
+            var (host, client) = CreateChallengeHost(configFilePath);
+            using var _ = host;
+            client.CreateChallengeAsync(Arg.Any<PostChallengeRequestDto>(), Arg.Any<CancellationToken>())
+                .ThrowsAsync(new HttpRequestException("GeoGuessr is down"));
+
+            await host.SendAsync(new DailyChallengeCommand());
+
+            var links = await ReadLinksAsync(hard, easy);
+            links.Select(l => l.ChallengeId).Should().BeEquivalentTo([hardToken, easyToken],
+                "nothing was created, so the challenges that are running stay the active ones");
+
+            await host.Mock<IDiscordMessageAccess>()
+                .Received()
+                .SendMessageAsync(
+                    Arg.Is<string>(m => m!.Contains("No new challenges could be created")),
+                    TextChannelId,
+                    Arg.Any<CancellationToken>());
         }
         finally
         {
@@ -177,6 +246,44 @@ public sealed class DailyChallengeRolesUseCaseIntegrationTests(PostgresFixture f
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// A host wired for the full <see cref="DailyChallengeCommand"/>: a main club whose GeoGuessr
+    /// client creates challenges and serves empty leaderboards, plus profile lookups for unknown
+    /// players. Tests override the returned client per challenge to fail or fill in a leaderboard.
+    /// </summary>
+    private (MediatorTestHost Host, IGeoGuessrClient Client) CreateChallengeHost(string configFilePath)
+    {
+        var mainClubId = Guid.NewGuid();
+        var host = CreateHost(services => services.AddSingleton(Options.Create(new GeoGuessrConfiguration
+        {
+            SyncSchedule = "0 0 0 * * ?",
+            ActivityNcfaToken = "x",
+            MissionsNcfaToken = "x",
+            UserProfileNcfaToken = "x",
+            Clubs = [new GeoGuessrClubEntry { ClubId = mainClubId, NcfaToken = "x", IsMain = true }],
+        })), configFilePath);
+        ArrangeUserProfiles(host);
+
+        var client = Substitute.For<IGeoGuessrClient>();
+        client.CreateChallengeAsync(Arg.Any<PostChallengeRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(new PostChallengeResponseDto { Token = "new-token" });
+        // The links table is shared with the other integration tests, so leftover challenges of
+        // theirs may be read as well — those simply have no results.
+        client.ReadHighscoresAsync(Arg.Any<string>(), Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
+            .Returns(Highscores());
+        host.Mock<IGeoGuessrClientFactory>().CreateClient(mainClubId).Returns(client);
+
+        return (host, client);
+    }
+
+    private async Task<List<ClubChallengeLink>> ReadLinksAsync(params string[] difficulties)
+    {
+        await using var read = fixture.CreateDbContext();
+        return await read.LatestClubChallengeLinks.AsNoTracking()
+            .Where(l => difficulties.Contains(l.Difficulty))
+            .ToListAsync();
+    }
+
     private MediatorTestHost CreateHost(Action<IServiceCollection>? configure = null, string configurationFilePath = "challenges.json") =>
         new(fixture.ConnectionString, services =>
         {
@@ -223,7 +330,7 @@ public sealed class DailyChallengeRolesUseCaseIntegrationTests(PostgresFixture f
                 Entries =
                 [
                     new ClubChallengeConfigurationDifficultyEntry(
-                        Description: "A world map", MapId: "world", ForbidMoving: true,
+                        Description: "A world map", MapId: $"map-{d.Difficulty}", ForbidMoving: true,
                         ForbidRotating: false, ForbidZooming: false, TimeLimit: 60),
                 ],
             })
