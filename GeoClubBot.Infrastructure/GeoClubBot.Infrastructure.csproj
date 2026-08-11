@@ -27,7 +27,7 @@
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="10.8.0" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
         <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.10" />
-        <PackageReference Include="Microsoft.SemanticKernel" Version="1.78.0" />
+        <PackageReference Include="Microsoft.SemanticKernel" Version="1.79.0" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
         <PackageReference Include="PuppeteerSharp" Version="25.3.4" />
         <PackageReference Include="Qdrant.Client" Version="1.18.1" />
