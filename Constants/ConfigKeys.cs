@@ -31,5 +31,7 @@ public static class ConfigKeys
 
     public const string AiModelCatalogRefreshCronScheduleConfigurationKey = "AI:ModelCatalogRefreshSchedule";
 
+    public const string AiConversationCleanupCronScheduleConfigurationKey = "AI:ConversationCleanupSchedule";
+
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }
