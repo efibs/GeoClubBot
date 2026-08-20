@@ -16,4 +16,9 @@ public interface IOpenRouterApi
     Task<OpenRouterChatResponseDto> CreateChatCompletionAsync(
         [Body] OpenRouterChatRequestDto request,
         CancellationToken cancellationToken = default);
+
+    [Post("/api/v1/embeddings")]
+    Task<OpenRouterEmbeddingResponseDto> CreateEmbeddingsAsync(
+        [Body] OpenRouterEmbeddingRequestDto request,
+        CancellationToken cancellationToken = default);
 }

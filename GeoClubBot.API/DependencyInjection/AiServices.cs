@@ -1,4 +1,6 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using Configuration;
 using Constants;
 using GeoClubBot.Services;
@@ -24,6 +26,7 @@ public static class AiServices
         // performs I/O until it is called, and the hosted services and jobs that would call it are
         // gated below and on AiConfiguration.Active respectively.
         services.AddOpenRouterServices(aiConfig);
+        services.AddKnowledgeIndex(configuration, aiConfig);
 
         if (!aiConfig.Active)
         {
@@ -99,5 +102,45 @@ public static class AiServices
         // Singleton: the roster is process-wide state, and the failure tracker only demotes a flaky
         // model usefully once penalties accumulate across turns.
         services.AddSingleton<IChatModelCatalog, ChatModelCatalog>();
+
+        // Embeddings share the chat client's HTTP pipeline, so they inherit its auth and rate limiter.
+        services.AddSingleton<IEmbedder, OpenRouterEmbedder>();
+    }
+
+    /// <summary>
+    /// The vector store holding indexed guide content. Registered unconditionally for the same reason
+    /// as the chat services: Application handlers that depend on it are discovered by MediatR's
+    /// assembly scan whether or not the feature is enabled. Nothing connects to Qdrant until a query
+    /// or an ingest actually runs.
+    /// </summary>
+    private static void AddKnowledgeIndex(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        AiConfiguration aiConfig)
+    {
+        // Defaulted rather than null-forgiving: with AI off the connection string is legitimately
+        // absent, and resolving the client must not throw just because the graph was built.
+        var qdrantConnectionString =
+            configuration.GetConnectionString(ConfigKeys.QDrantConnectionString) ?? "localhost";
+
+        services.AddSingleton<IKnowledgeIndex>(_ => new QdrantKnowledgeIndex(
+            new QdrantClient(qdrantConnectionString),
+            BuildCollectionName(aiConfig),
+            aiConfig.OpenRouter.EmbeddingDimensions));
+    }
+
+    /// <summary>
+    /// Derives the collection name from the embedding model and its width, so changing either lands
+    /// on a new collection instead of appending incomparable vectors to the existing one. The old
+    /// collection is left in place, visible and deletable, rather than silently corrupted.
+    /// </summary>
+    private static string BuildCollectionName(AiConfiguration aiConfig)
+    {
+        var openRouter = aiConfig.OpenRouter;
+        var modelFingerprint = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(openRouter.EmbeddingModelId)))[..8]
+            .ToLowerInvariant();
+
+        return $"{aiConfig.KnowledgeCollectionPrefix}-{modelFingerprint}-{openRouter.EmbeddingDimensions}";
     }
 }

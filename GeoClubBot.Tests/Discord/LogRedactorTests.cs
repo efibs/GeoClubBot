@@ -35,6 +35,21 @@ public sealed class LogRedactorTests
     }
 
     [Fact]
+    public void Redact_OpenRouterApiKey_IsRemoved_EvenWithoutAKeyPrefix()
+    {
+        // Synthetic key, shaped like an OpenRouter one so the regex fires. The bare form matters:
+        // the provider's 401 body echoes the key with no "apiKey=" prefix for KeyedSecret to anchor on.
+        const string key = "sk-or-v1-FAKEfakeFAKEfake1234567890abcdef";
+        var input = $"OpenRouter returned 401: no auth credentials found for {key}";
+
+        var result = LogRedactor.Redact(input);
+
+        result.Should().NotContain(key);
+        result.Should().NotContain("FAKEfake");
+        result.Should().Contain(Redacted);
+    }
+
+    [Fact]
     public void Redact_CerebrasApiKey_IsRemoved()
     {
         const string key = "csk-FAKEfakeFAKEfake1234567890"; // synthetic, not a real key

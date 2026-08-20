@@ -32,4 +32,11 @@ public class AiConfiguration
 
     /// <summary>Per-user hourly cap, so one person cannot spend the guild's whole daily allowance.</summary>
     public int MaxRequestsPerUserPerHour { get; set; } = 6;
+
+    /// <summary>
+    /// Prefix of the vector collection. The embedding model and its dimensions are appended
+    /// automatically, because vectors from different models are not comparable: switching models must
+    /// start a fresh collection rather than silently mixing incompatible vectors into an existing one.
+    /// </summary>
+    public string KnowledgeCollectionPrefix { get; set; } = "geo-knowledge";
 }

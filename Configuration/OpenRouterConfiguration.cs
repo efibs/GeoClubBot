@@ -37,6 +37,20 @@ public class OpenRouterConfiguration
     /// <summary>Models retiring sooner than this are excluded so a chain cannot go stale mid-day.</summary>
     public int ExpiryHorizonHours { get; set; } = 48;
 
+    /// <summary>
+    /// Embedding model. Must produce vectors matching <see cref="EmbeddingDimensions"/>; changing
+    /// either invalidates every stored vector, so the collection name carries them too.
+    /// </summary>
+    public string EmbeddingModelId { get; set; } = "nvidia/llama-nemotron-embed-vl-1b-v2:free";
+
+    public int EmbeddingDimensions { get; set; } = 2048;
+
+    /// <summary>
+    /// Inputs per embedding request. Batching is what makes indexing affordable: the provider limits
+    /// requests, not inputs, so a corpus that would need thousands of calls needs tens.
+    /// </summary>
+    public int EmbeddingBatchSize { get; set; } = 32;
+
     /// <summary>Sent as HTTP-Referer; OpenRouter uses it for attribution on their leaderboards.</summary>
     public string? SiteUrl { get; set; }
 
