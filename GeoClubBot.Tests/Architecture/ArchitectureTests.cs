@@ -65,6 +65,27 @@ public class ArchitectureTests
     }
 
     [Fact]
+    public void Application_should_not_depend_on_ai_vendor_libraries()
+    {
+        // The previous AI implementation leaked its vendor SDK across the layers, which is a large
+        // part of why swapping providers meant rewriting the feature. The AI ports are expressed in
+        // plain records, so every vendor SDK must stay behind an adapter in Infrastructure.
+        var result = Types.InAssembly(ApplicationAssembly)
+            .ShouldNot()
+            .HaveDependencyOnAny(
+                "Refit",                      // HTTP client generation
+                "Qdrant",                     // vector store
+                "Microsoft.SemanticKernel",   // LLM orchestration
+                "Microsoft.ML")               // local ONNX inference
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            "AI vendor SDKs belong behind output ports in Infrastructure, " +
+            "but these Application types reference one directly: {0}",
+            FailingTypes(result));
+    }
+
+    [Fact]
     public void Discord_adapters_should_not_depend_on_infrastructure()
     {
         var result = Types.InAssembly(DiscordAssembly)

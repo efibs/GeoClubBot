@@ -33,6 +33,8 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<DailyMissionMemberCompletion> DailyMissionMemberCompletions { get; set; }
 
+    public DbSet<AiDailyBudget> AiDailyBudgets { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);

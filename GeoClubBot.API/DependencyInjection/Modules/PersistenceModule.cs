@@ -31,6 +31,7 @@ public static class PersistenceModule
         services.AddTransient<IDailyMissionRepository, EfDailyMissionRepository>();
         services.AddTransient<IDailyMissionCompletionRepository, EfDailyMissionCompletionRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
+        services.AddTransient<IAiBudgetRepository, EfAiBudgetRepository>();
 
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;
         services.AddDbContext<GeoClubBotDbContext>(options =>

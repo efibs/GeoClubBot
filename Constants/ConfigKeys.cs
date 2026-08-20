@@ -29,5 +29,7 @@ public static class ConfigKeys
 
     public const string DailyMissionStatisticsSnapshotCronScheduleConfigurationKey = "DailyMissionStatistics:SnapshotSchedule";
 
+    public const string AiModelCatalogRefreshCronScheduleConfigurationKey = "AI:ModelCatalogRefreshSchedule";
+
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }
