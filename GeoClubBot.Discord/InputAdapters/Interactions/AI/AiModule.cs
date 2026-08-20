@@ -1,3 +1,4 @@
+using System.Globalization;
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
@@ -9,36 +10,56 @@ using UseCases.OutputPorts.AI;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
 
 [CommandContextType(InteractionContextType.Guild)]
-[DefaultMemberPermissions(GuildPermission.Administrator)]
-[Group("ai", "Commands for controlling the AI stuff")]
+[Group("ai", "Commands for controlling the AI features")]
 public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogger<AiModule> logger)
     : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("rebuild-plonkit-guide", "Rebuilds the internal PlonkIt Guide clone")]
-    public async Task RebuildPlonkItGuideVectorStore()
-    {
-        if (_plonkItGuideVectorStore == null)
+    [SlashCommand("status", "Show which AI models are available and how much budget is left today")]
+    public Task StatusAsync() =>
+        ExecuteAsync(async _ =>
         {
-            await RespondAsync("AI features are not active.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        await ExecuteAsync(
-            async ct =>
+            if (_catalog is null || _knowledgeIndex is null)
             {
-                var statusUpdates = _plonkItGuideVectorStore.RebuildStoreAsync(ct);
+                await FollowupAsync("AI features are not active.", ephemeral: true).ConfigureAwait(false);
+                return;
+            }
 
-                var index = 0;
-                await foreach (var statusUpdate in statusUpdates.ConfigureAwait(false))
-                {
-                    if (index++ % 10 == 0)
-                    {
-                        await ModifyOriginalResponseAsync(msg => msg.Content = statusUpdate).ConfigureAwait(false);
-                    }
-                }
-            },
-            failureMessage: "Failed to rebuild the internal PlonkIt Guide clone.");
+            var status = _catalog.ReadStatus();
+            var chain = await _catalog.ReadChainAsync(new ChatModelRequirements()).ConfigureAwait(false);
+
+            var indexedChunks = await ReadIndexSizeAsync().ConfigureAwait(false);
+
+            var embed = new EmbedBuilder()
+                .WithTitle("🤖 AI status")
+                .AddField("Free models known", $"{status.ModelCount} ({status.VisionModelCount} accept images)", inline: true)
+                .AddField("Catalog source", status.Source.ToString(), inline: true)
+                .AddField("Last refreshed", status.LastRefreshedAtUtc is { } at
+                    ? TimestampTag.FromDateTimeOffset(at, TimestampTagStyles.Relative).ToString()
+                    : "never", inline: true)
+                .AddField("Model chain", $"`{string.Join("` → `", chain)}`")
+                .AddField("Indexed guide chunks", indexedChunks, inline: true)
+                .Build();
+
+            await FollowupAsync(embed: embed, ephemeral: true).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to read the AI status.");
+
+    private async Task<string> ReadIndexSizeAsync()
+    {
+        try
+        {
+            var count = await _knowledgeIndex!.CountAsync().ConfigureAwait(false);
+            return count.ToString(CultureInfo.InvariantCulture);
+        }
+        catch (Exception)
+        {
+            // The vector store being unreachable is itself useful status, not a reason to fail the
+            // whole command.
+            return "unavailable";
+        }
     }
 
-    private readonly IPlonkItGuideVectorStore? _plonkItGuideVectorStore = serviceProvider.GetService<IPlonkItGuideVectorStore>();
+    // Resolved optionally so the module still loads when the AI feature is switched off.
+    private readonly IChatModelCatalog? _catalog = serviceProvider.GetService<IChatModelCatalog>();
+
+    private readonly IKnowledgeIndex? _knowledgeIndex = serviceProvider.GetService<IKnowledgeIndex>();
 }

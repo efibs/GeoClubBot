@@ -11,9 +11,6 @@ public static class ConfigKeys
 {
     public const string PostgresConnectionString = "PostgreSQL";
     public const string QDrantConnectionString = "QDrant";
-    public const string LlmInferenceEndpointConnectionString = "LlmInferenceEndpoint";
-    public const string EmbeddingEndpoint = "EmbeddingEndpoint";
-    public const string CategorizationEndpoint = "CategorizationEndpoint";
 
     public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:SyncSchedule";
 

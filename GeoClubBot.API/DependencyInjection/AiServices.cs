@@ -6,11 +6,9 @@ using Constants;
 using GeoClubBot.Services;
 using Infrastructure.OutputAdapters.AI;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
-using MediatR;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
 using UseCases.OutputPorts.AI;
-using UseCases.UseCases.AI;
 
 namespace GeoClubBot.DependencyInjection;
 
@@ -23,8 +21,7 @@ public static class AiServices
         // Registered even when the feature is off. MediatR's assembly scan picks up every handler in
         // the Application assembly unconditionally, so the container must be able to construct the
         // AI handlers' dependencies or service-descriptor validation fails at start-up. Nothing here
-        // performs I/O until it is called, and the hosted services and jobs that would call it are
-        // gated below and on AiConfiguration.Active respectively.
+        // performs I/O until it is called, and the listener below is only added when AI is enabled.
         services.AddOpenRouterServices(aiConfig);
         services.AddKnowledgeIndex(configuration, aiConfig);
 
@@ -33,38 +30,12 @@ public static class AiServices
             return;
         }
 
-        var qdrantConnectionString = configuration.GetConnectionString(ConfigKeys.QDrantConnectionString)!;
-        var embeddingEndpoint = configuration.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
-        var embeddingModelName = aiConfig.EmbeddingModel!;
-
-        services.AddHostedService<AiBotService>();
-
-        services.AddTransient(_ => new QdrantClient(qdrantConnectionString));
-
-        services.AddTransient<VllmEmbeddingService>(_ =>
-            new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName));
-
-        // Split components: page-fetching (Puppeteer), embedding (vLLM + categoriser), and
-        // the vector index (Qdrant). The PlonkItGuideVectorStore facade composes them.
-        services.AddSingleton<IPlonkItPageFetcher, PuppeteerPlonkItPageFetcher>();
-        services.AddSingleton<IPlonkItVectorIndex, QdrantPlonkItVectorIndex>();
-        services.AddSingleton<IPlonkItEmbedder, VllmPlonkItEmbedder>();
-
-        services.AddSingleton<PlonkItGuideVectorStore>();
-        services.AddSingleton<IPlonkItGuideVectorStore>(sp => sp.GetRequiredService<PlonkItGuideVectorStore>());
-
-        services.AddTransient<PlonkItGuidePlugin>();
-
-        services.AddTransient<IPlonkItGuideEmbeddingTextProvider, PlonkItGuideEmbeddingTextProvider>();
-
-        // MediatR's assembly scan only sees the Application assembly; the AI chat handler
-        // lives in Infrastructure (it needs SemanticKernel), so register it manually.
-        services.AddTransient<IRequestHandler<GetAiResponseQuery, string?>, GeoGuessrChatBotHandler>();
+        services.AddHostedService<AiConversationGateway>();
     }
 
     /// <summary>
-    /// Chat generation via OpenRouter, with the model chosen automatically from whatever is free
-    /// today rather than pinned in configuration.
+    /// Chat generation and embeddings via OpenRouter, with the chat model chosen automatically from
+    /// whatever is free today rather than pinned in configuration.
     /// </summary>
     private static void AddOpenRouterServices(this IServiceCollection services, AiConfiguration aiConfig)
     {
@@ -109,9 +80,7 @@ public static class AiServices
 
     /// <summary>
     /// The vector store holding indexed guide content. Registered unconditionally for the same reason
-    /// as the chat services: Application handlers that depend on it are discovered by MediatR's
-    /// assembly scan whether or not the feature is enabled. Nothing connects to Qdrant until a query
-    /// or an ingest actually runs.
+    /// as the chat services. Nothing connects to Qdrant until a query or an ingest actually runs.
     /// </summary>
     private static void AddKnowledgeIndex(
         this IServiceCollection services,

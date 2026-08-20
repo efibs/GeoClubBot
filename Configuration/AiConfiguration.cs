@@ -33,6 +33,15 @@ public class AiConfiguration
     /// <summary>Per-user hourly cap, so one person cannot spend the guild's whole daily allowance.</summary>
     public int MaxRequestsPerUserPerHour { get; set; } = 6;
 
+    /// <summary>Guide images attached to a single answer, so a reply cannot turn into an image dump.</summary>
+    public int MaxImagesInReply { get; set; } = 3;
+
+    /// <summary>
+    /// Channels the bot will answer in. Empty means every channel it can see. Restricting this is the
+    /// simplest way to keep the daily allowance from being spent in unrelated channels.
+    /// </summary>
+    public List<ulong> AllowedChannelIds { get; set; } = [];
+
     /// <summary>
     /// Prefix of the vector collection. The embedding model and its dimensions are appended
     /// automatically, because vectors from different models are not comparable: switching models must

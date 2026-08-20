@@ -138,7 +138,11 @@ builder.Services.AddOpenApi();
 builder.Services.AddClubBotOptions(builder.Configuration);
 
 // Add the discord services
-builder.Services.AddDiscordServices();
+// The AI conversation listener reads replies that do not mention the bot, which needs the privileged
+// MessageContent intent. Requested only when the feature is on: asking for a privileged intent that
+// is not enabled in the developer portal drops the whole gateway connection, not just AI.
+var aiActive = builder.Configuration.GetValue<bool>($"{AiConfiguration.SectionName}:{nameof(AiConfiguration.Active)}");
+builder.Services.AddDiscordServices(enableMessageContent: aiActive);
 
 // Add GeoGuessr client (mock or real)
 var useMockGeoGuessr = builder.Configuration.GetValue("GeoGuessr:UseMock", false);

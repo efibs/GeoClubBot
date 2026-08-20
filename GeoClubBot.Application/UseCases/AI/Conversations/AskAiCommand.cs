@@ -1,0 +1,216 @@
+using Configuration;
+using MediatR;
+using Microsoft.Extensions.Options;
+using UseCases.Abstractions;
+using UseCases.OutputPorts.AI;
+using UseCases.OutputPorts.Repositories;
+using Utilities;
+
+namespace UseCases.UseCases.AI.Conversations;
+
+/// <summary>
+/// Answers a Discord message, continuing the reply chain it belongs to.
+/// </summary>
+/// <param name="ParentDiscordMessageId">The message replied to, or null when this starts a conversation.</param>
+public sealed record AskAiCommand(
+    ulong DiscordMessageId,
+    ulong? ParentDiscordMessageId,
+    ulong ChannelId,
+    ulong? GuildId,
+    ulong AuthorDiscordUserId,
+    string Content,
+    IReadOnlyList<string> AttachmentImageUrls) : ICommand<Result<AiAnswer>>;
+
+public sealed record AiAnswerImage(string ImageUrl, string SourceUrl, string? Title);
+
+/// <param name="ConversationId">Root message id; the caller stores it on both resulting turns.</param>
+/// <param name="IsLongThread">True when the branch is deep enough to suggest starting a fresh one.</param>
+public sealed record AiAnswer(
+    string Text,
+    IReadOnlyList<AiAnswerImage> Images,
+    string ModelUsed,
+    ulong ConversationId,
+    int Depth,
+    bool IsLongThread);
+
+public sealed class AskAiHandler(
+    IAiConversationRepository conversations,
+    IAiBudgetRepository budget,
+    IEmbedder embedder,
+    IKnowledgeIndex knowledgeIndex,
+    IChatModelCatalog modelCatalog,
+    IChatModelClient chatClient,
+    IOptions<AiConfiguration> aiConfiguration,
+    IOptions<AiConversationConfiguration> conversationConfiguration)
+    : IRequestHandler<AskAiCommand, Result<AiAnswer>>
+{
+    /// <summary>Guide excerpts retrieved per question.</summary>
+    private const int RetrievalLimit = 8;
+
+    /// <summary>
+    /// One question costs two upstream calls: embedding the query, then generating the answer. Both
+    /// are claimed up front so a request that would exceed the daily allowance is refused before any
+    /// of it is spent.
+    /// </summary>
+    private const int RequestsPerQuestion = 2;
+
+    public async Task<Result<AiAnswer>> Handle(AskAiCommand request, CancellationToken cancellationToken)
+    {
+        var config = aiConfiguration.Value;
+        var limits = conversationConfiguration.Value;
+        var now = DateTimeOffset.UtcNow;
+
+        var throttled = await IsUserThrottledAsync(request.AuthorDiscordUserId, config, now, cancellationToken)
+            .ConfigureAwait(false);
+        if (throttled)
+        {
+            return Error.Conflict("ai.user_throttled",
+                $"You've used your AI budget for this hour ({config.MaxRequestsPerUserPerHour}). Try again later.");
+        }
+
+        var context = await BuildContextAsync(request, limits, now, cancellationToken).ConfigureAwait(false);
+
+        var reserved = await budget.TryReserveRequestsAsync(
+            DateOnly.FromDateTime(now.UtcDateTime),
+            RequestsPerQuestion,
+            config.OpenRouter.DailyRequestBudget,
+            cancellationToken).ConfigureAwait(false);
+
+        if (!reserved)
+        {
+            return Error.Conflict("ai.budget_exhausted",
+                "I'm out of free AI requests for today. They reset at 00:00 UTC.");
+        }
+
+        // Deliberately not released on later failure: by this point at least one upstream call has
+        // usually been made, and over-counting is far safer than a 429 storm from under-counting.
+        var hits = await RetrieveAsync(request, cancellationToken).ConfigureAwait(false);
+
+        var (messages, offeredImages) = AiPromptBuilder.Build(
+            context, request.Content, request.AttachmentImageUrls, hits);
+
+        // Only ask for a vision-capable model when the user actually attached something; the pool of
+        // free models that accept images is far smaller than the pool overall.
+        var chain = await modelCatalog.ReadChainAsync(
+            new ChatModelRequirements(NeedsImageInput: request.AttachmentImageUrls.Count > 0),
+            cancellationToken).ConfigureAwait(false);
+
+        var completion = await chatClient
+            .CompleteAsync(new AiChatRequest(chain, messages, Temperature: 0.2), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (completion.IsFailure)
+        {
+            // Demote whichever model was asked first so the next question prefers something else.
+            modelCatalog.ReportFailure(chain[0]);
+            return completion.Error;
+        }
+
+        await budget.RecordTokenUsageAsync(
+            DateOnly.FromDateTime(now.UtcDateTime),
+            completion.Value.Usage.PromptTokens,
+            completion.Value.Usage.CompletionTokens,
+            cancellationToken).ConfigureAwait(false);
+
+        var (text, citedImages) = AiPromptBuilder.ResolveCitedImages(
+            completion.Value.Text, offeredImages, config.MaxImagesInReply);
+
+        var depth = context.ParentDepth + 1;
+
+        return new AiAnswer(
+            text,
+            [.. citedImages.Select(image => new AiAnswerImage(image.ImageUrl, image.SourceUrl, image.Title))],
+            completion.Value.ModelUsed,
+            ResolveConversationId(context, request),
+            depth,
+            depth >= limits.LongThreadDepth);
+    }
+
+    private async Task<bool> IsUserThrottledAsync(
+        ulong authorDiscordUserId,
+        AiConfiguration config,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (config.MaxRequestsPerUserPerHour <= 0)
+        {
+            return false;
+        }
+
+        var recent = await conversations
+            .CountUserTurnsSinceAsync(authorDiscordUserId, now.AddHours(-1), cancellationToken)
+            .ConfigureAwait(false);
+
+        return recent >= config.MaxRequestsPerUserPerHour;
+    }
+
+    private async Task<ConversationContext> BuildContextAsync(
+        AskAiCommand request,
+        AiConversationConfiguration limits,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (request.ParentDiscordMessageId is not { } parentId)
+        {
+            return ConversationContext.Empty;
+        }
+
+        var parent = await conversations.ReadByMessageIdAsync(parentId, cancellationToken).ConfigureAwait(false);
+        if (parent is null)
+        {
+            // A reply to something we never stored — usually history that aged out. Answering fresh
+            // is friendlier than refusing, and the user's message still stands on its own.
+            return ConversationContext.Empty;
+        }
+
+        var turns = await conversations.ReadConversationAsync(parent.ConversationId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return ConversationContextBuilder.Build(turns, parentId, limits, now);
+    }
+
+    /// <summary>
+    /// Retrieval failures degrade to answering without guide context rather than failing the whole
+    /// question: a model with no excerpts is still more useful than an error message.
+    /// </summary>
+    private async Task<IReadOnlyList<KnowledgeHit>> RetrieveAsync(
+        AskAiCommand request,
+        CancellationToken cancellationToken)
+    {
+        var inputs = new List<EmbeddingInput> { new TextEmbeddingInput(request.Content) };
+        if (request.AttachmentImageUrls.Count > 0)
+        {
+            inputs.Add(new ImageEmbeddingInput(request.AttachmentImageUrls[0]));
+        }
+
+        var embeddings = await embedder.EmbedAsync(inputs, cancellationToken).ConfigureAwait(false);
+        if (embeddings.IsFailure)
+        {
+            return [];
+        }
+
+        var query = new KnowledgeQuery
+        {
+            TextVector = embeddings.Value[0],
+            ImageVector = embeddings.Value.Count > 1 ? embeddings.Value[1] : null,
+            Limit = RetrievalLimit
+        };
+
+        try
+        {
+            return await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The vector store being unreachable should not take the whole feature down.
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// A continued branch keeps its existing root; a fresh conversation is rooted at the message that
+    /// started it.
+    /// </summary>
+    private static ulong ResolveConversationId(ConversationContext context, AskAiCommand request) =>
+        context.IsNewConversation ? request.DiscordMessageId : request.ParentDiscordMessageId!.Value;
+}

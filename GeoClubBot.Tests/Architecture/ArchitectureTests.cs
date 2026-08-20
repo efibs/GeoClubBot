@@ -86,6 +86,23 @@ public class ArchitectureTests
     }
 
     [Fact]
+    public void Infrastructure_should_not_reintroduce_the_retired_ai_dependencies()
+    {
+        // Semantic Kernel and a headless browser were both removed during the AI rework: generation
+        // moved to a plain HTTP client, and the one site that appeared to need a browser turns out to
+        // embed its content as JSON in the initial response. Both are heavy enough that creeping back
+        // in should be a deliberate decision rather than an accident.
+        var result = Types.InAssembly(typeof(GeoClubBotDbContext).Assembly)
+            .ShouldNot()
+            .HaveDependencyOnAny("Microsoft.SemanticKernel", "PuppeteerSharp")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            "these dependencies were deliberately removed, but these types reference one: {0}",
+            FailingTypes(result));
+    }
+
+    [Fact]
     public void Discord_adapters_should_not_depend_on_infrastructure()
     {
         var result = Types.InAssembly(DiscordAssembly)
