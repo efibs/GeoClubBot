@@ -129,7 +129,9 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         var chunks = ContentChunker.Chunk(document.Chunks);
         var contentHash = ComputeHash(chunks);
 
-        if (!force && string.Equals(source.ContentHash, contentHash, StringComparison.Ordinal))
+        if (!force
+            && string.Equals(source.ContentHash, contentHash, StringComparison.Ordinal)
+            && !source.NeedsImageBackfill)
         {
             source.MarkUnchanged(now);
             return Outcome.Unchanged;
@@ -155,7 +157,8 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         await knowledgeIndex.SweepAsync(source.SourceType, source.NaturalKey, ingestRun, cancellationToken)
             .ConfigureAwait(false);
 
-        source.MarkIngested(contentHash, document.SourceUpdatedAtUtc, written.Value.ChunkCount, written.Value.ImageCount, now);
+        source.MarkIngested(contentHash, document.SourceUpdatedAtUtc, written.Value.ChunkCount,
+            written.Value.ImageCount, now, written.Value.ImagesDeferred);
         LogIngested(logger, source.SourceType, source.NaturalKey, written.Value.ChunkCount, written.Value.ImageCount);
 
         return Outcome.Ingested(written.Value.ChunkCount);
@@ -195,7 +198,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             // could not be embedded must carry no image vector at all, and that distinction is too
             // easy to lose in a conditional expression.
             ReadOnlyMemory<float>? imageVector = null;
-            if (chunk.ImageUrl is { } imageUrl && imageVectors.TryGetValue(imageUrl, out var embedded))
+            if (chunk.ImageUrl is { } imageUrl && imageVectors.Vectors.TryGetValue(imageUrl, out var embedded))
             {
                 imageVector = embedded;
             }
@@ -222,7 +225,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
         await knowledgeIndex.UpsertAsync(points, ingestRun, cancellationToken).ConfigureAwait(false);
 
-        return new WriteResult(points.Count, imageVectors.Count);
+        return new WriteResult(points.Count, imageVectors.Vectors.Count, imageVectors.DeferredForBudget);
     }
 
     /// <summary>
@@ -232,12 +235,12 @@ public sealed partial class IngestKnowledgeSourcesHandler(
     /// several guide sites block unattended clients. Isolating images means a blocked host costs
     /// image search for that source rather than removing the source from the index entirely.
     /// </summary>
-    private async Task<Dictionary<string, ReadOnlyMemory<float>>> EmbedImagesAsync(
+    private async Task<ImageEmbeddingResult> EmbedImagesAsync(
         IReadOnlyList<ExtractedChunk> chunks,
         AiIngestionConfiguration settings,
         CancellationToken cancellationToken)
     {
-        var empty = new Dictionary<string, ReadOnlyMemory<float>>(StringComparer.Ordinal);
+        var empty = ImageEmbeddingResult.None;
         if (!settings.EmbedImages)
         {
             return empty;
@@ -256,8 +259,11 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
         if (!await TryReserveAsync(imageUrls.Count, cancellationToken).ConfigureAwait(false))
         {
-            // Text is already written for this source; skipping images keeps it usable.
-            return empty;
+            // The text is already written, so the source stays usable — but it is only half indexed,
+            // and saying so is what brings it back for its images instead of leaving them lost until
+            // someone forces a rebuild.
+            LogImagesDeferred(logger, imageUrls.Count);
+            return ImageEmbeddingResult.Deferred;
         }
 
         var inputs = imageUrls.Select(url => (EmbeddingInput)new ImageEmbeddingInput(url!)).ToList();
@@ -275,7 +281,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             result[imageUrls[index]!] = vectors.Value[index];
         }
 
-        return result;
+        return new ImageEmbeddingResult(result, DeferredForBudget: false);
     }
 
     /// <summary>Claims the embedding requests this batch will cost before spending them.</summary>
@@ -330,7 +336,22 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
     private const string BudgetExhaustedCode = "ai.budget_exhausted";
 
-    private sealed record WriteResult(int ChunkCount, int ImageCount);
+    private sealed record WriteResult(int ChunkCount, int ImageCount, bool ImagesDeferred);
+
+    /// <param name="DeferredForBudget">
+    /// Distinguishes "ran out of allowance" from "the images could not be embedded". Only the former
+    /// is worth retrying; a permanently blocked image host would otherwise be retried every run.
+    /// </param>
+    private sealed record ImageEmbeddingResult(
+        Dictionary<string, ReadOnlyMemory<float>> Vectors,
+        bool DeferredForBudget)
+    {
+        public static ImageEmbeddingResult None =>
+            new(new Dictionary<string, ReadOnlyMemory<float>>(StringComparer.Ordinal), false);
+
+        public static ImageEmbeddingResult Deferred =>
+            new(new Dictionary<string, ReadOnlyMemory<float>>(StringComparer.Ordinal), true);
+    }
 
     private readonly record struct Outcome(
         bool WasIngested,
@@ -388,6 +409,9 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
     [LoggerMessage(LogLevel.Warning, "Could not embed {ImageCount} image(s); indexing text only ({Reason}).")]
     static partial void LogImageEmbeddingFailed(ILogger logger, int imageCount, string reason);
+
+    [LoggerMessage(LogLevel.Information, "Postponed {ImageCount} image(s) until the allowance resets.")]
+    static partial void LogImagesDeferred(ILogger logger, int imageCount);
 
     [LoggerMessage(LogLevel.Information, "Stopping ingestion after {Attempted} source(s): the daily AI allowance is spent.")]
     static partial void LogBudgetExhausted(ILogger logger, int attempted);

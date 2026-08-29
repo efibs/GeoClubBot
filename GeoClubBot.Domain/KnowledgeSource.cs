@@ -86,6 +86,17 @@ public class KnowledgeSource : BaseEntity
 
     public int ImageCount { get; private set; }
 
+    /// <summary>
+    /// True when a run indexed this source's text but had to postpone its images because the daily
+    /// allowance ran out mid-source. Such a source is usable but incomplete, so it is due again
+    /// immediately rather than waiting out the normal re-ingest interval.
+    ///
+    /// Deliberately not set when image embedding *failed* — a permanently blocked image host would
+    /// then put the source into an endless retry loop, spending the allowance every run to fail the
+    /// same way.
+    /// </summary>
+    public bool ImagesDeferred { get; private set; }
+
     public DateTimeOffset FirstSeenAtUtc { get; private set; }
 
     /// <summary>
@@ -139,7 +150,16 @@ public class KnowledgeSource : BaseEntity
         RemovedFromSyncAtUtc = null;
     }
 
-    public void MarkIngested(string contentHash, DateTimeOffset? sourceUpdatedAtUtc, int chunkCount, int imageCount, DateTimeOffset nowUtc)
+    /// <param name="imagesDeferred">
+    /// True when the images were postponed for lack of allowance rather than indexed or failed.
+    /// </param>
+    public void MarkIngested(
+        string contentHash,
+        DateTimeOffset? sourceUpdatedAtUtc,
+        int chunkCount,
+        int imageCount,
+        DateTimeOffset nowUtc,
+        bool imagesDeferred = false)
     {
         Status = KnowledgeSourceStatus.Ingested;
         StatusReason = null;
@@ -147,10 +167,14 @@ public class KnowledgeSource : BaseEntity
         SourceUpdatedAtUtc = sourceUpdatedAtUtc;
         ChunkCount = chunkCount;
         ImageCount = imageCount;
+        ImagesDeferred = imagesDeferred;
         ConsecutiveFailures = 0;
         LastAttemptedAtUtc = nowUtc;
         LastIngestedAtUtc = nowUtc;
     }
+
+    /// <summary>Whether unchanged content still needs work, because its images were never embedded.</summary>
+    public bool NeedsImageBackfill => ImagesDeferred;
 
     public void MarkFailed(string reason, DateTimeOffset nowUtc)
     {
@@ -203,7 +227,9 @@ public class KnowledgeSource : BaseEntity
             return nowUtc - lastAttempt >= backoff;
         }
 
-        return nowUtc - lastAttempt >= reingestInterval;
+        // Postponed images make the source incomplete, so it goes back in the queue at once instead
+        // of waiting weeks for its pictures.
+        return ImagesDeferred || nowUtc - lastAttempt >= reingestInterval;
     }
 
     private static string Truncate(string reason) =>

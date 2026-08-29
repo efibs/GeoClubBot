@@ -248,6 +248,76 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     /// whatever is due — so tests sharing a container must start from an empty queue or they see
     /// each other's sources.
     /// </summary>
+    [Fact]
+    public async Task Ingest_ResumesAcrossRuns_UntilEveryUnindexedSourceIsCovered()
+    {
+        // The backfill story: with a small daily allowance the library is indexed over several runs,
+        // so a run that stops early must leave the untouched sources at the front of the queue.
+        await ResetSourcesAsync();
+        await ResetTodaysBudgetAsync();
+
+        // One text-only source costs a single embedding request, so an allowance of one covers one.
+        using var host = CreateHost(dailyBudget: 1);
+        ArrangeCatalog(host, Descriptor(NewKey()), Descriptor(NewKey()), Descriptor(NewKey()));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeExtraction(host, Chunk("a", "text"));
+
+        var first = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        first.Value.Ingested.Should().Be(1, "the allowance covers exactly one source");
+        first.Value.BudgetExhausted.Should().BeTrue();
+
+        // A new day resets the allowance; the two untouched sources are still first in line because
+        // an out-of-budget source has its state left alone.
+        await ResetTodaysBudgetAsync();
+
+        var second = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        second.Value.Ingested.Should().Be(1);
+
+        await ResetTodaysBudgetAsync();
+        var third = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        third.Value.Ingested.Should().Be(1);
+
+        await ResetTodaysBudgetAsync();
+        var fourth = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        fourth.Value.Ingested.Should().Be(0, "everything is indexed and nothing is due again yet");
+    }
+
+    [Fact]
+    public async Task Ingest_RetriesImages_WhenAnEarlierRunCouldOnlyAffordTheText()
+    {
+        // A run can afford a source's text and then run out before its images. The source must not be
+        // recorded as fully indexed, or its images are lost until someone forces a rebuild.
+        await ResetSourcesAsync();
+        await ResetTodaysBudgetAsync();
+
+        // An allowance of one covers the text and leaves nothing for the image.
+        using (var lean = CreateHost(dailyBudget: 1))
+        {
+            ArrangeCatalog(lean, Descriptor(NewKey()));
+            await lean.SendAsync(new SyncSourceCatalogsCommand());
+            ArrangeExtraction(lean, Chunk("a", "caption", imageUrl: "https://i.imgur.com/a.png"));
+
+            await lean.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        }
+
+        // A later run with room to spare must pick the source back up, without waiting out the
+        // normal re-ingest interval and without anyone forcing a rebuild.
+        await ResetTodaysBudgetAsync();
+
+        using var host = CreateHost(dailyBudget: 100);
+        var index = ArrangeExtraction(host, Chunk("a", "caption", imageUrl: "https://i.imgur.com/a.png"));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        var written = index.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IKnowledgeIndex.UpsertAsync))
+            .Select(call => (IReadOnlyList<KnowledgePoint>)call.GetArguments()[0]!)
+            .LastOrDefault();
+
+        written.Should().NotBeNull("the source must be re-indexed once the allowance allows its images");
+        written.Should().OnlyContain(point => point.ImageVector != null);
+    }
+
     private async Task ResetSourcesAsync()
     {
         await using var db = fixture.CreateDbContext();
