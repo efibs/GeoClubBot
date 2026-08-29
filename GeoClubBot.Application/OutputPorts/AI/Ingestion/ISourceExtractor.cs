@@ -3,6 +3,10 @@ using Utilities;
 namespace UseCases.OutputPorts.AI.Ingestion;
 
 /// <summary>Identity and metadata of a source, without the ingestion bookkeeping the entity carries.</summary>
+/// <param name="UnsupportedReason">
+/// Set when a catalogue knows about this source but it cannot be indexed — a video, or a link behind
+/// authentication. Recorded rather than dropped so coverage reporting stays honest about the gap.
+/// </param>
 public sealed record SourceDescriptor(
     string SourceType,
     string NaturalKey,
@@ -11,7 +15,8 @@ public sealed record SourceDescriptor(
     string? Country = null,
     string? Continent = null,
     string? Author = null,
-    int Priority = 0);
+    int Priority = 0,
+    string? UnsupportedReason = null);
 
 /// <param name="LocalKey">
 /// Stable identity within the document. Point ids derive from it, so it must survive re-extraction —

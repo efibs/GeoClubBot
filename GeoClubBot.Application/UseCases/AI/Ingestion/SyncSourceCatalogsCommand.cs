@@ -66,10 +66,19 @@ public sealed partial class SyncSourceCatalogsHandler(
                     continue;
                 }
 
-                sources.Add(KnowledgeSource.Create(
+                var created = KnowledgeSource.Create(
                     descriptor.SourceType, descriptor.NaturalKey, descriptor.Url.ToString(),
                     KnowledgeSourceOrigin.Sync, now, descriptor.Title, descriptor.Country,
-                    descriptor.Continent, descriptor.Author, descriptor.Priority));
+                    descriptor.Continent, descriptor.Author, descriptor.Priority);
+
+                if (descriptor.UnsupportedReason is { } reason)
+                {
+                    // Recorded, not queued: it never enters the ingest queue, but an admin can still
+                    // see it and read why it is not indexed.
+                    created.MarkSkipped(reason, now);
+                }
+
+                sources.Add(created);
                 added++;
             }
 

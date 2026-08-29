@@ -24,6 +24,12 @@ public class AiIngestionConfiguration
     public int MaxDailyBudgetPercent { get; set; } = 60;
 
     /// <summary>
+    /// Google Sheets id of the community guide library to sync from. Empty disables the sync, which
+    /// is the default: the library belongs to someone else, so pointing at it is an operator's choice.
+    /// </summary>
+    public string? MetaLibrarySheetId { get; set; }
+
+    /// <summary>
     /// Whether to embed images at all. Some sites block unattended fetches of their images, and the
     /// embedding provider fetches them server-side, so image embedding can be turned off per
     /// deployment without losing the text.

@@ -105,6 +105,17 @@ public static class AiServices
         services.AddSingleton<ISourceExtractor>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
         services.AddSingleton<ISourceCatalog>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
 
+        // One extractor per source family. The registry picks between them, so a new family is a
+        // class plus a line here.
+        services.AddSingleton<ISourceExtractor, ImgurAlbumSourceExtractor>();
+        services.AddSingleton<ISourceExtractor, GoogleDocSourceExtractor>();
+        services.AddSingleton<ISourceExtractor, GoogleSlidesSourceExtractor>();
+        services.AddSingleton<ISourceExtractor, GoogleSheetSourceExtractor>();
+        services.AddSingleton<ISourceExtractor, DirectImageSourceExtractor>();
+
+        // A community library published as a spreadsheet; opt-in, and inert until a sheet id is set.
+        services.AddSingleton<ISourceCatalog, MetaLibrarySourceCatalog>();
+
         services.AddSingleton<ISourceExtractorRegistry, SourceExtractorRegistry>();
     }
 
