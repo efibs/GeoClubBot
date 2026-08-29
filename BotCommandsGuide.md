@@ -186,6 +186,63 @@ No parameters.
 
 ---
 
+## 🤖 Feature: AI Assistant
+Ask the bot about GeoGuessr metas — bollards, poles, plates, road markings, scripts — and it answers
+from an indexed library of community guides, showing the guide images that make the point better than
+words do.
+
+This feature is optional and may be switched off on your server. If it is off, `/ai status` will say so.
+
+### Asking a question
+There is no command for this — just **@-mention the bot** in a message:
+
+> @GeoClubBot what do Ghanaian bollards look like?
+
+You can attach a screenshot to your message and ask about that instead. The bot replies in the
+channel (not privately, so everyone can learn from the answer), cites the guides it used, and attaches
+any guide images it relied on.
+
+### Asking a follow-up
+**Reply to the bot's answer** and ask your next question. You don't need to mention it again — it
+picks up where the conversation left off.
+
+Several people can reply to the same answer at once. Each reply starts its own branch of the
+conversation, so your follow-ups and someone else's never get mixed together. If you reply to
+*someone else's* follow-up, you join their branch and see its history.
+
+A conversation goes quiet after a day of inactivity; replying after that starts a fresh one. Very long
+threads get a nudge suggesting you start over, which keeps answers sharp.
+
+### `/ai search`
+Shows what the guide library returns for a query, **without** asking an AI model to write an answer.
+Useful for finding the source guide itself, and for checking whether the bot actually has anything
+on a topic.
+
+**Parameters:**
+- `query` *(required)* — what to look for.
+- `country` *(optional)* — restrict results to one country.
+
+### `/ai status`
+Shows which AI models are currently available, how much of the guide library is indexed, and how much
+of today's request allowance is left.
+
+No parameters.
+
+> **Note on limits.** The AI runs on a free allowance that resets daily. If it says it's out of
+> requests for the day, that's expected rather than broken — it resets at 00:00 UTC. There is also a
+> per-person hourly cap so one enthusiastic user can't spend the whole server's budget.
+
+### Admin commands
+These require the **Administrator** permission:
+
+- `/ai sync-sources` — refresh the catalogue of known guide sources.
+- `/ai ingest` — index a batch of guides now. Parameters: `count`, `source-type`, `force`.
+
+Indexing normally runs by itself overnight, so these are only needed to kick things along or after
+changing what the bot should read.
+
+---
+
 # 💡 Tips
 - All bot replies are **only visible to you** unless stated otherwise — so don't worry about cluttering channels.
 - If a command fails with an "internal error" message, try again later. If it keeps happening, ping an admin.

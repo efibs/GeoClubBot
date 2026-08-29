@@ -29,7 +29,9 @@
       timeout: 5s
       retries: 5
   qdrant:
-    image: qdrant/qdrant
+    # Pinned to match the version the integration tests run against, so local behaviour and CI
+    # cannot drift apart.
+    image: qdrant/qdrant:v1.15.1
     ports:
       - "6333:6333"  # HTTP API
       - "6334:6334"  # gRPC API

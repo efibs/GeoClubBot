@@ -46,8 +46,10 @@ challenges, send mission reminders, and link Discord accounts to GeoGuessr profi
   level-up announcements, and MVP rewards.
 - **🎭 Self-roles** — members opt into optional roles via a private menu, no admin needed.
 - **👥 Member management** — welcome/leave messages, private member channels, multi-club support.
-- **🤖 Optional AI features** — Qdrant + Semantic Kernel powered features, gated behind the
-  `AI:Active` flag.
+- **🤖 Optional AI assistant** — mention the bot with a GeoGuessr question (or a screenshot) and it
+  answers from an indexed library of community guides, showing the guide images that make the point.
+  Reply to keep the conversation going. Gated behind `AI:Active`; see the
+  [AI Guide](Documentation/AiGuide.md).
 
 Work is driven by a mix of **Discord slash commands** and **Quartz scheduled jobs**
 (`SyncClubsJob`, `ActivityCheckJob`, `CheckClubLevelJob`, `DailyChallengeJob`,
@@ -128,7 +130,7 @@ startup. Key sections:
 | `ActivityChecker` | Min XP, grace period, max strikes, strike decay window |
 | `DailyChallenges` / `DailyMissionReminder` / `DailyMissionLogging` | Cron schedules, channels, podium roles |
 | `SelfRoles`, `MemberPrivateChannels`, `ActivityReward`, `GeoGuessrAccountLinking` | Per-feature settings |
-| `AI` | Optional AI features (`Active`, model endpoints) |
+| `AI` | Optional AI assistant — `Active`, OpenRouter key, request budget, conversation and indexing limits ([guide](Documentation/AiGuide.md)) |
 | `SQL:Migrate` | Auto-apply EF Core migrations on startup |
 | `OpenTelemetry:Endpoint` | Opt-in OTLP exporter (e.g. the Aspire dashboard from `compose.yaml`) |
 
@@ -222,6 +224,7 @@ docker build -f ./GeoClubBot.API/Dockerfile -t ghcr.io/efibs/geo-club-bot:your-v
 | [CLAUDE.md](CLAUDE.md) | Architecture overview + build/test commands |
 | [Developer Guide](Documentation/DeveloperGuide.md) | Solution map and "where do I add X?" recipes |
 | [Result Conventions](Documentation/ResultConventions.md) | Error handling with `Result<T>` |
+| [AI Guide](Documentation/AiGuide.md) | How the AI assistant works, what it costs to run, how to turn it on |
 | [Bot Commands Guide](BotCommandsGuide.md) | User-facing command reference |
 | [Contributing](CONTRIBUTING.md) | Branching model, pre-commit hook, CI/CD |
 
