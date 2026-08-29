@@ -5,6 +5,7 @@ using GeoClubBot.Discord.InputAdapters.Interactions.AI;
 using GeoClubBot.Discord.Services;
 using MediatR;
 using Microsoft.Extensions.Options;
+using UseCases.UseCases.AI;
 using UseCases.UseCases.AI.Conversations;
 using Utilities;
 
@@ -40,6 +41,26 @@ public sealed partial class AiConversationGateway(
     {
         await botReadyService.DiscordSocketClientReady.ConfigureAwait(false);
         client.MessageReceived += OnMessageReceived;
+
+        // Without this the roster is empty until the refresh job's next tick, and every question in
+        // the meantime falls back to the router instead of a chosen model. Fire-and-forget so a slow
+        // or unreachable provider cannot hold up start-up.
+        _ = Task.Run(RefreshModelCatalogAsync, cancellationToken);
+    }
+
+    private async Task RefreshModelCatalogAsync()
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<ISender>()
+                .Send(new RefreshChatModelCatalogCommand()).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // A missing roster is a degraded state, not a broken one: the fallback router still answers.
+            LogCatalogRefreshFailed(logger, ex);
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -228,6 +249,9 @@ public sealed partial class AiConversationGateway(
         [.. message.Attachments
             .Where(attachment => attachment.ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)
             .Select(attachment => attachment.Url)];
+
+    [LoggerMessage(LogLevel.Warning, "Could not read the AI model roster at start-up; using the fallback router until the next refresh.")]
+    static partial void LogCatalogRefreshFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(LogLevel.Warning, "AI answer for message {MessageId} failed: {ErrorCode}")]
     static partial void LogAnswerFailed(ILogger logger, ulong messageId, string errorCode);
