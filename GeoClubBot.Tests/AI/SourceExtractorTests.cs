@@ -1,9 +1,13 @@
+using System.IO.Compression;
 using System.Net;
 using System.Text;
+using Configuration;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.AI.Extractors;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using NSubstitute;
+using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
 using Utilities;
 using Xunit;
@@ -76,9 +80,8 @@ public sealed class SourceExtractorTests
     [Fact]
     public async Task GoogleDoc_SplitsTextIntoParagraphsAndTracksHeadings()
     {
-        var extractor = new GoogleDocSourceExtractor(
-            Factory("Tunisian Driving Directions\n\nRoads here are numbered oddly, which matters.\n\nCopyright\n\nOnly 2022 and 2023 appear in this country."),
-            NullLogger<GoogleDocSourceExtractor>.Instance);
+        var extractor = CreateDocExtractor(
+            Factory("Tunisian Driving Directions\n\nRoads here are numbered oddly, which matters.\n\nCopyright\n\nOnly 2022 and 2023 appear in this country."));
 
         var result = await extractor.ExtractAsync(GoogleDoc());
 
@@ -92,9 +95,7 @@ public sealed class SourceExtractorTests
     public async Task GoogleDoc_ReportsAPrivateDocumentAsSkippable()
     {
         // Not-publicly-shared is permanent, so retrying nightly would spend the run's budget failing.
-        var extractor = new GoogleDocSourceExtractor(
-            Factory("Forbidden", HttpStatusCode.Forbidden),
-            NullLogger<GoogleDocSourceExtractor>.Instance);
+        var extractor = CreateDocExtractor(Factory("Forbidden", HttpStatusCode.Forbidden));
 
         var result = await extractor.ExtractAsync(GoogleDoc());
 
@@ -106,9 +107,7 @@ public sealed class SourceExtractorTests
     [Fact]
     public async Task GoogleDoc_TreatsAServerErrorAsWorthRetrying()
     {
-        var extractor = new GoogleDocSourceExtractor(
-            Factory("boom", HttpStatusCode.InternalServerError),
-            NullLogger<GoogleDocSourceExtractor>.Instance);
+        var extractor = CreateDocExtractor(Factory("boom", HttpStatusCode.InternalServerError));
 
         var result = await extractor.ExtractAsync(GoogleDoc());
 
@@ -159,6 +158,155 @@ public sealed class SourceExtractorTests
         var chunk = result.Value.Chunks.Should().ContainSingle().Subject;
         chunk.ImageUrl.Should().Be("https://i.imgur.com/x.png");
         chunk.Text.Should().Contain("Bangladesh").And.Contain("Roof rack car map");
+    }
+
+    [Fact]
+    public async Task GoogleDoc_UsesTheCheapTextExport_WhenImagesCannotBeServed()
+    {
+        // Without a relay the images have nowhere to live, so paying ~800x the bandwidth for the zip
+        // would buy nothing.
+        var handler = new RecordingHandler("Some text.\n\nMore text.");
+        var extractor = CreateDocExtractor(Factory(handler), relayEnabled: false);
+
+        await extractor.ExtractAsync(GoogleDoc());
+
+        handler.LastRequestUri.Should().Contain("format=txt");
+    }
+
+    [Fact]
+    public async Task GoogleDoc_ReadsImagesFromTheZipExport_AndCaptionsThemFromTheirParagraph()
+    {
+        // An image in one of these guides is often the actual answer, and a written question reaches
+        // it only through the text it sits in.
+        var archive = BuildDocArchive(
+            "<html><body>"
+            + "<p>Tunisian plates are black with white text.<img src=\"images/image1.png\"></p>"
+            + "<p>Second paragraph.</p>"
+            + "</body></html>");
+
+        var handler = new RecordingHandler(archive);
+        var relay = Relay(enabled: true);
+        var extractor = CreateDocExtractor(Factory(handler), relay);
+
+        var result = await extractor.ExtractAsync(GoogleDoc());
+
+        handler.LastRequestUri.Should().Contain("format=zip");
+        result.IsSuccess.Should().BeTrue();
+
+        var image = result.Value.Chunks.Should().ContainSingle(chunk => chunk.ImageUrl != null).Subject;
+        image.ImageUrl.Should().Be("https://relay/img.png");
+        image.Text.Should().Contain("black with white text");
+
+        result.Value.Chunks.Where(chunk => chunk.ImageUrl == null).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task GoogleDoc_FallsBackToThePrecedingParagraph_ForAnImageOnItsOwn()
+    {
+        var archive = BuildDocArchive(
+            "<html><body>"
+            + "<p>Bollards here are short and white.</p>"
+            + "<p><img src=\"images/image1.png\"></p>"
+            + "</body></html>");
+
+        var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), Relay(enabled: true))
+            .ExtractAsync(GoogleDoc());
+
+        result.Value.Chunks.Single(chunk => chunk.ImageUrl != null)
+            .Text.Should().Contain("short and white");
+    }
+
+    [Fact]
+    public async Task GoogleDoc_KeepsTheTextWhenAnImageCannotBeStored()
+    {
+        // A relay refusal costs a picture, never the document it belongs to.
+        var archive = BuildDocArchive(
+            "<html><body><p>Useful prose.<img src=\"images/image1.png\"></p></body></html>");
+
+        var relay = Relay(enabled: true);
+        relay.StoreAsync(Arg.Any<byte[]>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Result<string>.Failure(Error.Validation("ai.image_unsupported_type", "nope")));
+
+        var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), relay)
+            .ExtractAsync(GoogleDoc());
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Chunks.Should().ContainSingle().Which.ImageUrl.Should().BeNull();
+    }
+
+    /// <summary>A zip shaped like the real export: the document as HTML plus its images as entries.</summary>
+    private static byte[] BuildDocArchive(string html)
+    {
+        using var buffer = new MemoryStream();
+
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var writer = new StreamWriter(archive.CreateEntry("Guide.html").Open()))
+            {
+                writer.Write(html);
+            }
+
+            using var image = archive.CreateEntry("images/image1.png").Open();
+            image.Write(PngBytes);
+        }
+
+        return buffer.ToArray();
+    }
+
+    /// <summary>A one-pixel PNG with real magic bytes, so the relay's type sniffing has something honest to read.</summary>
+    private static readonly byte[] PngBytes =
+    [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01
+    ];
+
+    private static IImageRelay Relay(bool enabled)
+    {
+        var relay = Substitute.For<IImageRelay>();
+        relay.IsEnabled.Returns(enabled);
+        relay.StoreAsync(Arg.Any<byte[]>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Result<string>.Success("https://relay/img.png"));
+
+        return relay;
+    }
+
+    private static GoogleDocSourceExtractor CreateDocExtractor(
+        IHttpClientFactory factory,
+        IImageRelay? relay = null,
+        bool relayEnabled = false) =>
+        new(factory,
+            relay ?? Relay(relayEnabled),
+            Options.Create(new AiIngestionConfiguration { EmbedImages = true }),
+            NullLogger<GoogleDocSourceExtractor>.Instance);
+
+    private static IHttpClientFactory Factory(HttpMessageHandler handler)
+    {
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(PlonkItSourceExtractor.HttpClientName).Returns(new HttpClient(handler));
+        return factory;
+    }
+
+    /// <summary>Serves a canned body and records which export format was asked for.</summary>
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        private readonly byte[] _body;
+
+        public RecordingHandler(string body) => _body = Encoding.UTF8.GetBytes(body);
+
+        public RecordingHandler(byte[] body) => _body = body;
+
+        public string LastRequestUri { get; private set; } = string.Empty;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestUri = request.RequestUri?.ToString() ?? string.Empty;
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(_body),
+                RequestMessage = request
+            });
+        }
     }
 
     private static SourceDescriptor GoogleDoc() =>

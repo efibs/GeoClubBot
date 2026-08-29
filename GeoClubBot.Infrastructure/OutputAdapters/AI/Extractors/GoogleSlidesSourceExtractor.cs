@@ -1,6 +1,9 @@
 using System.Text;
+using Configuration;
 using DocumentFormat.OpenXml.Packaging;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
 using UseCases.UseCases.AI.Ingestion;
 using Utilities;
@@ -16,11 +19,13 @@ namespace Infrastructure.OutputAdapters.AI.Extractors;
 /// heavy, around 7 MB per deck against 2 KB for a document's text. That cost is why decks are indexed
 /// on the same paced nightly schedule as everything else rather than on demand.
 ///
-/// Slide images are not indexed: the export embeds them with no public URL for the embedding provider
-/// to fetch, so reaching them would need our own image relay.
+/// Slide images are embedded in the export with no URL of their own, so they are copied into the
+/// image relay and served from this bot. Without a relay configured, decks are indexed text-only.
 /// </summary>
 public sealed partial class GoogleSlidesSourceExtractor(
     IHttpClientFactory httpClientFactory,
+    IImageRelay imageRelay,
+    IOptions<AiIngestionConfiguration> ingestionConfiguration,
     ILogger<GoogleSlidesSourceExtractor> logger) : ISourceExtractor
 {
     public string SourceType => SourceLinkClassifier.GoogleSlides;
@@ -63,7 +68,7 @@ public sealed partial class GoogleSlidesSourceExtractor(
         {
             await using (deck.ConfigureAwait(false))
             {
-                return Parse(deck, source);
+                return await ParseAsync(deck, source, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception ex) when (ex is FileFormatException or InvalidOperationException or OpenXmlPackageException)
@@ -73,7 +78,10 @@ public sealed partial class GoogleSlidesSourceExtractor(
         }
     }
 
-    private static Result<ExtractedDocument> Parse(Stream deck, SourceDescriptor source)
+    private async Task<Result<ExtractedDocument>> ParseAsync(
+        Stream deck,
+        SourceDescriptor source,
+        CancellationToken cancellationToken)
     {
         using var document = PresentationDocument.Open(deck, isEditable: false);
 
@@ -86,6 +94,9 @@ public sealed partial class GoogleSlidesSourceExtractor(
         var chunks = new List<ExtractedChunk>();
         var position = 1;
 
+        // Copying slide images is only worth it if they can be served afterwards.
+        var wantsImages = imageRelay.IsEnabled && ingestionConfiguration.Value.EmbedImages;
+
         // Walked through the slide id list rather than SlideParts, whose order is not the presentation
         // order — numbering slides wrongly would make every deep link point at the wrong slide.
         foreach (var slideId in slideIds.ChildElements.OfType<Presentation.SlideId>())
@@ -96,16 +107,35 @@ public sealed partial class GoogleSlidesSourceExtractor(
                 continue;
             }
 
+            // The slide's own id, so re-reading a reordered deck lands on the same points.
+            var slideKey = slideId.Id?.Value.ToString() ?? $"s{position}";
+            var sectionPath = $"{source.Title ?? source.Country ?? "Slides"} > Slide {position}";
+            var anchor = $"slide=id.p{position}";
+
             var text = ReadSlideText(slidePart);
             if (text.Length > 0)
             {
-                chunks.Add(new ExtractedChunk(
-                    // The slide's own id, so re-reading a reordered deck lands on the same points.
-                    LocalKey: slideId.Id?.Value.ToString() ?? $"s{position}",
-                    SectionPath: $"{source.Title ?? source.Country ?? "Slides"} > Slide {position}",
-                    Text: text,
-                    ImageUrl: null,
-                    Anchor: $"slide=id.p{position}"));
+                chunks.Add(new ExtractedChunk(slideKey, sectionPath, text, ImageUrl: null, Anchor: anchor));
+            }
+
+            if (wantsImages)
+            {
+                // In these decks the slide is often mostly a picture and the words around it are the
+                // explanation, so each image is captioned with its own slide's text.
+                var caption = text.Length > 0 ? text : sectionPath;
+                var imageIndex = 0;
+
+                foreach (var imagePart in slidePart.ImageParts)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var stored = await StoreImageAsync(imagePart, cancellationToken).ConfigureAwait(false);
+                    if (stored is not null)
+                    {
+                        chunks.Add(new ExtractedChunk(
+                            $"{slideKey}-img{imageIndex++}", sectionPath, caption, stored, anchor));
+                    }
+                }
             }
 
             position++;
@@ -114,6 +144,22 @@ public sealed partial class GoogleSlidesSourceExtractor(
         return chunks.Count == 0
             ? Error.Validation("ai.document_empty", "This deck has no readable text.")
             : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks);
+    }
+
+    /// <summary>Copies one embedded slide image into the relay and returns the URL it is served from.</summary>
+    private async Task<string?> StoreImageAsync(ImagePart imagePart, CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream();
+        await using (var content = imagePart.GetStream())
+        {
+            await content.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        }
+
+        var stored = await imageRelay
+            .StoreAsync(buffer.ToArray(), imagePart.ContentType, cancellationToken)
+            .ConfigureAwait(false);
+
+        return stored.IsSuccess ? stored.Value : null;
     }
 
     /// <summary>

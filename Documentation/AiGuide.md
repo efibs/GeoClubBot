@@ -181,6 +181,11 @@ If you expose the bot with Tailscale Funnel, this is the `https://<machine>.<tai
 the funnel already serves; no extra routing is needed, since the funnel forwards everything to the
 bot's port.
 
+It covers two different problems with one mechanism. Images **linked** from a host that blocks us are
+downloaded and re-served. Images **embedded** in a Google Doc or slide deck have no URL at all, so
+their bytes are pulled straight out of the export and stored the same way — which is why documents
+only contribute pictures when the relay is on.
+
 Stored images live in `AI:ImageRelay:Directory`, backed by the `ai-images` volume in `compose.yaml`
 so they survive a redeploy. Losing them would leave every stored image URL pointing at a 404 until
 the library was re-indexed.
@@ -217,8 +222,8 @@ After that a nightly job drains the queue on its own.
 |---|---|
 | plonkit.net country guides | Full text **and** images. Discovered from the site's own sitemap (~157 pages). |
 | imgur albums | Infographics — often the most useful artefact for a meta. Images indexed. |
-| Google Docs | Text only, see limitations. |
-| Google Slides | Text and speaker notes only. |
+| Google Docs | Text, plus embedded images when the relay is configured. |
+| Google Slides | Text, speaker notes, and embedded images when the relay is configured. |
 | Google Sheets | Rows grouped into blocks, each carrying the header. |
 | Direct image links | Captioned from the catalogue entry. |
 
@@ -247,14 +252,14 @@ tombstoned rather than deleted.
 
 ## Known limitations
 
-- **Google Docs and Slides are indexed text-only.** Their exports embed images rather than linking
-  them, so those images have no URL at all — the relay handles blocked *links*, not embedded bytes.
-  Wiring them up means pulling images out of the `zip`/`pptx` exports and correlating each with the
-  text around it; the relay's `StoreAsync` is the seam that would be used.
-- **Images from blocked hosts need the relay configured.** Without `AI:ImageRelay:PublicBaseUrl`,
-  images from hosts in `RelayHosts` are left as their original links, which the provider cannot fetch
-  — so those sources are indexed text-only. An image that still cannot be fetched after relaying costs
-  a picture, never the source it belongs to.
+- **Images anywhere need the relay configured.** Without `AI:ImageRelay:PublicBaseUrl`, images from
+  blocked hosts keep their original links (which the provider cannot fetch) and embedded document
+  images are skipped entirely, so those sources are indexed text-only. An image that still cannot be
+  stored costs a picture, never the source it belongs to.
+- **Indexing documents costs far more bandwidth once the relay is on.** A Google Doc's text export is
+  around 2 KB; the zip export carrying its images is around 1.5 MB, and a slide deck about 7 MB. The
+  heavier export is only fetched when images can actually be served, and the nightly job is paced for
+  it — but a full re-index moves hundreds of megabytes rather than a few.
 - **Answer quality varies with whatever is free today.** Auto-selection optimises for availability,
   not quality. Use `PreferredModelPrefixes` to steer it, and the model named in each answer's footer
   to work out what to steer towards.
