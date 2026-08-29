@@ -178,7 +178,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
         if (!await TryReserveAsync(textInputs.Count, cancellationToken).ConfigureAwait(false))
         {
-            return Error.Conflict(BudgetExhaustedCode, "The daily AI request allowance is spent.");
+            return Error.Conflict(BudgetExhaustedCode, "Indexing has used its share of today's AI allowance.");
         }
 
         var textVectors = await embedder.EmbedAsync(textInputs, cancellationToken).ConfigureAwait(false);
@@ -293,8 +293,25 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         return await budget.TryReserveRequestsAsync(
             DateOnly.FromDateTime(DateTime.UtcNow),
             requests,
-            aiConfiguration.Value.OpenRouter.DailyRequestBudget,
+            ReadIngestionDailyCap(),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Indexing claims against a fraction of the day's allowance rather than all of it.
+    ///
+    /// Both indexing and answering increment the same daily counter, so passing a lower ceiling here
+    /// is what reserves the remainder for questions: once the counter passes this share, indexing
+    /// stops while answering carries on up to the full allowance. It also means indexing yields when
+    /// people have already been asking questions, rather than the other way round.
+    /// </summary>
+    private int ReadIngestionDailyCap()
+    {
+        var percent = Math.Clamp(ingestionConfiguration.Value.MaxDailyBudgetPercent, 1, 100);
+
+        // At least one request, or a small allowance combined with a small share would stall
+        // indexing entirely rather than merely slowing it.
+        return Math.Max(1, aiConfiguration.Value.OpenRouter.DailyRequestBudget * percent / 100);
     }
 
     /// <summary>
@@ -413,6 +430,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
     [LoggerMessage(LogLevel.Information, "Postponed {ImageCount} image(s) until the allowance resets.")]
     static partial void LogImagesDeferred(ILogger logger, int imageCount);
 
-    [LoggerMessage(LogLevel.Information, "Stopping ingestion after {Attempted} source(s): the daily AI allowance is spent.")]
+    [LoggerMessage(LogLevel.Information,
+        "Stopping ingestion after {Attempted} source(s): indexing has used its share of today's AI allowance.")]
     static partial void LogBudgetExhausted(ILogger logger, int attempted);
 }

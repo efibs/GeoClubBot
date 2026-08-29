@@ -5,6 +5,7 @@ using NSubstitute;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Ingestion;
 using Utilities;
 using Xunit;
@@ -318,6 +319,49 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
         written.Should().OnlyContain(point => point.ImageVector != null);
     }
 
+    [Fact]
+    public async Task Ingest_StopsAtItsShare_SoQuestionsStillWork()
+    {
+        // The reason the ceiling exists: indexing runs overnight and draws on the same daily counter
+        // as answering, so without it a backfill would leave the bot mute for the rest of the day.
+        await ResetSourcesAsync();
+        await ResetTodaysBudgetAsync();
+
+        // Ten requests a day at a 60% share: indexing may claim six, leaving four — enough for two
+        // questions, which cost two requests each.
+        using var host = CreateHost(dailyBudget: 10, ingestionPercent: 60);
+        ArrangeCatalog(host, [.. Enumerable.Range(0, 10).Select(_ => Descriptor(NewKey()))]);
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeExtraction(host, Chunk("a", "text"));
+
+        var ingest = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 50));
+
+        ingest.Value.Ingested.Should().Be(6, "indexing stops at its share rather than the full allowance");
+        ingest.Value.BudgetExhausted.Should().BeTrue();
+
+        ArrangeChat(host);
+        var answer = await host.SendAsync(new AskAiCommand(
+            NewSnowflake(), null, ChannelId: 5, GuildId: 7, NewSnowflake(), "what about bollards?", []));
+
+        answer.IsSuccess.Should().BeTrue("the allowance reserved for questions must still be available");
+    }
+
+    [Fact]
+    public async Task Ingest_CanUseTheWholeAllowance_WhenTheShareIsUnrestricted()
+    {
+        await ResetSourcesAsync();
+        await ResetTodaysBudgetAsync();
+
+        using var host = CreateHost(dailyBudget: 4, ingestionPercent: 100);
+        ArrangeCatalog(host, [.. Enumerable.Range(0, 10).Select(_ => Descriptor(NewKey()))]);
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeExtraction(host, Chunk("a", "text"));
+
+        var ingest = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 50));
+
+        ingest.Value.Ingested.Should().Be(4, "an unrestricted share lets indexing spend everything");
+    }
+
     private async Task ResetSourcesAsync()
     {
         await using var db = fixture.CreateDbContext();
@@ -345,14 +389,30 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
             .ReadAsync("plonkit", naturalKey);
     }
 
-    private MediatorTestHost CreateHost(int dailyBudget = 1000) =>
+    private MediatorTestHost CreateHost(int dailyBudget = 1000, int ingestionPercent = 100) =>
         new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>
         {
             ["AI:Active"] = "true",
             ["AI:OpenRouter:DailyRequestBudget"] = dailyBudget.ToString(),
             ["AI:OpenRouter:EmbeddingBatchSize"] = "32",
-            ["AI:Ingestion:MaxSourcesPerRun"] = "25"
+            ["AI:Ingestion:MaxSourcesPerRun"] = "25",
+            // Unrestricted by default so the other tests reason about one number, not two.
+            ["AI:Ingestion:MaxDailyBudgetPercent"] = ingestionPercent.ToString(),
+            ["AI:MaxRequestsPerUserPerHour"] = "0"
         });
+
+    /// <summary>Scripts the chat ports so a question can be asked alongside an indexing run.</summary>
+    private static void ArrangeChat(MediatorTestHost host)
+    {
+        host.Mock<IChatModelCatalog>().ReadChainAsync(Arg.Any<ChatModelRequirements>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(["test/model"]));
+
+        host.Mock<IChatModelClient>().CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Result<AiChatResponse>.Success(
+                new AiChatResponse("an answer", "test/model", new AiTokenUsage(1, 1))));
+    }
+
+    private static ulong NewSnowflake() => (ulong)Random.Shared.NextInt64(1_000_000_000, long.MaxValue);
 
     private static void ArrangeCatalog(MediatorTestHost host, params SourceDescriptor[] descriptors)
     {
