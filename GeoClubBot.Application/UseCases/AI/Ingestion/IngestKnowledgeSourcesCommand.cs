@@ -178,7 +178,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         chunks = await RelayImagesAsync(chunks, cancellationToken).ConfigureAwait(false);
 
         var textInputs = chunks
-            .Select(chunk => (EmbeddingInput)new TextEmbeddingInput(BuildEmbeddingText(descriptor, chunk)))
+            .Select(chunk => (EmbeddingInput)new TextEmbeddingInput(EmbeddingTextBuilder.Build(descriptor, chunk)))
             .ToList();
 
         if (!await TryReserveAsync(textInputs.Count, cancellationToken).ConfigureAwait(false))
@@ -346,19 +346,6 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         return Math.Max(1, aiConfiguration.Value.OpenRouter.DailyRequestBudget * percent / 100);
     }
 
-    /// <summary>
-    /// Prefixes each chunk with its country and section before embedding, while the stored text stays
-    /// bare. It is the cheapest way to put the country name inside every vector, so "Tunisian
-    /// bollards" matches a paragraph that only ever says "the bollards here".
-    /// </summary>
-    private static string BuildEmbeddingText(SourceDescriptor descriptor, ExtractedChunk chunk)
-    {
-        var header = string.Join(" — ", new[] { descriptor.Country, chunk.SectionPath }
-            .Where(part => !string.IsNullOrWhiteSpace(part)));
-
-        return header.Length == 0 ? chunk.Text : $"{header}\n\n{chunk.Text}";
-    }
-
     private static string BuildSourceUrl(SourceDescriptor descriptor, ExtractedChunk chunk) =>
         string.IsNullOrWhiteSpace(chunk.Anchor)
             ? descriptor.Url.ToString()
@@ -371,6 +358,12 @@ public sealed partial class IngestKnowledgeSourcesHandler(
     private static string ComputeHash(IReadOnlyList<ExtractedChunk> chunks)
     {
         var builder = new StringBuilder();
+
+        // The recipe used to build the embedding text is part of what is stored, so changing it must
+        // invalidate the hash. Otherwise an improvement to the header would never reach anything
+        // already indexed: the chunk text is unchanged, so every source would be judged unchanged.
+        builder.Append(EmbeddingTextBuilder.RecipeVersion).Append(FieldSeparator);
+
         foreach (var chunk in chunks)
         {
             builder.Append(chunk.LocalKey).Append(FieldSeparator)

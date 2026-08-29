@@ -143,6 +143,35 @@ relevance — fusion compares *positions*, not scores, which is what lets an ima
 The practical upshot: **an image is found through its caption**, so extractors keep images attached to
 the prose that describes them.
 
+### What goes into a vector
+
+A chunk is not embedded as written. It is prefixed with the country it applies to and what it is
+about, because a paragraph that only ever says "the bollards here" cannot otherwise be reached by a
+question naming the country. Measured against the embedding model on real guide text:
+
+```
+bare chunk text                        0.2602
++ a non-topical title                  0.2619
++ a topic, no source structure         0.2913
++ the source's own topical heading     0.3781
++ both                                 0.3824
+```
+
+Two things follow. A topical header is the **largest single influence on retrieval** — larger than any
+other tuning available here. And filler costs nearly everything the topic gains: a slide number, a
+deck title repeated on every chunk, an author's byline. So the header carries the source's own heading
+where it has one, a keyword-derived topic where it does not, and nothing else — non-topical segments
+are stripped rather than tolerated, and a chunk with no recognisable subject gets no topic at all
+rather than a meaningless one.
+
+The topic is derived by keyword rather than by asking a model. Classifying every chunk with an LLM is
+affordable against a self-hosted model and completely unaffordable against a metered one — thousands
+of chunks would be thousands of requests from an allowance of a few dozen a day.
+
+`EmbeddingTextBuilder.RecipeVersion` is folded into each source's content hash, so changing how the
+header is composed re-indexes everything on its next scheduled run instead of silently leaving old
+vectors in place.
+
 ### Conversations
 
 A conversation is a tree of Discord reply edges, not a list. The context for a turn is the path from
