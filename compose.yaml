@@ -43,7 +43,11 @@
       - "6333:6333"  # HTTP API
       - "6334:6334"  # gRPC API
     volumes:
-      - ./qdrant_storage:/qdrant/storage
+      # Named volume rather than a host bind mount: the container writes as root, which left the
+      # bind-mounted directory root-owned in the working tree.
+      - type: volume
+        source: qdrant-data
+        target: /qdrant/storage
     ulimits:
       nofile:
         soft: 10000
@@ -65,4 +69,5 @@ secrets:
     file: .env.postgresqldb-password
 volumes:
   ai-images:
+  qdrant-data:
   postgresqldb-data:

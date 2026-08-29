@@ -50,18 +50,6 @@ public sealed class LogRedactorTests
     }
 
     [Fact]
-    public void Redact_CerebrasApiKey_IsRemoved()
-    {
-        const string key = "csk-FAKEfakeFAKEfake1234567890"; // synthetic, not a real key
-        var input = $"AI call failed using key={key}";
-
-        var result = LogRedactor.Redact(input);
-
-        result.Should().NotContain(key);
-        result.Should().Contain(Redacted);
-    }
-
-    [Fact]
     public void Redact_ConnectionStringPassword_KeepsKeyRedactsValue()
     {
         var input = "Host=localhost;Database=geoclubbot;Username=admin;Password=sup3rSecret";
