@@ -43,6 +43,45 @@ internal static class ResiliencePipelines
     }
 
     /// <summary>
+    /// Pipeline for fetching third-party guide content during ingestion.
+    ///
+    /// Deliberately slow. These are other people's sites being read in bulk by an unattended job, so
+    /// the limiter is set for politeness rather than throughput; a nightly run has all night.
+    /// </summary>
+    public static void AddContentSourceResiliencePipeline(ResiliencePipelineBuilder<HttpResponseMessage> builder)
+    {
+        var rateLimiter = new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
+        {
+            TokenLimit = 2,
+            TokensPerPeriod = 2,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+            QueueLimit = 256,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+        });
+
+        var retryStrategy = new HttpRetryStrategyOptions
+        {
+            MaxRetryAttempts = 2,
+            Delay = TimeSpan.FromSeconds(3),
+            BackoffType = DelayBackoffType.Exponential,
+            ShouldRetryAfterHeader = true
+        };
+
+        var circuitBreakerStrategy = new HttpCircuitBreakerStrategyOptions
+        {
+            FailureRatio = 0.5,
+            SamplingDuration = TimeSpan.FromSeconds(60),
+            MinimumThroughput = 10,
+            BreakDuration = TimeSpan.FromMinutes(5)
+        };
+
+        builder
+            .AddRateLimiter(rateLimiter)
+            .AddRetry(retryStrategy)
+            .AddCircuitBreaker(circuitBreakerStrategy);
+    }
+
+    /// <summary>
     /// Pipeline for the OpenRouter chat API. Unlike the GeoGuessr pipeline this is budgeted per
     /// <em>minute</em>, because the provider's free tier caps requests per minute rather than per
     /// second, and exceeding it costs the whole allowance rather than just slowing us down.

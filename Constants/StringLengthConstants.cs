@@ -22,4 +22,11 @@ public static class StringLengthConstants
     public const int AiConversationContentMaxLength = 8000;
 
     public const int AiModelIdMaxLength = 128;
+
+    public const int KnowledgeSourceTypeMaxLength = 32;
+    public const int KnowledgeSourceNaturalKeyMaxLength = 256;
+    public const int KnowledgeSourceUrlMaxLength = 1024;
+    public const int KnowledgeSourceTitleMaxLength = 256;
+    /// <summary>Must match KnowledgeSource's own clamp; the Domain layer cannot reference this project.</summary>
+    public const int KnowledgeSourceStatusReasonMaxLength = 512;
 }

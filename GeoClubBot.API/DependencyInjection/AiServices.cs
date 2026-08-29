@@ -5,10 +5,12 @@ using Configuration;
 using Constants;
 using GeoClubBot.Services;
 using Infrastructure.OutputAdapters.AI;
+using Infrastructure.OutputAdapters.AI.Extractors;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
 using UseCases.OutputPorts.AI;
+using UseCases.OutputPorts.AI.Ingestion;
 
 namespace GeoClubBot.DependencyInjection;
 
@@ -24,6 +26,7 @@ public static class AiServices
         // performs I/O until it is called, and the listener below is only added when AI is enabled.
         services.AddOpenRouterServices(aiConfig);
         services.AddKnowledgeIndex(configuration, aiConfig);
+        services.AddSourceExtractors();
 
         if (!aiConfig.Active)
         {
@@ -76,6 +79,33 @@ public static class AiServices
 
         // Embeddings share the chat client's HTTP pipeline, so they inherit its auth and rate limiter.
         services.AddSingleton<IEmbedder, OpenRouterEmbedder>();
+    }
+
+    /// <summary>
+    /// Extractors that read third-party guide content, plus the registry that picks between them.
+    /// Adding a source family is one extractor class and one line here.
+    /// </summary>
+    private static void AddSourceExtractors(this IServiceCollection services)
+    {
+        services.AddHttpClient(PlonkItSourceExtractor.HttpClientName, client =>
+            {
+                // Identify ourselves: an unattended reader that says who it is and how to reach the
+                // author is one a site operator can contact rather than simply block.
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                    "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+                client.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .AddResilienceHandler(
+                "ContentSourceResiliencePipeline",
+                ResiliencePipelines.AddContentSourceResiliencePipeline);
+
+        // Registered against both ports: the same adapter knows how to list the site's pages and how
+        // to read one of them.
+        services.AddSingleton<PlonkItSourceExtractor>();
+        services.AddSingleton<ISourceExtractor>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
+        services.AddSingleton<ISourceCatalog>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
+
+        services.AddSingleton<ISourceExtractorRegistry, SourceExtractorRegistry>();
     }
 
     /// <summary>

@@ -37,6 +37,8 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<AiConversationTurn> AiConversationTurns { get; set; }
 
+    public DbSet<KnowledgeSource> KnowledgeSources { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);

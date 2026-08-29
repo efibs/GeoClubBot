@@ -86,6 +86,9 @@ public static class DependencyInjectionExtensions
         services.AddOptions<AiConversationConfiguration>()
             .Bind(config.GetSection(AiConversationConfiguration.SectionName));
 
+        services.AddOptions<AiIngestionConfiguration>()
+            .Bind(config.GetSection(AiIngestionConfiguration.SectionName));
+
         // Discord channel logging is optional (gated by ChannelId), so the section is bound
         // without start-up validation — absent the section the sink simply stays disabled.
         services.AddOptions<DiscordLoggingConfiguration>()
