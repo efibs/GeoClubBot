@@ -89,6 +89,9 @@ public static class DependencyInjectionExtensions
         services.AddOptions<AiIngestionConfiguration>()
             .Bind(config.GetSection(AiIngestionConfiguration.SectionName));
 
+        services.AddOptions<AiImageRelayConfiguration>()
+            .Bind(config.GetSection(AiImageRelayConfiguration.SectionName));
+
         // Discord channel logging is optional (gated by ChannelId), so the section is bound
         // without start-up validation — absent the section the sink simply stays disabled.
         services.AddOptions<DiscordLoggingConfiguration>()

@@ -137,7 +137,9 @@ API + Discord (controllers, slash command modules)
   `Infrastructure/OutputAdapters/AI/`. Conversations are a tree of Discord reply edges, so sibling
   branches stay independent. Chat services and the vector index are registered **even when the feature
   is off** — MediatR's assembly scan picks up every Application handler regardless, so the container
-  must be able to construct their dependencies or start-up validation fails. See
+  must be able to construct their dependencies or start-up validation fails. Guide images from hosts
+  that refuse unattended clients are copied during indexing and served from
+  `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy. See
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 

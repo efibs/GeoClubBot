@@ -35,6 +35,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
     ISourceExtractorRegistry extractors,
     IEmbedder embedder,
     IKnowledgeIndex knowledgeIndex,
+    IImageRelay imageRelay,
     IAiBudgetRepository budget,
     IOptions<AiConfiguration> aiConfiguration,
     IOptions<AiIngestionConfiguration> ingestionConfiguration,
@@ -172,6 +173,10 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         AiIngestionConfiguration settings,
         CancellationToken cancellationToken)
     {
+        // Rewritten before anything else uses the URL, so the embedder and the eventual Discord embed
+        // both point at the same fetchable image.
+        chunks = await RelayImagesAsync(chunks, cancellationToken).ConfigureAwait(false);
+
         var textInputs = chunks
             .Select(chunk => (EmbeddingInput)new TextEmbeddingInput(BuildEmbeddingText(descriptor, chunk)))
             .ToList();
@@ -226,6 +231,33 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         await knowledgeIndex.UpsertAsync(points, ingestRun, cancellationToken).ConfigureAwait(false);
 
         return new WriteResult(points.Count, imageVectors.Vectors.Count, imageVectors.DeferredForBudget);
+    }
+
+    /// <summary>
+    /// Replaces image URLs the AI provider cannot fetch with copies served from our own host.
+    ///
+    /// Resolved once per distinct URL, because a guide often illustrates several tips with the same
+    /// picture and each copy would otherwise be downloaded again.
+    /// </summary>
+    private async Task<IReadOnlyList<ExtractedChunk>> RelayImagesAsync(
+        IReadOnlyList<ExtractedChunk> chunks,
+        CancellationToken cancellationToken)
+    {
+        if (!imageRelay.IsEnabled)
+        {
+            return chunks;
+        }
+
+        var resolved = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var imageUrl in chunks.Select(chunk => chunk.ImageUrl).OfType<string>().Distinct(StringComparer.Ordinal))
+        {
+            resolved[imageUrl] = await imageRelay.ResolveAsync(imageUrl, cancellationToken).ConfigureAwait(false);
+        }
+
+        return [.. chunks.Select(chunk => chunk.ImageUrl is { } url && resolved.TryGetValue(url, out var replacement)
+            ? chunk with { ImageUrl = replacement }
+            : chunk)];
     }
 
     /// <summary>

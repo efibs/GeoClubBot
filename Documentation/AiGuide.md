@@ -88,6 +88,7 @@ worth knowing:
 | `AI:Ingestion:MaxDailyBudgetPercent` | 60 | Share of the allowance indexing may spend |
 | `AI:Ingestion:MetaLibrarySheetId` | empty | Google Sheets id of a community library to sync |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
+| `AI:ImageRelay:PublicBaseUrl` | empty | **Required for images from blocked hosts** — see below |
 | `AI:Conversation:RetentionDays` | 30 | How long stored questions are kept |
 
 `AI:Active` requires a running Qdrant (`docker compose up qdrant`) and PostgreSQL.
@@ -155,6 +156,46 @@ window that free models keep small.
 
 Stored questions are personal data. Retention is bounded and swept nightly.
 
+### The image relay
+
+Some guide sites answer unattended clients with 403 — plonkit.net's image CDN is one. Since the AI
+provider fetches image URLs **server-side**, those images are unusable no matter how relevant they
+are. The relay copies them once during indexing and serves them from this bot instead.
+
+It is off until you give it a public base URL:
+
+```json
+"AI": {
+  "ImageRelay": {
+    "PublicBaseUrl": "https://your-host.your-tailnet.ts.net",
+    "RelayHosts": [ "plonkit.net" ]
+  }
+}
+```
+
+That URL **cannot be inferred**. Behind a tunnel or reverse proxy the bot only ever sees an internal
+address, so it has to be told its public one. It must be reachable from the public internet, because
+the fetcher is the AI provider and Discord's embed renderer — not a browser on your network.
+
+If you expose the bot with Tailscale Funnel, this is the `https://<machine>.<tailnet>.ts.net` address
+the funnel already serves; no extra routing is needed, since the funnel forwards everything to the
+bot's port.
+
+Stored images live in `AI:ImageRelay:Directory`, backed by the `ai-images` volume in `compose.yaml`
+so they survive a redeploy. Losing them would leave every stored image URL pointing at a 404 until
+the library was re-indexed.
+
+**What the endpoint deliberately does not do.** `GET /api/v1/ai/images/{hash}` is anonymous, because
+neither fetcher can carry a credential. It serves *only* bytes already written to disk during
+indexing — there is no path that fetches a URL on request, which would make it an open proxy into
+whatever the bot's network can reach. Images are addressed purely by the SHA-256 of their content, so
+there is nothing to enumerate and no caller-supplied text ever reaches a file path. Only image types
+are accepted, the declared type is sniffed from the bytes rather than trusted, size is capped, and the
+route is rate-limited per client IP.
+
+Relaying is opt-in per host rather than applied to everything: copying someone's images is a bigger
+imposition than linking them, and most hosts serve their own perfectly well.
+
 ---
 
 ## Filling the index
@@ -207,11 +248,13 @@ tombstoned rather than deleted.
 ## Known limitations
 
 - **Google Docs and Slides are indexed text-only.** Their exports embed images rather than linking
-  them, so there is no URL the embedding provider can fetch. Reaching those needs an image relay that
-  does not exist yet.
-- **plonkit.net images may not embed.** Its image CDN returns 403 to unattended clients from at least
-  some networks. When that happens the source is indexed text-only and says so, rather than failing.
-  Residential egress may behave differently — check `/ai status` after a run.
+  them, so those images have no URL at all — the relay handles blocked *links*, not embedded bytes.
+  Wiring them up means pulling images out of the `zip`/`pptx` exports and correlating each with the
+  text around it; the relay's `StoreAsync` is the seam that would be used.
+- **Images from blocked hosts need the relay configured.** Without `AI:ImageRelay:PublicBaseUrl`,
+  images from hosts in `RelayHosts` are left as their original links, which the provider cannot fetch
+  — so those sources are indexed text-only. An image that still cannot be fetched after relaying costs
+  a picture, never the source it belongs to.
 - **Answer quality varies with whatever is free today.** Auto-selection optimises for availability,
   not quality. Use `PreferredModelPrefixes` to steer it, and the model named in each answer's footer
   to work out what to steer towards.
@@ -229,6 +272,7 @@ tombstoned rather than deleted.
 | "I'm out of free AI requests for today" | Daily allowance spent; resets 00:00 UTC |
 | `/ai status` shows 0 indexed chunks | Nothing indexed yet — run `/ai sync-sources` then `/ai ingest` |
 | Answers ignore the guides | Check `/ai search` first: it costs one request and shows what retrieval returns |
+| Guide images show as broken in Discord | `AI:ImageRelay:PublicBaseUrl` unset, wrong, or not reachable from the public internet |
 | Catalog source is `None` | The model roster could not be read; the fallback router is in use |
 
 `/ai search` is the tool to reach for. It costs a single embedding request instead of the two a full

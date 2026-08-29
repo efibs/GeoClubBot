@@ -6,6 +6,7 @@ using Constants;
 using GeoClubBot.Services;
 using Infrastructure.OutputAdapters.AI;
 using Infrastructure.OutputAdapters.AI.Extractors;
+using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
@@ -117,6 +118,20 @@ public static class AiServices
         services.AddSingleton<ISourceCatalog, MetaLibrarySourceCatalog>();
 
         services.AddSingleton<ISourceExtractorRegistry, SourceExtractorRegistry>();
+
+        // Fetches images from hosts that refuse the AI provider, on the same polite pipeline as the
+        // rest of the ingestion traffic.
+        services.AddHttpClient(FileSystemImageRelay.HttpClientName, client =>
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                    "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+                client.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .AddResilienceHandler(
+                "ContentSourceResiliencePipeline",
+                ResiliencePipelines.AddContentSourceResiliencePipeline);
+
+        services.AddSingleton<IImageRelay, FileSystemImageRelay>();
     }
 
     /// <summary>

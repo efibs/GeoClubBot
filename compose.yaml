@@ -7,6 +7,13 @@
     depends_on:
       postgresqldb:
         condition: service_healthy
+    volumes:
+      # Guide images copied from hosts that refuse the AI provider. Volume-backed so they survive a
+      # redeploy; losing them would leave every stored image URL pointing at a 404 until the whole
+      # library was re-indexed.
+      - type: volume
+        source: ai-images
+        target: /app/ai-images
   postgresqldb:
     image: postgres:17.5
     ports:
@@ -57,4 +64,5 @@ secrets:
   postgresqldb-password:
     file: .env.postgresqldb-password
 volumes:
+  ai-images:
   postgresqldb-data:
