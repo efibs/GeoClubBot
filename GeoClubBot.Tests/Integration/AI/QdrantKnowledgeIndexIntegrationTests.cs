@@ -31,6 +31,17 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
     }
 
     [Fact]
+    public async Task Count_ReportsZero_BeforeTheCollectionHasBeenCreated()
+    {
+        // The collection is created on the first ingest. Treating its absence as an error made a bot
+        // that simply had not indexed anything yet report its index as "unavailable", which reads as
+        // a fault rather than an empty start.
+        var index = fixture.CreateKnowledgeIndex(QdrantFixture.NewCollectionName(), VectorSize);
+
+        (await index.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task Upsert_AcceptsPointsWithAndWithoutAnImageVector()
     {
         // Text chunks legitimately have no image vector. Qdrant allows a point to carry a subset of

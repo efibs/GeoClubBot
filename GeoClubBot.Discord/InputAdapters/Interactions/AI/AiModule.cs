@@ -42,10 +42,13 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                     : "never", inline: true)
                 .AddField("Model chain", $"`{string.Join("` → `", chain)}`")
                 .AddField("Indexed chunks", await ReadIndexSizeAsync(ct).ConfigureAwait(false), inline: true)
-                .AddField("Sources", sources.IsSuccess
-                    ? $"{sources.Value.Ingested} indexed · {sources.Value.Pending} pending · " +
-                      $"{sources.Value.Failed} failed · {sources.Value.Skipped} skipped"
-                    : "unavailable")
+                .AddField("Sources", sources switch
+                {
+                    { IsFailure: true } => "unavailable",
+                    { Value.Total: 0 } => "none catalogued — run `/ai sync-sources`",
+                    var ok => $"{ok.Value.Ingested} indexed · {ok.Value.Pending} pending · " +
+                              $"{ok.Value.Failed} failed · {ok.Value.Skipped} skipped"
+                })
                 .Build();
 
             await FollowupAsync(embed: embed, ephemeral: true).ConfigureAwait(false);
@@ -114,17 +117,51 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
             }
 
             var report = result.Value;
+
+            // A run that attempts nothing is the common first-time case, and four zeros explain
+            // none of it: the queue is empty because nothing has been catalogued, or because
+            // everything catalogued was indexed recently and is not due again yet.
+            if (report.Attempted == 0 && !report.BudgetExhausted)
+            {
+                await FollowupAsync(await DescribeEmptyRunAsync(ct).ConfigureAwait(false), ephemeral: true)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             var message = new StringBuilder()
                 .AppendLine($"Indexed **{report.Ingested}** source(s), **{report.ChunksWritten}** chunk(s).")
                 .AppendLine($"Unchanged: {report.Unchanged} · Failed: {report.Failed} · Skipped: {report.Skipped}");
 
             if (report.BudgetExhausted)
             {
-                message.AppendLine("\n⚠️ Stopped early — today's AI request allowance is spent.");
+                message.AppendLine("\n⚠️ Stopped early — indexing has used its share of today's AI allowance.");
             }
 
             await FollowupAsync(message.ToString(), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to index guide sources.");
+
+    /// <summary>
+    /// Explains a run that indexed nothing. Which of the two reasons applies is the difference
+    /// between "you have not started yet" and "there is nothing left to do", and the operator cannot
+    /// tell them apart from the counts alone.
+    /// </summary>
+    private async Task<string> DescribeEmptyRunAsync(CancellationToken cancellationToken)
+    {
+        var sources = await Mediator.Send(new ReadKnowledgeSourceStatusQuery(), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (sources.IsFailure || sources.Value.Total == 0)
+        {
+            return "Nothing to index yet — no guide sources are catalogued.\n"
+                   + "Run `/ai sync-sources` first to discover them.";
+        }
+
+        var counts = sources.Value;
+        return $"Nothing was due for indexing. {counts.Ingested} source(s) are already indexed, "
+               + $"{counts.Pending} pending, {counts.Failed} failed, {counts.Skipped} skipped.\n"
+               + "Already-indexed sources are left alone until their re-index interval passes; "
+               + "use `force: true` to re-index them now.";
+    }
 
     /// <summary>Compact so several hits fit one ephemeral reply and can be judged at a glance.</summary>
     private static string FormatHits(IReadOnlyList<KnowledgeHit> hits)

@@ -171,8 +171,17 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         return removed;
     }
 
-    public async Task<long> CountAsync(CancellationToken cancellationToken = default) =>
-        (long)await client.CountAsync(collectionName, cancellationToken: cancellationToken).ConfigureAwait(false);
+    public async Task<long> CountAsync(CancellationToken cancellationToken = default)
+    {
+        // The collection is created on the first ingest, so before then it legitimately holds
+        // nothing. Reporting that as an error made a bot with an empty index look broken.
+        var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        return collections.Any(name => name == collectionName)
+            ? (long)await client.CountAsync(collectionName, cancellationToken: cancellationToken).ConfigureAwait(false)
+            : 0;
+    }
 
     public async Task<IReadOnlyList<string>> ListCountriesAsync(CancellationToken cancellationToken = default)
     {
