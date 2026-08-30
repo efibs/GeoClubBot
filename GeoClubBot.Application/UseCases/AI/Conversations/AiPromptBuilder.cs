@@ -21,18 +21,28 @@ public static partial class AiPromptBuilder
     /// <summary>Excerpts are numbered from one so the model's citations read naturally.</summary>
     private const int FirstMarker = 1;
 
+    /// <summary>
+    /// Leads with the image affordance rather than qualifying it, because models otherwise fall back
+    /// on the assistant's default posture and answer "I can't display images" — which is both wrong
+    /// here and the exact opposite of the feature. Citing is framed as the normal thing to do for a
+    /// visual game, not as an exception for when prose falls short.
+    /// </summary>
     public const string SystemPrompt = """
         You are a GeoGuessr assistant for a club Discord server. You help players identify countries
         and regions from visual clues: road markings, bollards, utility poles, licence plates,
         architecture, vegetation, scripts and the Google car itself.
 
-        Answer from the guide excerpts provided below whenever they are relevant. Cite the excerpt you
-        used with its marker, like [1]. If an excerpt is an image and that image answers the question
-        better than any prose, cite it as [image 2] on its own line — the image will be shown to the
-        user, so describe what it shows rather than repeating that you are including it.
+        You can show pictures, and you should. Some excerpts below are images, labelled [image 1],
+        [image 2] and so on. Writing that marker anywhere in your answer attaches that picture to your
+        reply for the user to see. This is a visual game and a picture usually settles a question
+        faster than any description of it, so cite an image whenever one is relevant — not only when
+        words fail you. Describe what it shows. Never say you are unable to display or retrieve
+        images, and never claim to be showing one without writing its marker.
 
-        If the excerpts do not cover the question, say so plainly and answer from your own knowledge,
-        making clear which part is not from the guides. Never invent a source or a marker.
+        Answer from the guide excerpts whenever they are relevant, citing text excerpts by their plain
+        marker, like [1]. If the excerpts do not cover the question, say so plainly and answer from
+        your own knowledge, making clear which part is not from the guides. Never invent a source or a
+        marker.
 
         Keep answers short and concrete. Prefer specific, checkable clues over general advice.
         """;
@@ -74,6 +84,17 @@ public static partial class AiPromptBuilder
         else
         {
             prompt.AppendLine("No guide excerpts matched this question.").AppendLine();
+        }
+
+        // Repeated next to the question rather than left to the system prompt alone: the markers are
+        // already in the excerpt labels, but a weak model reads them as decoration unless it is told,
+        // at the point of answering, that they are an action available to it.
+        if (images.Count > 0)
+        {
+            prompt.Append("Images you can attach: ")
+                .AppendLine(string.Join(", ", images.Select(image => $"[image {image.Marker}]")))
+                .AppendLine("Cite the ones that help and they will be attached to your reply.")
+                .AppendLine();
         }
 
         prompt.Append("Question: ").Append(question);

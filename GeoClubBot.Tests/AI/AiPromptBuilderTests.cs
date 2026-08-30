@@ -70,6 +70,50 @@ public sealed class AiPromptBuilderTests
     }
 
     [Fact]
+    public void Build_ListsTheAttachableImages_NextToTheQuestion()
+    {
+        // The markers are already in the excerpt labels, but a model that only reads them there tends
+        // to treat them as formatting and answer "I can't display images" — the observed failure. The
+        // roster restates them at the point of answering as something it can actually do.
+        var (messages, _) = AiPromptBuilder.Build(
+            ConversationContext.Empty,
+            "what does the MR9 look like?",
+            [],
+            [
+                Hit(KnowledgeChunkKind.Text, "The MR9 runs through the centre south."),
+                Hit(KnowledgeChunkKind.Image, "wooded hills", imageUrl: "https://relay/a.png"),
+                Hit(KnowledgeChunkKind.Image, "dirt tracks", imageUrl: "https://relay/b.png")
+            ]);
+
+        var prompt = messages[^1].ToPlainText();
+        prompt.Should().Contain("Images you can attach: [image 2], [image 3]");
+        prompt.IndexOf("Images you can attach", StringComparison.Ordinal)
+            .Should().BeLessThan(prompt.IndexOf("Question:", StringComparison.Ordinal),
+                "it has to be the last thing read before the question");
+    }
+
+    [Fact]
+    public void Build_OmitsTheImageRoster_WhenNothingRetrievedHasAPicture()
+    {
+        var (messages, _) = AiPromptBuilder.Build(
+            ConversationContext.Empty,
+            "what does the MR9 look like?",
+            [],
+            [Hit(KnowledgeChunkKind.Text, "The MR9 runs through the centre south.")]);
+
+        messages[^1].ToPlainText().Should().NotContain("Images you can attach");
+    }
+
+    [Fact]
+    public void SystemPrompt_TellsTheModelItCanShowImages()
+    {
+        // Pinned because it is the whole point of indexing images: a model that believes it cannot
+        // display them writes a perfectly good answer and silently drops the picture.
+        AiPromptBuilder.SystemPrompt.Should().Contain("You can show pictures");
+        AiPromptBuilder.SystemPrompt.Should().Contain("Never say you are unable to display");
+    }
+
+    [Fact]
     public void Build_SaysSoExplicitly_WhenNothingWasRetrieved()
     {
         // Otherwise the model quietly invents guide content it was never given.
