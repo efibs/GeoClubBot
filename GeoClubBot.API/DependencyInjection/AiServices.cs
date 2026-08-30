@@ -127,6 +127,9 @@ public static class AiServices
                     "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
                 client.Timeout = TimeSpan.FromSeconds(30);
             })
+            // The relay chases redirects itself so it can rewrite the referer at each hop; letting the
+            // handler follow them silently is what makes a regional image mirror answer 403.
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
             .AddResilienceHandler(
                 "ContentSourceResiliencePipeline",
                 ResiliencePipelines.AddContentSourceResiliencePipeline);

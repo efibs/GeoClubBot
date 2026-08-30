@@ -210,6 +210,32 @@ If you expose the bot with Tailscale Funnel, this is the `https://<machine>.<tai
 the funnel already serves; no extra routing is needed, since the funnel forwards everything to the
 bot's port.
 
+**On a dev machine**, tunnel the API the same way the Activity is tested (see the root `README.md`):
+
+```bash
+cloudflared tunnel --url http://localhost:5194
+```
+
+Put the `https://<random>.trycloudflare.com` hostname it prints into `PublicBaseUrl` and restart the
+bot. Note that a quick tunnel mints a **new** hostname every run, and the relayed URL is stored in the
+index — so image chunks indexed under an old hostname stop resolving once the tunnel is restarted, and
+have to be re-indexed with `/ai ingest force: true`. A named tunnel
+(`cloudflared tunnel create` + `route dns` + `run`) gives a hostname that survives restarts and avoids
+this entirely.
+
+Turning the relay on does not by itself re-index anything: the change-detection hash is computed from
+the source's own content, which has not changed, so already-indexed sources are judged unchanged and
+keep whatever images they were indexed with. Use `/ai ingest force: true` once after enabling it.
+
+### Redirects and the referer
+
+The relay follows redirects itself rather than letting `HttpClient` do it, because the referer has to
+be rewritten at each hop. Hosts of this kind send a request for `www.example.net` on to a regional
+mirror such as `de.example.net`, and then check that the referer names the mirror: a referer still
+pointing at the site the redirect came from reads as hotlinking and is refused. Measured on
+plonkit.net, that one header is the whole difference between `200` and `403` — from any IP, browser
+user agent or not.
+
 It covers two different problems with one mechanism. Images **linked** from a host that blocks us are
 downloaded and re-served. Images **embedded** in a Google Doc or slide deck have no URL at all, so
 their bytes are pulled straight out of the export and stored the same way — which is why documents

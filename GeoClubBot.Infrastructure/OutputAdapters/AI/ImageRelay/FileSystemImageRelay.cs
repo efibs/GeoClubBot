@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using Configuration;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,9 @@ public sealed partial class FileSystemImageRelay(
 {
     /// <summary>Route the relay controller serves; the public URL is this appended to the base.</summary>
     public const string RoutePrefix = "api/v1/ai/images";
+
+    /// <summary>Hops allowed while chasing a redirect chain, before it is treated as a refusal.</summary>
+    private const int MaxRedirects = 5;
 
     /// <summary>
     /// Only image types are stored. An allowlist rather than a blocklist because these bytes are later
@@ -55,27 +59,45 @@ public sealed partial class FileSystemImageRelay(
         try
         {
             var client = httpClientFactory.CreateClient(HttpClientName);
+            var current = new Uri(imageUrl);
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, imageUrl);
-
-            // Sites that refuse unattended clients typically check the referer, so it is sent as the
-            // page the image belongs to. The user agent still identifies the bot honestly.
-            request.Headers.Referrer = new Uri(imageUrl).GetLeftPart(UriPartial.Authority) is { } origin
-                ? new Uri(origin)
-                : null;
-
-            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            // Redirects are followed by hand rather than by the handler, because the referer has to be
+            // rewritten at every hop. These hosts send a request for www.example.net on to a regional
+            // mirror such as de.example.net, and then refuse it: the check is same-host, and a referer
+            // still naming the site the redirect came from reads as hotlinking. Measured on plonkit.net,
+            // where a matching referer is the whole difference between 200 and 403.
+            for (var hop = 0; ; hop++)
             {
-                LogRelayRefused(logger, imageUrl, (int)response.StatusCode);
-                return imageUrl;
+                using var request = new HttpRequestMessage(HttpMethod.Get, current);
+                request.Headers.Referrer = new Uri(current.GetLeftPart(UriPartial.Authority));
+
+                using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+                if (IsRedirect(response) && response.Headers.Location is { } location)
+                {
+                    if (hop == MaxRedirects)
+                    {
+                        LogRelayRefused(logger, imageUrl, (int)response.StatusCode);
+                        return imageUrl;
+                    }
+
+                    // Location is allowed to be relative, and is resolved against the hop it came from.
+                    current = new Uri(current, location);
+                    continue;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    LogRelayRefused(logger, imageUrl, (int)response.StatusCode);
+                    return imageUrl;
+                }
+
+                var content = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                var stored = await StoreAsync(content, response.Content.Headers.ContentType?.MediaType, cancellationToken)
+                    .ConfigureAwait(false);
+
+                return stored.IsSuccess ? stored.Value : imageUrl;
             }
-
-            var content = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-            var stored = await StoreAsync(content, response.Content.Headers.ContentType?.MediaType, cancellationToken)
-                .ConfigureAwait(false);
-
-            return stored.IsSuccess ? stored.Value : imageUrl;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or UriFormatException)
         {
@@ -145,6 +167,10 @@ public sealed partial class FileSystemImageRelay(
 
     /// <summary>Name of the HttpClient used to fetch images, configured with the polite content pipeline.</summary>
     public const string HttpClientName = "AiImageRelay";
+
+    private static bool IsRedirect(HttpResponseMessage response) =>
+        response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found
+            or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
 
     private bool ShouldRelay(string imageUrl)
     {

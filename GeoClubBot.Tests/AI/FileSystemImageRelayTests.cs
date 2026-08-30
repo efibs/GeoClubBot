@@ -155,6 +155,31 @@ public sealed class FileSystemImageRelayTests : IDisposable
     }
 
     [Fact]
+    public async Task Resolve_RewritesTheReferer_WhenAHostRedirectsToItsMirror()
+    {
+        // Measured on plonkit.net: www.plonkit.net sends the request on to a regional mirror, which
+        // then serves the image only if the referer names the mirror too. Carrying the original
+        // referer across the hop reads as hotlinking and gets a 403, so the relay re-derives it.
+        var handler = new MirrorHandler(PngBytes);
+        var relay = Create(handler);
+
+        var resolved = await relay.ResolveAsync("https://www.plonkit.net/images/tunisia/plate.png");
+
+        resolved.Should().StartWith("https://host.tailnet.ts.net/api/v1/ai/images/");
+        handler.LastReferrer.Should().Be("https://de.plonkit.net");
+    }
+
+    [Fact]
+    public async Task Resolve_GivesUpOnARedirectLoop()
+    {
+        var relay = Create(new LoopingHandler());
+
+        var resolved = await relay.ResolveAsync("https://www.plonkit.net/images/tunisia/plate.png");
+
+        resolved.Should().Be("https://www.plonkit.net/images/tunisia/plate.png");
+    }
+
+    [Fact]
     public async Task Resolve_IsInert_WhenNoPublicBaseUrlIsConfigured()
     {
         // Without a reachable base URL a relayed link would be useless, so nothing is copied at all.
@@ -166,7 +191,7 @@ public sealed class FileSystemImageRelayTests : IDisposable
     }
 
     private FileSystemImageRelay Create(
-        StubHandler? handler = null,
+        HttpMessageHandler? handler = null,
         string? publicBaseUrl = "https://host.tailnet.ts.net",
         int maxBytes = 8 * 1024 * 1024)
     {
@@ -191,6 +216,56 @@ public sealed class FileSystemImageRelayTests : IDisposable
         if (Directory.Exists(_directory))
         {
             Directory.Delete(_directory, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Mimics a host that redirects to a regional mirror and then requires the referer to name that
+    /// mirror rather than the site the redirect came from.
+    /// </summary>
+    private sealed class MirrorHandler(byte[] body) : HttpMessageHandler
+    {
+        public string? LastReferrer { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastReferrer = request.Headers.Referrer?.GetLeftPart(UriPartial.Authority);
+
+            if (request.RequestUri!.Host == "www.plonkit.net")
+            {
+                var redirect = new HttpResponseMessage(HttpStatusCode.Found) { RequestMessage = request };
+                redirect.Headers.Location =
+                    new Uri($"https://de.plonkit.net{request.RequestUri.PathAndQuery}");
+                return Task.FromResult(redirect);
+            }
+
+            if (LastReferrer != $"https://{request.RequestUri.Host}")
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden)
+                {
+                    Content = new ByteArrayContent([]),
+                    RequestMessage = request
+                });
+            }
+
+            var content = new ByteArrayContent(body);
+            content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = content,
+                RequestMessage = request
+            });
+        }
+    }
+
+    /// <summary>Redirects for ever, so the hop limit is what has to end the fetch.</summary>
+    private sealed class LoopingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var redirect = new HttpResponseMessage(HttpStatusCode.Found) { RequestMessage = request };
+            redirect.Headers.Location = new Uri("https://www.plonkit.net/images/again.png");
+            return Task.FromResult(redirect);
         }
     }
 
