@@ -29,11 +29,8 @@ GeoClubBot.API/wwwroot/
 OldHistory.json
 ChallengesConfig.json
 .VSCodeCounter
+qdrant_storage
 .idea/
 
 # graphify knowledge graph (generated, rebuilt via git hooks / `graphify update .`)
 graphify-out/
-
-# Left over from when Qdrant used a host bind mount; it now uses a named volume.
-# The directory is root-owned (written by the container) and can be deleted manually.
-qdrant_storage

@@ -35,9 +35,6 @@ export const baseMissionStats = {
   daysWithMissionData: 12,
   totalMissionAppearances: 36,
   averageDayCompletionRate: 0.62,
-  averageDayChallengeRate: 0.5,
-  daysWithChallengeData: 6,
-  challengeTrackedFrom: '2026-06-29',
   kinds: [
     {
       type: 'DailyChallenge',
@@ -63,20 +60,17 @@ export const baseProfile = {
 
 export const baseWeekActivity = {
   totalXp: 4200,
-  // A "done" day needs both awards; 28th/1st/4th have only the mission, so 2 full days.
-  numDaysDone: 2,
-  numMissionDaysDone: 5,
-  numChallengeDaysDone: 3,
+  numDaysDone: 5,
   joinedThisWeek: false,
   joinedAt: '2024-01-01T00:00:00Z',
   days: [
-    { date: '2026-06-28', missionCompleted: true, challengeCompleted: false },
-    { date: '2026-06-29', missionCompleted: true, challengeCompleted: true },
-    { date: '2026-06-30', missionCompleted: false, challengeCompleted: false },
-    { date: '2026-07-01', missionCompleted: true, challengeCompleted: false },
-    { date: '2026-07-02', missionCompleted: true, challengeCompleted: true },
-    { date: '2026-07-03', missionCompleted: false, challengeCompleted: true },
-    { date: '2026-07-04', missionCompleted: true, challengeCompleted: false },
+    { date: '2026-06-28', missionCompleted: true },
+    { date: '2026-06-29', missionCompleted: true },
+    { date: '2026-06-30', missionCompleted: false },
+    { date: '2026-07-01', missionCompleted: true },
+    { date: '2026-07-02', missionCompleted: true },
+    { date: '2026-07-03', missionCompleted: false },
+    { date: '2026-07-04', missionCompleted: true },
   ],
 };
 

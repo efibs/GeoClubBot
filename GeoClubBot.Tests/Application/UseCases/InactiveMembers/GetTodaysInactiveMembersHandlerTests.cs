@@ -16,6 +16,7 @@ public sealed class GetTodaysInactiveMembersHandlerTests
 {
     private static readonly Guid MainClub = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid SecondClub = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private const int DailyMissionXpReward = 20;
 
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
     private readonly IClubRepository _clubs = Substitute.For<IClubRepository>();
@@ -33,7 +34,6 @@ public sealed class GetTodaysInactiveMembersHandlerTests
         _members,
         _clubs,
         _activityReader,
-        ClubActivities.Classifier(),
         Options.Create(new GeoGuessrConfiguration
         {
             SyncSchedule = "0 0 0 * * ?",
@@ -43,50 +43,44 @@ public sealed class GetTodaysInactiveMembersHandlerTests
             Clubs = clubIds
                 .Select((id, i) => new GeoGuessrClubEntry { ClubId = id, NcfaToken = "x", IsMain = i == 0 })
                 .ToList(),
+        }),
+        Options.Create(new DailyMissionReminderConfiguration
+        {
+            Schedule = "0 * * * * ?",
+            DefaultMessage = "x",
+            DailyMissionXpReward = DailyMissionXpReward
         }));
 
-    [Fact]
-    public async Task Handle_ReportsMissionAndChallengeInactivitySeparately()
+    private static ReadClubActivitiesItemDto Activity(string userId, int xpReward) => new()
     {
-        var missionOnly = new ClubMemberBuilder().WithUserId("u-mission").WithNickname("Zeta").InClub(MainClub).Build();
+        UserId = userId,
+        XpReward = xpReward,
+        RecordedAt = DateTimeOffset.UtcNow
+    };
+
+    [Fact]
+    public async Task Handle_ReturnsRosterMinusMembersWhoCompletedTheDailyMissionToday()
+    {
+        var done = new ClubMemberBuilder().WithUserId("u-done").WithNickname("Zeta").InClub(MainClub).Build();
         var idle = new ClubMemberBuilder().WithUserId("u-idle").WithNickname("Alpha").InClub(MainClub).Build();
-        var challengeOnly = new ClubMemberBuilder().WithUserId("u-challenge").WithNickname("Mike").InClub(MainClub).Build();
+        var playedNoMission = new ClubMemberBuilder().WithUserId("u-played").WithNickname("Mike").InClub(MainClub).Build();
 
         _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>())
-            .Returns([missionOnly, idle, challengeOnly]);
+            .Returns([done, idle, playedNoMission]);
 
         _activityReader.ReadTodaysActivitiesAsync(MainClub, Arg.Any<CancellationToken>())
             .Returns([
-                ClubActivities.Mission(missionOnly.UserId),
-                ClubActivities.Challenge(challengeOnly.UserId),
+                Activity(done.UserId, DailyMissionXpReward),
+                // Non-mission XP (e.g. a regular game) does not count as completing the daily mission.
+                Activity(playedNoMission.UserId, 150),
             ]);
 
         var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalMembers.Should().Be(3);
-        // Each list is scoped to its own award, so a member appears in one, both, or neither.
-        result.Value.MissionInactive.Select(m => m.Nickname).Should().Equal("Alpha", "Mike");
-        result.Value.ChallengeInactive.Select(m => m.Nickname).Should().Equal("Alpha", "Zeta");
-    }
-
-    [Fact]
-    public async Task Handle_IgnoresActivityThatIsNotOneOfTheTwoDailyAwards()
-    {
-        var member = new ClubMemberBuilder().WithUserId("u-a").WithNickname("Alpha").InClub(MainClub).Build();
-        _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>()).Returns([member]);
-
-        _activityReader.ReadTodaysActivitiesAsync(MainClub, Arg.Any<CancellationToken>())
-            .Returns([
-                // A weekly mission and a zero-XP club challenge say nothing about today's two awards.
-                ClubActivities.Weekly(member.UserId),
-                ClubActivities.ClubChallenge(member.UserId),
-            ]);
-
-        var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
-
-        result.Value.MissionInactive.Should().ContainSingle();
-        result.Value.ChallengeInactive.Should().ContainSingle();
+        // "done" is excluded; the rest are ordered by nickname.
+        result.Value.Members.Select(m => m.Nickname).Should().Equal("Alpha", "Mike");
     }
 
     [Fact]
@@ -119,17 +113,16 @@ public sealed class GetTodaysInactiveMembersHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsNoInactiveMembers_WhenEveryoneEarnedBothAwards()
+    public async Task Handle_ReturnsNoInactiveMembers_WhenEveryoneCompletedTheMission()
     {
         var a = new ClubMemberBuilder().WithUserId("u-a").InClub(MainClub).Build();
         _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>()).Returns([a]);
         _activityReader.ReadTodaysActivitiesAsync(MainClub, Arg.Any<CancellationToken>())
-            .Returns([ClubActivities.Mission(a.UserId), ClubActivities.Challenge(a.UserId)]);
+            .Returns([Activity(a.UserId, DailyMissionXpReward)]);
 
         var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
 
-        result.Value.MissionInactive.Should().BeEmpty();
-        result.Value.ChallengeInactive.Should().BeEmpty();
+        result.Value.Members.Should().BeEmpty();
     }
 
     [Fact]
@@ -141,8 +134,8 @@ public sealed class GetTodaysInactiveMembersHandlerTests
 
         var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
 
-        result.Value.MissionInactive.Single(m => m.Nickname == "Linked").DiscordUserId.Should().Be(4242UL);
-        result.Value.MissionInactive.Single(m => m.Nickname == "Unlinked").DiscordUserId.Should().BeNull();
+        result.Value.Members.Single(m => m.Nickname == "Linked").DiscordUserId.Should().Be(4242UL);
+        result.Value.Members.Single(m => m.Nickname == "Unlinked").DiscordUserId.Should().BeNull();
     }
 
     [Fact]

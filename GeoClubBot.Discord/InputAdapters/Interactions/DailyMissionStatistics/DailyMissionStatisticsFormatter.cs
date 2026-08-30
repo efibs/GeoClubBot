@@ -40,8 +40,7 @@ internal static class DailyMissionStatisticsFormatter
             .AppendLine($"**Range:** {FormatDay(stats.FromDay)} – {FormatDay(stats.ToDay)}")
             .AppendLine($"**Club:** {stats.ClubName ?? "All clubs"}")
             .AppendLine($"**Days with data:** {stats.DaysWithMissionData.ToString(Invariant)}")
-            .AppendLine($"**Avg club completion:** {FormatRate(stats.AverageDayCompletionRate)}")
-            .AppendLine($"**Avg daily challenge / duel win:** {FormatChallengeRate(stats)}");
+            .AppendLine($"**Avg club completion:** {FormatRate(stats.AverageDayCompletionRate)}");
 
         if (stats.Kinds.Count == 0)
         {
@@ -60,7 +59,7 @@ internal static class DailyMissionStatisticsFormatter
             .WithTitle("📊 Daily Mission Statistics")
             .WithColor(StatisticsColor)
             .WithDescription(description.ToString())
-            .WithFooter(BuildOverviewFooter(stats));
+            .WithFooter("Appeared = share of days with data · Done = avg club completion when present");
     }
 
     public static EmbedBuilder BuildDetailEmbed(MissionStatistics stats, DailyMissionKindStatistics kind)
@@ -110,25 +109,6 @@ internal static class DailyMissionStatisticsFormatter
         }
 
         return table.ToString();
-    }
-
-    /// <summary>
-    /// The daily challenge / duel win only became a club-XP source on 2026-08-25, and the bot only
-    /// records it from the day this tracking shipped, so say so rather than implying a 0% history.
-    /// </summary>
-    private static string FormatChallengeRate(MissionStatistics stats) =>
-        stats.AverageDayChallengeRate is null
-            ? "— (not tracked in this period)"
-            : $"{FormatPercent(stats.AverageDayChallengeRate.Value)} "
-              + $"(over {stats.DaysWithChallengeData.ToString(Invariant)} day(s))";
-
-    private static string BuildOverviewFooter(MissionStatistics stats)
-    {
-        const string baseFooter = "Appeared = share of days with data · Done = avg club completion when present";
-
-        return stats.ChallengeTrackedFrom is { } trackedFrom
-            ? $"{baseFooter} · daily challenge tracked since {FormatDay(trackedFrom)}"
-            : baseFooter;
     }
 
     private static string FormatDay(DateOnly day) => day.ToString("yyyy-MM-dd", Invariant);

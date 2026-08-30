@@ -8,21 +8,6 @@ import { useSession } from '../queries/session';
 import { useMyActivityQuery, useProfileQuery } from '../queries/profile';
 import { countryFlag, formatXp, weekdayInitial } from '../format';
 import { toErrorMessage } from '../api';
-import type { DayMissionDto } from '../types';
-
-// A day carries two independent 20 XP awards, so the strip is three-state rather than a tick box.
-function dayMark(day: DayMissionDto): string {
-  if (day.missionCompleted && day.challengeCompleted) return '✓';
-  return day.missionCompleted || day.challengeCompleted ? '◐' : '·';
-}
-
-function dayTitle(day: DayMissionDto): string {
-  const parts = [
-    `mission: ${day.missionCompleted ? 'done' : 'not done'}`,
-    `challenge/duel: ${day.challengeCompleted ? 'done' : 'not done'}`,
-  ];
-  return `${day.date} — ${parts.join(', ')}`;
-}
 
 const { isLinked, nickname } = useSession();
 
@@ -75,27 +60,20 @@ const errorMessage = computed(() => {
       <PanelSection title="📅 My last 7 days" data-testid="my-activity-panel">
         <template v-if="activity">
           <p class="stat-value">{{ formatXp(activity.totalXp) }}</p>
-          <!-- Daily activity only: weekly missions are excluded, as they are club-wide too. -->
           <p class="stat-caption">
-            excluding weekly missions · fully done on {{ activity.numDaysDone }} of
-            {{ activity.days.length }} days · mission {{ activity.numMissionDaysDone }} ·
-            challenge/duel {{ activity.numChallengeDaysDone }}
+            missions done on {{ activity.numDaysDone }} of {{ activity.days.length }} days
           </p>
           <ul class="day-strip" data-testid="day-strip">
-            <!-- Two independent awards per day, so three states: both, one, neither. -->
             <li
               v-for="day in activity.days"
               :key="day.date"
               class="day-cell"
-              :class="{
-                done: day.missionCompleted && day.challengeCompleted,
-                partial: day.missionCompleted !== day.challengeCompleted,
-              }"
-              :title="dayTitle(day)"
+              :class="{ done: day.missionCompleted }"
+              :title="day.date"
             >
               <span class="day-label">{{ weekdayInitial(day.date) }}</span>
               <!-- Icon + color together: completion is never conveyed by color alone. -->
-              <span class="day-mark">{{ dayMark(day) }}</span>
+              <span class="day-mark">{{ day.missionCompleted ? '✓' : '·' }}</span>
             </li>
           </ul>
         </template>
@@ -133,12 +111,6 @@ const errorMessage = computed(() => {
 
 .day-cell.done {
   background: var(--viewer);
-  border-color: var(--viewer-border);
-}
-
-/* One of the two awards earned: distinguishable from "both" by the ◐ mark as well as the fill. */
-.day-cell.partial {
-  background: var(--bg-row);
   border-color: var(--viewer-border);
 }
 

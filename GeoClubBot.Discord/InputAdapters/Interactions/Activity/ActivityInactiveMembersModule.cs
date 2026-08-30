@@ -10,7 +10,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 // so this subcommand is admin-only without any extra attribute.
 public partial class ActivityModule
 {
-    [SlashCommand("inactive-members", "List today's club members who are missing a daily mission or daily challenge")]
+    [SlashCommand("inactive-members", "List today's club members who haven't done their daily mission")]
     public Task InactiveMembersAsync(
         [Summary(description: "Restrict to one club (default: the main club)")]
         [Autocomplete(typeof(ClubAutocompleteHandler))] string? club = null) =>

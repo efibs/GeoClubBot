@@ -60,7 +60,6 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
                 x.UserId,
                 UserNick = store.Users.TryGetValue(x.UserId, out var u) ? u.Nick : x.UserId,
                 x.XpReward,
-                x.Type,
                 RecordedAt = x.RecordedAt.ToString("yyyy-MM-dd HH:mm:ss")
             })
             : [];
@@ -94,6 +93,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (req.MaxMemberCount.HasValue) club.MaxMemberCount = req.MaxMemberCount.Value;
         if (req.Tag is not null) club.Tag = req.Tag;
         if (req.Description is not null) club.Description = req.Description;
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -103,6 +103,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (!store.Clubs.TryGetValue(clubId, out var club))
             return NotFound();
         club.Level++;
+        store.NotifyDataChanged();
         return Ok(new { club.Level });
     }
 
@@ -134,6 +135,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             WeeklyXp = 0,
             LastActive = null
         };
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -142,6 +144,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     {
         if (store.ClubMembers.TryGetValue(clubId, out var members))
             members.TryRemove(userId, out _);
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -157,6 +160,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         var target =
             store.ClubMembers.GetOrAdd(req.TargetClubId, _ => new ConcurrentDictionary<string, ClubMemberDto>());
         target[userId] = member;
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -167,9 +171,10 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             return NotFound();
         if (!members.TryGetValue(userId, out var member))
             return NotFound("Member not found");
-        var amount = req.Amount >= 0 ? req.Amount : DefaultXpFor(req.Type);
+        var amount = req.Amount > 0 ? req.Amount : 20;
         member.Xp += amount;
-        store.AddActivity(clubId, userId, amount, req.Type);
+        store.AddActivity(clubId, userId, amount);
+        store.NotifyDataChanged();
         return Ok(new { member.Xp });
     }
 
@@ -183,23 +188,17 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (req.Xp.HasValue) member.Xp = req.Xp.Value;
         if (req.WeeklyXp.HasValue) member.WeeklyXp = req.WeeklyXp.Value;
         if (req.Role.HasValue) member.Role = req.Role.Value;
+        store.NotifyDataChanged();
         return Ok();
     }
 
     [HttpPost("clubs/{clubId:guid}/activities")]
     public IActionResult AddActivity(Guid clubId, [FromBody] AddActivityRequest req)
     {
-        store.AddActivity(clubId, req.UserId, req.XpReward >= 0 ? req.XpReward : DefaultXpFor(req.Type), req.Type);
+        store.AddActivity(clubId, req.UserId, req.XpReward > 0 ? req.XpReward : 20);
+        store.NotifyDataChanged();
         return Ok();
     }
-
-    /// <summary>What each activity type is worth on the real GeoGuessr API.</summary>
-    private static int DefaultXpFor(int type) => type switch
-    {
-        2 => 1000,
-        3 => 0,
-        _ => 20
-    };
 
     [HttpPost("users")]
     public IActionResult CreateUser([FromBody] CreateUserRequest req)
@@ -225,6 +224,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         };
         if (!store.Users.TryAdd(userId, user))
             return Conflict("User ID already exists");
+        store.NotifyDataChanged();
         return Ok(new { userId });
     }
 
@@ -246,6 +246,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (req.IsProUser.HasValue) user.IsProUser = req.IsProUser.Value;
         if (req.Elo.HasValue) user.Competitive.Elo = req.Elo.Value;
         if (req.Rating.HasValue) user.Competitive.Rating = req.Rating.Value;
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -310,6 +311,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             TimeLimit = req.TimeLimit > 0 ? req.TimeLimit : 60
         };
         store.ChallengeHighscores[token] = [];
+        store.NotifyDataChanged();
         return Ok(new { token });
     }
 
@@ -350,6 +352,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
                 }
             }
         });
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -409,6 +412,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             if (req.NmpzDuels.HasValue) progress.GameModeRatings.NmpzDuels = req.NmpzDuels.Value;
         }
 
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -447,6 +451,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             if (req.NmpzDuels.HasValue) peak.PeakGameModeRatings.NmpzDuels = req.NmpzDuels.Value;
         }
 
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -517,6 +522,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             store.DailyMissions.Add(mission);
         }
 
+        store.NotifyDataChanged();
         return Ok(new { id = mission.Id });
     }
 
@@ -534,6 +540,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             store.DailyMissions.RemoveAt(index);
         }
 
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -545,6 +552,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             store.DailyMissions.Clear();
         }
 
+        store.NotifyDataChanged();
         return Ok();
     }
 
@@ -552,6 +560,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     public IActionResult UpdateNextMissionDate([FromBody] UpdateNextMissionDateRequest req)
     {
         store.NextMissionDate = req.NextMissionDate;
+        store.NotifyDataChanged();
         return Ok();
     }
 }

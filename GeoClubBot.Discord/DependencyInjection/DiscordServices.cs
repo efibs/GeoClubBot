@@ -10,15 +10,7 @@ namespace GeoClubBot.Discord.DependencyInjection;
 
 public static class DiscordServices
 {
-    /// <param name="enableMessageContent">
-    /// Requests the privileged MessageContent intent, needed to read the text of messages that do not
-    /// mention the bot — without it a reply arrives with empty content and follow-up questions cannot
-    /// work. Gated so a deployment with AI switched off never asks for a privileged intent it does
-    /// not use. The intent must also be enabled in the Discord developer portal; requesting it
-    /// without that takes the whole gateway connection down with close code 4014, not just the AI
-    /// feature.
-    /// </param>
-    public static void AddDiscordServices(this IServiceCollection services, bool enableMessageContent = false)
+    public static void AddDiscordServices(this IServiceCollection services)
     {
         // Discord bot service must be the first service that starts
         services.AddHostedService<DiscordBotService>();
@@ -28,10 +20,9 @@ public static class DiscordServices
         {
             // AllUnprivileged includes GuildScheduledEvents and GuildInvites, which
             // we don't listen to. Excluding them avoids Discord.Net's unused-intent warnings.
-            GatewayIntents = ((GatewayIntents.AllUnprivileged | GatewayIntents.GuildMembers)
-                    & ~GatewayIntents.GuildScheduledEvents
-                    & ~GatewayIntents.GuildInvites)
-                | (enableMessageContent ? GatewayIntents.MessageContent : GatewayIntents.None),
+            GatewayIntents = (GatewayIntents.AllUnprivileged | GatewayIntents.GuildMembers)
+                & ~GatewayIntents.GuildScheduledEvents
+                & ~GatewayIntents.GuildInvites,
             AlwaysDownloadUsers = true
         }));
 

@@ -25,6 +25,7 @@ namespace GeoClubBot.Tests.Application.UseCases.DailyMissionReminderTests;
 public sealed class CatchUpMissedRemindersHandlerTests
 {
     private static readonly Guid ClubId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    private const int DailyMissionXpReward = 20;
 
     private readonly IDailyMissionReminderRepository _reminders = Substitute.For<IDailyMissionReminderRepository>();
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
@@ -46,12 +47,12 @@ public sealed class CatchUpMissedRemindersHandlerTests
     }
 
     private SendDueRemindersHandler CreateHandler() => new(
-        _reminders, _members, _dm, _mediator, _activityReader, ClubActivities.Classifier(),
-        _dailyMissions, _renderer,
+        _reminders, _members, _dm, _mediator, _activityReader, _dailyMissions, _renderer,
         Options.Create(new DailyMissionReminderConfiguration
         {
             Schedule = "0 * * * * ?",
-            DefaultMessage = "Don't forget your daily missions!\n\n{{mission_text}}"
+            DefaultMessage = "Don't forget your daily missions!\n\n{{mission_text}}",
+            DailyMissionXpReward = DailyMissionXpReward
         }),
         _logger);
 
@@ -153,7 +154,7 @@ public sealed class CatchUpMissedRemindersHandlerTests
         _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
             .Returns(new List<ReadClubActivitiesItemDto>
             {
-                ClubActivities.Mission("user-1"), ClubActivities.Challenge("user-1")
+                new() { UserId = "user-1", XpReward = DailyMissionXpReward, RecordedAt = DateTimeOffset.UtcNow }
             });
 
         await CreateHandler().Handle(new CatchUpMissedRemindersCommand(), CancellationToken.None);

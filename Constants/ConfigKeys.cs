@@ -11,6 +11,9 @@ public static class ConfigKeys
 {
     public const string PostgresConnectionString = "PostgreSQL";
     public const string QDrantConnectionString = "QDrant";
+    public const string LlmInferenceEndpointConnectionString = "LlmInferenceEndpoint";
+    public const string EmbeddingEndpoint = "EmbeddingEndpoint";
+    public const string CategorizationEndpoint = "CategorizationEndpoint";
 
     public const string GeoGuessrClubSyncScheduleConfigurationKey = "GeoGuessr:SyncSchedule";
 
@@ -25,14 +28,6 @@ public static class ConfigKeys
     public const string DailyMissionLoggingCronScheduleConfigurationKey = "DailyMissionLogging:Schedule";
 
     public const string DailyMissionStatisticsSnapshotCronScheduleConfigurationKey = "DailyMissionStatistics:SnapshotSchedule";
-
-    public const string AiModelCatalogRefreshCronScheduleConfigurationKey = "AI:ModelCatalogRefreshSchedule";
-
-    public const string AiConversationCleanupCronScheduleConfigurationKey = "AI:ConversationCleanupSchedule";
-
-    public const string AiCatalogSyncCronScheduleConfigurationKey = "AI:CatalogSyncSchedule";
-
-    public const string AiIngestionCronScheduleConfigurationKey = "AI:IngestionSchedule";
 
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

@@ -22,9 +22,6 @@ public class DailyMissionMemberCompletionEntityConfiguration : IEntityTypeConfig
         builder.Property(x => x.Date).IsRequired();
         builder.Property(x => x.CompletedCount).IsRequired();
 
-        // Nullable on purpose: rows predating daily-challenge tracking mean "unknown", not "zero".
-        builder.Property(x => x.DailyChallengeCount);
-
         builder.UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Ignore(x => x.DomainEvents);
 

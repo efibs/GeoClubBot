@@ -3,6 +3,15 @@
 # raises PRs to bump these digests.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:1fa23fc4872d95fd71c2833ebe65d7e84a43b2d51a31d119516852f13d9505a7 AS base
 RUN apt-get update && apt-get install -y curl libfontconfig1 libfreetype6 libpng16-16 libjpeg-turbo8 libgif7 libglu1-mesa && rm -rf /var/lib/apt/lists/*
+# Install required dependencies for Chromium
+RUN apt-get update && apt-get install -y \
+    wget gnupg ca-certificates fonts-liberation libappindicator3-1 libasound2t64 \
+    libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 \
+    libexpat1 libgbm1 libglib2.0-0 libgtk-3-0 \
+    libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libx11-6 libx11-xcb1 \
+    libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
+    libxrender1 libxshmfence1 lsb-release xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 USER 1654
 WORKDIR /app
 EXPOSE 8080
@@ -47,9 +56,4 @@ FROM base AS final
 
 WORKDIR /app
 COPY --from=publish /app/publish .
-
-# Created here, owned by the non-root runtime user, so that a named volume mounted over it inherits
-# that ownership when Docker first seeds it. Without the directory existing in the image, the volume
-# is created root-owned and the app cannot write relayed guide images into it.
-RUN mkdir -p /app/ai-images
 ENTRYPOINT ["dotnet", "GeoClubBot.API.dll"]

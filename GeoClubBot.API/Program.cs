@@ -105,18 +105,6 @@ builder.Services.AddRateLimiter(options =>
                 PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(1)
             }));
-
-    // Guide images are served anonymously so the AI provider and Discord can fetch them. The limit is
-    // generous because one answer legitimately pulls several images at once, but bounded so the
-    // endpoint cannot be used as free bandwidth.
-    options.AddPolicy(RateLimitPolicies.AiImageRelay, httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 120,
-                Window = TimeSpan.FromMinutes(1)
-            }));
 });
 
 // The Data Protection key ring (used by SignalR's negotiated connection tokens, and by anything
@@ -150,11 +138,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddClubBotOptions(builder.Configuration);
 
 // Add the discord services
-// The AI conversation listener reads replies that do not mention the bot, which needs the privileged
-// MessageContent intent. Requested only when the feature is on: asking for a privileged intent that
-// is not enabled in the developer portal drops the whole gateway connection, not just AI.
-var aiActive = builder.Configuration.GetValue<bool>($"{AiConfiguration.SectionName}:{nameof(AiConfiguration.Active)}");
-builder.Services.AddDiscordServices(enableMessageContent: aiActive);
+builder.Services.AddDiscordServices();
 
 // Add GeoGuessr client (mock or real)
 var useMockGeoGuessr = builder.Configuration.GetValue("GeoGuessr:UseMock", false);
@@ -319,8 +303,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// Only the activity SPA ships static assets; the mock UI is a single embedded HTML file.
-if (serveActivity)
+// The mock GeoGuessr UI also relies on static files.
+if (useMockGeoGuessr || serveActivity)
 {
     app.UseStaticFiles();
 }

@@ -64,18 +64,16 @@ public class MockGeoGuessrDataStore
         return $"mock-challenge-{id:D6}";
     }
 
-    /// <summary>
-    /// Appends an activity. <paramref name="type"/> is GeoGuessr's activity type - 1 daily mission,
-    /// 2 weekly mission, 4 daily challenge / duel win - which is what the bot classifies on now
-    /// that the daily mission and the daily challenge are both worth 20 XP.
-    /// </summary>
-    public void AddActivity(Guid clubId, string userId, int xpReward, int type)
+    public event Action? OnDataChanged;
+
+    public void NotifyDataChanged() => OnDataChanged?.Invoke();
+
+    public void AddActivity(Guid clubId, string userId, int xpReward)
     {
         var activities = ClubActivities.GetOrAdd(clubId, _ => []);
         activities.Add(new ReadClubActivitiesItemDto
         {
             UserId = userId,
-            Type = type,
             XpReward = xpReward,
             RecordedAt = DateTimeOffset.UtcNow
         });

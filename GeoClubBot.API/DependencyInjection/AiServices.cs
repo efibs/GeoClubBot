@@ -1,17 +1,11 @@
-using System.Net.Http.Headers;
-using System.Security.Cryptography;
-using System.Text;
 using Configuration;
 using Constants;
 using GeoClubBot.Services;
 using Infrastructure.OutputAdapters.AI;
-using Infrastructure.OutputAdapters.AI.Extractors;
-using Infrastructure.OutputAdapters.AI.ImageRelay;
-using Infrastructure.OutputAdapters.AI.OpenRouter;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+using MediatR;
 using Qdrant.Client;
 using UseCases.OutputPorts.AI;
-using UseCases.OutputPorts.AI.Ingestion;
+using UseCases.UseCases.AI;
 
 namespace GeoClubBot.DependencyInjection;
 
@@ -20,160 +14,37 @@ public static class AiServices
     public static void AddAiServicesIfConfigured(this IServiceCollection services, IConfiguration configuration)
     {
         var aiConfig = configuration.GetSection(AiConfiguration.SectionName).Get<AiConfiguration>() ?? new AiConfiguration();
-
-        // Registered even when the feature is off. MediatR's assembly scan picks up every handler in
-        // the Application assembly unconditionally, so the container must be able to construct the
-        // AI handlers' dependencies or service-descriptor validation fails at start-up. Nothing here
-        // performs I/O until it is called, and the listener below is only added when AI is enabled.
-        services.AddOpenRouterServices(aiConfig);
-        services.AddKnowledgeIndex(configuration, aiConfig);
-        services.AddSourceExtractors();
-
         if (!aiConfig.Active)
         {
             return;
         }
 
-        services.AddHostedService<AiConversationGateway>();
-    }
+        var qdrantConnectionString = configuration.GetConnectionString(ConfigKeys.QDrantConnectionString)!;
+        var embeddingEndpoint = configuration.GetConnectionString(ConfigKeys.EmbeddingEndpoint)!;
+        var embeddingModelName = aiConfig.EmbeddingModel!;
 
-    /// <summary>
-    /// Chat generation and embeddings via OpenRouter, with the chat model chosen automatically from
-    /// whatever is free today rather than pinned in configuration.
-    /// </summary>
-    private static void AddOpenRouterServices(this IServiceCollection services, AiConfiguration aiConfig)
-    {
-        var openRouter = aiConfig.OpenRouter;
+        services.AddHostedService<AiBotService>();
 
-        services.AddHttpClient(RefitChatModelClient.HttpClientName, client =>
-            {
-                client.BaseAddress = new Uri(openRouter.BaseUrl);
-                client.Timeout = TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds);
+        services.AddTransient(_ => new QdrantClient(qdrantConnectionString));
 
-                if (!string.IsNullOrWhiteSpace(openRouter.ApiKey))
-                {
-                    client.DefaultRequestHeaders.Authorization =
-                        new AuthenticationHeaderValue("Bearer", openRouter.ApiKey);
-                }
+        services.AddTransient<VllmEmbeddingService>(_ =>
+            new VllmEmbeddingService(new Uri(embeddingEndpoint), embeddingModelName));
 
-                // Optional attribution headers; OpenRouter surfaces them on their public leaderboards.
-                if (!string.IsNullOrWhiteSpace(openRouter.SiteUrl))
-                {
-                    client.DefaultRequestHeaders.Add("HTTP-Referer", openRouter.SiteUrl);
-                }
+        // Split components: page-fetching (Puppeteer), embedding (vLLM + categoriser), and
+        // the vector index (Qdrant). The PlonkItGuideVectorStore facade composes them.
+        services.AddSingleton<IPlonkItPageFetcher, PuppeteerPlonkItPageFetcher>();
+        services.AddSingleton<IPlonkItVectorIndex, QdrantPlonkItVectorIndex>();
+        services.AddSingleton<IPlonkItEmbedder, VllmPlonkItEmbedder>();
 
-                client.DefaultRequestHeaders.Add("X-Title", openRouter.AppName);
-            })
-            .AddResilienceHandler(
-                "OpenRouterResiliencePipeline",
-                builder => ResiliencePipelines.AddOpenRouterResiliencePipeline(builder, openRouter.PerMinuteRequestBudget));
+        services.AddSingleton<PlonkItGuideVectorStore>();
+        services.AddSingleton<IPlonkItGuideVectorStore>(sp => sp.GetRequiredService<PlonkItGuideVectorStore>());
 
-        // TimeProvider is not otherwise used in this solution; registering the system implementation
-        // keeps the catalog's failure-decay logic swappable in tests without a new dependency.
-        services.TryAddSingleton(TimeProvider.System);
+        services.AddTransient<PlonkItGuidePlugin>();
 
-        services.AddSingleton<IChatModelClient, RefitChatModelClient>();
+        services.AddTransient<IPlonkItGuideEmbeddingTextProvider, PlonkItGuideEmbeddingTextProvider>();
 
-        // Singleton: the roster is process-wide state, and the failure tracker only demotes a flaky
-        // model usefully once penalties accumulate across turns.
-        services.AddSingleton<IChatModelCatalog, ChatModelCatalog>();
-
-        // Embeddings share the chat client's HTTP pipeline, so they inherit its auth and rate limiter.
-        services.AddSingleton<IEmbedder, OpenRouterEmbedder>();
-    }
-
-    /// <summary>
-    /// Extractors that read third-party guide content, plus the registry that picks between them.
-    /// Adding a source family is one extractor class and one line here.
-    /// </summary>
-    private static void AddSourceExtractors(this IServiceCollection services)
-    {
-        services.AddHttpClient(PlonkItSourceExtractor.HttpClientName, client =>
-            {
-                // Identify ourselves: an unattended reader that says who it is and how to reach the
-                // author is one a site operator can contact rather than simply block.
-                client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                    "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
-                client.Timeout = TimeSpan.FromSeconds(30);
-            })
-            .AddResilienceHandler(
-                "ContentSourceResiliencePipeline",
-                ResiliencePipelines.AddContentSourceResiliencePipeline);
-
-        // Registered against both ports: the same adapter knows how to list the site's pages and how
-        // to read one of them.
-        services.AddSingleton<PlonkItSourceExtractor>();
-        services.AddSingleton<ISourceExtractor>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
-        services.AddSingleton<ISourceCatalog>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
-
-        // The second guide site that indexes itself: fewer countries, far more detail per country.
-        services.AddSingleton<RmrgSourceExtractor>();
-        services.AddSingleton<ISourceExtractor>(sp => sp.GetRequiredService<RmrgSourceExtractor>());
-        services.AddSingleton<ISourceCatalog>(sp => sp.GetRequiredService<RmrgSourceExtractor>());
-
-        // One extractor per source family. The registry picks between them, so a new family is a
-        // class plus a line here.
-        services.AddSingleton<ISourceExtractor, ImgurAlbumSourceExtractor>();
-        services.AddSingleton<ISourceExtractor, GoogleDocSourceExtractor>();
-        services.AddSingleton<ISourceExtractor, GoogleSlidesSourceExtractor>();
-        services.AddSingleton<ISourceExtractor, GoogleSheetSourceExtractor>();
-        services.AddSingleton<ISourceExtractor, DirectImageSourceExtractor>();
-
-        // A community library published as a spreadsheet; opt-in, and inert until a sheet id is set.
-        services.AddSingleton<ISourceCatalog, MetaLibrarySourceCatalog>();
-
-        services.AddSingleton<ISourceExtractorRegistry, SourceExtractorRegistry>();
-
-        // Fetches images from hosts that refuse the AI provider, on the same polite pipeline as the
-        // rest of the ingestion traffic.
-        services.AddHttpClient(FileSystemImageRelay.HttpClientName, client =>
-            {
-                client.DefaultRequestHeaders.UserAgent.ParseAdd(
-                    "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
-                client.Timeout = TimeSpan.FromSeconds(30);
-            })
-            // The relay chases redirects itself so it can rewrite the referer at each hop; letting the
-            // handler follow them silently is what makes a regional image mirror answer 403.
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
-            .AddResilienceHandler(
-                "ContentSourceResiliencePipeline",
-                ResiliencePipelines.AddContentSourceResiliencePipeline);
-
-        services.AddSingleton<IImageRelay, FileSystemImageRelay>();
-    }
-
-    /// <summary>
-    /// The vector store holding indexed guide content. Registered unconditionally for the same reason
-    /// as the chat services. Nothing connects to Qdrant until a query or an ingest actually runs.
-    /// </summary>
-    private static void AddKnowledgeIndex(
-        this IServiceCollection services,
-        IConfiguration configuration,
-        AiConfiguration aiConfig)
-    {
-        // Defaulted rather than null-forgiving: with AI off the connection string is legitimately
-        // absent, and resolving the client must not throw just because the graph was built.
-        var qdrantConnectionString =
-            configuration.GetConnectionString(ConfigKeys.QDrantConnectionString) ?? "localhost";
-
-        services.AddSingleton<IKnowledgeIndex>(_ => new QdrantKnowledgeIndex(
-            new QdrantClient(qdrantConnectionString),
-            BuildCollectionName(aiConfig),
-            aiConfig.OpenRouter.EmbeddingDimensions));
-    }
-
-    /// <summary>
-    /// Derives the collection name from the embedding model and its width, so changing either lands
-    /// on a new collection instead of appending incomparable vectors to the existing one. The old
-    /// collection is left in place, visible and deletable, rather than silently corrupted.
-    /// </summary>
-    private static string BuildCollectionName(AiConfiguration aiConfig)
-    {
-        var openRouter = aiConfig.OpenRouter;
-        var modelFingerprint = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(openRouter.EmbeddingModelId)))[..8]
-            .ToLowerInvariant();
-
-        return $"{aiConfig.KnowledgeCollectionPrefix}-{modelFingerprint}-{openRouter.EmbeddingDimensions}";
+        // MediatR's assembly scan only sees the Application assembly; the AI chat handler
+        // lives in Infrastructure (it needs SemanticKernel), so register it manually.
+        services.AddTransient<IRequestHandler<GetAiResponseQuery, string?>, GeoGuessrChatBotHandler>();
     }
 }

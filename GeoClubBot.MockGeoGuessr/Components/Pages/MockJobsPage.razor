@@ -1,0 +1,146 @@
+@page "/mock/jobs"
+@rendermode InteractiveServer
+@using Quartz
+
+<h3>Scheduled Jobs</h3>
+<p class="text-muted">Trigger Quartz scheduled jobs manually.</p>
+
+@if (_jobs is null)
+{
+    <p>Loading jobs...</p>
+    return;
+}
+
+@if (_jobs.Count == 0)
+{
+    <div class="alert alert-info">No scheduled jobs found.</div>
+    return;
+}
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Job Name</th>
+            <th>Next Fire Time (UTC)</th>
+            <th>Last Fire Time (UTC)</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var job in _jobs)
+        {
+            <tr>
+                <td><strong>@job.JobName</strong></td>
+                <td>@(job.NextFireTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                <td>@(job.LastFireTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never")</td>
+                <td>
+                    @if (_runningJobs.Contains(job.JobName))
+                    {
+                        <span class="badge bg-warning">Running...</span>
+                    }
+                    else if (_jobResults.TryGetValue(job.JobName, out var result))
+                    {
+                        @if (result.Success)
+                        {
+                            <span class="badge bg-success">Completed</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-danger" title="@result.Error">Failed</span>
+                        }
+                    }
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-primary"
+                            disabled="@(_runningJobs.Contains(job.JobName))"
+                            @onclick="() => TriggerJob(job.JobName)">
+                        @(_runningJobs.Contains(job.JobName) ? "Running..." : "Trigger")
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@if (_jobResults.Any(r => !r.Value.Success))
+{
+    <h5 class="mt-4">Errors</h5>
+    @foreach (var (jobName, result) in _jobResults.Where(r => !r.Value.Success))
+    {
+        <div class="alert alert-danger">
+            <strong>@jobName:</strong> @result.Error
+        </div>
+    }
+}
+
+@code {
+    [Inject] private ISchedulerFactory SchedulerFactory { get; set; } = default!;
+
+    private List<JobInfo>? _jobs;
+    private readonly HashSet<string> _runningJobs = [];
+    private readonly Dictionary<string, JobResult> _jobResults = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJobs();
+    }
+
+    private async Task LoadJobs()
+    {
+        var scheduler = await SchedulerFactory.GetScheduler();
+        var jobKeys = await scheduler.GetJobKeys(Quartz.Impl.Matchers.GroupMatcher<JobKey>.AnyGroup());
+
+        var jobs = new List<JobInfo>();
+        foreach (var key in jobKeys.OrderBy(k => k.Name))
+        {
+            var triggers = await scheduler.GetTriggersOfJob(key);
+            var trigger = triggers.FirstOrDefault();
+
+            jobs.Add(new JobInfo
+            {
+                JobName = key.Name,
+                NextFireTime = trigger?.GetNextFireTimeUtc()?.DateTime,
+                LastFireTime = trigger?.GetPreviousFireTimeUtc()?.DateTime
+            });
+        }
+
+        _jobs = jobs;
+    }
+
+    private async Task TriggerJob(string jobName)
+    {
+        _runningJobs.Add(jobName);
+        _jobResults.Remove(jobName);
+        StateHasChanged();
+
+        try
+        {
+            var scheduler = await SchedulerFactory.GetScheduler();
+            await scheduler.TriggerJob(new JobKey(jobName));
+            _jobResults[jobName] = new JobResult { Success = true };
+        }
+        catch (Exception ex)
+        {
+            _jobResults[jobName] = new JobResult { Success = false, Error = ex.Message };
+        }
+        finally
+        {
+            _runningJobs.Remove(jobName);
+            await LoadJobs();
+        }
+    }
+
+    private class JobInfo
+    {
+        public required string JobName { get; init; }
+        public DateTime? NextFireTime { get; init; }
+        public DateTime? LastFireTime { get; init; }
+    }
+
+    private class JobResult
+    {
+        public bool Success { get; init; }
+        public string? Error { get; init; }
+    }
+}

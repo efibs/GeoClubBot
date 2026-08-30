@@ -30,12 +30,7 @@ public sealed class DailyMissionStatisticsFormatterTests
             DaysWithMissionData: 28,
             TotalMissionAppearances: kinds.Sum(k => k.AppearanceCount),
             AverageDayCompletionRate: kinds.Length == 0 ? null : 0.62,
-            Kinds: kinds,
-            // The daily challenge became a club-XP source part-way into this window, so the
-            // snapshot also covers the "tracked since" wording.
-            AverageDayChallengeRate: kinds.Length == 0 ? null : 0.41,
-            DaysWithChallengeData: kinds.Length == 0 ? 0 : 12,
-            ChallengeTrackedFrom: kinds.Length == 0 ? null : new DateOnly(2026, 5, 29));
+            Kinds: kinds);
 
     private static DailyMissionKindStatistics BuildKind(
         string type,

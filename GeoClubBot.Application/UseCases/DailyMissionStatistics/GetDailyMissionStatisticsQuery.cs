@@ -23,13 +23,7 @@ public sealed record DailyMissionStatistics(
     int DaysWithMissionData,
     int TotalMissionAppearances,
     double? AverageDayCompletionRate,
-    IReadOnlyList<DailyMissionKindStatistics> Kinds,
-    // How often the club's other daily XP award - playing the daily challenge or winning a duel -
-    // was earned. Separate from the mission figures above, and only computable for days the bot
-    // has actually tracked it: null everywhere before ChallengeTrackedFrom.
-    double? AverageDayChallengeRate,
-    int DaysWithChallengeData,
-    DateOnly? ChallengeTrackedFrom);
+    IReadOnlyList<DailyMissionKindStatistics> Kinds);
 
 public sealed record DailyMissionKindStatistics(
     string Type,
@@ -88,10 +82,9 @@ public sealed class DailyMissionStatisticsHandlers(
             .GroupBy(m => m.Day)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var rates = await ComputeRatesByDayAsync(
+        var completionRateByDay = await ComputeCompletionRateByDayAsync(
                 request.ClubId, fromDay, toDay, missionCountByDay, cancellationToken)
             .ConfigureAwait(false);
-        var completionRateByDay = rates.MissionRateByDay;
 
         var daysWithMissionData = missionCountByDay.Count;
 
@@ -128,10 +121,7 @@ public sealed class DailyMissionStatisticsHandlers(
             DaysWithMissionData: daysWithMissionData,
             TotalMissionAppearances: dedupedMissions.Count,
             AverageDayCompletionRate: completionRateByDay.Count > 0 ? completionRateByDay.Values.Average() : null,
-            Kinds: kinds,
-            AverageDayChallengeRate: rates.ChallengeRateByDay.Count > 0 ? rates.ChallengeRateByDay.Values.Average() : null,
-            DaysWithChallengeData: rates.ChallengeRateByDay.Count,
-            ChallengeTrackedFrom: rates.ChallengeTrackedFrom);
+            Kinds: kinds);
     }
 
     public Task<IReadOnlyList<DailyMissionKind>> Handle(
@@ -140,17 +130,11 @@ public sealed class DailyMissionStatisticsHandlers(
         dailyMissions.ReadDistinctMissionKindsAsync(cancellationToken);
 
     /// <summary>
-    /// Per day, the two completion rates:
-    ///
-    /// * <b>mission</b> — completion events / (member rows × missions that day), capped at 100%.
-    ///   The snapshot's completion events carry no mission identity, so days with several missions
-    ///   get one blended rate. Only days with both a snapshot and logged missions are computable.
-    /// * <b>challenge</b> — member rows that played the daily challenge or won a duel / member rows.
-    ///   At most one such award exists per member per day, so no mission-count denominator applies.
-    ///   Rows written before the bot tracked it hold null, and those days are left out entirely
-    ///   rather than counted as nobody having played.
+    /// Computes per day: completion events / (member rows × missions that day), capped at 100%.
+    /// The snapshot's completion events carry no mission identity, so days with several missions
+    /// get one blended rate. Only days with both a snapshot and logged missions are computable.
     /// </summary>
-    private async Task<RatesByDay> ComputeRatesByDayAsync(
+    private async Task<Dictionary<DateOnly, double>> ComputeCompletionRateByDayAsync(
         Guid? clubId,
         DateOnly fromDay,
         DateOnly toDay,
@@ -161,27 +145,11 @@ public sealed class DailyMissionStatisticsHandlers(
             .ReadCompletionsAsync(clubId, fromDay, toDay, cancellationToken)
             .ConfigureAwait(false);
 
-        var byDay = completionRows.GroupBy(c => c.Date).ToList();
-
-        var missionRateByDay = byDay
+        return completionRows
+            .GroupBy(c => c.Date)
             .Where(g => missionCountByDay.ContainsKey(g.Key))
             .ToDictionary(
                 g => g.Key,
                 g => Math.Min(1.0, (double)g.Sum(c => c.CompletedCount) / (g.Count() * missionCountByDay[g.Key])));
-
-        var challengeRateByDay = byDay
-            .Where(g => g.Any(c => c.DailyChallengeCount is not null))
-            .ToDictionary(
-                g => g.Key,
-                g => (double)g.Count(c => c.DailyChallengeCount > 0) / g.Count());
-
-        DateOnly? challengeTrackedFrom = challengeRateByDay.Count > 0 ? challengeRateByDay.Keys.Min() : null;
-
-        return new RatesByDay(missionRateByDay, challengeRateByDay, challengeTrackedFrom);
     }
-
-    private sealed record RatesByDay(
-        Dictionary<DateOnly, double> MissionRateByDay,
-        Dictionary<DateOnly, double> ChallengeRateByDay,
-        DateOnly? ChallengeTrackedFrom);
 }

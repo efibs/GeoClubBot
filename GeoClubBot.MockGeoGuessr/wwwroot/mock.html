@@ -130,11 +130,7 @@ async function loadClub(id){
     let moveHtml=clubs.map(tc=>`<li><a class="dropdown-item" href="#" onclick="moveMember('${c.clubId}','${m.userId}','${tc.clubId}')">${h(tc.name)}</a></li>`).join('');
     html+=`<tr><td>${h(m.nick)}</td><td><code>${m.userId.substring(0,8)}...</code> ${userCopyBtns(m.userId)}</td><td>${m.xp}</td><td>${m.weeklyXp}</td><td>${m.role}</td><td>${m.joinedAt}</td>
     <td><div class="btn-group btn-group-sm">
-      <div class="btn-group btn-group-sm"><button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">Award XP</button><ul class="dropdown-menu">
-        <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',1)">Daily mission (+20)</a></li>
-        <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',4)">Daily challenge / duel win (+20)</a></li>
-        <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',2)">Weekly mission (+1000)</a></li>
-      </ul></div>
+      <button class="btn btn-outline-success" onclick="addXp('${c.clubId}','${m.userId}')">+20 XP</button>
       <div class="btn-group btn-group-sm"><button class="btn btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown">Move</button><ul class="dropdown-menu">${moveHtml}</ul></div>
       <button class="btn btn-outline-danger" onclick="removeMember('${c.clubId}','${m.userId}')">Remove</button>
     </div></td></tr>`;
@@ -149,28 +145,12 @@ async function loadClub(id){
     <div class="col-md-2"><a href="#" class="btn btn-outline-secondary btn-sm" onclick="showView('users')">Create New User</a></div>
   </div></div></div>`;
 
-  // Activities. The kind matters: the daily mission and the daily challenge / duel win are both
-  // worth 20 XP, so only the activity type tells the bot which of the two a member actually did.
-  let memberOptHtml=d.members.map(m=>`<option value="${m.userId}">${h(m.nick)}</option>`).join('');
-  html+=`<div class="card"><div class="card-header">Recent Activities</div><div class="card-body">
-    <div class="row g-2 align-items-end mb-3">
-      <div class="col-md-4"><label class="form-label">Member</label>
-        <select class="form-select form-select-sm" id="act-user"><option value="">-- Select member --</option>${memberOptHtml}</select></div>
-      <div class="col-md-4"><label class="form-label">Kind</label>
-        <select class="form-select form-select-sm" id="act-type" onchange="syncActivityXp()">
-          <option value="1">Daily mission (20 XP)</option>
-          <option value="4">Daily challenge / duel win (20 XP)</option>
-          <option value="2">Weekly mission (1000 XP)</option>
-          <option value="3">Club challenge played (0 XP)</option>
-        </select></div>
-      <div class="col-md-2"><label class="form-label">XP</label>
-        <input class="form-control form-control-sm" id="act-xp" type="number" value="20"/></div>
-      <div class="col-md-2"><button class="btn btn-success btn-sm" onclick="addActivity('${c.clubId}')">Add Activity</button></div>
-    </div>`;
+  // Activities
+  html+=`<div class="card"><div class="card-header">Recent Activities</div><div class="card-body">`;
   if(d.activities.length===0) html+=`<p class="text-muted">No activities yet.</p>`;
   else{
-    html+=`<table class="table table-sm"><thead><tr><th>User</th><th>Kind</th><th>XP</th><th>Time</th></tr></thead><tbody>`;
-    d.activities.forEach(a=>{html+=`<tr><td>${h(a.userNick)} ${userCopyBtns(a.userId)}</td><td>${activityKindLabel(a.type)}</td><td>+${a.xpReward}</td><td>${a.recordedAt}</td></tr>`});
+    html+=`<table class="table table-sm"><thead><tr><th>User</th><th>XP</th><th>Time</th></tr></thead><tbody>`;
+    d.activities.forEach(a=>{html+=`<tr><td>${h(a.userNick)} ${userCopyBtns(a.userId)}</td><td>+${a.xpReward}</td><td>${a.recordedAt}</td></tr>`});
     html+=`</tbody></table>`;
   }
   html+=`</div></div>`;
@@ -190,28 +170,7 @@ async function saveClub(id){
   loadClub(id);
 }
 async function incrLevel(id){await post('/clubs/'+id+'/level');loadClub(id)}
-// GeoGuessr's activity types, as observed on the live feed - see Tools/GeoClubBot.ApiProbe/README.md.
-const ACTIVITY_KINDS={1:{label:'Daily mission',xp:20},2:{label:'Weekly mission',xp:1000},3:{label:'Club challenge',xp:0},4:{label:'Daily challenge / duel',xp:20}};
-function activityKindLabel(t){return t==null?'(untyped)':(ACTIVITY_KINDS[t]?.label ?? `Type ${t}`)}
-
-// Awards the member XP and logs a matching activity of that kind.
-async function addXp(cid,uid,type){
-  const kind=ACTIVITY_KINDS[type];
-  await post(`/clubs/${cid}/members/${uid}/xp`,{amount:kind.xp,type:type});
-  loadClub(cid);
-}
-
-// Each kind has a fixed reward on the real API; the field stays editable so odd cases can be driven too.
-function syncActivityXp(){
-  const t=+document.getElementById('act-type').value;
-  document.getElementById('act-xp').value=ACTIVITY_KINDS[t].xp;
-}
-async function addActivity(cid){
-  const uid=document.getElementById('act-user').value;
-  if(!uid){alert('Pick a member first.');return}
-  await post(`/clubs/${cid}/activities`,{userId:uid,type:+document.getElementById('act-type').value,xpReward:+document.getElementById('act-xp').value});
-  loadClub(cid);
-}
+async function addXp(cid,uid){await post(`/clubs/${cid}/members/${uid}/xp`,{amount:20});loadClub(cid)}
 async function moveMember(cid,uid,tid){await post(`/clubs/${cid}/members/${uid}/move`,{targetClubId:tid});loadClub(cid)}
 async function removeMember(cid,uid){if(!confirm('Remove this member?'))return;await del(`/clubs/${cid}/members/${uid}`);loadClub(cid)}
 async function addMember(cid){

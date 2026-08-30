@@ -1,6 +1,5 @@
 using Configuration;
 using FluentAssertions;
-using GeoClubBot.Tests.TestBuilders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -129,8 +128,8 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
             .ReadTodaysActivitiesAsync(clubId, Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
-                ClubActivities.Untyped("u1", xpReward: 100),
-                ClubActivities.Weekly("u1"),
+                new ReadClubActivitiesItemDto { UserId = "u1", XpReward = 100, RecordedAt = DateTimeOffset.UtcNow },
+                new ReadClubActivitiesItemDto { UserId = "u1", XpReward = 1000, RecordedAt = DateTimeOffset.UtcNow },
             ]);
 
         var excludingWeeklies = await host.SendAsync(new GetClubTodaysXpQuery(name, IncludeWeeklies: false));
@@ -142,7 +141,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task GetClubTodaysXp_CountsTheTwoDailyAwardsSeparatelyAndClubSize()
+    public async Task GetClubTodaysXp_CountsDistinctParticipatingMembersAndClubSize()
     {
         var clubId = Guid.NewGuid();
         var name = $"xpclub-{Guid.NewGuid():N}";
@@ -167,18 +166,15 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
             .ReadTodaysActivitiesAsync(clubId, Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
-                // The first member did both awards; each count includes them exactly once.
-                ClubActivities.Mission(userIds[0]),
-                ClubActivities.Challenge(userIds[0]),
-                ClubActivities.Mission(userIds[1]),
-                // Zero-XP club challenge: not one of the two daily awards, so it counts for neither.
-                ClubActivities.ClubChallenge(userIds[2]),
+                // The first member has two activities and must still count once.
+                new ReadClubActivitiesItemDto { UserId = userIds[0], XpReward = 100, RecordedAt = DateTimeOffset.UtcNow },
+                new ReadClubActivitiesItemDto { UserId = userIds[0], XpReward = 100, RecordedAt = DateTimeOffset.UtcNow },
+                new ReadClubActivitiesItemDto { UserId = userIds[1], XpReward = 100, RecordedAt = DateTimeOffset.UtcNow },
             ]);
 
         var result = await host.SendAsync(new GetClubTodaysXpQuery(name, IncludeWeeklies: false));
 
-        result.MissionMemberCount.Should().Be(2);
-        result.ChallengeMemberCount.Should().Be(1);
+        result.CompletedMemberCount.Should().Be(2);
         result.TotalMemberCount.Should().Be(3);
     }
 
@@ -191,8 +187,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
 
         result.Xp.Should().BeNull();
         result.ClubName.Should().BeNull();
-        result.MissionMemberCount.Should().BeNull();
-        result.ChallengeMemberCount.Should().BeNull();
+        result.CompletedMemberCount.Should().BeNull();
         result.TotalMemberCount.Should().BeNull();
     }
 }

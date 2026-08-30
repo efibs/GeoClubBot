@@ -1,4 +1,0 @@
-﻿--- message 1 ---
-Ghanaian bollards are short, white, and squared off at the top.
-
--# via google/gemma-4-31b-it:free

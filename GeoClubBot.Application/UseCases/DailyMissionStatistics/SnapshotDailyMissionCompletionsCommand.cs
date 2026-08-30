@@ -10,11 +10,10 @@ using UseCases.OutputPorts.Repositories;
 namespace UseCases.UseCases.DailyMissionStatistics;
 
 /// <summary>
-/// Persists, for every configured club, what each member earned club XP for on the previous UTC
-/// day: daily-mission completions and daily challenges played / duels won, counted separately.
-/// Runs shortly after midnight so the whole day's activity feed is final. One row is written per
-/// member — including zero counts, so the row count per (club, day) is the denominator for both
-/// rates.
+/// Persists, for every configured club, how many daily-mission completions each member had on
+/// the previous UTC day. Runs shortly after midnight so the whole day's activity feed is final.
+/// One row is written per member — including zero counts, so the row count per (club, day) is
+/// the denominator for completion rates.
 /// </summary>
 public sealed record SnapshotDailyMissionCompletionsCommand : ICommand;
 
@@ -22,7 +21,7 @@ public sealed partial class SnapshotDailyMissionCompletionsHandler(
     IDailyMissionCompletionRepository completions,
     IClubMemberRepository clubMembers,
     IGeoGuessrActivityReader activityReader,
-    ClubActivityKindClassifier activityKinds,
+    IOptions<DailyMissionReminderConfiguration> reminderConfig,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     ILogger<SnapshotDailyMissionCompletionsHandler> logger) : IRequestHandler<SnapshotDailyMissionCompletionsCommand, Unit>
 {
@@ -31,6 +30,7 @@ public sealed partial class SnapshotDailyMissionCompletionsHandler(
         var day = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
         var dayStartUtc = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
         var dayEndUtc = dayStartUtc.AddDays(1);
+        var dailyMissionXpReward = reminderConfig.Value.DailyMissionXpReward;
 
         foreach (var configClub in geoGuessrConfig.Value.Clubs)
         {
@@ -52,12 +52,12 @@ public sealed partial class SnapshotDailyMissionCompletionsHandler(
                     .ReadActivitiesSinceAsync(clubId, dayStartUtc, cancellationToken)
                     .ConfigureAwait(false);
 
-                var daysActivities = activities
-                    .Where(a => a.RecordedAt >= dayStartUtc && a.RecordedAt < dayEndUtc)
-                    .ToList();
-
-                var missionCountsByUserId = CountByUser(daysActivities, activityKinds.IsDailyMission);
-                var challengeCountsByUserId = CountByUser(daysActivities, activityKinds.IsDailyChallenge);
+                var completionCountsByUserId = activities
+                    .Where(a => a.XpReward == dailyMissionXpReward
+                                && a.RecordedAt >= dayStartUtc
+                                && a.RecordedAt < dayEndUtc)
+                    .GroupBy(a => a.UserId)
+                    .ToDictionary(g => g.Key, g => g.Count());
 
                 var members = await clubMembers
                     .ReadClubMembersByClubIdAsync(clubId, cancellationToken)
@@ -67,8 +67,7 @@ public sealed partial class SnapshotDailyMissionCompletionsHandler(
                     clubId,
                     m.UserId,
                     day,
-                    missionCountsByUserId.GetValueOrDefault(m.UserId),
-                    challengeCountsByUserId.GetValueOrDefault(m.UserId))));
+                    completionCountsByUserId.GetValueOrDefault(m.UserId))));
 
                 LogSnapshotWritten(clubId, day, members.Count);
             }
@@ -81,14 +80,6 @@ public sealed partial class SnapshotDailyMissionCompletionsHandler(
 
         return Unit.Value;
     }
-
-    private static Dictionary<string, int> CountByUser(
-        IEnumerable<ReadClubActivitiesItemDto> activities,
-        Func<ReadClubActivitiesItemDto, bool> predicate) =>
-        activities
-            .Where(predicate)
-            .GroupBy(a => a.UserId)
-            .ToDictionary(g => g.Key, g => g.Count());
 
     [LoggerMessage(LogLevel.Debug, "Daily mission completion snapshot for club {ClubId} on {Day} already exists; skipping.")]
     partial void LogSnapshotSkipped(Guid clubId, DateOnly day);

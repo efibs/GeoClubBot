@@ -1,7 +1,6 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
-using GeoClubBot.Tests.TestBuilders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -180,12 +179,11 @@ public sealed class DailyMissionStatisticsUseCaseIntegrationTests(PostgresFixtur
         host.Mock<IGeoGuessrActivityReader>()
             .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns([
-                // Both of the day's awards, which are worth the same and must be counted apart.
-                ClubActivities.Mission(userDone, yesterdayStartUtc.AddHours(8)),
-                ClubActivities.Challenge(userDone, yesterdayStartUtc.AddHours(20)),
-                // A regular game (neither award) and a mission outside the snapshotted day.
-                ClubActivities.Untyped(userIdle, xpReward: 150, recordedAt: yesterdayStartUtc.AddHours(9)),
-                ClubActivities.Mission(userIdle, yesterdayStartUtc.AddHours(26)),
+                new ReadClubActivitiesItemDto { UserId = userDone, XpReward = 20, RecordedAt = yesterdayStartUtc.AddHours(8) },
+                new ReadClubActivitiesItemDto { UserId = userDone, XpReward = 20, RecordedAt = yesterdayStartUtc.AddHours(20) },
+                // A regular game (wrong XP) and a completion outside the snapshotted day.
+                new ReadClubActivitiesItemDto { UserId = userIdle, XpReward = 150, RecordedAt = yesterdayStartUtc.AddHours(9) },
+                new ReadClubActivitiesItemDto { UserId = userIdle, XpReward = 20, RecordedAt = yesterdayStartUtc.AddHours(26) },
             ]);
 
         await host.SendAsync(new SnapshotDailyMissionCompletionsCommand());
@@ -199,12 +197,7 @@ public sealed class DailyMissionStatisticsUseCaseIntegrationTests(PostgresFixtur
 
         rows.Should().HaveCount(2);
         rows.Should().OnlyContain(r => r.Date == yesterday);
-        var doneRow = rows.Single(r => r.UserId == userDone);
-        doneRow.CompletedCount.Should().Be(1);
-        doneRow.DailyChallengeCount.Should().Be(1);
-
-        var idleRow = rows.Single(r => r.UserId == userIdle);
-        idleRow.CompletedCount.Should().Be(0);
-        idleRow.DailyChallengeCount.Should().Be(0);
+        rows.Single(r => r.UserId == userDone).CompletedCount.Should().Be(2);
+        rows.Single(r => r.UserId == userIdle).CompletedCount.Should().Be(0);
     }
 }

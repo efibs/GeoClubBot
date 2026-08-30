@@ -5,7 +5,7 @@ using UseCases.OutputPorts.Repositories;
 namespace UseCases.UseCases.DailyMissionStatistics;
 
 /// <summary>
-/// Computes each club member's daily completion streak over the trailing
+/// Computes each club member's daily-mission completion streak over the trailing
 /// <paramref name="WindowDays"/> window, ranked for the Club Dashboard Activity's streaks panel.
 /// </summary>
 public sealed record GetDailyMissionStreaksQuery(Guid ClubId, int WindowDays)
@@ -38,11 +38,8 @@ public sealed class GetDailyMissionStreaksHandler(
             .ConfigureAwait(false);
         var nicknamesByUserId = clubMembers.ToDictionary(m => m.UserId, m => m.User.Nickname);
 
-        // A day only extends the streak when the member earned both of the day's club-XP awards.
-        // DailyChallengeCount is null on rows written before the bot tracked the second award;
-        // those days are judged on the mission alone rather than retroactively breaking streaks.
         var completedDaysByUser = rows
-            .Where(r => r.CompletedCount > 0 && r.DailyChallengeCount is null or > 0)
+            .Where(r => r.CompletedCount > 0)
             .GroupBy(r => r.UserId)
             .ToDictionary(g => g.Key, g => g.Select(r => r.Date).ToHashSet());
 

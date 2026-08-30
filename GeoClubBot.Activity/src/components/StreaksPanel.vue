@@ -10,9 +10,7 @@ defineProps<{
 
 <template>
   <section class="panel" data-testid="streaks-panel">
-    <!-- A streak day needs both of the day's club-XP awards: the daily mission AND the daily
-         challenge (or a duel win). -->
-    <h2 class="panel-title">🔥 Daily Streaks</h2>
+    <h2 class="panel-title">🔥 Mission Streaks</h2>
     <p v-if="streaks.length === 0" class="empty-state" data-testid="streaks-empty">
       No streaks tracked yet.
     </p>

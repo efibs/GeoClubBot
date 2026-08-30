@@ -1,0 +1,241 @@
+@page "/mock/ranked"
+@rendermode InteractiveServer
+
+<h3>Ranked System</h3>
+<p class="text-muted">Set per-user ranked progress and peak ratings returned by the mock endpoints.</p>
+
+<!-- Ranked Progress -->
+<div class="card mb-4">
+    <div class="card-header">Ranked Progress</div>
+    <div class="card-body p-0">
+        <table class="table table-sm table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Rating</th>
+                    <th>Division #</th>
+                    <th>Division Name</th>
+                    <th>Tier</th>
+                    <th>Move</th>
+                    <th>NoMove</th>
+                    <th>NMPZ</th>
+                    <th>Win Streak</th>
+                    <th>Guessed 1st%</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in DataStore.Users.Values.OrderBy(u => u.Nick))
+                {
+                    var progress = GetOrDefaultProgress(user.Id);
+                    <tr>
+                        <td><strong>@user.Nick</strong></td>
+                        @if (_editingProgressUserId == user.Id)
+                        {
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_ep.Rating" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:65px;" @bind="_ep.DivisionNumber" /></td>
+                            <td><input class="form-control form-control-sm" style="width:90px;" @bind="_ep.DivisionName" /></td>
+                            <td><input class="form-control form-control-sm" style="width:80px;" @bind="_ep.Tier" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_ep.MoveDuels" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_ep.NoMoveDuels" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_ep.NmpzDuels" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_ep.WinStreak" /></td>
+                            <td><input class="form-control form-control-sm" type="number" step="0.01" style="width:75px;" @bind="_ep.GuessedFirstRate" /></td>
+                            <td>
+                                <button class="btn btn-sm btn-success" @onclick="() => SaveProgressEdit(user.Id)">Save</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="CancelProgressEdit">Cancel</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td>@progress.Rating</td>
+                            <td>@progress.DivisionNumber</td>
+                            <td>@progress.DivisionName</td>
+                            <td>@progress.Tier</td>
+                            <td>@(progress.GameModeRatings?.MoveDuels)</td>
+                            <td>@(progress.GameModeRatings?.NoMoveDuels)</td>
+                            <td>@(progress.GameModeRatings?.NmpzDuels)</td>
+                            <td>@progress.WinStreak</td>
+                            <td>@(progress.GuessedFirstRate.ToString("P0"))</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => StartProgressEdit(user.Id, progress)">Edit</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Peak Ratings -->
+<div class="card">
+    <div class="card-header">Peak Ratings</div>
+    <div class="card-body p-0">
+        <table class="table table-sm table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Peak Overall</th>
+                    <th>Peak Move</th>
+                    <th>Peak NoMove</th>
+                    <th>Peak NMPZ</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in DataStore.Users.Values.OrderBy(u => u.Nick))
+                {
+                    var peak = GetOrDefaultPeak(user.Id);
+                    <tr>
+                        <td><strong>@user.Nick</strong></td>
+                        @if (_editingPeakUserId == user.Id)
+                        {
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_pk.PeakOverallRating" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_pk.MoveDuels" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_pk.NoMoveDuels" /></td>
+                            <td><input class="form-control form-control-sm" type="number" style="width:75px;" @bind="_pk.NmpzDuels" /></td>
+                            <td>
+                                <button class="btn btn-sm btn-success" @onclick="() => SavePeakEdit(user.Id)">Save</button>
+                                <button class="btn btn-sm btn-secondary" @onclick="CancelPeakEdit">Cancel</button>
+                            </td>
+                        }
+                        else
+                        {
+                            <td>@peak.PeakOverallRating</td>
+                            <td>@(peak.PeakGameModeRatings?.MoveDuels)</td>
+                            <td>@(peak.PeakGameModeRatings?.NoMoveDuels)</td>
+                            <td>@(peak.PeakGameModeRatings?.NmpzDuels)</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => StartPeakEdit(user.Id, peak)">Edit</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [Inject] private MockGeoGuessrDataStore DataStore { get; set; } = default!;
+
+    // Ranked progress edit state
+    private string? _editingProgressUserId;
+
+    private ProgressEditModel _ep = new();
+
+    // Peak rating edit state
+    private string? _editingPeakUserId;
+
+    private PeakEditModel _pk = new();
+
+    private RankedProgressResponseDto GetOrDefaultProgress(string userId)
+    {
+        return DataStore.RankedProgress.GetOrAdd(userId, _ => new RankedProgressResponseDto
+        {
+            DivisionNumber = 1,
+            DivisionName = "Bronze",
+            Rating = 1000,
+            Tier = "Bronze",
+            GameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 },
+            GuessedFirstRate = 0.5f,
+            WinStreak = 0,
+            LatestGames = [],
+            BestCountries = [],
+            WorstCountries = []
+        });
+    }
+
+    private RankedPeakRatingResponseDto GetOrDefaultPeak(string userId)
+    {
+        return DataStore.RankedPeakRatings.GetOrAdd(userId, _ => new RankedPeakRatingResponseDto
+        {
+            PeakOverallRating = 1000,
+            PeakGameModeRatings = new GameModeRatingsDto { MoveDuels = 1000, NoMoveDuels = 1000, NmpzDuels = 1000 }
+        });
+    }
+
+    private void StartProgressEdit(string userId, RankedProgressResponseDto progress)
+    {
+        _editingProgressUserId = userId;
+        _ep = new ProgressEditModel
+        {
+            Rating = progress.Rating ?? 1000,
+            DivisionNumber = progress.DivisionNumber ?? 1,
+            DivisionName = progress.DivisionName ?? "Bronze",
+            Tier = progress.Tier ?? "Bronze",
+            MoveDuels = progress.GameModeRatings?.MoveDuels ?? 1000,
+            NoMoveDuels = progress.GameModeRatings?.NoMoveDuels ?? 1000,
+            NmpzDuels = progress.GameModeRatings?.NmpzDuels ?? 1000,
+            WinStreak = progress.WinStreak,
+            GuessedFirstRate = progress.GuessedFirstRate
+        };
+    }
+
+    private void SaveProgressEdit(string userId)
+    {
+        var progress = GetOrDefaultProgress(userId);
+        progress.Rating = _ep.Rating;
+        progress.DivisionNumber = _ep.DivisionNumber;
+        progress.DivisionName = _ep.DivisionName;
+        progress.Tier = _ep.Tier;
+        progress.WinStreak = _ep.WinStreak;
+        progress.GuessedFirstRate = _ep.GuessedFirstRate;
+        progress.GameModeRatings ??= new GameModeRatingsDto();
+        progress.GameModeRatings.MoveDuels = _ep.MoveDuels;
+        progress.GameModeRatings.NoMoveDuels = _ep.NoMoveDuels;
+        progress.GameModeRatings.NmpzDuels = _ep.NmpzDuels;
+        _editingProgressUserId = null;
+        DataStore.NotifyDataChanged();
+    }
+
+    private void CancelProgressEdit() => _editingProgressUserId = null;
+
+    private void StartPeakEdit(string userId, RankedPeakRatingResponseDto peak)
+    {
+        _editingPeakUserId = userId;
+        _pk = new PeakEditModel
+        {
+            PeakOverallRating = peak.PeakOverallRating ?? 1000,
+            MoveDuels = peak.PeakGameModeRatings?.MoveDuels ?? 1000,
+            NoMoveDuels = peak.PeakGameModeRatings?.NoMoveDuels ?? 1000,
+            NmpzDuels = peak.PeakGameModeRatings?.NmpzDuels ?? 1000
+        };
+    }
+
+    private void SavePeakEdit(string userId)
+    {
+        var peak = GetOrDefaultPeak(userId);
+        peak.PeakOverallRating = _pk.PeakOverallRating;
+        peak.PeakGameModeRatings ??= new GameModeRatingsDto();
+        peak.PeakGameModeRatings.MoveDuels = _pk.MoveDuels;
+        peak.PeakGameModeRatings.NoMoveDuels = _pk.NoMoveDuels;
+        peak.PeakGameModeRatings.NmpzDuels = _pk.NmpzDuels;
+        _editingPeakUserId = null;
+        DataStore.NotifyDataChanged();
+    }
+
+    private void CancelPeakEdit() => _editingPeakUserId = null;
+
+    private class ProgressEditModel
+    {
+        public int Rating { get; set; } = 1000;
+        public int DivisionNumber { get; set; } = 1;
+        public string DivisionName { get; set; } = "Bronze";
+        public string Tier { get; set; } = "Bronze";
+        public int? MoveDuels { get; set; } = 1000;
+        public int? NoMoveDuels { get; set; } = 1000;
+        public int? NmpzDuels { get; set; } = 1000;
+        public int WinStreak { get; set; }
+        public float GuessedFirstRate { get; set; } = 0.5f;
+    }
+
+    private class PeakEditModel
+    {
+        public int PeakOverallRating { get; set; } = 1000;
+        public int? MoveDuels { get; set; } = 1000;
+        public int? NoMoveDuels { get; set; } = 1000;
+        public int? NmpzDuels { get; set; } = 1000;
+    }
+}

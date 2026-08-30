@@ -292,12 +292,7 @@ public class ActivityController(
             .Send(new GetClubTodaysXpQuery(clubName, includeWeeklies), cancellationToken)
             .ConfigureAwait(false);
 
-        return Ok(new TodaysXpDto(
-            result.Xp,
-            result.ClubName,
-            result.MissionMemberCount,
-            result.ChallengeMemberCount,
-            result.TotalMemberCount));
+        return Ok(new TodaysXpDto(result.Xp, result.ClubName));
     }
 
     /// <summary>The viewer's daily-mission reminders, ordered by time (empty when none are configured).</summary>

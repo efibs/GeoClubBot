@@ -4,7 +4,6 @@ Description:
 **Club:** All clubs
 **Days with data:** 28
 **Avg club completion:** 62%
-**Avg daily challenge / duel win:** 41% (over 12 day(s))
 
 ```
 Mission                 │   # │ Appeared │ Avg cnt │ Done │ Last seen
@@ -16,4 +15,4 @@ Play Daily Challenge    │   7 │      25% │       1 │    — │ 2026-05-
 
 
 
-Footer: Appeared = share of days with data · Done = avg club completion when present · daily challenge tracked since 2026-05-29
+Footer: Appeared = share of days with data · Done = avg club completion when present

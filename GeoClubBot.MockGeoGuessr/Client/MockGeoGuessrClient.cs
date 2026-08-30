@@ -41,6 +41,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         var token = dataStore.GenerateChallengeToken();
         dataStore.Challenges[token] = request;
         dataStore.ChallengeHighscores[token] = [];
+        dataStore.NotifyDataChanged();
         return Task.FromResult(new PostChallengeResponseDto { Token = token });
     }
 
