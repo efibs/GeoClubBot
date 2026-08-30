@@ -36,6 +36,13 @@ const errorMessage = computed(() => {
         <p v-if="todaysXp?.clubName" class="stat-caption">
           earned by {{ todaysXp.clubName }} today
         </p>
+        <!-- Two independent awards, so two counts: one number would hide half the picture. -->
+        <FactRow v-if="todaysXp?.totalMemberCount != null" label="Daily mission">
+          {{ todaysXp.missionMemberCount }} / {{ todaysXp.totalMemberCount }}
+        </FactRow>
+        <FactRow v-if="todaysXp?.totalMemberCount != null" label="Challenge or duel">
+          {{ todaysXp.challengeMemberCount }} / {{ todaysXp.totalMemberCount }}
+        </FactRow>
       </PanelSection>
 
       <PanelSection title="🎯 Daily missions" data-testid="mission-stats-panel">
@@ -45,6 +52,14 @@ const errorMessage = computed(() => {
           </FactRow>
           <FactRow label="Days with data">{{ stats.daysWithMissionData }}</FactRow>
           <FactRow label="Mission appearances">{{ stats.totalMissionAppearances }}</FactRow>
+          <!-- Null before the bot started tracking the daily challenge; say so rather than 0%. -->
+          <FactRow label="Challenge or duel played">
+            {{
+              stats.averageDayChallengeRate != null
+                ? `${formatPercent(stats.averageDayChallengeRate)} (since ${stats.challengeTrackedFrom})`
+                : 'not tracked yet'
+            }}
+          </FactRow>
           <p class="stat-caption">
             {{ stats.clubName ?? 'All clubs' }} · {{ stats.fromDay }} → {{ stats.toDay }}
           </p>

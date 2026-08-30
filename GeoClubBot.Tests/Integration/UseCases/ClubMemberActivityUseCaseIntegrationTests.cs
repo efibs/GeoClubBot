@@ -1,6 +1,7 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
+using GeoClubBot.Tests.TestBuilders;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -311,12 +312,11 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
         }
 
         using var host = CreateHost(Guid.NewGuid());
-        // Default DailyMissionReminderConfiguration.DailyMissionXpReward is 20.
         host.Mock<IGeoGuessrActivityReader>()
             .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
-                new ReadClubActivitiesItemDto { UserId = userId, XpReward = 20, RecordedAt = DateTimeOffset.UtcNow },
+                ClubActivities.Mission(userId),
             ]);
 
         var activity = await host.SendAsync(new GetActivityThisWeekQuery(userId));
@@ -377,22 +377,28 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
         }
 
         using var host = CreateHost(Guid.NewGuid());
-        // Two full daily missions (20 XP each, the default DailyMissionXpReward) on distinct days
-        // within the window, plus a partial-XP entry that should sum but not mark a completed day.
+        // Today has both of the day's awards, so it is the only fully done day. Three days ago
+        // has the mission alone, and a partial-XP entry sums into the total without marking
+        // anything as done.
         host.Mock<IGeoGuessrActivityReader>()
             .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
-                new ReadClubActivitiesItemDto { UserId = userId, XpReward = 20, RecordedAt = DateTimeOffset.UtcNow },
-                new ReadClubActivitiesItemDto { UserId = userId, XpReward = 20, RecordedAt = DateTimeOffset.UtcNow.AddDays(-3) },
-                new ReadClubActivitiesItemDto { UserId = userId, XpReward = 5, RecordedAt = DateTimeOffset.UtcNow.AddDays(-1) },
+                ClubActivities.Mission(userId),
+                ClubActivities.Challenge(userId),
+                ClubActivities.Mission(userId, DateTimeOffset.UtcNow.AddDays(-3)),
+                ClubActivities.Untyped(userId, xpReward: 5, recordedAt: DateTimeOffset.UtcNow.AddDays(-1)),
+                // A weekly mission: 1000 XP that must stay out of this daily view entirely.
+                ClubActivities.Weekly(userId, DateTimeOffset.UtcNow.AddDays(-2)),
             ]);
 
         var activity = await host.SendAsync(new GetActivityLastDaysQuery(userId, DaysBack: 7));
 
-        activity.TotalXp.Should().Be(45);
+        activity.TotalXp.Should().Be(65);
         activity.DailyMissions.Should().HaveCount(7);
-        activity.NumDaysDone.Should().Be(2);
+        activity.NumDaysDone.Should().Be(1);
+        activity.NumMissionDaysDone.Should().Be(2);
+        activity.NumChallengeDaysDone.Should().Be(1);
     }
 
     [Fact]

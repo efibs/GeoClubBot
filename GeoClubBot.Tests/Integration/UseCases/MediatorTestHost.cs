@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.Behaviors;
+using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
@@ -125,6 +126,10 @@ public sealed class MediatorTestHost : IDisposable
     /// </summary>
     private static void RegisterInternalApplicationServices(IServiceCollection services)
     {
+        // Mirrors GeoGuessrIntegrationModule: the handlers that read the activity feed classify
+        // entries through this rather than comparing XP amounts.
+        services.AddSingleton<ClubActivityKindClassifier>();
+
         services.AddSingleton<IClubLevelTracker, ClubLevelTracker>();
         services.AddSingleton<IActivityReportPublishGate, ActivityReportPublishGate>();
         services.AddTransient<ActivityCheckSyncStep>();

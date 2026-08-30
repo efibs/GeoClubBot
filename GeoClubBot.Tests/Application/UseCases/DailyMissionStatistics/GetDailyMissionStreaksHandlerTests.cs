@@ -37,8 +37,19 @@ public sealed class GetDailyMissionStreaksHandlerTests
         _members.ReadClubMembersByClubIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns([.. members]);
 
+    /// <summary>
+    /// A fully completed day. DailyChallengeCount is left null, matching rows written before the
+    /// bot tracked the second award - those are judged on the mission alone.
+    /// </summary>
     private static DailyMissionMemberCompletion Completed(string userId, DateOnly date, int count = 1) =>
         DailyMissionMemberCompletion.Create(ClubId, userId, date, count);
+
+    private static DailyMissionMemberCompletion Day(
+        string userId,
+        DateOnly date,
+        int missionCount,
+        int? challengeCount) =>
+        DailyMissionMemberCompletion.Create(ClubId, userId, date, missionCount, challengeCount);
 
     private static ClubMember Member(string userId, string nickname) =>
         new ClubMemberBuilder().WithUserId(userId).WithNickname(nickname).InClub(ClubId).Build();
@@ -163,5 +174,51 @@ public sealed class GetDailyMissionStreaksHandlerTests
         var result = await CreateHandler().Handle(new GetDailyMissionStreaksQuery(ClubId, windowDays), CancellationToken.None);
 
         result.Should().ContainSingle().Which.CurrentStreak.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Handle_BreaksTheStreak_OnADayWithOnlyTheMissionDone()
+    {
+        // Both awards are needed: winning a duel without doing the mission (or the reverse) no
+        // longer keeps a streak alive.
+        ArrangeMembers(Member("u1", "Alice"));
+        ArrangeCompletions(
+            Day("u1", _today, missionCount: 1, challengeCount: 1),
+            Day("u1", _today.AddDays(-1), missionCount: 1, challengeCount: 0),
+            Day("u1", _today.AddDays(-2), missionCount: 1, challengeCount: 1));
+
+        var result = await CreateHandler().Handle(new GetDailyMissionStreaksQuery(ClubId, 30), CancellationToken.None);
+
+        result.Single().CurrentStreak.Should().Be(1);
+        result.Single().LongestStreak.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Handle_BreaksTheStreak_OnADayWithOnlyTheChallengeDone()
+    {
+        ArrangeMembers(Member("u1", "Alice"));
+        ArrangeCompletions(
+            Day("u1", _today, missionCount: 1, challengeCount: 1),
+            Day("u1", _today.AddDays(-1), missionCount: 0, challengeCount: 1));
+
+        var result = await CreateHandler().Handle(new GetDailyMissionStreaksQuery(ClubId, 30), CancellationToken.None);
+
+        result.Single().CurrentStreak.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Handle_KeepsLegacyDaysIntact_WhenTheChallengeWasNotYetTracked()
+    {
+        // Rows predating the tracking hold null, which means "unknown", not "did not happen" -
+        // otherwise every historical streak would collapse the day the tracking shipped.
+        ArrangeMembers(Member("u1", "Alice"));
+        ArrangeCompletions(
+            Day("u1", _today, missionCount: 1, challengeCount: 1),
+            Day("u1", _today.AddDays(-1), missionCount: 1, challengeCount: null),
+            Day("u1", _today.AddDays(-2), missionCount: 1, challengeCount: null));
+
+        var result = await CreateHandler().Handle(new GetDailyMissionStreaksQuery(ClubId, 30), CancellationToken.None);
+
+        result.Single().CurrentStreak.Should().Be(3);
     }
 }

@@ -21,7 +21,6 @@ namespace GeoClubBot.Tests.Application.UseCases.DailyMissionReminderTests;
 public sealed class SendDueRemindersHandlerTests
 {
     private static readonly Guid ClubId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-    private const int DailyMissionXpReward = 20;
 
     private readonly IDailyMissionReminderRepository _reminders = Substitute.For<IDailyMissionReminderRepository>();
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
@@ -40,12 +39,12 @@ public sealed class SendDueRemindersHandlerTests
     }
 
     private SendDueRemindersHandler CreateHandler() => new(
-        _reminders, _members, _dm, _mediator, _activityReader, _dailyMissions, _renderer,
+        _reminders, _members, _dm, _mediator, _activityReader, ClubActivities.Classifier(),
+        _dailyMissions, _renderer,
         Options.Create(new DailyMissionReminderConfiguration
         {
             Schedule = "0 * * * * ?",
-            DefaultMessage = "Don't forget your daily missions!\n\n{{mission_text}}",
-            DailyMissionXpReward = DailyMissionXpReward
+            DefaultMessage = "Don't forget your daily missions!\n\n{{mission_text}}"
         }),
         _logger);
 
@@ -63,7 +62,7 @@ public sealed class SendDueRemindersHandlerTests
     }
 
     [Fact]
-    public async Task Handle_SkipsAlreadyCompletedReminder_AndStillMarksItSent()
+    public async Task Handle_SkipsReminder_WhenBothDailyAwardsAreAlreadyEarned()
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
         _reminders.ReadDueRemindersForUpdateAsync(
@@ -81,7 +80,8 @@ public sealed class SendDueRemindersHandlerTests
         _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
             .Returns(new List<ReadClubActivitiesItemDto>
             {
-                new() { UserId = "user-1", XpReward = DailyMissionXpReward, RecordedAt = DateTimeOffset.UtcNow }
+                ClubActivities.Mission("user-1"),
+                ClubActivities.Challenge("user-1")
             });
 
         await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
@@ -91,8 +91,13 @@ public sealed class SendDueRemindersHandlerTests
         reminder.LastSentDateUtc.Should().NotBeNull();
     }
 
-    [Fact]
-    public async Task Handle_SendsDirectMessage_WhenMissionNotYetCompleted()
+    [Theory]
+    // Only one of the two daily awards earned - the reminder must still go out.
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task Handle_StillSendsReminder_WhenOnlyOneOfTheTwoDailyAwardsIsEarned(
+        bool missionDone, bool challengeDone)
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Custom!");
         _reminders.ReadDueRemindersForUpdateAsync(
@@ -107,11 +112,73 @@ public sealed class SendDueRemindersHandlerTests
             .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
         _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
 
-        // No matching XpReward in today's activities → mission not completed.
+        var activities = new List<ReadClubActivitiesItemDto>();
+        if (missionDone) activities.Add(ClubActivities.Mission("user-1"));
+        if (challengeDone) activities.Add(ClubActivities.Challenge("user-1"));
+
+        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>()).Returns(activities);
+
+        _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result.Success());
+
+        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
+
+        await _dm.Received(1).SendDirectMessageAsync(123UL, "Custom!", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_NamesWhatIsStillOutstanding_ViaThePlaceholder()
+    {
+        var reminder = DailyMissionReminderEntity.Create(
+            123UL, new TimeOnly(8, 0), null, "Still to do: {{outstanding_text}}");
+        _reminders.ReadDueRemindersForUpdateAsync(
+                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns([reminder]);
+
+        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
+            Arg.Any<CancellationToken>()).Returns(linkedUser);
+
+        var member = new ClubMemberBuilder()
+            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
+        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
+
+        // The mission is done, so only the challenge is named.
+        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(new List<ReadClubActivitiesItemDto> { ClubActivities.Mission("user-1") });
+
+        _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result.Success());
+
+        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
+
+        await _dm.Received(1).SendDirectMessageAsync(
+            123UL,
+            Arg.Is<string>(m => m.Contains("daily challenge") && !m.Contains("daily mission")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_SendsDirectMessage_WhenNothingIsDoneYet()
+    {
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Custom!");
+        _reminders.ReadDueRemindersForUpdateAsync(
+                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns([reminder]);
+
+        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
+            Arg.Any<CancellationToken>()).Returns(linkedUser);
+
+        var member = new ClubMemberBuilder()
+            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
+        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
+
+        // XP that is neither of the two daily awards → both are still outstanding.
         _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
             .Returns(new List<ReadClubActivitiesItemDto>
             {
-                new() { UserId = "user-1", XpReward = 99, RecordedAt = DateTimeOffset.UtcNow }
+                ClubActivities.Untyped("user-1", xpReward: 99)
             });
 
         _dm.SendDirectMessageAsync(123UL, "Custom!", Arg.Any<CancellationToken>())
@@ -246,7 +313,7 @@ public sealed class SendDueRemindersHandlerTests
         _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
             .Returns(new List<ReadClubActivitiesItemDto>
             {
-                new() { UserId = "user-1", XpReward = DailyMissionXpReward, RecordedAt = DateTimeOffset.UtcNow }
+                ClubActivities.Mission("user-1"), ClubActivities.Challenge("user-1")
             });
 
         await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
@@ -272,7 +339,7 @@ public sealed class SendDueRemindersHandlerTests
         var entities = missions
             .Select(m => DailyMission.Create(
                 Guid.NewGuid(), m.Type, "Classic", 0, 1, false,
-                DateTimeOffset.UtcNow, DailyMissionXpReward, "Xp", DateTimeOffset.UtcNow))
+                DateTimeOffset.UtcNow, 20, "Xp", DateTimeOffset.UtcNow))
             .ToList();
 
         _dailyMissions.ReadLatestFetchedMissionsAsync(Arg.Any<CancellationToken>()).Returns(entities);

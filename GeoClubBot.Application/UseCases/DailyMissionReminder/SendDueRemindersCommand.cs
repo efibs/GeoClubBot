@@ -30,6 +30,7 @@ public sealed partial class SendDueRemindersHandler(
     IDiscordDirectMessageAccess directMessageAccess,
     ISender mediator,
     IGeoGuessrActivityReader activityReader,
+    ClubActivityKindClassifier activityKinds,
     IDailyMissionRepository dailyMissions,
     IDailyMissionRenderer renderer,
     IOptions<DailyMissionReminderConfiguration> config,
@@ -88,7 +89,6 @@ public sealed partial class SendDueRemindersHandler(
         LogSendingReminders(dueReminders.Count);
 
         var defaultMessage = config.Value.DefaultMessage;
-        var dailyMissionXpReward = config.Value.DailyMissionXpReward;
 
         // Today's mission text is the same for everyone, so render it once on demand and reuse it.
         // Left null until the first reminder that will actually be sent, so an all-skipped run does no DB query.
@@ -99,29 +99,35 @@ public sealed partial class SendDueRemindersHandler(
             var discordUserId = userReminders.Key;
             var reminder = userReminders.MaxBy(r => r.ReminderTimeUtc)!;
 
-            var alreadyDone = await HasUserCompletedDailyMissionTodayAsync(discordUserId, dailyMissionXpReward, cancellationToken)
-                .ConfigureAwait(false);
+            var progress = await GetTodaysProgressAsync(discordUserId, cancellationToken).ConfigureAwait(false);
 
-            if (alreadyDone)
+            // Two independent ways to earn the day's club XP, so the reminder is only pointless
+            // once both are done. Someone who won a duel but skipped the mission still gets nagged.
+            if (progress.IsComplete)
             {
                 MarkAllSent(userReminders, today);
                 LogReminderSkippedAlreadyDone(discordUserId);
                 continue;
             }
 
-            missionText ??= await BuildMissionTextAsync(cancellationToken).ConfigureAwait(false);
+            // The mission list is only worth rendering when the mission itself is still outstanding.
+            var showMissionText = !progress.MissionDone;
+            if (showMissionText)
+            {
+                missionText ??= await BuildMissionTextAsync(cancellationToken).ConfigureAwait(false);
+            }
 
             var template = string.IsNullOrWhiteSpace(reminder.CustomMessage)
                 ? defaultMessage
                 : reminder.CustomMessage;
 
-            var message = template.Replace("{{mission_text}}", missionText).Trim();
+            var message = RenderMessage(template, progress, showMissionText ? missionText! : string.Empty);
 
-            // A custom message that is only the placeholder collapses to empty when no missions are
-            // stored; Discord rejects empty messages, so fall back to the default in that edge case.
+            // A custom message that collapses to empty - it was only placeholders, and nothing was
+            // substituted - would be rejected by Discord, so fall back to the default in that case.
             if (string.IsNullOrWhiteSpace(message))
             {
-                message = defaultMessage.Replace("{{mission_text}}", missionText).Trim();
+                message = RenderMessage(defaultMessage, progress, showMissionText ? missionText! : string.Empty);
             }
 
             var dmResult = await directMessageAccess
@@ -168,7 +174,11 @@ public sealed partial class SendDueRemindersHandler(
         }
     }
 
-    private async Task<bool> HasUserCompletedDailyMissionTodayAsync(ulong discordUserId, int dailyMissionXpReward, CancellationToken cancellationToken)
+    /// <summary>
+    /// What the user has already earned today. An unlinked user, or one not on a tracked club
+    /// roster, counts as having done neither - we can't see their activity, so we still remind.
+    /// </summary>
+    private async Task<DailyProgress> GetTodaysProgressAsync(ulong discordUserId, CancellationToken cancellationToken)
     {
         var linkedUser = await mediator
             .Send(new GetLinkedGeoGuessrUserQuery(discordUserId), cancellationToken)
@@ -176,21 +186,46 @@ public sealed partial class SendDueRemindersHandler(
 
         if (linkedUser.IsFailure)
         {
-            return false;
+            return DailyProgress.Nothing;
         }
 
         var clubMember = await members.ReadClubMemberByUserIdAsync(linkedUser.Value.UserId, cancellationToken).ConfigureAwait(false);
 
         if (clubMember?.ClubId is null)
         {
-            return false;
+            return DailyProgress.Nothing;
         }
 
         var todaysActivities = await activityReader
             .ReadTodaysActivitiesAsync(clubMember.ClubId.Value, cancellationToken)
             .ConfigureAwait(false);
 
-        return todaysActivities.Any(a => a.UserId == linkedUser.Value.UserId && a.XpReward == dailyMissionXpReward);
+        var mine = todaysActivities.Where(a => a.UserId == linkedUser.Value.UserId).ToList();
+
+        return new DailyProgress(
+            MissionDone: mine.Any(activityKinds.IsDailyMission),
+            ChallengeDone: mine.Any(activityKinds.IsDailyChallenge));
+    }
+
+    private static string RenderMessage(string template, DailyProgress progress, string missionText) =>
+        template
+            .Replace("{{outstanding_text}}", progress.OutstandingText)
+            .Replace("{{mission_text}}", missionText)
+            .Trim();
+
+    /// <summary>The two independent daily club-XP sources, and what is still missing.</summary>
+    private readonly record struct DailyProgress(bool MissionDone, bool ChallengeDone)
+    {
+        public static DailyProgress Nothing => new(MissionDone: false, ChallengeDone: false);
+
+        public bool IsComplete => MissionDone && ChallengeDone;
+
+        public string OutstandingText => (MissionDone, ChallengeDone) switch
+        {
+            (false, true) => "your daily mission",
+            (true, false) => "the daily challenge (or a duel win)",
+            _ => "your daily mission and the daily challenge (or a duel win)"
+        };
     }
 
     private async Task<string> BuildMissionTextAsync(CancellationToken cancellationToken)

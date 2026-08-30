@@ -12,8 +12,13 @@ internal static class ActivityProgressFormatter
             .WithTitle(title)
             .WithColor(ActivityColor)
             .AddField("🏆 XP Earned", $"**{activity.TotalXp:N0} XP**", inline: true)
-            .AddField("📆 Days Completed", $"**{activity.NumDaysDone} / {activity.DailyMissions.Count}**", inline: true)
-            .AddField("Progress", BuildProgressValue(activity.DailyMissions));
+            .AddField("📆 Full Days", $"**{activity.NumDaysDone} / {activity.DailyMissions.Count}**", inline: true)
+            .AddField(
+                "Breakdown",
+                $"🎯 Mission **{activity.NumMissionDaysDone}** · 🌍 Challenge/duel **{activity.NumChallengeDaysDone}**",
+                inline: true)
+            .AddField("Progress", BuildProgressValue(activity.DailyMissions))
+            .WithFooter("🟩 both · 🟨 one of the two · ⬛ neither · XP excludes weekly missions");
 
     public static string BuildProgressValue(IReadOnlyList<DayMissionStatus> missions)
     {
@@ -25,10 +30,20 @@ internal static class ActivityProgressFormatter
         var labelRow = missions.Count <= 7
             ? string.Join(" ", missions.Select(d => WeekdayLabel(d.Date)))
             : string.Join(" ", missions.Select(d => d.Date.Day.ToString("D2")));
-        var emojiRow = string.Join(" ", missions.Select(d => d.MissionCompleted ? "🟩" : "⬛"));
+
+        // Three states, because a day now has two independent awards: the daily mission, and
+        // playing the daily challenge or winning a duel.
+        var emojiRow = string.Join(" ", missions.Select(DayEmoji));
 
         return $"`{labelRow}`\n{emojiRow}";
     }
+
+    private static string DayEmoji(DayMissionStatus day) => day switch
+    {
+        { BothCompleted: true } => "🟩",
+        { AnyCompleted: true } => "🟨",
+        _ => "⬛"
+    };
 
     private static string WeekdayLabel(DateOnly date) => date.DayOfWeek switch
     {

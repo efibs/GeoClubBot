@@ -131,6 +131,65 @@ public sealed class DailyMissionStatisticsHandlersTests
     }
 
     [Fact]
+    public async Task Handle_ComputesTheDailyChallengeRate_IndependentlyOfTheMissionRate()
+    {
+        var dayA = _today.AddDays(-2);
+        var dayB = _today.AddDays(-1);
+        ArrangeMissions(
+            BuildMission(dayA, "WinGames", "Duels", target: 3),
+            BuildMission(dayB, "Score", "Classic", target: 15000));
+        ArrangeCompletions(
+            // Day A: nobody did the mission, but both played the daily challenge -> 0 % / 100 %.
+            DailyMissionMemberCompletion.Create(ClubId, "user-1", dayA, completedCount: 0, dailyChallengeCount: 1),
+            DailyMissionMemberCompletion.Create(ClubId, "user-2", dayA, completedCount: 0, dailyChallengeCount: 1),
+            // Day B: both did the mission, only one played the challenge -> 100 % / 50 %.
+            DailyMissionMemberCompletion.Create(ClubId, "user-1", dayB, completedCount: 1, dailyChallengeCount: 1),
+            DailyMissionMemberCompletion.Create(ClubId, "user-2", dayB, completedCount: 1, dailyChallengeCount: 0));
+
+        var result = await CreateHandler().Handle(new GetDailyMissionStatisticsQuery(null, 30), CancellationToken.None);
+
+        var stats = result.Value;
+        stats.AverageDayCompletionRate.Should().BeApproximately(0.5, 1e-9);
+        stats.AverageDayChallengeRate.Should().BeApproximately(0.75, 1e-9);
+        stats.DaysWithChallengeData.Should().Be(2);
+        stats.ChallengeTrackedFrom.Should().Be(dayA);
+    }
+
+    [Fact]
+    public async Task Handle_ReportsNoChallengeRate_ForDaysPredatingTheTracking()
+    {
+        var untracked = _today.AddDays(-2);
+        var tracked = _today.AddDays(-1);
+        ArrangeMissions(
+            BuildMission(untracked, "WinGames", "Duels", target: 3),
+            BuildMission(tracked, "Score", "Classic", target: 15000));
+        ArrangeCompletions(
+            // Null means "not tracked", so this day must be left out rather than counted as 0 %.
+            DailyMissionMemberCompletion.Create(ClubId, "user-1", untracked, completedCount: 1),
+            DailyMissionMemberCompletion.Create(ClubId, "user-1", tracked, completedCount: 1, dailyChallengeCount: 1));
+
+        var result = await CreateHandler().Handle(new GetDailyMissionStatisticsQuery(null, 30), CancellationToken.None);
+
+        result.Value.AverageDayChallengeRate.Should().Be(1.0);
+        result.Value.DaysWithChallengeData.Should().Be(1);
+        result.Value.ChallengeTrackedFrom.Should().Be(tracked);
+    }
+
+    [Fact]
+    public async Task Handle_ReportsNullChallengeRate_WhenNothingWasEverTracked()
+    {
+        var day = _today.AddDays(-1);
+        ArrangeMissions(BuildMission(day, "WinGames", "Duels", target: 3));
+        ArrangeCompletions(DailyMissionMemberCompletion.Create(ClubId, "user-1", day, completedCount: 1));
+
+        var result = await CreateHandler().Handle(new GetDailyMissionStatisticsQuery(null, 30), CancellationToken.None);
+
+        result.Value.AverageDayChallengeRate.Should().BeNull();
+        result.Value.DaysWithChallengeData.Should().Be(0);
+        result.Value.ChallengeTrackedFrom.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Handle_BlendsAndCapsCompletionRate_WhenSeveralMissionsRunTheSameDay()
     {
         var day = _today.AddDays(-1);

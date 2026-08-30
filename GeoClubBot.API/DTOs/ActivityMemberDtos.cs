@@ -24,15 +24,21 @@ public record LinkedAccountDto(string GeoGuessrUserId, string Nickname);
 /// </summary>
 public record LinkRequestDto(string GeoGuessrUserId, string OneTimePassword);
 
-/// <summary>A member's XP + daily-mission activity over a trailing window (self-view or admin view).</summary>
+/// <summary>
+/// A member's XP + daily activity over a trailing window (self-view or admin view).
+/// <see cref="NumDaysDone"/> counts days on which both of the day's club-XP awards were earned;
+/// the per-award tallies are broken out alongside it.
+/// </summary>
 public record WeekActivityDto(
     int TotalXp,
     int NumDaysDone,
+    int NumMissionDaysDone,
+    int NumChallengeDaysDone,
     bool JoinedThisWeek,
     DateTimeOffset JoinedAt,
     IReadOnlyList<DayMissionDto> Days);
 
-public record DayMissionDto(DateOnly Date, bool MissionCompleted);
+public record DayMissionDto(DateOnly Date, bool MissionCompleted, bool ChallengeCompleted);
 
 /// <summary>The viewer's GeoGuessr profile, with ranked stats when the player has any.</summary>
 public record ProfileDto(
@@ -54,7 +60,10 @@ public record MissionStatsDto(
     int DaysWithMissionData,
     int TotalMissionAppearances,
     double? AverageDayCompletionRate,
-    IReadOnlyList<MissionKindStatsDto> Kinds);
+    IReadOnlyList<MissionKindStatsDto> Kinds,
+    double? AverageDayChallengeRate,
+    int DaysWithChallengeData,
+    DateOnly? ChallengeTrackedFrom);
 
 public record MissionKindStatsDto(
     string Type,
@@ -65,8 +74,16 @@ public record MissionKindStatsDto(
     DateOnly LastAppearance,
     double? AverageDayCompletionRateWhenPresent);
 
-/// <summary>Today's accumulated XP of the viewer's club (null when nothing is tracked yet).</summary>
-public record TodaysXpDto(int? Xp, string? ClubName);
+/// <summary>
+/// Today's accumulated XP of the viewer's club (null when nothing is tracked yet), plus how many
+/// members earned each of the two independent daily awards.
+/// </summary>
+public record TodaysXpDto(
+    int? Xp,
+    string? ClubName,
+    int? MissionMemberCount,
+    int? ChallengeMemberCount,
+    int? TotalMemberCount);
 
 /// <summary>
 /// One of the viewer's daily-mission reminders. <see cref="Id"/> identifies it for removal;
