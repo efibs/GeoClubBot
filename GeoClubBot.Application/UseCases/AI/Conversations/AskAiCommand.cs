@@ -85,9 +85,17 @@ public sealed class AskAiHandler(
         // Deliberately not released on later failure: by this point at least one upstream call has
         // usually been made, and over-counting is far safer than a 429 storm from under-counting.
         var hits = await RetrieveAsync(request, cancellationToken).ConfigureAwait(false);
+        if (hits.IsFailure)
+        {
+            // Deliberately not answered anyway. An empty hit list reads to the model as "the guides do
+            // not cover this", so a failed lookup would come back as a confident statement that the
+            // corpus is silent on something it documents well — worse than no answer, and it spends
+            // the chat request to produce it. Retrieval failures here are transient and retryable.
+            return hits.Error;
+        }
 
         var (messages, offeredImages) = AiPromptBuilder.Build(
-            context, request.Content, request.AttachmentImageUrls, hits);
+            context, request.Content, request.AttachmentImageUrls, hits.Value);
 
         // Only ask for a vision-capable model when the user actually attached something; the pool of
         // free models that accept images is far smaller than the pool overall.
@@ -173,7 +181,12 @@ public sealed class AskAiHandler(
     /// Retrieval failures degrade to answering without guide context rather than failing the whole
     /// question: a model with no excerpts is still more useful than an error message.
     /// </summary>
-    private async Task<IReadOnlyList<KnowledgeHit>> RetrieveAsync(
+    /// <summary>
+    /// Returns the retrieved excerpts, or a failure. The distinction matters: "nothing matched" and
+    /// "the lookup did not happen" are different answers, and collapsing them into an empty list makes
+    /// the model assert the first when the second is true.
+    /// </summary>
+    private async Task<Result<IReadOnlyList<KnowledgeHit>>> RetrieveAsync(
         AskAiCommand request,
         CancellationToken cancellationToken)
     {
@@ -186,7 +199,7 @@ public sealed class AskAiHandler(
         var embeddings = await embedder.EmbedAsync(inputs, cancellationToken).ConfigureAwait(false);
         if (embeddings.IsFailure)
         {
-            return [];
+            return embeddings.Error;
         }
 
         var query = new KnowledgeQuery
@@ -198,12 +211,13 @@ public sealed class AskAiHandler(
 
         try
         {
-            return await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false);
+            return Result<IReadOnlyList<KnowledgeHit>>.Success(
+                await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false));
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
-            // The vector store being unreachable should not take the whole feature down.
-            return [];
+            return Error.Unexpected("ai.index_unavailable",
+                "I couldn't reach the guide index just now. Please ask again in a moment.");
         }
     }
 

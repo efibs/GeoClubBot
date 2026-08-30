@@ -113,14 +113,14 @@ public partial class OpenRouterEmbedder(
         }
         catch (ApiException ex)
         {
-            LogBatchFailed(logger, (int)ex.StatusCode, ex);
+            LogBatchFailed(logger, (int)ex.StatusCode, Describe(ex), ex);
             return (int)ex.StatusCode == 429
                 ? Error.Conflict("ai.rate_limited", "The embedding provider is rate-limiting us right now.")
                 : Error.Unexpected("ai.embedding_failed", "The embedding provider could not be reached.");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            LogBatchFailed(logger, 0, ex);
+            LogBatchFailed(logger, 0, ex.Message, ex);
             return Error.Unexpected("ai.embedding_failed", "The embedding provider could not be reached.");
         }
     }
@@ -151,8 +151,26 @@ public partial class OpenRouterEmbedder(
     [LoggerMessage(LogLevel.Warning, "The embedding provider rejected a batch: {Message}")]
     static partial void LogBatchRejected(ILogger logger, string message);
 
-    [LoggerMessage(LogLevel.Warning, "Embedding batch failed (HTTP {StatusCode}).")]
-    static partial void LogBatchFailed(ILogger logger, int statusCode, Exception exception);
+    /// <summary>
+    /// The provider names the offending input or model in the response body; the status code alone
+    /// leaves a 400 indistinguishable from any other and only diagnosable by replaying the request.
+    /// </summary>
+    private static string Describe(ApiException exception)
+    {
+        var body = exception.Content;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return "(no response body)";
+        }
+
+        return body.Length > MaxLoggedBodyLength ? body[..MaxLoggedBodyLength] + "…" : body;
+    }
+
+    /// <summary>Bodies are logged for diagnosis, so cap what a failing provider can write to the log.</summary>
+    private const int MaxLoggedBodyLength = 500;
+
+    [LoggerMessage(LogLevel.Warning, "Embedding batch failed (HTTP {StatusCode}): {Response}")]
+    static partial void LogBatchFailed(ILogger logger, int statusCode, string response, Exception exception);
 
     [LoggerMessage(LogLevel.Warning, "Requested {Requested} embedding(s) but received {Received}.")]
     static partial void LogBatchCountMismatch(ILogger logger, int requested, int received);

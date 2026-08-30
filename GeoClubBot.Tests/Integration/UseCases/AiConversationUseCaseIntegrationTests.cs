@@ -125,14 +125,35 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
-    public async Task AskAi_StillAnswers_WhenRetrievalIsUnavailable()
+    public async Task AskAi_RefusesRatherThanGuess_WhenRetrievalIsUnavailable()
     {
-        // A vector store outage should degrade the answer, not remove the feature.
+        // Observed in production: a transient embedder failure produced an empty hit list, the prompt
+        // reported "No guide excerpts matched this question", and the model told the user in good
+        // faith that the guides do not cover a road the guides document in detail. A retrievalless
+        // answer that claims to have checked is worse than no answer, and it spends the chat request
+        // to produce it, so the failure is surfaced instead.
         using var host = CreateHost();
         var chat = ArrangeProviders(host, answer: "From general knowledge.");
         host.Mock<IEmbedder>().EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>())
             .Returns(Result<IReadOnlyList<ReadOnlyMemory<float>>>.Failure(
                 Error.Unexpected("ai.embedding_failed", "down")));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "question"));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("ai.embedding_failed");
+        chat.ReceivedCalls().Should().BeEmpty("the chat request must not be spent on an ungrounded answer");
+    }
+
+    [Fact]
+    public async Task AskAi_StillAnswers_WhenRetrievalSimplyFoundNothing()
+    {
+        // The other half of the distinction: a lookup that genuinely matched nothing is a real answer
+        // about the corpus, and the model is told so plainly rather than left to invent guide content.
+        using var host = CreateHost();
+        var chat = ArrangeProviders(host, answer: "From general knowledge.");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([]);
 
         var result = await host.SendAsync(Ask(NewSnowflake(), null, "question"));
 
