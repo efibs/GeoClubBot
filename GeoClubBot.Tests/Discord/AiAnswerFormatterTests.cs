@@ -65,6 +65,26 @@ public sealed class AiAnswerFormatterTests
     }
 
     [Fact]
+    public Task Render_ListsRelatedGuides_WhenTheModelCitedNothing()
+    {
+        // Unnumbered, because there is no marker in the prose for a number to point at, and headed so
+        // the list does not read as citations that lost their numbers.
+        var answer = new AiAnswer(
+            "Roads starting with MR are exclusive to Eswatini.",
+            [],
+            [
+                new AiAnswerSource(null, "Eswatini > Identifying", "https://www.plonkit.net/eswatini#m1jr"),
+                new AiAnswerSource(null, "Eswatini > Regional clues", "https://www.plonkit.net/eswatini#1chu")
+            ],
+            "minimax/minimax-m3:free",
+            ConversationId: 100,
+            Depth: 1,
+            IsLongThread: false);
+
+        return Verify(Render(AiAnswerFormatter.Render(answer)));
+    }
+
+    [Fact]
     public Task Render_SuggestsAFreshThread_WhenTheBranchIsLong()
     {
         var answer = new AiAnswer("Still here.", [], [], "test/model", ConversationId: 100, Depth: 21, IsLongThread: true);

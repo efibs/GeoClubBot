@@ -24,8 +24,11 @@ public sealed record AskAiCommand(
 
 public sealed record AiAnswerImage(string ImageUrl, string SourceUrl, string? Title);
 
-/// <param name="Marker">The number the answer's prose cites, so the two line up.</param>
-public sealed record AiAnswerSource(int Marker, string Label, string Url);
+/// <param name="Marker">
+/// The number the answer's prose cites, so the two line up — or <c>null</c> when the model cited
+/// nothing and the guides are being credited on its behalf, where a number would point nowhere.
+/// </param>
+public sealed record AiAnswerSource(int? Marker, string Label, string Url);
 
 /// <param name="ConversationId">Root message id; the caller stores it on both resulting turns.</param>
 /// <param name="IsLongThread">True when the branch is deep enough to suggest starting a fresh one.</param>
@@ -55,6 +58,12 @@ public sealed partial class AskAiHandler(
 
     /// <summary>Sources listed under an answer. Enough to credit the guides used, short of a wall of links.</summary>
     private const int MaxSourcesInReply = 5;
+
+    /// <summary>
+    /// Guides credited when the model cited none. Fewer than the cited limit: these are the best
+    /// matches rather than anything the answer pointed at, so a long list would overstate them.
+    /// </summary>
+    private const int MaxUncitedSourcesInReply = 3;
 
     /// <summary>
     /// One question costs two upstream calls: embedding the query, then generating the answer. Both
@@ -136,12 +145,30 @@ public sealed partial class AskAiHandler(
         // token cannot be mistaken for a plain citation.
         var citedSources = AiPromptBuilder.ResolveCitedSources(text, prompt.Excerpts, MaxSourcesInReply);
 
+        var sources = citedSources
+            .Select(source => new AiAnswerSource(source.Marker, source.Label, source.SourceUrl))
+            .ToList();
+
+        // Attribution cannot rest on the model remembering to cite. Free models comply
+        // inconsistently — the same question cites on one run and not the next — so when an answer
+        // credits nothing at all, the guides it was given are credited for it.
+        //
+        // Listed without numbers, because there is no marker in the prose for them to anchor, and
+        // labelled as related rather than used: what the model did with the excerpts is unknown, and
+        // claiming it drew on them would be inventing a citation rather than supplying a missing one.
+        if (sources.Count == 0 && citedImages.Count == 0)
+        {
+            sources = [.. prompt.Excerpts
+                .Take(MaxUncitedSourcesInReply)
+                .Select(excerpt => new AiAnswerSource(Marker: null, excerpt.Label, excerpt.SourceUrl))];
+        }
+
         var depth = context.ParentDepth + 1;
 
         return new AiAnswer(
             text,
             [.. citedImages.Select(image => new AiAnswerImage(image.ImageUrl, image.SourceUrl, image.Title))],
-            [.. citedSources.Select(source => new AiAnswerSource(source.Marker, source.Label, source.SourceUrl))],
+            sources,
             completion.Value.ModelUsed,
             ResolveConversationId(context, request),
             depth,

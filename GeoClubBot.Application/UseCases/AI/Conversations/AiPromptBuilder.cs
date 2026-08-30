@@ -49,11 +49,12 @@ public static partial class AiPromptBuilder
         words fail you. Describe what it shows. Never say you are unable to display or retrieve
         images, and never claim to be showing one without writing its marker.
 
-        Answer from the guide excerpts whenever they are relevant, citing text excerpts by their plain
-        marker, like [1]. Each marker you use is turned into a named, clickable link under your answer,
-        so cite the marker and never write a URL yourself. If the excerpts do not cover the question,
-        say so plainly and answer from your own knowledge, making clear which part is not from the
-        guides. Never invent a source or a marker.
+        Cite every claim you take from an excerpt, using its plain marker, like [1]. This is not
+        optional: an uncited answer gives the reader no way to check it or to read further. Each
+        marker becomes a named, clickable link under your answer, so cite the marker and never write
+        a URL yourself. If the excerpts do not cover the question, say so plainly and answer from your
+        own knowledge, making clear which part is not from the guides. Never invent a source or a
+        marker.
 
         Keep answers short and concrete. Prefer specific, checkable clues over general advice.
         """;

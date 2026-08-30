@@ -146,6 +146,53 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
+    public async Task AskAi_CreditsTheRetrievedGuides_WhenTheModelCitesNothing()
+    {
+        // Free models comply with the citation instruction inconsistently — the same question cites on
+        // one run and not the next — so attribution cannot rest on the prompt alone.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Roads starting with MR are exclusive to Eswatini.");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Roads starting with MR…", "https://www.plonkit.net/eswatini#m1jr")]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where are MR roads?"));
+
+        result.Value.Sources.Should().ContainSingle();
+        result.Value.Sources[0].Url.Should().Be("https://www.plonkit.net/eswatini#m1jr");
+        result.Value.Sources[0].Marker.Should().BeNull(
+            "there is no marker in the prose for a number to anchor to");
+    }
+
+    [Fact]
+    public async Task AskAi_KeepsTheModelsOwnCitations_WhenItDoesCite()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Roads starting with MR are exclusive to Eswatini [1].");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Roads starting with MR…", "https://www.plonkit.net/eswatini#m1jr")]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where are MR roads?"));
+
+        result.Value.Sources.Should().ContainSingle();
+        result.Value.Sources[0].Marker.Should().Be(1, "the number has to match the one in the prose");
+    }
+
+    [Fact]
+    public async Task AskAi_CreditsNothing_WhenRetrievalFoundNothingToCredit()
+    {
+        // The fallback credits guides that were actually retrieved. With none, inventing an
+        // attribution would be worse than leaving the answer bare.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "From general knowledge.");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "something obscure"));
+
+        result.Value.Sources.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task AskAi_SendsNoImageVector_WhenNoImageWasAttached()
     {
         // Every text question failed against the real store with "expected dim: 2048, got 0", because
@@ -298,4 +345,8 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
         new(messageId, parentId, ChannelId: 5, GuildId: 7, authorId ?? NewSnowflake(), content, images ?? []);
 
     private static ulong NewSnowflake() => (ulong)Random.Shared.NextInt64(1_000_000_000, long.MaxValue);
+
+    private static KnowledgeHit Hit(string text, string sourceUrl) =>
+        new(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Text, text, sourceUrl, ImageUrl: null,
+            "Plonk It", "eswatini", "Eswatini > Identifying", "Plonk It team", 0);
 }

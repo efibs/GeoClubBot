@@ -149,6 +149,20 @@ outside the link so it still anchors the `[1]` in the prose.
 Image citations work differently. `[image 2]` is stripped from the text entirely and the picture is
 attached as an embed linked to its guide, so the image itself is the citation.
 
+**Attribution does not depend on the model complying.** Free models cite inconsistently — the same
+question cites on one run and not the next — so when an answer credits nothing at all, neither a
+marker nor an image, the guides it was given are credited on its behalf:
+
+```
+-# Related guides:
+-# [Eswatini > Identifying](https://www.plonkit.net/eswatini#m1jr)
+```
+
+These carry no numbers, because there is no marker in the prose for one to anchor, and they are
+labelled *related* rather than *used*: what the model did with the excerpts is unknown, and claiming
+it drew on them would be inventing a citation rather than supplying a missing one. When retrieval
+found nothing, nothing is credited.
+
 ### The knowledge index
 
 One Qdrant collection whose name encodes the embedding model and its dimensions, so changing either

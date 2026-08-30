@@ -60,9 +60,22 @@ public static class AiAnswerFormatter
         //
         // The number stays outside the link so it still reads as the anchor for the "[1]" in the
         // prose, and so the label cannot nest brackets inside a masked link.
-        foreach (var source in answer.Sources)
+        if (answer.Sources.Count > 0)
         {
-            lines.Add($"-# [{source.Marker}] [{source.Label}]({source.Url})");
+            // An unnumbered list is the model citing nothing and the guides being credited for it, so
+            // it is introduced as related rather than left looking like citations that lost their
+            // numbers.
+            if (answer.Sources.All(source => source.Marker is null))
+            {
+                lines.Add("-# Related guides:");
+            }
+
+            foreach (var source in answer.Sources)
+            {
+                lines.Add(source.Marker is { } marker
+                    ? $"-# [{marker}] [{source.Label}]({source.Url})"
+                    : $"-# [{source.Label}]({source.Url})");
+            }
         }
 
         if (answer.IsLongThread)
