@@ -112,12 +112,23 @@ Free models on OpenRouter appear and are retired continuously — many carry an 
 so no model id is pinned. A background job reads the roster every six hours and ranks the free models
 by context size, distance from any announced retirement, capability headroom and release age.
 
-Each request sends the best candidate plus the next few as a fallback chain, and OpenRouter fails over
-between them server-side within a single call. The chain always ends at `openrouter/free`, a router
-that picks a free model itself — so even an empty or unreachable roster still produces an answer.
+Each request names `AI:OpenRouter:ChainLength` models — three by default — and OpenRouter fails over
+between them server-side within a single call. That number counts the **whole** chain, because it is
+what the provider validates: OpenRouter rejects a request naming more than three with a plain
+`400`, and the adapter trims to three regardless of configuration. The chain always ends at
+`openrouter/free`, a router that picks a free model itself — so even an empty or unreachable roster
+still produces an answer, and the router is the entry that survives any trim.
 
 A model that fails is demoted temporarily rather than blocked, so a transient outage does not
 blacklist the best model.
+
+**Not every free entry is a chat model.** OpenRouter lists music and image generators on the same
+roster as chat models. They are billed per second of audio or per picture rather than per token, so
+both `pricing.prompt` and `pricing.completion` read `"0"` and a free-price filter admits them — and
+with context windows of 1M they rank near the top. They are excluded by output modality: a genuine
+chat model declares `output_modalities: ["text"]` and nothing else, while a generator declares text
+*and* audio or image. The rule is therefore text-only output, not text-among-others —
+`google/lyria-3-pro-preview` advertises `["text", "audio"]` and would slip past a "contains text" check.
 
 ### The knowledge index
 

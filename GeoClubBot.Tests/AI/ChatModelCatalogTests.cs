@@ -125,7 +125,17 @@ public sealed class ChatModelCatalogTests
         string id,
         int contextLength = 64_000,
         bool supportsImageInput = false) =>
-        new(id, id, contextLength, 8_192, supportsImageInput, false, false, Start.AddDays(-60), null);
+        new(
+            id,
+            id,
+            contextLength,
+            MaxCompletionTokens: 8_192,
+            supportsImageInput,
+            ProducesTextOnly: true,
+            SupportsTools: false,
+            SupportsStructuredOutputs: false,
+            Start.AddDays(-60),
+            ExpiresAt: null);
 
     /// <summary>
     /// TimeProvider is abstract with a virtual GetUtcNow, so a controllable clock needs no extra

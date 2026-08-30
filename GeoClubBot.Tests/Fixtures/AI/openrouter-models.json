@@ -115,6 +115,42 @@
       "expiration_date": null
     },
     {
+      "id": "google/lyria-3-pro-preview",
+      "name": "Google: Lyria 3 Pro Preview",
+      "created": 1774907286,
+      "context_length": 1048576,
+      "architecture": {
+        "modality": "text+image->text+audio",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "audio"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 1048576,
+        "max_completion_tokens": 65536,
+        "is_moderated": false
+      },
+      "supported_parameters": [
+        "max_tokens",
+        "response_format",
+        "seed",
+        "temperature",
+        "top_p"
+      ],
+      "expiration_date": null
+    },
+    {
       "id": "openrouter/free",
       "name": "Free Models Router",
       "created": 1769917427,

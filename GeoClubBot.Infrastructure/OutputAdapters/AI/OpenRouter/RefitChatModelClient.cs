@@ -179,6 +179,7 @@ public partial class RefitChatModelClient(
     private static ChatModelDescriptor ToDescriptor(OpenRouterModelDto model)
     {
         var modalities = model.Architecture?.InputModalities ?? [];
+        var outputs = model.Architecture?.OutputModalities ?? [];
         var parameters = model.SupportedParameters ?? [];
 
         return new ChatModelDescriptor(
@@ -187,6 +188,9 @@ public partial class RefitChatModelClient(
             model.ContextLength ?? model.TopProvider?.ContextLength ?? 0,
             model.TopProvider?.MaxCompletionTokens,
             modalities.Contains("image", StringComparer.OrdinalIgnoreCase),
+            // Unstated output modalities are read as text-only rather than as a disqualification: a
+            // provider that stops sending the field must not silently empty the whole roster.
+            outputs.Count == 0 || outputs.All(output => output.Equals("text", StringComparison.OrdinalIgnoreCase)),
             parameters.Contains("tools", StringComparer.OrdinalIgnoreCase),
             parameters.Contains("structured_outputs", StringComparer.OrdinalIgnoreCase),
             model.Created is { } created ? DateTimeOffset.FromUnixTimeSeconds(created) : null,

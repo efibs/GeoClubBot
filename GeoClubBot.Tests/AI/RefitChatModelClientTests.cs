@@ -29,8 +29,27 @@ public sealed class RefitChatModelClientTests
             "liquid/lfm-2.5-2.6b:free",
             "dots-studio/dots-3-note-preview:free",
             "nvidia/nemotron-3.5-content-safety:free",
+            "google/lyria-3-pro-preview",
             "openrouter/free");
         result.Value.Should().NotContain(model => model.Id == "tencent/hy-mt2-1.8b", "that model is paid");
+    }
+
+    [Fact]
+    public async Task ReadFreeModels_MarksAGeneratorAsNotTextOnly()
+    {
+        // google/lyria-3-pro-preview is a real entry: a music generator billed per second of audio, so
+        // both token prices read "0" and it passes the free filter. It stays in the roster — it is
+        // free, and the descriptor's job is to report the provider honestly — but the flag is what
+        // keeps the selector from ever offering it a chat completion.
+        var client = CreateClient(await ReadFixtureAsync("openrouter-models.json"));
+
+        var result = await client.ReadFreeModelsAsync();
+
+        var generator = result.Value.Single(model => model.Id == "google/lyria-3-pro-preview");
+        generator.ProducesTextOnly.Should().BeFalse("it emits audio as well as text");
+
+        result.Value.Where(model => model.Id != "google/lyria-3-pro-preview")
+            .Should().OnlyContain(model => model.ProducesTextOnly);
     }
 
     [Fact]

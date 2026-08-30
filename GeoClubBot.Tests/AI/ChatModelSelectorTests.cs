@@ -113,6 +113,26 @@ public sealed class ChatModelSelectorTests
     }
 
     [Fact]
+    public void SelectChain_ExcludesModelsThatEmitMoreThanText()
+    {
+        // Modelled on google/lyria-3-pro-preview, a music generator sitting on OpenRouter's roster: it
+        // is billed per second of audio, so both token prices read "0" and the free filter admits it,
+        // and its 1M context puts it near the top of the ranking. Note it declares text output too —
+        // "text and audio" — so the rule has to be text and nothing else, not text among others.
+        var musicGenerator = Model("google/lyria-3-pro-preview", contextLength: 1_048_576, producesTextOnly: false);
+        var chatModel = Model("real/model", contextLength: 32_000);
+
+        var chain = ChatModelSelector.SelectChain(
+            [musicGenerator, chatModel],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        chain.Should().Equal("real/model", Fallback);
+    }
+
+    [Fact]
     public void SelectChain_ExcludesModelsBelowTheMinimumContextLength()
     {
         var chain = ChatModelSelector.SelectChain(
@@ -282,13 +302,15 @@ public sealed class ChatModelSelectorTests
         bool supportsImageInput = false,
         bool supportsTools = false,
         DateTimeOffset? expiresAt = null,
-        DateTimeOffset? createdAt = null) =>
+        DateTimeOffset? createdAt = null,
+        bool producesTextOnly = true) =>
         new(
             id,
             id,
             contextLength,
             MaxCompletionTokens: 8_192,
             supportsImageInput,
+            producesTextOnly,
             supportsTools,
             SupportsStructuredOutputs: false,
             createdAt ?? Now.AddDays(-60),

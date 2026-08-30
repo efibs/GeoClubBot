@@ -115,6 +115,15 @@ public static class ChatModelSelector
             return false;
         }
 
+        // A model that emits anything besides text is a generator, not a chat model. Providers list
+        // music and image generators on the same roster; they are billed per second or per picture
+        // rather than per token, so both token prices read "0", they rank well on context, and they
+        // then reject a chat completion outright. Every genuine chat model emits text and nothing else.
+        if (!model.ProducesTextOnly)
+        {
+            return false;
+        }
+
         if (requirements.NeedsImageInput && !model.SupportsImageInput)
         {
             return false;
