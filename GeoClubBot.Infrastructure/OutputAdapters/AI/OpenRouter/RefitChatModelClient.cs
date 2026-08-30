@@ -23,6 +23,16 @@ public partial class RefitChatModelClient(
     /// <summary>Name of the configured HttpClient carrying the base address, auth header and resilience pipeline.</summary>
     public const string HttpClientName = "OpenRouter";
 
+    /// <summary>
+    /// Most models one request may name. OpenRouter refuses a longer list outright with
+    /// <c>'models' array must have 3 items or fewer</c>, so it is enforced here rather than trusted to
+    /// configuration: a wire limit belongs with the wire format.
+    /// </summary>
+    private const int MaxModelsPerRequest = 3;
+
+    /// <summary>Response bodies are logged for diagnosis, so cap what a failing provider can write to the log.</summary>
+    private const int MaxLoggedBodyLength = 500;
+
     private IOpenRouterApi CreateApi() =>
         RestService.For<IOpenRouterApi>(httpClientFactory.CreateClient(HttpClientName));
 
@@ -44,13 +54,13 @@ public partial class RefitChatModelClient(
         }
         catch (ApiException ex)
         {
-            LogRosterFailed(logger, (int)ex.StatusCode, ex);
+            LogRosterFailed(logger, (int)ex.StatusCode, Describe(ex), ex);
             return Error.Unexpected("ai.model_roster_unavailable",
                 $"Could not read the model roster from the AI provider (HTTP {(int)ex.StatusCode}).");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            LogRosterFailed(logger, 0, ex);
+            LogRosterFailed(logger, 0, ex.Message, ex);
             return Error.Unexpected("ai.model_roster_unavailable",
                 "Could not reach the AI provider to read the model roster.");
         }
@@ -69,7 +79,7 @@ public partial class RefitChatModelClient(
         {
             Model = request.ModelChain[0],
             // Only send the fallback array when there is something to fall back to.
-            Models = request.ModelChain.Count > 1 ? [.. request.ModelChain] : null,
+            Models = request.ModelChain.Count > 1 ? BuildFallbackChain(request.ModelChain) : null,
             Messages = [.. request.Messages.Select(ToMessageDto)],
             Temperature = request.Temperature,
             MaxTokens = request.MaxTokens
@@ -102,7 +112,7 @@ public partial class RefitChatModelClient(
         }
         catch (ApiException ex)
         {
-            LogCompletionFailed(logger, (int)ex.StatusCode, ex);
+            LogCompletionFailed(logger, (int)ex.StatusCode, Describe(ex), ex);
 
             // 429 survives the whole chain only when every model is exhausted, so it is worth its own
             // message: the caller surfaces it as a budget problem rather than a generic failure.
@@ -112,10 +122,20 @@ public partial class RefitChatModelClient(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            LogCompletionFailed(logger, 0, ex);
+            LogCompletionFailed(logger, 0, ex.Message, ex);
             return Error.Unexpected("ai.chat_request_failed", "Could not reach the AI provider.");
         }
     }
+
+    /// <summary>
+    /// Trims an over-long chain to what the provider accepts, keeping the head and the final entry.
+    /// The last entry is the fallback router, which is the one that is always reachable — dropping it
+    /// to make room for a ranked model would trade the guarantee for a guess.
+    /// </summary>
+    private static List<string> BuildFallbackChain(IReadOnlyList<string> chain) =>
+        chain.Count <= MaxModelsPerRequest
+            ? [.. chain]
+            : [.. chain.Take(MaxModelsPerRequest - 1), chain[^1]];
 
     private static OpenRouterMessageDto ToMessageDto(AiChatMessage message)
     {
@@ -182,11 +202,27 @@ public partial class RefitChatModelClient(
     [LoggerMessage(LogLevel.Debug, "Read AI model roster: {FreeCount} free of {TotalCount} total.")]
     static partial void LogRosterRead(ILogger logger, int freeCount, int totalCount);
 
-    [LoggerMessage(LogLevel.Warning, "Failed to read the AI model roster (HTTP {StatusCode}).")]
-    static partial void LogRosterFailed(ILogger logger, int statusCode, Exception exception);
+    /// <summary>
+    /// The provider explains every rejection in the response body — which model it disliked, which
+    /// field was malformed — and the status code alone says none of it. Without this a 400 is
+    /// indistinguishable from any other 400 and can only be diagnosed by replaying the request by hand.
+    /// </summary>
+    private static string Describe(ApiException exception)
+    {
+        var body = exception.Content;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return "(no response body)";
+        }
 
-    [LoggerMessage(LogLevel.Warning, "AI chat completion failed (HTTP {StatusCode}).")]
-    static partial void LogCompletionFailed(ILogger logger, int statusCode, Exception exception);
+        return body.Length > MaxLoggedBodyLength ? body[..MaxLoggedBodyLength] + "…" : body;
+    }
+
+    [LoggerMessage(LogLevel.Warning, "Failed to read the AI model roster (HTTP {StatusCode}): {Response}")]
+    static partial void LogRosterFailed(ILogger logger, int statusCode, string response, Exception exception);
+
+    [LoggerMessage(LogLevel.Warning, "AI chat completion failed (HTTP {StatusCode}): {Response}")]
+    static partial void LogCompletionFailed(ILogger logger, int statusCode, string response, Exception exception);
 
     [LoggerMessage(LogLevel.Warning, "AI provider returned an in-band error {Code}: {Message}")]
     static partial void LogCompletionRejected(ILogger logger, int code, string message);

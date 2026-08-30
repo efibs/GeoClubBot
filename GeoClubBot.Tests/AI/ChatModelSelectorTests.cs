@@ -158,6 +158,8 @@ public sealed class ChatModelSelectorTests
     [Fact]
     public void SelectChain_HonoursTheConfiguredChainLength()
     {
+        // The length counts the whole chain, router included, because that is the number the provider
+        // checks: OpenRouter rejects a request naming more than three models outright.
         var roster = Enumerable.Range(0, 10)
             .Select(index => Model($"model/{index:00}", contextLength: 16_000 + index))
             .ToList();
@@ -165,12 +167,39 @@ public sealed class ChatModelSelectorTests
         var chain = ChatModelSelector.SelectChain(
             roster,
             new ChatModelRequirements(),
-            Options() with { ChainLength = 2 },
+            Options() with { ChainLength = 3 },
             failurePenalties: null,
             Now);
 
         chain.Should().HaveCount(3, "two ranked candidates plus the fallback router");
         chain[^1].Should().Be(Fallback);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(8)]
+    public void SelectChain_NeverExceedsTheConfiguredLength(int chainLength)
+    {
+        // A chain one entry longer than configured is exactly the bug that made every answer fail with
+        // an unexplained HTTP 400, so the invariant is asserted rather than left to the arithmetic.
+        var roster = Enumerable.Range(0, 10)
+            .Select(index => Model($"model/{index:00}", contextLength: 16_000 + index))
+            .ToList();
+
+        var chain = ChatModelSelector.SelectChain(
+            roster,
+            new ChatModelRequirements(),
+            Options() with { ChainLength = chainLength },
+            failurePenalties: null,
+            Now);
+
+        // The router is always present, so a length below one still yields a chain of one.
+        chain.Should().HaveCount(Math.Max(1, chainLength));
+        chain[^1].Should().Be(Fallback);
+        chain.Should().OnlyHaveUniqueItems();
     }
 
     [Fact]

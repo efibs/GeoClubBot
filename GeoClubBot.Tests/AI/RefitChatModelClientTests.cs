@@ -139,6 +139,37 @@ public sealed class RefitChatModelClientTests
     }
 
     [Fact]
+    public async Task Complete_TrimsAnOverLongChain_ButKeepsTheFallbackRouter()
+    {
+        // OpenRouter refuses a request naming more than three models, and answers with a plain 400 —
+        // so the limit is enforced here rather than trusted to whatever the selector was configured
+        // with. The router is the entry that is always reachable, so it survives the trim.
+        var handler = new CapturingHandler("""
+            {"model":"m","choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+            """);
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(
+            ["first/model", "second/model", "third/model", "fourth/model", "openrouter/free"],
+            [AiChatMessage.User("hi")]));
+
+        handler.LastRequestBody.Should()
+            .Contain("\"models\":[\"first/model\",\"second/model\",\"openrouter/free\"]");
+    }
+
+    [Fact]
+    public async Task Complete_OmitsTheFallbackArray_WhenOnlyOneModelIsOffered()
+    {
+        // A null "models" is not the same as an absent one to a provider validating the field.
+        var handler = new CapturingHandler("""
+            {"model":"m","choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+            """);
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(["only/model"], [AiChatMessage.User("hi")]));
+
+        handler.LastRequestBody.Should().NotContain("\"models\"");
+    }
+
+    [Fact]
     public async Task Complete_Fails_WhenNoModelWasOffered()
     {
         var result = await CreateClient(new CapturingHandler("{}")).CompleteAsync(

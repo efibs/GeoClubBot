@@ -28,7 +28,12 @@ public class OpenRouterConfiguration
     /// <summary>Router model appended to every chain as the last resort; it self-filters for the features a request needs.</summary>
     public string FallbackModelId { get; set; } = "openrouter/free";
 
-    /// <summary>Ranked candidates sent ahead of the fallback, for server-side failover.</summary>
+    /// <summary>
+    /// Models named in one request, for server-side failover — the fallback router included, since
+    /// that is the number the provider validates. OpenRouter rejects a request naming more than three
+    /// outright, so raising this beyond 3 only works against a provider that allows more; the adapter
+    /// trims to what OpenRouter accepts either way.
+    /// </summary>
     public int ChainLength { get; set; } = 3;
 
     /// <summary>Models with a smaller context window are not considered; RAG prompts are large.</summary>

@@ -12,6 +12,7 @@ public sealed class OpenRouterChatRequestDto
     /// rate-limited, or refuses on moderation grounds — one HTTP call, no client-side retry loop.
     /// </summary>
     [JsonPropertyName("models")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? Models { get; set; }
 
     [JsonPropertyName("messages")]

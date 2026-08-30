@@ -57,8 +57,12 @@ public static class ChatModelSelector
 
         var ranked = Rank(roster, requirements, options, failurePenalties, nowUtc);
 
+        // ChainLength counts the whole chain, fallback included. Providers cap how many models a
+        // single request may name — OpenRouter rejects more than three outright — so the number that
+        // reaches the wire is the one that has to be configurable, not the number before the router
+        // is appended.
         var chain = ranked
-            .Take(Math.Max(0, options.ChainLength))
+            .Take(Math.Max(0, options.ChainLength - 1))
             .Select(candidate => candidate.Id)
             .ToList();
 
