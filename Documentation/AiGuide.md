@@ -320,6 +320,7 @@ After that a nightly job drains the queue on its own.
 | Source | Notes |
 |---|---|
 | plonkit.net country guides | Full text **and** images. Discovered from the site's own sitemap (~157 pages). |
+| rmrg.me country guides | Full text **and** images. Discovered from the site's own sitemap (12 countries). Fewer countries than plonkit and far more detail in each — ~30–180 clues per country, every one a picture paired with the prose describing it. Its images need no relay entry: they are served to anyone who asks. |
 | imgur albums | Infographics — often the most useful artefact for a meta. Images indexed. |
 | Google Docs | Text, plus embedded images when the relay is configured. |
 | Google Slides | Text, speaker notes, and embedded images when the relay is configured. |

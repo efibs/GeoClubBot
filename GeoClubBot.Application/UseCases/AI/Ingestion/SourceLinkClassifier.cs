@@ -18,6 +18,7 @@ public sealed record ClassifiedLink(string SourceType, string NaturalKey, string
 public static partial class SourceLinkClassifier
 {
     public const string PlonkIt = "plonkit";
+    public const string Rmrg = "rmrg";
     public const string GoogleDoc = "gdoc";
     public const string GoogleSlides = "gslides";
     public const string GoogleSheet = "gsheet";
@@ -61,6 +62,17 @@ public static partial class SourceLinkClassifier
             if (slug.Length > 0 && !slug.Contains('/'))
             {
                 return new ClassifiedLink(PlonkIt, slug);
+            }
+        }
+
+        // Same rule, same reason: a country page is a guide, and anything else on the host — an
+        // image, the daily challenge — falls through to be recognised on its own terms.
+        if (host is "rmrg.me" || host.EndsWith(".rmrg.me", StringComparison.Ordinal))
+        {
+            var slug = url.AbsolutePath.Trim('/');
+            if (slug.Length > 0 && !slug.Contains('/'))
+            {
+                return new ClassifiedLink(Rmrg, slug);
             }
         }
 

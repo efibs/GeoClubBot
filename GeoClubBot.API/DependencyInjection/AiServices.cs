@@ -106,6 +106,11 @@ public static class AiServices
         services.AddSingleton<ISourceExtractor>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
         services.AddSingleton<ISourceCatalog>(sp => sp.GetRequiredService<PlonkItSourceExtractor>());
 
+        // The second guide site that indexes itself: fewer countries, far more detail per country.
+        services.AddSingleton<RmrgSourceExtractor>();
+        services.AddSingleton<ISourceExtractor>(sp => sp.GetRequiredService<RmrgSourceExtractor>());
+        services.AddSingleton<ISourceCatalog>(sp => sp.GetRequiredService<RmrgSourceExtractor>());
+
         // One extractor per source family. The registry picks between them, so a new family is a
         // class plus a line here.
         services.AddSingleton<ISourceExtractor, ImgurAlbumSourceExtractor>();

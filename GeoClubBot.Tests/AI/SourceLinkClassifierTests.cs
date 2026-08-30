@@ -14,6 +14,8 @@ public sealed class SourceLinkClassifierTests
     [Theory]
     [InlineData("https://www.plonkit.net/tunisia", "plonkit", "tunisia")]
     [InlineData("https://www.plonkit.net/botswana", "plonkit", "botswana")]
+    [InlineData("https://rmrg.me/georgia/", "rmrg", "georgia")]
+    [InlineData("https://rmrg.me/czech-republic/", "rmrg", "czech-republic")]
     [InlineData("https://docs.google.com/document/d/1rw0j0Q5z_vLE1K5bYLKXDpxW8wXLJQl7vIq8YqVBcGM/edit", "gdoc", "1rw0j0Q5z_vLE1K5bYLKXDpxW8wXLJQl7vIq8YqVBcGM")]
     [InlineData("https://docs.google.com/presentation/d/1abcDEF-ghi_JKL/edit#slide=id.p", "gslides", "1abcDEF-ghi_JKL")]
     [InlineData("https://docs.google.com/spreadsheets/d/1JdyJNoOkksLAdGnJ_scA17K1pHV3THHERY/edit", "gsheet", "1JdyJNoOkksLAdGnJ_scA17K1pHV3THHERY")]
@@ -88,6 +90,16 @@ public sealed class SourceLinkClassifierTests
             .SourceType.Should().Be("image", "a bare image is still indexable even on that host");
 
         SourceLinkClassifier.Classify(new Uri("https://www.plonkit.net/a/b/c"))
+            .IsSupported.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Classify_RefusesAnRmrgLinkThatIsNotACountryPage()
+    {
+        SourceLinkClassifier.Classify(new Uri("https://rmrg.me/guides/georgia/images/general/x.webp"))
+            .SourceType.Should().Be("image", "a bare image is still indexable even on that host");
+
+        SourceLinkClassifier.Classify(new Uri("https://rmrg.me/guides/georgia/a/b"))
             .IsSupported.Should().BeFalse();
     }
 }
