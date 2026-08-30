@@ -1,5 +1,6 @@
 using Configuration;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.AI;
@@ -33,7 +34,7 @@ public sealed record AiAnswer(
     int Depth,
     bool IsLongThread);
 
-public sealed class AskAiHandler(
+public sealed partial class AskAiHandler(
     IAiConversationRepository conversations,
     IAiBudgetRepository budget,
     IEmbedder embedder,
@@ -41,7 +42,8 @@ public sealed class AskAiHandler(
     IChatModelCatalog modelCatalog,
     IChatModelClient chatClient,
     IOptions<AiConfiguration> aiConfiguration,
-    IOptions<AiConversationConfiguration> conversationConfiguration)
+    IOptions<AiConversationConfiguration> conversationConfiguration,
+    ILogger<AskAiHandler> logger)
     : IRequestHandler<AskAiCommand, Result<AiAnswer>>
 {
     /// <summary>Guide excerpts retrieved per question.</summary>
@@ -214,8 +216,17 @@ public sealed class AskAiHandler(
             return Result<IReadOnlyList<KnowledgeHit>>.Success(
                 await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false));
         }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
+            // Logged with the vector widths because the store rejects a malformed query the same way
+            // it reports being unreachable, and the two need entirely different fixes. Swallowing this
+            // silently is what left an empty query vector looking like an outage.
+            LogSearchFailed(
+                logger,
+                query.TextVector?.Length ?? -1,
+                query.ImageVector?.Length ?? -1,
+                exception);
+
             return Error.Unexpected("ai.index_unavailable",
                 "I couldn't reach the guide index just now. Please ask again in a moment.");
         }
@@ -227,4 +238,8 @@ public sealed class AskAiHandler(
     /// </summary>
     private static ulong ResolveConversationId(ConversationContext context, AskAiCommand request) =>
         context.IsNewConversation ? request.DiscordMessageId : request.ParentDiscordMessageId!.Value;
+
+    [LoggerMessage(LogLevel.Warning,
+        "Guide index search failed (text vector: {TextVectorLength}, image vector: {ImageVectorLength}).")]
+    static partial void LogSearchFailed(ILogger logger, int textVectorLength, int imageVectorLength, Exception exception);
 }
