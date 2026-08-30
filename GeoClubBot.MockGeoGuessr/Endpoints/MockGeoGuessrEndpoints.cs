@@ -25,13 +25,19 @@ public static class MockGeoGuessrEndpoints
 public record UpdateClubRequest(string? Name = null, int? Level = null, int? Xp = null, int? MaxMemberCount = null, string? Tag = null, string? Description = null);
 public record AddMemberRequest(string UserId);
 public record MoveMemberRequest(Guid TargetClubId);
-public record AddXpRequest(int Amount = 20);
+// Type mirrors GeoGuessr's activity type (see AddActivityRequest); a negative Amount means
+// "use the reward that type carries on the real API".
+public record AddXpRequest(int Amount = -1, int Type = 1);
 public record UpdateMemberRequest(int? Xp = null, int? WeeklyXp = null, int? Role = null);
 public record CreateUserRequest(string Nick, string? UserId = null, string? CountryCode = "us", bool IsProUser = true);
 public record UpdateUserRequest(string? Nick = null, string? CountryCode = null, bool? IsProUser = null, int? Elo = null, int? Rating = null);
 public record CreateChallengeRequest(string? Map = "world", int TimeLimit = 60, bool ForbidMoving = false, bool ForbidRotating = false, bool ForbidZooming = false);
 public record AddScoreRequest(string UserId, int Score = 25000, int Distance = 100);
-public record AddActivityRequest(string UserId, int XpReward = 20);
+// Type mirrors GeoGuessr's activity type: 1 daily mission, 2 weekly mission,
+// 3 club challenge played (0 XP), 4 daily challenge played / duel won.
+// A negative XpReward means "use the reward that type carries on the real API"; 0 is a valid
+// explicit value, which is what a club-challenge entry is worth.
+public record AddActivityRequest(string UserId, int XpReward = -1, int Type = 1);
 public record AddMissionRequest(
     string Type,
     string GameMode,

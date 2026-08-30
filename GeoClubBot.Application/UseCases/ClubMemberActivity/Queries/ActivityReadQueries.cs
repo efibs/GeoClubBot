@@ -12,8 +12,8 @@ public sealed partial class ActivityReadHandlers(
     IClubRepository clubs,
     IClubMemberRepository clubMembers,
     IGeoGuessrActivityReader activityReader,
+    ClubActivityKindClassifier activityKinds,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
-    IOptions<DailyMissionReminderConfiguration> missionConfig,
     ILogger<ActivityReadHandlers> logger)
     : IRequestHandler<GetLastCheckTimeQuery, DateTimeOffset?>,
       IRequestHandler<GetActivityThisWeekQuery, ClubMemberWeekActivity>,
@@ -66,7 +66,7 @@ public sealed partial class ActivityReadHandlers(
         {
             return new ClubMemberWeekActivity(
                 TotalXp: 0,
-                DailyMissions: daySlots.Select(d => new DayMissionStatus(d, false)).ToList(),
+                DailyMissions: daySlots.Select(d => new DayMissionStatus(d, false, false)).ToList(),
                 JoinedThisWeek: false,
                 JoinedDateTime: DateTimeOffset.UtcNow);
         }
@@ -77,17 +77,19 @@ public sealed partial class ActivityReadHandlers(
 
         var memberActivities = activities.Where(a => a.UserId == userId).ToList();
 
-        var dailyMissionXpReward = missionConfig.Value.DailyMissionXpReward;
-        var completedDays = memberActivities
-            .Where(a => a.XpReward == dailyMissionXpReward)
-            .Select(a => DateOnly.FromDateTime(a.RecordedAt.UtcDateTime))
-            .ToHashSet();
+        var missionDays = DaysWith(memberActivities, activityKinds.IsDailyMission);
+        var challengeDays = DaysWith(memberActivities, activityKinds.IsDailyChallenge);
 
         var dailyMissions = daySlots
-            .Select(d => new DayMissionStatus(d, completedDays.Contains(d)))
+            .Select(d => new DayMissionStatus(d, missionDays.Contains(d), challengeDays.Contains(d)))
             .ToList();
 
-        var totalXp = memberActivities.Sum(a => a.XpReward);
+        // Weekly missions are excluded, matching GetClubTodaysXpQuery: at 1000 XP one of them
+        // dwarfs a whole week of daily activity, so leaving it in makes this view read as though
+        // the member was far busier than they were. This is a view of daily activity.
+        var totalXp = memberActivities
+            .Where(a => !activityKinds.IsWeeklyMission(a))
+            .Sum(a => a.XpReward);
         var joinedInPeriod = clubMember.JoinedAt >= startUtc;
 
         return new ClubMemberWeekActivity(
@@ -96,6 +98,14 @@ public sealed partial class ActivityReadHandlers(
             JoinedThisWeek: joinedInPeriod,
             JoinedDateTime: clubMember.JoinedAt);
     }
+
+    private static HashSet<DateOnly> DaysWith(
+        IEnumerable<ReadClubActivitiesItemDto> activities,
+        Func<ReadClubActivitiesItemDto, bool> predicate) =>
+        activities
+            .Where(predicate)
+            .Select(a => DateOnly.FromDateTime(a.RecordedAt.UtcDateTime))
+            .ToHashSet();
 
     private static DateOnly GetStartOfWeek(DateOnly date)
     {

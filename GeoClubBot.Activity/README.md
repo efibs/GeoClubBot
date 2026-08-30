@@ -2,7 +2,8 @@
 
 A Vue 3 + TypeScript [Discord Activity](https://discord.com/developers/docs/activities/overview)
 (an embedded web app launched from a voice channel) that shows the club's live leaderboard, current
-challenge standings, and daily-mission streaks — a social "TV screen" members can browse together.
+challenge standings, and daily streaks (a day counts only when both of its club-XP awards were
+earned) — a social "TV screen" members can browse together.
 
 It is served by **GeoClubBot.API** (static assets from `wwwroot`) and talks to the activity
 endpoints under `/api/v1/activity`.

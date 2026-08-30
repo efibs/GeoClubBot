@@ -40,14 +40,17 @@ challenges, send mission reminders, and link Discord accounts to GeoGuessr profi
 - **📊 Activity tracking & strikes** — weekly XP checks against a configurable minimum, with grace
   periods, automatic strikes, and time-based strike decay.
 - **🏆 Daily challenges** — scheduled challenges with podium roles for the top three finishers.
-- **⏰ Daily mission reminders** — per-user, timezone-aware DM reminders to complete the GeoGuessr
-  daily mission.
+- **⏰ Daily reminders** — per-user, timezone-aware DM reminders covering both of the day's club-XP
+  awards: the GeoGuessr daily mission, and playing the daily challenge or winning a duel. The DM
+  only stops once both are done.
 - **📈 Club & member stats** — today's club XP, personal current-week / rolling-window progress,
   level-up announcements, and MVP rewards.
 - **🎭 Self-roles** — members opt into optional roles via a private menu, no admin needed.
 - **👥 Member management** — welcome/leave messages, private member channels, multi-club support.
-- **🤖 Optional AI features** — Qdrant + Semantic Kernel powered features, gated behind the
-  `AI:Active` flag.
+- **🤖 Optional AI assistant** — mention the bot with a GeoGuessr question (or a screenshot) and it
+  answers from an indexed library of community guides, showing the guide images that make the point.
+  Reply to keep the conversation going. Gated behind `AI:Active`; see the
+  [AI Guide](Documentation/AiGuide.md).
 
 Work is driven by a mix of **Discord slash commands** and **Quartz scheduled jobs**
 (`SyncClubsJob`, `ActivityCheckJob`, `CheckClubLevelJob`, `DailyChallengeJob`,
@@ -127,13 +130,37 @@ startup. Key sections:
 | `GeoGuessr` | `_ncfa` tokens, sync schedule, per-club settings (`UseMock` for local dev) |
 | `ActivityChecker` | Min XP, grace period, max strikes, strike decay window |
 | `DailyChallenges` / `DailyMissionReminder` / `DailyMissionLogging` | Cron schedules, channels, podium roles |
+| `ClubXp` | XP amounts per club-activity kind — only a fallback; the activity feed's own type wins |
 | `SelfRoles`, `MemberPrivateChannels`, `ActivityReward`, `GeoGuessrAccountLinking` | Per-feature settings |
-| `AI` | Optional AI features (`Active`, model endpoints) |
+| `AI` | Optional AI assistant — `Active`, OpenRouter key, request budget, conversation and indexing limits ([guide](Documentation/AiGuide.md)) |
 | `SQL:Migrate` | Auto-apply EF Core migrations on startup |
 | `OpenTelemetry:Endpoint` | Opt-in OTLP exporter (e.g. the Aspire dashboard from `compose.yaml`) |
 
 > ⚠️ Keep secrets (Discord bot tokens, GeoGuessr `_ncfa` tokens, API keys) out of source control —
 > supply them via untracked local settings or environment variables.
+
+## How club XP is earned
+
+Since **2026-08-25** a member can earn **up to 40 club XP per day** from two independent sources,
+each worth 20 XP and each available once per day:
+
+1. completing the **daily mission**, and
+2. playing the **daily challenge** *or* winning a **duel**.
+
+GeoGuessr's club activity feed labels both, so the bot treats them as separate signals throughout:
+reminders nag until both are done, `/activity inactive-members` reports two lists, a completion
+streak only extends on days with both, and the mission statistics count missions only, alongside a
+separate daily-challenge rate. See
+[`Tools/GeoClubBot.ApiProbe/README.md`](Tools/GeoClubBot.ApiProbe/README.md) for the feed's
+activity types and how they were established.
+
+> **Historical data caveat:** rows snapshotted between 2026-08-25 and the deploy of this change
+> counted challenge/duel XP as mission completions, and the feed is a rolling window so they can't
+> be rebuilt. The `/daily-missions stats` footer names the first day the daily challenge was
+> tracked separately; figures before it blend the two.
+
+Note that `ActivityChecker:MinXP` is a raw XP target and is unchanged by this — the weekly
+requirement is simply easier to reach now that there is more XP available per day.
 
 ## Bot commands
 
@@ -143,7 +170,7 @@ lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
 | Command | What it does |
 |---|---|
 | `/gg-account link` | Link your Discord account to your GeoGuessr profile |
-| `/daily-reminder add\|remove\|clear\|list` | Manage your daily mission reminders |
+| `/daily-reminder add\|remove\|clear\|list` | Manage your daily reminders |
 | `/my-activity current-week\|last-days` | See your own XP / mission progress |
 | `/club-stats todays-xp` | See how much XP the club earned today |
 | `/user-info gg-nickname\|gg-profile\|discord-user` | Look up GeoGuessr ↔ Discord identities |
@@ -222,6 +249,7 @@ docker build -f ./GeoClubBot.API/Dockerfile -t ghcr.io/efibs/geo-club-bot:your-v
 | [CLAUDE.md](CLAUDE.md) | Architecture overview + build/test commands |
 | [Developer Guide](Documentation/DeveloperGuide.md) | Solution map and "where do I add X?" recipes |
 | [Result Conventions](Documentation/ResultConventions.md) | Error handling with `Result<T>` |
+| [AI Guide](Documentation/AiGuide.md) | How the AI assistant works, what it costs to run, how to turn it on |
 | [Bot Commands Guide](BotCommandsGuide.md) | User-facing command reference |
 | [Contributing](CONTRIBUTING.md) | Branching model, pre-commit hook, CI/CD |
 

@@ -16,7 +16,6 @@ public sealed class SnapshotDailyMissionCompletionsHandlerTests
 {
     private static readonly Guid ClubA = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid ClubB = Guid.Parse("22222222-2222-2222-2222-222222222222");
-    private const int DailyMissionXpReward = 20;
 
     private readonly IDailyMissionCompletionRepository _completions = Substitute.For<IDailyMissionCompletionRepository>();
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
@@ -38,12 +37,7 @@ public sealed class SnapshotDailyMissionCompletionsHandlerTests
         _completions,
         _members,
         _activityReader,
-        Options.Create(new DailyMissionReminderConfiguration
-        {
-            Schedule = "0 * * * * ?",
-            DefaultMessage = "x",
-            DailyMissionXpReward = DailyMissionXpReward
-        }),
+        ClubActivities.Classifier(),
         Options.Create(new GeoGuessrConfiguration
         {
             SyncSchedule = "0 0 0 * * ?",
@@ -56,18 +50,11 @@ public sealed class SnapshotDailyMissionCompletionsHandlerTests
         }),
         _logger);
 
-    private static ReadClubActivitiesItemDto BuildActivity(string userId, int xpReward, DateTimeOffset recordedAt) => new()
-    {
-        UserId = userId,
-        XpReward = xpReward,
-        RecordedAt = recordedAt
-    };
-
     private DateTimeOffset YesterdayAt(int hour) =>
         new(_yesterday.ToDateTime(new TimeOnly(hour, 0)), TimeSpan.Zero);
 
     [Fact]
-    public async Task Handle_WritesOneRowPerMember_CountingOnlyYesterdaysMissionRewardEvents()
+    public async Task Handle_WritesOneRowPerMember_CountingYesterdaysTwoDailyAwardsSeparately()
     {
         var memberDone = new ClubMemberBuilder().WithUserId("user-done-000000000000000").InClub(ClubA).Build();
         var memberIdle = new ClubMemberBuilder().WithUserId("user-idle-000000000000000").InClub(ClubA).Build();
@@ -76,12 +63,13 @@ public sealed class SnapshotDailyMissionCompletionsHandlerTests
 
         _activityReader.ReadActivitiesSinceAsync(ClubA, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns([
-                BuildActivity(memberDone.UserId, DailyMissionXpReward, YesterdayAt(8)),
-                BuildActivity(memberDone.UserId, DailyMissionXpReward, YesterdayAt(20)),
-                // Wrong XP amount: a regular game, not a mission completion.
-                BuildActivity(memberDone.UserId, 150, YesterdayAt(9)),
-                // Right XP amount but recorded today, i.e. outside the snapshotted day.
-                BuildActivity(memberIdle.UserId, DailyMissionXpReward, YesterdayAt(8).AddDays(1)),
+                ClubActivities.Mission(memberDone.UserId, YesterdayAt(8)),
+                // Same 20 XP as the mission, but the other award - it must not inflate the mission count.
+                ClubActivities.Challenge(memberDone.UserId, YesterdayAt(20)),
+                // Neither award: a regular game.
+                ClubActivities.Untyped(memberDone.UserId, 150, YesterdayAt(9)),
+                // A mission, but recorded today, i.e. outside the snapshotted day.
+                ClubActivities.Mission(memberIdle.UserId, YesterdayAt(8).AddDays(1)),
             ]);
 
         IEnumerable<DailyMissionMemberCompletion>? written = null;
@@ -92,8 +80,13 @@ public sealed class SnapshotDailyMissionCompletionsHandlerTests
         written.Should().NotBeNull();
         written.Should().HaveCount(2);
         written.Should().OnlyContain(r => r.ClubId == ClubA && r.Date == _yesterday);
-        written.Single(r => r.UserId == memberDone.UserId).CompletedCount.Should().Be(2);
-        written.Single(r => r.UserId == memberIdle.UserId).CompletedCount.Should().Be(0);
+        var doneRow = written.Single(r => r.UserId == memberDone.UserId);
+        doneRow.CompletedCount.Should().Be(1);
+        doneRow.DailyChallengeCount.Should().Be(1);
+
+        var idleRow = written.Single(r => r.UserId == memberIdle.UserId);
+        idleRow.CompletedCount.Should().Be(0);
+        idleRow.DailyChallengeCount.Should().Be(0);
     }
 
     [Fact]

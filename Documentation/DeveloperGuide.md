@@ -19,13 +19,14 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | **GeoClubBot.Discord** | Discord.Net slash-command modules (`InputAdapters/Interactions/`) + Discord output adapters (`OutputAdapters/`) |
 | **GeoClubBot.Application** | Use cases (`UseCases/<Feature>/`) and port interfaces (`OutputPorts/`). The heart of the app |
 | **GeoClubBot.Domain** | Entities + domain events. No framework dependencies |
-| **GeoClubBot.Infrastructure** | EF Core repositories (`OutputAdapters/Repositories/`), Quartz jobs (`InputAdapters/Jobs/`), DbContext, SignalR |
+| **GeoClubBot.Infrastructure** | EF Core repositories (`OutputAdapters/Repositories/`), Quartz jobs (`InputAdapters/Jobs/`), DbContext, SignalR, AI adapters (`OutputAdapters/AI/`) |
 | **Configuration** | Strongly-typed `*Configuration` option classes |
 | **Constants** | `ConfigKeys`, component IDs, string constants |
 | **QuartzExtensions** | `[ConfiguredCronJob]` attribute + assembly scanning for jobs |
 | **Extensions / Utilities** | Small shared helpers (`Result<T>` lives in `Utilities`) |
 | **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API for local dev (`GeoGuessr:UseMock=true`) |
 | **GeoClubBot.Tests** | xUnit unit + Testcontainers integration tests |
+| **Tools/GeoClubBot.ApiProbe** | Read-only console tool that dumps raw GeoGuessr API responses ([README](../Tools/GeoClubBot.ApiProbe/README.md)) |
 
 ### "I want to change X → go here"
 
@@ -38,6 +39,14 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | Add a **config option** | `Configuration/<Feature>Configuration.cs` |
 | Add an **entity / domain event** | `GeoClubBot.Domain/` (events under `Events/`) |
 | Change **error → user message** mapping | see [`ResultConventions.md`](ResultConventions.md) |
+| Add a **guide source** the AI can read | `GeoClubBot.Infrastructure/OutputAdapters/AI/Extractors/` — see recipe 6 |
+| Change **how the AI answers** | `GeoClubBot.Application/UseCases/AI/Conversations/` (prompt, context, orchestration) |
+| Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` |
+| Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily mission and the daily challenge / duel win are both 20 XP |
+| Find out **what the GeoGuessr API actually returns** | `dotnet run --project Tools/GeoClubBot.ApiProbe -- activities` ([README](../Tools/GeoClubBot.ApiProbe/README.md)) — the typed DTOs drop undeclared fields, so don't read them for this |
+
+> The AI feature has its own document: [`AiGuide.md`](AiGuide.md) covers how it works, what it costs
+> to run, and what it deliberately does not do. Read it before changing anything under `AI/`.
 
 ---
 
@@ -143,6 +152,36 @@ repositories, so there's nothing to add there.
 2. **Bind it** → add an `AddOptions<...>().Bind(...).ValidateDataAnnotations().ValidateOnStart()`
    block in `Configuration/DependencyInjectionExtensions.cs`.
 3. Inject `IOptions<<Feature>Configuration>` where needed.
+
+### 6. Add a guide source for the AI to read
+
+Each source family is one extractor plus one DI line. Nothing else in the ingestion pipeline changes.
+
+1. **Extractor** → `GeoClubBot.Infrastructure/OutputAdapters/AI/Extractors/<Family>SourceExtractor.cs`,
+   implementing `ISourceExtractor`: a `SourceType`, a `CanHandle(Uri)`, and an `ExtractAsync` returning
+   `ExtractedChunk`s.
+2. **Classify its links** → add a branch to `SourceLinkClassifier` so links of that shape are
+   recognised. Refusals go through it too: returning an `UnsupportedReason` records the link with an
+   explanation instead of dropping it, which is what keeps coverage reporting honest.
+3. **Register it** → one `services.AddSingleton<ISourceExtractor, …>()` in
+   `GeoClubBot.API/DependencyInjection/AiServices.cs`. The registry resolves by URL or by stored type.
+4. **Optionally list sources** → implement `ISourceCatalog` as well if the family publishes an index of
+   its own (a sitemap, a spreadsheet), so new sources are discovered rather than added by hand.
+
+Three rules that are easy to get wrong and expensive to get wrong:
+
+- **Local keys must be stable across re-extraction.** Point ids derive from them, so a positional key
+  that shifts when the source gains a paragraph turns the next re-ingest into duplicates. Prefer an id
+  the source itself publishes.
+- **Keep an image attached to the prose that describes it.** A written question reaches an image
+  through its caption, scoring far higher than against the pixels — see the measurements in
+  [`AiGuide.md`](AiGuide.md). An image with no caption should inherit its section heading.
+- **Return a `Validation` error for anything permanently unreadable** — a private document, a listing
+  page, a deleted album. The pipeline records those as skipped and never retries them. An `Unexpected`
+  error means "worth retrying" and is put on an exponential backoff.
+
+Test it against a **captured response** in `GeoClubBot.Tests/Fixtures/AI/` with a substituted
+`HttpMessageHandler`; extractor tests never touch the network.
 
 ---
 

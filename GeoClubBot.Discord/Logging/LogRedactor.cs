@@ -23,7 +23,7 @@ public static partial class LogRedactor
         // Most specific patterns first; each pass is idempotent on already-redacted text.
         value = NcfaCookie().Replace(value, "_ncfa=" + Replacement);
         value = DiscordToken().Replace(value, Replacement);
-        value = CerebrasKey().Replace(value, Replacement);
+        value = OpenRouterKey().Replace(value, Replacement);
         value = KeyedSecret().Replace(value, static m => m.Groups["k"].Value + m.Groups["sep"].Value + Replacement);
         return value;
     }
@@ -36,9 +36,11 @@ public static partial class LogRedactor
     [GeneratedRegex(@"[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{27,}", RegexOptions.CultureInvariant)]
     private static partial Regex DiscordToken();
 
-    // Cerebras-style API key.
-    [GeneratedRegex("csk-[A-Za-z0-9]{8,}", RegexOptions.CultureInvariant)]
-    private static partial Regex CerebrasKey();
+    // OpenRouter-style API key. Worth its own pattern rather than relying on KeyedSecret(): the
+    // provider's 401 body echoes the offending key without an "apiKey=" prefix, so the generic
+    // assignment pattern would not catch it.
+    [GeneratedRegex("sk-or-v1-[A-Za-z0-9]{8,}", RegexOptions.CultureInvariant)]
+    private static partial Regex OpenRouterKey();
 
     // Generic "<keyword> = <value>" / "<keyword>: <value>" assignments — keeps the key, redacts
     // the value. Covers api key / secret / token / password (e.g. connection-string Password=...).

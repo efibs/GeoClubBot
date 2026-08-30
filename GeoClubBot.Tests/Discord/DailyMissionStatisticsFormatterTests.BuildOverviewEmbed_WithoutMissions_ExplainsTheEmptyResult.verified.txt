@@ -4,6 +4,7 @@ Description:
 **Club:** My Club
 **Days with data:** 0
 **Avg club completion:** —
+**Avg daily challenge / duel win:** — (not tracked in this period)
 
 No daily missions were logged in this period.
 
