@@ -204,10 +204,21 @@ public sealed partial class AskAiHandler(
             return embeddings.Error;
         }
 
+        // Written out rather than folded into the initialiser. ReadOnlyMemory<float> converts
+        // implicitly from an array, and the null literal converts to an array, so a conditional
+        // expression here takes ReadOnlyMemory<float> as its natural type and the null branch becomes
+        // an *empty* memory rather than no value at all. The store then rejects the whole query with
+        // "expected dim: 2048, got 0" — a text-only question failing on the image vector it never had.
+        ReadOnlyMemory<float>? imageVector = null;
+        if (embeddings.Value.Count > 1)
+        {
+            imageVector = embeddings.Value[1];
+        }
+
         var query = new KnowledgeQuery
         {
             TextVector = embeddings.Value[0],
-            ImageVector = embeddings.Value.Count > 1 ? embeddings.Value[1] : null,
+            ImageVector = imageVector,
             Limit = RetrievalLimit
         };
 

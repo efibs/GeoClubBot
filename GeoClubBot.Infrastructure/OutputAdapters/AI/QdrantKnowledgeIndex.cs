@@ -78,7 +78,9 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         var filter = BuildFilter(query.Country, query.SourceType, ingestRun: null, sourceKey: null);
         var prefetches = new List<PrefetchQuery>();
 
-        if (query.TextVector is { } textVector)
+        // Length is checked as well as presence: an empty vector is never a meaningful query, and
+        // sending one fails the entire request rather than just that prefetch.
+        if (query.TextVector is { Length: > 0 } textVector)
         {
             // The question against chunk text and image captions — the strongest signal by a wide
             // margin, since captions and questions are both text.
@@ -91,7 +93,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             prefetches.Add(BuildPrefetch(textVector, ImageVectorName, filter));
         }
 
-        if (query.ImageVector is { } imageVector)
+        if (query.ImageVector is { Length: > 0 } imageVector)
         {
             prefetches.Add(BuildPrefetch(imageVector, ImageVectorName, filter));
         }

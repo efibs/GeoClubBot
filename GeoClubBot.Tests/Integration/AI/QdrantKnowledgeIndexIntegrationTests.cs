@@ -235,6 +235,25 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
         (await index.SearchAsync(new KnowledgeQuery())).Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Search_IgnoresAnEmptyVector_RatherThanFailingTheWholeQuery()
+    {
+        // An empty vector reached the store as a real prefetch and Qdrant rejected the entire request
+        // — "expected dim: N, got 0" — so a perfectly good text search died on an image vector that
+        // was never supplied. An empty vector carries no query, so it contributes no prefetch.
+        var index = await CreateIndexAsync();
+        await index.UpsertAsync([new KnowledgePoint(Chunk("a", KnowledgeChunkKind.Text), Axis(0))], "run-1");
+
+        var hits = await index.SearchAsync(new KnowledgeQuery
+        {
+            TextVector = Axis(0),
+            ImageVector = ReadOnlyMemory<float>.Empty,
+            Limit = 3
+        });
+
+        hits.Should().ContainSingle();
+    }
+
     private async Task<Infrastructure.OutputAdapters.AI.QdrantKnowledgeIndex> CreateIndexAsync()
     {
         var index = fixture.CreateKnowledgeIndex(QdrantFixture.NewCollectionName(), VectorSize);

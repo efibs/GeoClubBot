@@ -146,6 +146,24 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
+    public async Task AskAi_SendsNoImageVector_WhenNoImageWasAttached()
+    {
+        // Every text question failed against the real store with "expected dim: 2048, got 0", because
+        // `count > 1 ? vectors[1] : null` has ReadOnlyMemory<float> as its natural type — the null
+        // literal converts to an array, and an array converts to an empty memory. The query therefore
+        // carried an image vector of length zero instead of none, and the store rejected all of it.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "An answer.");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        await host.SendAsync(Ask(NewSnowflake(), null, "a question with no attachment"));
+
+        var query = index.ReceivedCalls().Select(c => c.GetArguments()[0]).OfType<KnowledgeQuery>().Last();
+        query.ImageVector.Should().BeNull("nothing was attached, so there is no image to search by");
+        query.TextVector.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task AskAi_StillAnswers_WhenRetrievalSimplyFoundNothing()
     {
         // The other half of the distinction: a lookup that genuinely matched nothing is a real answer
