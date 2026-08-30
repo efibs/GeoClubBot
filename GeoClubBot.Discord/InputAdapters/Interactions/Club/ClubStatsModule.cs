@@ -34,7 +34,13 @@ public class ClubStatsModule(
                     return;
                 }
 
-                await FollowupAsync($"{result.ClubName} currently has {result.Xp} XP today. ({result.CompletedMemberCount}/{result.TotalMemberCount})", ephemeral: false)
+                // Two separate counts: the daily mission and the daily challenge / duel win are
+                // independent 20 XP awards, so one number would hide half the picture.
+                await FollowupAsync(
+                        $"{result.ClubName} currently has {result.Xp} XP today. "
+                        + $"Daily mission: {result.MissionMemberCount}/{result.TotalMemberCount} · "
+                        + $"Daily challenge or duel: {result.ChallengeMemberCount}/{result.TotalMemberCount}",
+                        ephemeral: false)
                     .ConfigureAwait(false);
             },
             failureMessage: "Failed to fetch the clubs current XP. Please try again later. If the issue persists, please contact an admin.");

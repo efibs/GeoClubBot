@@ -319,8 +319,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// The mock GeoGuessr UI also relies on static files.
-if (useMockGeoGuessr || serveActivity)
+// Only the activity SPA ships static assets; the mock UI is a single embedded HTML file.
+if (serveActivity)
 {
     app.UseStaticFiles();
 }

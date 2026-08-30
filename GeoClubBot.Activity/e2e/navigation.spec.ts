@@ -19,7 +19,9 @@ test('switches between the member tabs', async ({ page }) => {
   await expect(page.getByTestId('me-view')).toBeVisible();
   await expect(page.getByTestId('profile-panel')).toContainText('Gold II');
   await expect(page.getByTestId('my-activity-panel')).toContainText('4,200 XP');
-  await expect(page.getByTestId('day-strip').locator('.day-cell.done')).toHaveCount(5);
+  // Both awards on 2 days, exactly one award on 3 more (see baseWeekActivity).
+  await expect(page.getByTestId('day-strip').locator('.day-cell.done')).toHaveCount(2);
+  await expect(page.getByTestId('day-strip').locator('.day-cell.partial')).toHaveCount(3);
 
   await page.getByTestId('tab-overview').click();
   await expect(page.getByTestId('club-name')).toBeVisible();

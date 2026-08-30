@@ -17,22 +17,50 @@ public sealed class InactiveMembersFormatterTests
     // A fixed date keeps the snapshots deterministic.
     private static readonly DateOnly Day = new(2026, 7, 10);
 
-    private static TodaysInactiveMembers BuildReport(int totalMembers, params InactiveMember[] members) =>
+    private static TodaysInactiveMembers BuildReport(
+        int totalMembers,
+        IReadOnlyList<InactiveMember>? missionInactive = null,
+        IReadOnlyList<InactiveMember>? challengeInactive = null) =>
         new(
             ClubId: Guid.Parse("11111111-1111-1111-1111-111111111111"),
             ClubName: "Awesome Club",
             Day: Day,
             TotalMembers: totalMembers,
-            Members: members);
+            MissionInactive: missionInactive ?? [],
+            ChallengeInactive: challengeInactive ?? []);
 
     [Fact]
     public Task BuildEmbed_ListsInactiveMembers_WithAndWithoutLinkedDiscordAccounts()
     {
         var report = BuildReport(
             totalMembers: 5,
-            new InactiveMember("Alpha", DiscordUserId: 111111111111111111UL),
-            new InactiveMember("Bravo", DiscordUserId: null),
-            new InactiveMember("Charlie", DiscordUserId: 222222222222222222UL));
+            missionInactive:
+            [
+                new InactiveMember("Alpha", DiscordUserId: 111111111111111111UL),
+                new InactiveMember("Bravo", DiscordUserId: null),
+                new InactiveMember("Charlie", DiscordUserId: 222222222222222222UL)
+            ],
+            challengeInactive:
+            [
+                new InactiveMember("Bravo", DiscordUserId: null),
+                new InactiveMember("Delta", DiscordUserId: 333333333333333333UL)
+            ]);
+
+        return Verify(RenderEmbed(InactiveMembersFormatter.BuildEmbed(report).Build()));
+    }
+
+    [Fact]
+    public Task BuildEmbed_WithOnlyOneAwardOutstanding_StillShowsBothSections()
+    {
+        // Everyone did the daily mission but two members skipped the daily challenge - the whole
+        // point of splitting the report in two.
+        var report = BuildReport(
+            totalMembers: 4,
+            challengeInactive:
+            [
+                new InactiveMember("Alpha", DiscordUserId: 111111111111111111UL),
+                new InactiveMember("Bravo", DiscordUserId: null)
+            ]);
 
         return Verify(RenderEmbed(InactiveMembersFormatter.BuildEmbed(report).Build()));
     }

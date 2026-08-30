@@ -32,6 +32,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ClubXpConfiguration>()
+            .Bind(config.GetSection(ClubXpConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<DailyMissionReminderConfiguration>()
             .Bind(config.GetSection(DailyMissionReminderConfiguration.SectionName))
             .ValidateDataAnnotations()

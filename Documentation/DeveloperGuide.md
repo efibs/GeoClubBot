@@ -26,6 +26,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | **Extensions / Utilities** | Small shared helpers (`Result<T>` lives in `Utilities`) |
 | **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API for local dev (`GeoGuessr:UseMock=true`) |
 | **GeoClubBot.Tests** | xUnit unit + Testcontainers integration tests |
+| **Tools/GeoClubBot.ApiProbe** | Read-only console tool that dumps raw GeoGuessr API responses ([README](../Tools/GeoClubBot.ApiProbe/README.md)) |
 
 ### "I want to change X → go here"
 
@@ -41,6 +42,8 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | Add a **guide source** the AI can read | `GeoClubBot.Infrastructure/OutputAdapters/AI/Extractors/` — see recipe 6 |
 | Change **how the AI answers** | `GeoClubBot.Application/UseCases/AI/Conversations/` (prompt, context, orchestration) |
 | Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` |
+| Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily mission and the daily challenge / duel win are both 20 XP |
+| Find out **what the GeoGuessr API actually returns** | `dotnet run --project Tools/GeoClubBot.ApiProbe -- activities` ([README](../Tools/GeoClubBot.ApiProbe/README.md)) — the typed DTOs drop undeclared fields, so don't read them for this |
 
 > The AI feature has its own document: [`AiGuide.md`](AiGuide.md) covers how it works, what it costs
 > to run, and what it deliberately does not do. Read it before changing anything under `AI/`.
