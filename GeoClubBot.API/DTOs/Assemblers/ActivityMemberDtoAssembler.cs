@@ -44,10 +44,12 @@ public static class ActivityMemberDtoAssembler
     public static WeekActivityDto AssembleWeekActivity(ClubMemberWeekActivity activity) => new(
         activity.TotalXp,
         activity.NumDaysDone,
+        activity.NumMissionDaysDone,
+        activity.NumChallengeDaysDone,
         activity.JoinedThisWeek,
         activity.JoinedDateTime,
         activity.DailyMissions
-            .Select(day => new DayMissionDto(day.Date, day.MissionCompleted))
+            .Select(day => new DayMissionDto(day.Date, day.MissionCompleted, day.ChallengeCompleted))
             .ToList());
 
     public static ProfileDto AssembleProfile(
@@ -90,5 +92,8 @@ public static class ActivityMemberDtoAssembler
                 kind.AverageTargetProgress,
                 kind.LastAppearance,
                 kind.AverageDayCompletionRateWhenPresent))
-            .ToList());
+            .ToList(),
+        statistics.AverageDayChallengeRate,
+        statistics.DaysWithChallengeData,
+        statistics.ChallengeTrackedFrom);
 }

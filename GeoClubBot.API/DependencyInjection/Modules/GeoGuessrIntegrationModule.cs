@@ -7,6 +7,8 @@ public static class GeoGuessrIntegrationModule
 {
     public static IServiceCollection AddGeoGuessrIntegrationModule(this IServiceCollection services)
     {
+        services.AddSingleton<ClubActivityKindClassifier>();
+
         services.AddTransient<IGeoGuessrActivityReader, CachingGeoGuessrActivityReader>();
         services.AddTransient<IGeoGuessrUserProfileReader, CachingGeoGuessrUserProfileReader>();
         services.AddTransient<IGeoGuessrUserRankedSystemReader, CachingGeoGuessrUserRankedSystemReader>();

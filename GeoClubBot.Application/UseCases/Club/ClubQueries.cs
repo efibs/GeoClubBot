@@ -11,7 +11,16 @@ public sealed record GetClubByNameOrDefaultQuery(string? ClubName) : IQuery<Enti
 
 public sealed record GetClubTodaysXpQuery(string? ClubName, bool IncludeWeeklies) : IQuery<GetClubTodaysXpResult>;
 
-public sealed record GetClubTodaysXpResult(int? Xp, string? ClubName, int? CompletedMemberCount, int? TotalMemberCount);
+/// <summary>
+/// Today's club XP, plus how many members earned each of the two daily awards. They are counted
+/// separately because a member can do the daily mission, the daily challenge, both, or neither.
+/// </summary>
+public sealed record GetClubTodaysXpResult(
+    int? Xp,
+    string? ClubName,
+    int? MissionMemberCount,
+    int? ChallengeMemberCount,
+    int? TotalMemberCount);
 
 public sealed record GetAllClubsQuery : IQuery<IReadOnlyList<Entities.Club>>;
 
@@ -19,6 +28,7 @@ public sealed class ClubQueriesHandler(
     IClubRepository clubs,
     IClubMemberRepository clubMembers,
     IGeoGuessrActivityReader activityReader,
+    ClubActivityKindClassifier activityKinds,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
     : IRequestHandler<GetClubByNameOrDefaultQuery, Entities.Club?>,
       IRequestHandler<GetClubTodaysXpQuery, GetClubTodaysXpResult>,
@@ -50,28 +60,35 @@ public sealed class ClubQueriesHandler(
 
         if (club is null)
         {
-            return new GetClubTodaysXpResult(null, null, null, null);
+            return new GetClubTodaysXpResult(null, null, null, null, null);
         }
 
         var activities = await activityReader
             .ReadTodaysActivitiesAsync(club.ClubId, cancellationToken)
             .ConfigureAwait(false);
 
-        // Weekly missions are identified by the 1000 XP reward; everything else is a daily activity.
-        const int weeklyMissionXpReward = 1000;
         var relevantActivities = activities
-            .Where(a => request.IncludeWeeklies || a.XpReward != weeklyMissionXpReward)
+            .Where(a => request.IncludeWeeklies || !activityKinds.IsWeeklyMission(a))
             .ToList();
 
         var xp = relevantActivities.Sum(a => a.XpReward);
-        var completedMemberCount = relevantActivities.Select(a => a.UserId).Distinct().Count();
+
+        // Counted per award rather than "anyone with an activity today": the feed also carries
+        // zero-XP entries (a club challenge being played), which say nothing about club XP.
+        var missionMemberCount = DistinctMembers(activities, activityKinds.IsDailyMission);
+        var challengeMemberCount = DistinctMembers(activities, activityKinds.IsDailyChallenge);
 
         var members = await clubMembers
             .ReadClubMembersByClubIdAsync(club.ClubId, cancellationToken)
             .ConfigureAwait(false);
 
-        return new GetClubTodaysXpResult(xp, club.Name, completedMemberCount, members.Count);
+        return new GetClubTodaysXpResult(xp, club.Name, missionMemberCount, challengeMemberCount, members.Count);
     }
+
+    private static int DistinctMembers(
+        IEnumerable<ReadClubActivitiesItemDto> activities,
+        Func<ReadClubActivitiesItemDto, bool> predicate) =>
+        activities.Where(predicate).Select(a => a.UserId).Distinct().Count();
 
     public Task<IReadOnlyList<Entities.Club>> Handle(GetAllClubsQuery request, CancellationToken cancellationToken) =>
         clubs.ReadAllClubsAsync(cancellationToken);

@@ -32,6 +32,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ClubXpConfiguration>()
+            .Bind(config.GetSection(ClubXpConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<DailyMissionReminderConfiguration>()
             .Bind(config.GetSection(DailyMissionReminderConfiguration.SectionName))
             .ValidateDataAnnotations()
@@ -82,6 +87,15 @@ public static class DependencyInjectionExtensions
         // start-up validation — the values are only required when the AI services are registered.
         services.AddOptions<AiConfiguration>()
             .Bind(config.GetSection(AiConfiguration.SectionName));
+
+        services.AddOptions<AiConversationConfiguration>()
+            .Bind(config.GetSection(AiConversationConfiguration.SectionName));
+
+        services.AddOptions<AiIngestionConfiguration>()
+            .Bind(config.GetSection(AiIngestionConfiguration.SectionName));
+
+        services.AddOptions<AiImageRelayConfiguration>()
+            .Bind(config.GetSection(AiImageRelayConfiguration.SectionName));
 
         // Discord channel logging is optional (gated by ChannelId), so the section is bound
         // without start-up validation — absent the section the sink simply stays disabled.

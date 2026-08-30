@@ -1,0 +1,12 @@
+﻿--- message 1 ---
+The area codes are laid out by governorate.
+
+-# via nvidia/nemotron-3.5-content-safety:free
+--- embed ---
+Title: Tunisia area codes
+Image: https://i.imgur.com/map.png
+Url:   https://docs.google.com/document/d/abc
+--- embed ---
+Title: Guide image
+Image: https://i.imgur.com/signs.png
+Url:   https://www.plonkit.net/tunisia

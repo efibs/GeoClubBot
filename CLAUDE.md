@@ -49,8 +49,10 @@ by random `Club`/`UserId` so the container is reused safely.
 
 A second Testcontainers fixture (`QdrantCollection`/`QdrantFixture`) backs the Qdrant vector-index
 tests. `QdrantClient`'s methods are sealed interface implementations, so NSubstitute can't fake
-them — a real container is the only way to cover `QdrantPlonkItVectorIndex`. Each test takes a
-unique collection name via `QdrantFixture.NewCollectionName()` instead of namespacing rows.
+them — a real container is the only way to cover `QdrantKnowledgeIndex`. Each test takes a
+unique collection name via `QdrantFixture.NewCollectionName()` instead of namespacing rows, and the
+fixture raises the container's file-descriptor limit: Qdrant opens many RocksDB files per collection
+and per payload index, and the default limit is exhausted part-way through a run.
 
 **Test types beyond unit + integration:**
 
@@ -72,15 +74,35 @@ unique collection name via `QdrantFixture.NewCollectionName()` instead of namesp
   (see `.github/workflows/mutation.yml`); `break: 0` so it reports without failing. Run locally with
   `dotnet tool restore && dotnet stryker`.
 - **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
-  (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing) over thousands of random
-  inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
+  (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
+  chunk keys must stay stable or every re-ingest duplicates instead of updating) over thousands of
+  random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
 
 ### Local dev without real credentials
 
 Set `GeoGuessr:UseMock=true` (default in `appsettings.Development.json`) to run against the
 in-process **GeoClubBot.MockGeoGuessr** instead of the real GeoGuessr API. It serves a mock API
-plus a UI (URL logged at startup) for seeding/driving fake club data.
+plus a UI (URL logged at startup) for seeding/driving fake club data. The club view's *Add
+Activity* form picks the activity kind (daily mission / daily challenge or duel win / weekly /
+club challenge), which is how you exercise the two same-priced daily XP awards locally.
+
+> The whole mock UI is one embedded file, `GeoClubBot.MockGeoGuessr/wwwroot/mock.html` (plain HTML
+> + fetch against `/mock/api`). A duplicate Blazor version of it once existed but was never routed;
+> it has been deleted.
+
+### Inspecting the real GeoGuessr API
+
+When you need to know what GeoGuessr *actually* returns — the typed DTOs silently drop fields they
+don't declare — use the read-only probe instead of guessing or instrumenting the bot:
+
+```bash
+dotnet run --project Tools/GeoClubBot.ApiProbe -- activities --pages 3
+```
+
+It prints raw JSON plus a field census (every property, its distinct values, and a cross-tab
+against `xpReward`). It only ever issues GETs, and it needs an `_ncfa` token —
+see [`Tools/GeoClubBot.ApiProbe/README.md`](Tools/GeoClubBot.ApiProbe/README.md).
 
 ## Architecture
 
@@ -103,14 +125,14 @@ API + Discord (controllers, slash command modules)
 | **GeoClubBot.API** | ASP.NET Core host, DI setup, controllers, Program.cs entry point |
 | **GeoClubBot.Domain** | Entities (Club, ClubMember, GeoGuessrUser, etc.) with domain events via MediatR |
 | **GeoClubBot.Application** | Use cases as MediatR handlers; input ports (use case interfaces) and output ports (repository/service interfaces) |
-| **GeoClubBot.Infrastructure** | EF Core DbContext + repositories, Quartz scheduled jobs, SignalR hub |
+| **GeoClubBot.Infrastructure** | EF Core DbContext + repositories, Quartz scheduled jobs, SignalR hub, AI adapters (`OutputAdapters/AI/`) |
 | **GeoClubBot.Discord** | Discord.Net interaction modules (slash commands), Discord output adapters |
-| **Configuration** | Strongly-typed config classes with `IValidateOptions` |
+| **Configuration** | Strongly-typed config classes validated with `.ValidateDataAnnotations().ValidateOnStart()` (there is no `IValidateOptions` implementation in the solution) |
 | **Constants** | Config keys, string constants, component IDs |
 | **Extensions** | Helper extension methods |
 | **Utilities** | General utilities |
 | **QuartzExtensions** | `ConfiguredCronJobAttribute` for declarative cron job registration |
-| **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API + Razor UI for local dev (gated by `GeoGuessr:UseMock`) |
+| **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API + single-page HTML UI for local dev (gated by `GeoGuessr:UseMock`) |
 | **GeoClubBot.Tests** | xUnit unit + Testcontainers-backed integration tests |
 
 > **Namespace gotcha**: assembly names are `GeoClubBot.*` but several projects set a short
@@ -127,7 +149,23 @@ API + Discord (controllers, slash command modules)
 - **Refit HTTP Client**: `IGeoGuessrClient` is a declarative Refit interface for the GeoGuessr API, with Polly resilience (rate limiting, retry, circuit breaker) configured in `ResiliencePipelines.cs`.
 - **Quartz Jobs**: Jobs use `[ConfiguredCronJob("ConfigKey:Schedule")]` attribute for auto-discovery. Located in `Infrastructure/InputAdapters/Jobs/`.
 - **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/<Feature>/` (feature subfolders mirroring `Application/UseCases/`), auto-discovered via `InteractionsAssemblyMarker` — no manual registration. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
+- **Club XP activity kinds**: GeoGuessr's club activity feed labels each entry with a numeric
+  `type`. Since 2026-08-25 there are **two** 20 XP daily awards — the daily mission (type 1) and
+  playing the daily challenge / winning a duel (type 4) — so an XP amount no longer identifies
+  anything. `ClubActivityKindClassifier` (`Application/OutputPorts/GeoGuessr/`) is the only place
+  that decides; call `IsDailyMission` / `IsDailyChallenge` rather than comparing `XpReward`.
+  Amounts in the `ClubXp` config section are just the fallback for untyped entries.
 - **Result type**: Use cases return `Result<T>` / `Error` (`Utilities/Result.cs`) instead of throwing for expected failures. `Error.Type` (`ErrorType.NotFound`, `Validation`, `Conflict`, `Forbidden`, `Unauthorized`, `Unexpected`) is mapped to HTTP status codes by the `ResultExtensions` middleware in `GeoClubBot.API/Middleware/`.
+- **AI assistant** (optional, `AI:Active`): retrieval-then-generation rather than tool-calling, because
+  requiring tool support would exclude most free models. Ports live in `Application/OutputPorts/AI/`
+  (`IChatModelClient`, `IEmbedder`, `IKnowledgeIndex`, `ISourceExtractor`), adapters in
+  `Infrastructure/OutputAdapters/AI/`. Conversations are a tree of Discord reply edges, so sibling
+  branches stay independent. Chat services and the vector index are registered **even when the feature
+  is off** — MediatR's assembly scan picks up every Application handler regardless, so the container
+  must be able to construct their dependencies or start-up validation fails. Guide images from hosts
+  that refuse unattended clients are copied during indexing and served from
+  `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy. See
+  [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 
 ### DI Registration
@@ -148,7 +186,12 @@ API + Discord (controllers, slash command modules)
 
 - **GeoGuessr API** (`https://www.geoguessr.com/api`): authenticated via `_ncfa` cookie token
 - **Discord** (Discord.Net 3.18.0): bot token, slash commands, role/channel management
-- **Qdrant + Semantic Kernel** (optional): AI features toggled via `AI:Active` config flag
+- **OpenRouter** (optional): chat *and* embeddings for the AI assistant, with the free model chosen
+  automatically from whatever is available that day. The only external AI dependency.
+- **Qdrant** (optional): vector store for indexed guide content, using named `text`/`image` vectors
+  merged with reciprocal-rank fusion. Both are gated behind the `AI:Active` flag — see
+  [`Documentation/AiGuide.md`](Documentation/AiGuide.md), which also explains the free-tier request
+  allowance that shapes most of the design.
 
 ## C# Conventions
 

@@ -96,8 +96,9 @@ function search(): void {
       >
         <template v-if="lookup.data.activity">
           <p class="stat-value">{{ formatXp(lookup.data.activity.totalXp) }}</p>
+          <!-- Same daily-only figure as the member's own view; weekly missions are excluded. -->
           <p class="stat-caption">
-            missions done on {{ lookup.data.activity.numDaysDone }} of
+            excluding weekly missions · fully done on {{ lookup.data.activity.numDaysDone }} of
             {{ lookup.data.activity.days.length }} days
           </p>
         </template>
