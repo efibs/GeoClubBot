@@ -17,14 +17,6 @@ public class EfKnowledgeSourceRepository(GeoClubBotDbContext dbContext) : IKnowl
                 cancellationToken)
             .ConfigureAwait(false);
 
-    public async Task<IReadOnlyList<KnowledgeSource>> ReadByTypeAsync(
-        string sourceType,
-        CancellationToken cancellationToken = default) =>
-        await dbContext.Set<KnowledgeSource>()
-            .Where(source => source.SourceType == sourceType)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
     public async Task<IReadOnlyList<KnowledgeSource>> ReadDueForIngestAsync(
         DateTimeOffset nowUtc,
         TimeSpan reingestInterval,
@@ -50,9 +42,12 @@ public class EfKnowledgeSourceRepository(GeoClubBotDbContext dbContext) : IKnowl
             : [.. candidates.Where(source => source.IsDueForIngest(nowUtc, reingestInterval)).Take(limit)];
     }
 
+    /// <summary>
+    /// Deliberately tracked, unlike the other reads: the catalogue sync updates and tombstones the
+    /// sources it returns, and changes to a detached entity are silently never saved.
+    /// </summary>
     public async Task<IReadOnlyList<KnowledgeSource>> ReadAllAsync(CancellationToken cancellationToken = default) =>
         await dbContext.Set<KnowledgeSource>()
-            .AsNoTracking()
             .OrderBy(source => source.SourceType)
             .ThenBy(source => source.NaturalKey)
             .ToListAsync(cancellationToken)

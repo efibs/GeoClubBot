@@ -1,6 +1,7 @@
 using Entities;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
@@ -45,6 +46,83 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
 
         var stored = await ReadSourceAsync(key);
         stored!.Title.Should().Be("Tunisia (updated)");
+    }
+
+    [Fact]
+    public async Task Sync_AddsAResourceOnce_WhenTwoCataloguesBothListIt()
+    {
+        // The guide site publishes its own index, and the community library links to the same guides.
+        // Both catalogues therefore yield the identical source, and inserting it twice violates the
+        // unique index on (SourceType, NaturalKey) -- which is exactly what a real sync hit.
+        await ResetSourcesAsync();
+
+        var shared = Descriptor(NewKey());
+
+        using var host = CreateHostWithCatalogs(
+            ("plonkit", [shared]),
+            ("meta-library", [shared, Descriptor(NewKey())]));
+
+        var result = await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Added.Should().Be(2, "the shared resource counts once");
+        result.Value.Discovered.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Sync_RecognisesExistingSources_FromACatalogueThatYieldsSeveralTypes()
+    {
+        // A library catalogue advertises its own name but produces guides, documents and albums.
+        // Matching existing sources by the catalogue's type instead of each descriptor's type found
+        // nothing, so every sync re-added everything.
+        await ResetSourcesAsync();
+
+        var guide = Descriptor(NewKey());
+        var document = new SourceDescriptor("gdoc", NewKey(), new Uri("https://docs.google.com/document/d/x/edit"));
+
+        using (var first = CreateHostWithCatalogs(("meta-library", [guide, document])))
+        {
+            (await first.SendAsync(new SyncSourceCatalogsCommand())).Value.Added.Should().Be(2);
+        }
+
+        using var second = CreateHostWithCatalogs(("meta-library", [guide, document]));
+        var result = await second.SendAsync(new SyncSourceCatalogsCommand());
+
+        result.Value.Added.Should().Be(0, "a second sync of the same listing must update, not insert");
+        result.Value.Updated.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Sync_LeavesOtherCataloguesAlone_WhenOneOfThemFails()
+    {
+        // A catalogue that could not be read has not stopped publishing anything, so its sources must
+        // not be tombstoned as though it had dropped them.
+        await ResetSourcesAsync();
+
+        var guide = Descriptor(NewKey());
+        using (var seed = CreateHostWithCatalogs(("plonkit", [guide])))
+        {
+            await seed.SendAsync(new SyncSourceCatalogsCommand());
+        }
+
+        // This run has no working plonkit catalogue at all: the one that would list that guide failed.
+        using var host = new MediatorTestHost(fixture.ConnectionString,
+            configure: services =>
+            {
+                var failing = Substitute.For<ISourceCatalog>();
+                failing.SourceType.Returns("plonkit");
+                failing.ListAsync(Arg.Any<CancellationToken>())
+                    .Returns(Result<IReadOnlyList<SourceDescriptor>>.Failure(
+                        Error.Unexpected("ai.library_unreachable", "down")));
+
+                services.AddSingleton(failing);
+            },
+            configurationValues: new Dictionary<string, string?> { ["AI:Active"] = "true" });
+
+        var result = await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        result.Value.Tombstoned.Should().Be(0);
+        (await ReadSourceAsync(guide.NaturalKey))!.RemovedFromSyncAtUtc.Should().BeNull();
     }
 
     [Fact]
@@ -388,6 +466,26 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
         return await new Infrastructure.OutputAdapters.Repositories.EfKnowledgeSourceRepository(db)
             .ReadAsync("plonkit", naturalKey);
     }
+
+    /// <summary>
+    /// A host with several catalogues, which is the real shape: one per site that publishes an index,
+    /// plus a library that links to many of the same resources.
+    /// </summary>
+    private MediatorTestHost CreateHostWithCatalogs(params (string Type, SourceDescriptor[] Sources)[] catalogs) =>
+        new(fixture.ConnectionString,
+            configure: services =>
+            {
+                foreach (var (type, descriptors) in catalogs)
+                {
+                    var catalog = Substitute.For<ISourceCatalog>();
+                    catalog.SourceType.Returns(type);
+                    catalog.ListAsync(Arg.Any<CancellationToken>())
+                        .Returns(Result<IReadOnlyList<SourceDescriptor>>.Success(descriptors));
+
+                    services.AddSingleton(catalog);
+                }
+            },
+            configurationValues: new Dictionary<string, string?> { ["AI:Active"] = "true" });
 
     private MediatorTestHost CreateHost(int dailyBudget = 1000, int ingestionPercent = 100) =>
         new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>

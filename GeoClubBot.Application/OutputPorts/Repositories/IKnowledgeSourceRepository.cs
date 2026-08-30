@@ -6,12 +6,6 @@ public interface IKnowledgeSourceRepository
 {
     Task<KnowledgeSource?> ReadAsync(string sourceType, string naturalKey, CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<KnowledgeSource>> ReadByTypeAsync(string sourceType, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Sources worth attempting now, oldest attempt first so the queue drains evenly rather than
-    /// re-processing the same few every run.
-    /// </summary>
     /// <param name="ignoreSchedule">
     /// Bypasses the re-ingest interval and failure backoff, for an operator-triggered run. Without it
     /// a manual "force" does nothing at all on sources that were indexed recently.
@@ -23,6 +17,11 @@ public interface IKnowledgeSourceRepository
         bool ignoreSchedule = false,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Every known source, tracked so the caller's updates are persisted. Used by the catalogue sync,
+    /// which matches on the full (type, key) pair because a catalogue does not necessarily publish a
+    /// single source type.
+    /// </summary>
     Task<IReadOnlyList<KnowledgeSource>> ReadAllAsync(CancellationToken cancellationToken = default);
 
     void Add(KnowledgeSource source);
