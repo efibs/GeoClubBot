@@ -50,8 +50,11 @@ Starts the linking process for your account.
 
 ---
 
-## ⏰ Feature: Daily Mission Reminder
-Reminds you (via DM) every day to do your GeoGuessr daily mission, at times you choose. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. By default a reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do. If the bot happens to be offline right when a reminder is due (for example during an update), it catches up as soon as it's back online: you'll get the missed reminder shortly after the bot starts — at most one catch-up message, even if the bot was down for a long time or you missed several reminder times that day.
+## ⏰ Feature: Daily Reminder
+Reminds you (via DM) every day to earn your club XP, at times you choose. There are **two** ways to
+earn it and each is worth 20 XP, so a reminder only stops once you've done **both**: completing the
+**daily mission**, and playing the **daily challenge** or winning a **duel**. The message names
+whichever one you still owe. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. By default a reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do — that list is dropped once the mission itself is done and only the daily challenge is left. If the bot happens to be offline right when a reminder is due (for example during an update), it catches up as soon as it's back online: you'll get the missed reminder shortly after the bot starts — at most one catch-up message, even if the bot was down for a long time or you missed several reminder times that day.
 
 ### `/daily-reminder add`
 Adds a new reminder (or updates the one already set at that time).
@@ -98,12 +101,14 @@ Lists all of your reminders: their times, timezones, custom messages, and when e
 See how you're doing in the club.
 
 ### `/my-activity current-week`
-Shows your daily mission progress for the current week: total XP earned, days completed, and a visual progress bar (🟩 done, ⬛ missed) for each day.
+Shows your progress for the current week: total XP earned, how many days you earned **both** of the day's awards, a breakdown per award, and a visual progress bar for each day — 🟩 both done, 🟨 one of the two, ⬛ neither.
+
+The XP figure covers **daily** activity only — weekly missions are left out, since a single one is worth 1000 XP and would drown out everything else. `/club-stats todays-xp` does the same (its `includeWeeklies` option is off by default).
 
 No parameters. Requires your GeoGuessr account to be linked (see `/gg-account link`).
 
 ### `/my-activity last-days`
-Shows your daily mission progress over the last several days — handy if you want to see a rolling window instead of just the current calendar week.
+Shows the same progress over the last several days — handy if you want to see a rolling window instead of just the current calendar week.
 
 **Parameters:**
 - `days` *(optional)* — how many days back to include, from `1` to `14`. Defaults to `7`.
@@ -116,7 +121,7 @@ Requires your GeoGuessr account to be linked (see `/gg-account link`).
 Check how the club as a whole is performing.
 
 ### `/club-stats todays-xp`
-Shows how much XP a club has earned today.
+Shows how much XP a club has earned today, plus how many members earned each of the two daily awards (the daily mission, and the daily challenge or a duel win) — they're counted separately because a member can do one, both, or neither.
 
 **Parameters:**
 - `clubName` *(optional)* — the name of the club. If left blank, the default club is used.
@@ -129,6 +134,8 @@ Curious which daily missions show up the most, how big they usually are, or how 
 
 ### `/daily-missions stats`
 Shows an overview table with one row per mission kind (for example "Win Duels" or "Score points in Classic"): how often it appeared, on what share of days, the average target count (e.g. how many duels you have to play), the club's average completion rate on the days it appeared, and when it was last seen.
+
+The summary above the table also reports how often the club played the **daily challenge** (or won a duel) — the club's other daily XP award. That figure only covers days the bot has tracked it; the footer names the first such day.
 
 **Parameters:**
 - `days` *(optional)* — how many days back to include, from `1` to `365`. Defaults to `30`.

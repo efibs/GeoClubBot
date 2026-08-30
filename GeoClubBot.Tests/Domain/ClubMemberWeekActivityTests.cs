@@ -6,15 +6,23 @@ namespace GeoClubBot.Tests.Domain;
 
 public sealed class ClubMemberWeekActivityTests
 {
-    private static DayMissionStatus Day(int dayOfMonth, bool done) =>
-        new(new DateOnly(2025, 1, dayOfMonth), done);
+    // A day is only "done" when both of its club-XP awards were earned; challenge defaults to
+    // matching the mission so the all-or-nothing cases below stay readable.
+    private static DayMissionStatus Day(int dayOfMonth, bool done, bool? challengeDone = null) =>
+        new(new DateOnly(2025, 1, dayOfMonth), done, challengeDone ?? done);
 
     [Fact]
-    public void NumDaysDone_CountsCompletedMissions()
+    public void NumDaysDone_CountsOnlyDaysWithBothAwards()
     {
         var activity = new ClubMemberWeekActivity(
             TotalXp: 500,
-            DailyMissions: [Day(1, true), Day(2, false), Day(3, true)],
+            DailyMissions:
+            [
+                Day(1, true),
+                Day(2, false),
+                Day(3, true),
+                Day(4, done: true, challengeDone: false)
+            ],
             JoinedThisWeek: false,
             JoinedDateTime: DateTimeOffset.UtcNow);
 
@@ -22,7 +30,38 @@ public sealed class ClubMemberWeekActivityTests
     }
 
     [Fact]
-    public void AllDaysCompleted_TrueWhenEveryMissionDone()
+    public void PerAwardCounts_AreTrackedIndependently()
+    {
+        var activity = new ClubMemberWeekActivity(
+            TotalXp: 500,
+            DailyMissions:
+            [
+                Day(1, done: true, challengeDone: false),
+                Day(2, done: false, challengeDone: true),
+                Day(3, done: true, challengeDone: true)
+            ],
+            JoinedThisWeek: false,
+            JoinedDateTime: DateTimeOffset.UtcNow);
+
+        activity.NumMissionDaysDone.Should().Be(2);
+        activity.NumChallengeDaysDone.Should().Be(2);
+        activity.NumDaysDone.Should().Be(1);
+    }
+
+    [Fact]
+    public void AllDaysCompleted_FalseWhenOnlyOneOfTheTwoAwardsIsEarned()
+    {
+        var activity = new ClubMemberWeekActivity(
+            TotalXp: 0,
+            DailyMissions: [Day(1, true), Day(2, done: true, challengeDone: false)],
+            JoinedThisWeek: false,
+            JoinedDateTime: DateTimeOffset.UtcNow);
+
+        activity.AllDaysCompleted.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AllDaysCompleted_TrueWhenEveryDayHasBothAwards()
     {
         var activity = new ClubMemberWeekActivity(
             TotalXp: 0,
@@ -34,7 +73,7 @@ public sealed class ClubMemberWeekActivityTests
     }
 
     [Fact]
-    public void AllDaysCompleted_FalseWhenAnyMissionIncomplete()
+    public void AllDaysCompleted_FalseWhenAnyDayIsIncomplete()
     {
         var activity = new ClubMemberWeekActivity(
             TotalXp: 0,

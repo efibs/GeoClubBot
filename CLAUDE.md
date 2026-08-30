@@ -83,7 +83,26 @@ and per payload index, and the default limit is exhausted part-way through a run
 
 Set `GeoGuessr:UseMock=true` (default in `appsettings.Development.json`) to run against the
 in-process **GeoClubBot.MockGeoGuessr** instead of the real GeoGuessr API. It serves a mock API
-plus a UI (URL logged at startup) for seeding/driving fake club data.
+plus a UI (URL logged at startup) for seeding/driving fake club data. The club view's *Add
+Activity* form picks the activity kind (daily mission / daily challenge or duel win / weekly /
+club challenge), which is how you exercise the two same-priced daily XP awards locally.
+
+> The whole mock UI is one embedded file, `GeoClubBot.MockGeoGuessr/wwwroot/mock.html` (plain HTML
+> + fetch against `/mock/api`). A duplicate Blazor version of it once existed but was never routed;
+> it has been deleted.
+
+### Inspecting the real GeoGuessr API
+
+When you need to know what GeoGuessr *actually* returns — the typed DTOs silently drop fields they
+don't declare — use the read-only probe instead of guessing or instrumenting the bot:
+
+```bash
+dotnet run --project Tools/GeoClubBot.ApiProbe -- activities --pages 3
+```
+
+It prints raw JSON plus a field census (every property, its distinct values, and a cross-tab
+against `xpReward`). It only ever issues GETs, and it needs an `_ncfa` token —
+see [`Tools/GeoClubBot.ApiProbe/README.md`](Tools/GeoClubBot.ApiProbe/README.md).
 
 ## Architecture
 
@@ -113,7 +132,7 @@ API + Discord (controllers, slash command modules)
 | **Extensions** | Helper extension methods |
 | **Utilities** | General utilities |
 | **QuartzExtensions** | `ConfiguredCronJobAttribute` for declarative cron job registration |
-| **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API + Razor UI for local dev (gated by `GeoGuessr:UseMock`) |
+| **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API + single-page HTML UI for local dev (gated by `GeoGuessr:UseMock`) |
 | **GeoClubBot.Tests** | xUnit unit + Testcontainers-backed integration tests |
 
 > **Namespace gotcha**: assembly names are `GeoClubBot.*` but several projects set a short
@@ -130,6 +149,12 @@ API + Discord (controllers, slash command modules)
 - **Refit HTTP Client**: `IGeoGuessrClient` is a declarative Refit interface for the GeoGuessr API, with Polly resilience (rate limiting, retry, circuit breaker) configured in `ResiliencePipelines.cs`.
 - **Quartz Jobs**: Jobs use `[ConfiguredCronJob("ConfigKey:Schedule")]` attribute for auto-discovery. Located in `Infrastructure/InputAdapters/Jobs/`.
 - **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/<Feature>/` (feature subfolders mirroring `Application/UseCases/`), auto-discovered via `InteractionsAssemblyMarker` — no manual registration. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
+- **Club XP activity kinds**: GeoGuessr's club activity feed labels each entry with a numeric
+  `type`. Since 2026-08-25 there are **two** 20 XP daily awards — the daily mission (type 1) and
+  playing the daily challenge / winning a duel (type 4) — so an XP amount no longer identifies
+  anything. `ClubActivityKindClassifier` (`Application/OutputPorts/GeoGuessr/`) is the only place
+  that decides; call `IsDailyMission` / `IsDailyChallenge` rather than comparing `XpReward`.
+  Amounts in the `ClubXp` config section are just the fallback for untyped entries.
 - **Result type**: Use cases return `Result<T>` / `Error` (`Utilities/Result.cs`) instead of throwing for expected failures. `Error.Type` (`ErrorType.NotFound`, `Validation`, `Conflict`, `Forbidden`, `Unauthorized`, `Unexpected`) is mapped to HTTP status codes by the `ResultExtensions` middleware in `GeoClubBot.API/Middleware/`.
 - **AI assistant** (optional, `AI:Active`): retrieval-then-generation rather than tool-calling, because
   requiring tool support would exclude most free models. Ports live in `Application/OutputPorts/AI/`
