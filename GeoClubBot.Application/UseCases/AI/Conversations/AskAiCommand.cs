@@ -24,11 +24,15 @@ public sealed record AskAiCommand(
 
 public sealed record AiAnswerImage(string ImageUrl, string SourceUrl, string? Title);
 
+/// <param name="Marker">The number the answer's prose cites, so the two line up.</param>
+public sealed record AiAnswerSource(int Marker, string Label, string Url);
+
 /// <param name="ConversationId">Root message id; the caller stores it on both resulting turns.</param>
 /// <param name="IsLongThread">True when the branch is deep enough to suggest starting a fresh one.</param>
 public sealed record AiAnswer(
     string Text,
     IReadOnlyList<AiAnswerImage> Images,
+    IReadOnlyList<AiAnswerSource> Sources,
     string ModelUsed,
     ulong ConversationId,
     int Depth,
@@ -48,6 +52,9 @@ public sealed partial class AskAiHandler(
 {
     /// <summary>Guide excerpts retrieved per question.</summary>
     private const int RetrievalLimit = 8;
+
+    /// <summary>Sources listed under an answer. Enough to credit the guides used, short of a wall of links.</summary>
+    private const int MaxSourcesInReply = 5;
 
     /// <summary>
     /// One question costs two upstream calls: embedding the query, then generating the answer. Both
@@ -96,7 +103,7 @@ public sealed partial class AskAiHandler(
             return hits.Error;
         }
 
-        var (messages, offeredImages) = AiPromptBuilder.Build(
+        var prompt = AiPromptBuilder.Build(
             context, request.Content, request.AttachmentImageUrls, hits.Value);
 
         // Only ask for a vision-capable model when the user actually attached something; the pool of
@@ -106,7 +113,7 @@ public sealed partial class AskAiHandler(
             cancellationToken).ConfigureAwait(false);
 
         var completion = await chatClient
-            .CompleteAsync(new AiChatRequest(chain, messages, Temperature: 0.2), cancellationToken)
+            .CompleteAsync(new AiChatRequest(chain, prompt.Messages, Temperature: 0.2), cancellationToken)
             .ConfigureAwait(false);
 
         if (completion.IsFailure)
@@ -123,13 +130,18 @@ public sealed partial class AskAiHandler(
             cancellationToken).ConfigureAwait(false);
 
         var (text, citedImages) = AiPromptBuilder.ResolveCitedImages(
-            completion.Value.Text, offeredImages, config.MaxImagesInReply);
+            completion.Value.Text, prompt.Images, config.MaxImagesInReply);
+
+        // Resolved from the stripped text, so a marker that only ever appeared inside an [image N]
+        // token cannot be mistaken for a plain citation.
+        var citedSources = AiPromptBuilder.ResolveCitedSources(text, prompt.Excerpts, MaxSourcesInReply);
 
         var depth = context.ParentDepth + 1;
 
         return new AiAnswer(
             text,
             [.. citedImages.Select(image => new AiAnswerImage(image.ImageUrl, image.SourceUrl, image.Title))],
+            [.. citedSources.Select(source => new AiAnswerSource(source.Marker, source.Label, source.SourceUrl))],
             completion.Value.ModelUsed,
             ResolveConversationId(context, request),
             depth,

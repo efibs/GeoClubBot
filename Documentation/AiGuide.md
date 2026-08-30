@@ -130,6 +130,25 @@ chat model declares `output_modalities: ["text"]` and nothing else, while a gene
 *and* audio or image. The rule is therefore text-only output, not text-among-others —
 `google/lyria-3-pro-preview` advertises `["text", "audio"]` and would slip past a "contains text" check.
 
+### Citations
+
+Excerpts are numbered in the prompt, and the model cites them inline as `[1]`. A bare number is
+useless to a reader, so every marker the answer actually uses is resolved back to its excerpt and
+listed under the reply as a named, clickable link:
+
+```
+Roads starting with MR are exclusive to Eswatini [1].
+
+-# [1] [Eswatini > Identifying](https://www.plonkit.net/eswatini#m1jr)
+```
+
+Masked links work here because Discord honours them in what a **bot** posts through the API; it
+blocks them in messages people type, to stop a friendly label hiding a hostile URL. The number stays
+outside the link so it still anchors the `[1]` in the prose.
+
+Image citations work differently. `[image 2]` is stripped from the text entirely and the picture is
+attached as an embed linked to its guide, so the image itself is the citation.
+
 ### The knowledge index
 
 One Qdrant collection whose name encodes the embedding model and its dimensions, so changing either

@@ -54,6 +54,17 @@ public static class AiAnswerFormatter
     {
         var lines = new List<string>();
 
+        // Named and clickable, because "[1]" on its own tells the reader nothing and leads nowhere.
+        // Masked links render here: Discord blocks them in messages people type, to stop a friendly
+        // label hiding a hostile URL, but honours them in what a bot posts through the API.
+        //
+        // The number stays outside the link so it still reads as the anchor for the "[1]" in the
+        // prose, and so the label cannot nest brackets inside a masked link.
+        foreach (var source in answer.Sources)
+        {
+            lines.Add($"-# [{source.Marker}] [{source.Label}]({source.Url})");
+        }
+
         if (answer.IsLongThread)
         {
             lines.Add("-# This thread is getting long — mention me in a new message to start fresh.");

@@ -16,6 +16,7 @@ public sealed class AiAnswerFormatterTests
         var answer = new AiAnswer(
             "Ghanaian bollards are short, white, and squared off at the top.",
             [],
+            [],
             "google/gemma-4-31b-it:free",
             ConversationId: 100,
             Depth: 1,
@@ -33,6 +34,7 @@ public sealed class AiAnswerFormatterTests
                 new AiAnswerImage("https://i.imgur.com/map.png", "https://docs.google.com/document/d/abc", "Tunisia area codes"),
                 new AiAnswerImage("https://i.imgur.com/signs.png", "https://www.plonkit.net/tunisia", null)
             ],
+            [],
             "nvidia/nemotron-3.5-content-safety:free",
             ConversationId: 100,
             Depth: 3,
@@ -42,9 +44,30 @@ public sealed class AiAnswerFormatterTests
     }
 
     [Fact]
+    public Task Render_ResolvesCitationMarkersIntoNamedClickableSources()
+    {
+        // A bare "[1]" tells the reader nothing and leads nowhere. Each marker the answer uses is
+        // listed below it with the heading the model saw and a link to the guide it came from.
+        var answer = new AiAnswer(
+            "Roads starting with MR are exclusive to Eswatini [1], and the MR9 runs through dark, "
+            + "wooded highlands [3].",
+            [],
+            [
+                new AiAnswerSource(1, "Eswatini > Identifying", "https://www.plonkit.net/eswatini#m1jr"),
+                new AiAnswerSource(3, "Eswatini > Regional clues", "https://www.plonkit.net/eswatini#1chu")
+            ],
+            "minimax/minimax-m3:free",
+            ConversationId: 100,
+            Depth: 1,
+            IsLongThread: false);
+
+        return Verify(Render(AiAnswerFormatter.Render(answer)));
+    }
+
+    [Fact]
     public Task Render_SuggestsAFreshThread_WhenTheBranchIsLong()
     {
-        var answer = new AiAnswer("Still here.", [], "test/model", ConversationId: 100, Depth: 21, IsLongThread: true);
+        var answer = new AiAnswer("Still here.", [], [], "test/model", ConversationId: 100, Depth: 21, IsLongThread: true);
 
         return Verify(Render(AiAnswerFormatter.Render(answer)));
     }
@@ -56,7 +79,7 @@ public sealed class AiAnswerFormatterTests
         // several messages rather than being truncated or dropped.
         var answer = new AiAnswer(
             string.Join("\n", Enumerable.Repeat("A fairly long line about bollards.", 120)),
-            [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false);
+            [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false);
 
         var rendering = AiAnswerFormatter.Render(answer);
 
@@ -70,7 +93,7 @@ public sealed class AiAnswerFormatterTests
     {
         // Discord rejects an empty message outright, which would surface as an exception rather than
         // a visible failure.
-        var answer = new AiAnswer("   ", [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false);
+        var answer = new AiAnswer("   ", [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false);
 
         var rendering = AiAnswerFormatter.Render(answer);
 

@@ -9,6 +9,16 @@ namespace UseCases.UseCases.AI.Conversations;
 /// <param name="Marker">The <c>[image N]</c> token the model is told to cite this image by.</param>
 public sealed record CitedImage(int Marker, string ImageUrl, string SourceUrl, string? Title);
 
+/// <param name="Marker">The <c>[N]</c> token this excerpt was offered under.</param>
+/// <param name="Label">What the model saw as the excerpt's heading, so the reply names it the same way.</param>
+public sealed record OfferedExcerpt(int Marker, string SourceUrl, string Label);
+
+/// <param name="Excerpts">Every excerpt offered, so a marker in the answer can be resolved to its source.</param>
+public sealed record AiPrompt(
+    IReadOnlyList<AiChatMessage> Messages,
+    IReadOnlyList<CitedImage> Images,
+    IReadOnlyList<OfferedExcerpt> Excerpts);
+
 /// <summary>
 /// Assembles the messages sent to the model, and interprets the citation markers that come back.
 ///
@@ -40,9 +50,10 @@ public static partial class AiPromptBuilder
         images, and never claim to be showing one without writing its marker.
 
         Answer from the guide excerpts whenever they are relevant, citing text excerpts by their plain
-        marker, like [1]. If the excerpts do not cover the question, say so plainly and answer from
-        your own knowledge, making clear which part is not from the guides. Never invent a source or a
-        marker.
+        marker, like [1]. Each marker you use is turned into a named, clickable link under your answer,
+        so cite the marker and never write a URL yourself. If the excerpts do not cover the question,
+        say so plainly and answer from your own knowledge, making clear which part is not from the
+        guides. Never invent a source or a marker.
 
         Keep answers short and concrete. Prefer specific, checkable clues over general advice.
         """;
@@ -51,7 +62,7 @@ public static partial class AiPromptBuilder
     /// Builds the full message list: system prompt, replayed history, then the current question with
     /// its retrieved excerpts.
     /// </summary>
-    public static (IReadOnlyList<AiChatMessage> Messages, IReadOnlyList<CitedImage> Images) Build(
+    public static AiPrompt Build(
         ConversationContext context,
         string question,
         IReadOnlyList<string> attachmentImageUrls,
@@ -74,7 +85,7 @@ public static partial class AiPromptBuilder
                 : AiChatMessage.User(FormatUserTurn(turn), turn.ImageUrls));
         }
 
-        var (excerpts, images) = FormatExcerpts(hits);
+        var (excerpts, images, offered) = FormatExcerpts(hits);
 
         var prompt = new StringBuilder();
         if (excerpts.Length > 0)
@@ -101,7 +112,7 @@ public static partial class AiPromptBuilder
 
         messages.Add(AiChatMessage.User(prompt.ToString(), attachmentImageUrls));
 
-        return (messages, images);
+        return new AiPrompt(messages, images, offered);
     }
 
     private static string FormatUserTurn(ConversationTurnView turn) =>
@@ -111,10 +122,12 @@ public static partial class AiPromptBuilder
     /// Renders retrieved chunks as numbered excerpts. Image chunks get a marker the model can cite so
     /// the picture reaches the user, since for a visual game the image is often the actual answer.
     /// </summary>
-    private static (string Excerpts, IReadOnlyList<CitedImage> Images) FormatExcerpts(IReadOnlyList<KnowledgeHit> hits)
+    private static (string Excerpts, IReadOnlyList<CitedImage> Images, IReadOnlyList<OfferedExcerpt> Offered)
+        FormatExcerpts(IReadOnlyList<KnowledgeHit> hits)
     {
         var builder = new StringBuilder();
         var images = new List<CitedImage>();
+        var offered = new List<OfferedExcerpt>();
 
         for (var index = 0; index < hits.Count; index++)
         {
@@ -124,14 +137,15 @@ public static partial class AiPromptBuilder
 
             builder.Append(label).Append(' ');
 
-            if (!string.IsNullOrWhiteSpace(hit.Country))
-            {
-                builder.Append(CultureInfo.InvariantCulture.TextInfo.ToTitleCase(hit.Country)).Append(" · ");
-            }
+            // The same heading is kept for the reply's source list, so a reader following [1] back
+            // finds it named the way the model was shown it.
+            var heading = BuildHeading(hit);
 
-            builder.AppendLine(hit.SectionPath ?? hit.Title ?? hit.SourceUrl);
+            builder.AppendLine(heading);
             builder.AppendLine(hit.Text);
             builder.Append("(source: ").Append(hit.SourceUrl).AppendLine(")").AppendLine();
+
+            offered.Add(new OfferedExcerpt(marker, hit.SourceUrl, heading));
 
             if (hit.Kind == KnowledgeChunkKind.Image && !string.IsNullOrWhiteSpace(hit.ImageUrl))
             {
@@ -139,7 +153,63 @@ public static partial class AiPromptBuilder
             }
         }
 
-        return (builder.ToString().TrimEnd(), images);
+        return (builder.ToString().TrimEnd(), images, offered);
+    }
+
+    private static string BuildHeading(KnowledgeHit hit)
+    {
+        var title = hit.SectionPath ?? hit.Title ?? hit.SourceUrl;
+
+        if (string.IsNullOrWhiteSpace(hit.Country))
+        {
+            return title;
+        }
+
+        var country = CultureInfo.InvariantCulture.TextInfo.ToTitleCase(hit.Country);
+
+        // Section paths are usually rooted at the country already, and "Eswatini · Eswatini > Spotlight"
+        // reads as a mistake rather than as emphasis.
+        return title.StartsWith(country, StringComparison.OrdinalIgnoreCase) ? title : $"{country} · {title}";
+    }
+
+    /// <summary>
+    /// Resolves the plain <c>[N]</c> markers an answer cites back to their sources, in citation order.
+    ///
+    /// The markers are left in the text rather than stripped: they are what ties a sentence to the
+    /// entry below it. On their own they say nothing and lead nowhere, which is the whole reason the
+    /// resolved list exists.
+    /// </summary>
+    public static IReadOnlyList<OfferedExcerpt> ResolveCitedSources(
+        string answer,
+        IReadOnlyList<OfferedExcerpt> offered,
+        int maxSources)
+    {
+        if (offered.Count == 0 || maxSources <= 0)
+        {
+            return [];
+        }
+
+        var byMarker = offered.ToDictionary(excerpt => excerpt.Marker);
+        var cited = new List<OfferedExcerpt>();
+
+        foreach (Match match in SourceMarker().Matches(answer))
+        {
+            if (!int.TryParse(match.Groups["n"].ValueSpan, CultureInfo.InvariantCulture, out var marker)
+                || !byMarker.TryGetValue(marker, out var excerpt)
+                // A source cited repeatedly is listed once, under the number the prose uses.
+                || cited.Any(existing => existing.Marker == excerpt.Marker))
+            {
+                continue;
+            }
+
+            cited.Add(excerpt);
+            if (cited.Count == maxSources)
+            {
+                break;
+            }
+        }
+
+        return cited;
     }
 
     /// <summary>
@@ -182,4 +252,8 @@ public static partial class AiPromptBuilder
 
     [GeneratedRegex(@"\[image\s*(?<n>\d+)\]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ImageMarker();
+
+    /// <summary>Plain citations only — "[image 2]" carries no digits directly after the bracket.</summary>
+    [GeneratedRegex(@"\[(?<n>\d+)\]", RegexOptions.CultureInvariant)]
+    private static partial Regex SourceMarker();
 }
