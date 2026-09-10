@@ -14,11 +14,27 @@ public abstract record EmbeddingInput;
 public sealed record TextEmbeddingInput(string Text) : EmbeddingInput;
 
 /// <summary>
-/// An image to embed by URL. The provider fetches it server-side, so the URL must be reachable from
-/// the public internet and the host must not block non-browser clients — some do, and the whole
-/// request fails when they do.
+/// An image to embed. Either a public URL, which the provider fetches server-side — so it must be
+/// reachable from the internet by a client that is not a browser, and the whole request fails when it
+/// is not — or a <c>data:</c> URL carrying the bytes inline, which needs no fetch at all.
 /// </summary>
 public sealed record ImageEmbeddingInput(string ImageUrl) : EmbeddingInput;
+
+/// <summary>
+/// Codes an <see cref="IEmbedder"/> fails with. Callers act on them differently: a rejection is about
+/// the input and will fail the same way again, while a failure is about the moment and is worth retrying.
+/// </summary>
+public static class EmbeddingErrorCodes
+{
+    /// <summary>The provider's rate limit. Nothing is wrong with the request except its timing.</summary>
+    public const string RateLimited = "ai.rate_limited";
+
+    /// <summary>The provider refused the request as sent — typically an image it could not fetch or read.</summary>
+    public const string Rejected = "ai.embedding_rejected";
+
+    /// <summary>The provider could not be reached or failed on its side; the same request may succeed later.</summary>
+    public const string Failed = "ai.embedding_failed";
+}
 
 /// <summary>
 /// Turns text and images into vectors in a single shared space.

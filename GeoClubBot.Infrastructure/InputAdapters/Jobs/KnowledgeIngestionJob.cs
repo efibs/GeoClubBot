@@ -43,6 +43,11 @@ public partial class KnowledgeIngestionJob(
                 {
                     LogBudgetExhausted(logger);
                 }
+
+                if (report.RateLimited)
+                {
+                    LogRateLimited(logger);
+                }
             }
         }
         catch (Exception ex)
@@ -57,6 +62,10 @@ public partial class KnowledgeIngestionJob(
 
     [LoggerMessage(LogLevel.Warning, "Ingestion stopped early: the daily AI request allowance is spent.")]
     static partial void LogBudgetExhausted(ILogger<KnowledgeIngestionJob> logger);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Ingestion stopped early: the AI provider kept rate-limiting after its window was waited out.")]
+    static partial void LogRateLimited(ILogger<KnowledgeIngestionJob> logger);
 
     [LoggerMessage(LogLevel.Error, "Failed to run AI knowledge ingestion.")]
     static partial void LogFailed(ILogger<KnowledgeIngestionJob> logger, Exception ex);

@@ -275,34 +275,244 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
-    public async Task Ingest_IndexesTextOnly_WhenImagesCannotBeEmbedded()
+    public async Task Ingest_IndexesWithoutAnImageTheProviderRejects_AndDoesNotRetryIt()
     {
         await ResetSourcesAsync();
 
-        // Several guide sites block unattended image fetches, and the embedding provider fetches
-        // server-side, so one blocked host must cost image search rather than the whole source.
+        // Several guide sites block unattended image fetches, so a rejected picture must cost itself, not
+        // the source. And a rejection recurs, so retrying it would spend the allowance every run.
         using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var index = ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(_ => Rejected("Received 403 status code when fetching image")),
+            Chunk("a", "caption", imageUrl: "https://blocked.example/x.png"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Ingested.Should().Be(1, "the source is still worth indexing without its image");
+
+        var written = LastWrite(index);
+        written.Should().OnlyContain(point => point.ImageVector == null);
+        written.Should().OnlyContain(point => point.Chunk.ImageUrl != null,
+            "the chunk still records where its image lives, so it can be shown");
+
+        (await ReadSourceAsync(key))!.ImagesDeferred.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Ingest_ComesBackForImages_WhenTheProviderFailedOnItsSide()
+    {
+        // An outage or a timeout is about the moment, not the pictures. Recording the source as fully
+        // indexed is what lost images for good: unchanged content is never embedded again.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(_ => Unavailable("The embedding provider failed (HTTP 502)")),
+            Chunk("a", "caption", imageUrl: "https://i.imgur.com/a.png"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Ingested.Should().Be(1);
+
+        var stored = await ReadSourceAsync(key);
+        stored!.ImagesDeferred.Should().BeTrue();
+        stored.IsDueForIngest(DateTimeOffset.UtcNow, TimeSpan.FromDays(14))
+            .Should().BeTrue("the source goes straight back in the queue for its pictures");
+    }
+
+    [Fact]
+    public async Task Ingest_KeepsTheOtherBatches_WhenOneBatchOfImagesFails()
+    {
+        // Production lost 164 images at once: the first failed batch ended image embedding for the whole
+        // source. Two images per batch here, and the batch holding "a" fails; "c" and "d" must survive it.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost(batchSize: 2);
         ArrangeCatalog(host, Descriptor(NewKey()));
         await host.SendAsync(new SyncSourceCatalogsCommand());
 
         var index = ArrangeExtraction(
             host,
-            imagesFail: true,
-            Chunk("a", "caption", imageUrl: "https://blocked.example/x.png"));
+            WhenEmbeddingImages(images => images.Any(image => image.ImageUrl.EndsWith("/a.png", StringComparison.Ordinal))
+                ? Unavailable("timed out")
+                : EmbedEverything(images)),
+            ImageChunks("a", "b", "c", "d"));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        var written = LastWrite(index);
+        written.Where(point => point.ImageVector != null).Select(point => point.Chunk.LocalKey)
+            .Should().BeEquivalentTo("c", "d");
+    }
+
+    [Fact]
+    public async Task Ingest_NarrowsARejectedBatchDownToTheImageAtFault()
+    {
+        // One dead picture used to cost every image batched with it, and on every run. Halving the batch
+        // until the rejection is isolated costs a few extra requests once, and the rest are indexed.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost(batchSize: 4);
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var index = ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(images => images.Any(image => image.ImageUrl.EndsWith("/c.png", StringComparison.Ordinal))
+                ? Rejected("Received 404 status code when fetching image")
+                : EmbedEverything(images)),
+            ImageChunks("a", "b", "c", "d"));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        LastWrite(index).Where(point => point.ImageVector != null).Select(point => point.Chunk.LocalKey)
+            .Should().BeEquivalentTo("a", "b", "d");
+
+        ImageCalls(host).Should().HaveCount(5, "all four, then each half, then each image of the rejected half");
+        (await ReadSourceAsync(key))!.ImagesDeferred.Should().BeFalse("the image at fault would be rejected again");
+    }
+
+    [Fact]
+    public async Task Ingest_StopsNarrowing_WhenTheProviderRejectsImagesInGeneral()
+    {
+        // Every image rejected reads as the provider refusing images, not as sixteen broken pictures.
+        // Narrowing that down one request at a time would take thirty-one requests to learn nothing.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(_ => Rejected("image input is not supported")),
+            ImageChunks([.. Enumerable.Range(0, 16).Select(index => $"i{index}")]));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        ImageCalls(host).Count.Should().BeLessThan(31);
+        (await ReadSourceAsync(key))!.ImagesDeferred
+            .Should().BeTrue("a refusal of images in general may pass, so the source comes back for them");
+    }
+
+    [Fact]
+    public async Task Ingest_StopsTheRun_WithoutFailingAnySource_WhenStillRateLimited()
+    {
+        // The request layer has already waited out the provider's window once. Recording what follows as
+        // the source's failure backed off good sources one after another, as each met the same spent window.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var first = NewKey();
+        var second = NewKey();
+        ArrangeCatalog(host, Descriptor(first), Descriptor(second));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        ArrangeExtraction(host, _ => RateLimited(), Chunk("a", "text"));
 
         var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
 
-        result.Value.Ingested.Should().Be(1, "the source is still worth indexing without its images");
+        result.Value.RateLimited.Should().BeTrue();
+        result.Value.Failed.Should().Be(0);
+        result.Value.Attempted.Should().Be(0);
 
-        var written = index.ReceivedCalls()
-            .Where(call => call.GetMethodInfo().Name == nameof(IKnowledgeIndex.UpsertAsync))
-            .Select(call => (IReadOnlyList<KnowledgePoint>)call.GetArguments()[0]!)
-            .Single();
+        foreach (var key in (string[])[first, second])
+        {
+            var stored = await ReadSourceAsync(key);
+            stored!.Status.Should().Be(KnowledgeSourceStatus.Pending);
+            stored.ConsecutiveFailures.Should().Be(0);
+            stored.LastAttemptedAtUtc.Should().BeNull("an untouched source keeps its place at the front of the queue");
+        }
 
-        written.Should().OnlyContain(point => point.ImageVector == null,
-            "a blocked image host must cost image search for that source, not the source itself");
-        written.Should().OnlyContain(point => point.Chunk.ImageUrl != null,
-            "the chunk still records where its image lives, so it can be shown and retried later");
+        host.Mock<IEmbedder>().ReceivedCalls().Should().ContainSingle("the run stops at the first refusal");
+    }
+
+    [Fact]
+    public async Task Ingest_KeepsTheText_AndStopsTheRun_WhenImagesAreStillRateLimited()
+    {
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var first = NewKey();
+        var second = NewKey();
+        ArrangeCatalog(host, Descriptor(first), Descriptor(second));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(_ => RateLimited()),
+            Chunk("a", "caption", imageUrl: "https://i.imgur.com/a.png"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.RateLimited.Should().BeTrue();
+        result.Value.Ingested.Should().Be(1);
+
+        var stored = new[] { await ReadSourceAsync(first), await ReadSourceAsync(second) };
+        stored.Should().ContainSingle(source => source!.Status == KnowledgeSourceStatus.Ingested && source.ImagesDeferred);
+        stored.Should().ContainSingle(source => source!.Status == KnowledgeSourceStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Ingest_SendsRelayedImagesInline_SoTheProviderNeverFetchesThisHost()
+    {
+        // The nightly failure: the provider fetching relayed images back through the bot's tunnel got a
+        // 525. The relay already holds the bytes, so they travel with the request instead.
+        await ResetSourcesAsync();
+
+        const string relayed = "https://host.tailnet.ts.net/api/v1/ai/images/abc.png";
+        const string inline = "data:image/png;base64,AAAA";
+
+        using var host = CreateHost();
+        ArrangeCatalog(host, Descriptor(NewKey()));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        host.Mock<IImageRelay>().ReadAsDataUrlAsync(relayed, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>(inline));
+
+        var index = ArrangeExtraction(host, Chunk("a", "caption", imageUrl: relayed));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        ImageCalls(host).Should().ContainSingle().Which.Should().ContainSingle()
+            .Which.ImageUrl.Should().Be(inline);
+
+        var point = LastWrite(index).Single();
+        point.Chunk.ImageUrl.Should().Be(relayed, "the index keeps the public URL, which is what Discord shows");
+        point.ImageVector.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Ingest_SplitsAnImageBatch_ThatWouldExceedTheRequestSizeLimit()
+    {
+        // Inline pictures make a batch's size depend on the pictures, not the count. Three 60-byte images
+        // under a 100-byte limit cannot share a request.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost(maxRequestBytes: 100);
+        ArrangeCatalog(host, Descriptor(NewKey()));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        host.Mock<IImageRelay>().ReadAsDataUrlAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<string?>("data:image/png;base64," + new string('A', 38)));
+
+        ArrangeExtraction(host, ImageChunks("a", "b", "c"));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        ImageCalls(host).Should().HaveCount(3).And.OnlyContain(images => images.Count == 1);
     }
 
     [Fact]
@@ -440,6 +650,65 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
         ingest.Value.Ingested.Should().Be(4, "an unrestricted share lets indexing spend everything");
     }
 
+    [Fact]
+    public async Task Backfill_QueuesIndexedSourcesWhoseImagesNeverMadeItIn()
+    {
+        // The damage already done: a run that lost a source's images still recorded it as fully indexed,
+        // and unchanged content is never embedded again, so those pictures stayed missing indefinitely.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var damaged = NewKey();
+        var intact = NewKey();
+        ArrangeCatalog(host, Descriptor(damaged), Descriptor(intact));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        var index = ArrangeExtraction(host, Chunk("a", "text"));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        // Listed by the index but not yet indexed here, and listed but unknown to the registry at all.
+        var pending = NewKey();
+        ArrangeCatalog(host, Descriptor(damaged), Descriptor(intact), Descriptor(pending));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        index.ReadSourcesMissingImageVectorsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<IndexedSourceKey>>(
+            [
+                new IndexedSourceKey("plonkit", damaged),
+                new IndexedSourceKey("plonkit", pending),
+                new IndexedSourceKey("plonkit", NewKey())
+            ]));
+
+        var result = await host.SendAsync(new BackfillMissingImagesCommand());
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.SourcesWithMissingImages.Should().Be(3);
+        result.Value.Queued.Should().Be(1, "only an indexed source can be missing images; the rest are due anyway or unknown");
+
+        var queued = await ReadSourceAsync(damaged);
+        queued!.ImagesDeferred.Should().BeTrue();
+        queued.IsDueForIngest(DateTimeOffset.UtcNow, TimeSpan.FromDays(14)).Should().BeTrue();
+        (await ReadSourceAsync(intact))!.ImagesDeferred.Should().BeFalse();
+
+        // And the next run really re-embeds it, rather than finding its content unchanged and moving on.
+        var rerun = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        rerun.Value.Unchanged.Should().Be(0);
+        (await ReadSourceAsync(damaged))!.LastIngestedAtUtc.Should().BeAfter(queued.LastIngestedAtUtc!.Value);
+    }
+
+    [Fact]
+    public async Task Backfill_Refuses_WhenImageEmbeddingIsTurnedOff()
+    {
+        // Queued sources would only be re-indexed text-only again, spending requests to change nothing.
+        using var host = CreateHost(embedImages: false);
+
+        var result = await host.SendAsync(new BackfillMissingImagesCommand());
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("ai.image_embedding_disabled");
+        await host.Mock<IKnowledgeIndex>().DidNotReceive()
+            .ReadSourcesMissingImageVectorsAsync(Arg.Any<CancellationToken>());
+    }
+
     private async Task ResetSourcesAsync()
     {
         await using var db = fixture.CreateDbContext();
@@ -487,15 +756,22 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
             },
             configurationValues: new Dictionary<string, string?> { ["AI:Active"] = "true" });
 
-    private MediatorTestHost CreateHost(int dailyBudget = 1000, int ingestionPercent = 100) =>
+    private MediatorTestHost CreateHost(
+        int dailyBudget = 1000,
+        int ingestionPercent = 100,
+        int batchSize = 32,
+        int maxRequestBytes = 8 * 1024 * 1024,
+        bool embedImages = true) =>
         new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>
         {
             ["AI:Active"] = "true",
             ["AI:OpenRouter:DailyRequestBudget"] = dailyBudget.ToString(),
-            ["AI:OpenRouter:EmbeddingBatchSize"] = "32",
+            ["AI:OpenRouter:EmbeddingBatchSize"] = batchSize.ToString(),
+            ["AI:OpenRouter:EmbeddingMaxRequestBytes"] = maxRequestBytes.ToString(),
             ["AI:Ingestion:MaxSourcesPerRun"] = "25",
             // Unrestricted by default so the other tests reason about one number, not two.
             ["AI:Ingestion:MaxDailyBudgetPercent"] = ingestionPercent.ToString(),
+            ["AI:Ingestion:EmbedImages"] = embedImages.ToString(),
             ["AI:MaxRequestsPerUserPerHour"] = "0"
         });
 
@@ -533,16 +809,16 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     }
 
     private static IKnowledgeIndex ArrangeExtraction(MediatorTestHost host, params ExtractedChunk[] chunks) =>
-        ArrangeExtraction(host, imagesFail: false, chunks);
+        ArrangeExtraction(host, EmbedEverything, chunks);
 
     /// <summary>
-    /// Scripts a successful extraction plus the embedder and index it feeds. Image failure is decided
-    /// inside a single callback rather than by a second overlapping argument matcher, so which stub
-    /// answers a given call is unambiguous.
+    /// Scripts a successful extraction plus the embedder and index it feeds. How each embedding request is
+    /// answered is decided inside a single callback rather than by overlapping argument matchers, so which
+    /// stub answers a given call is unambiguous.
     /// </summary>
     private static IKnowledgeIndex ArrangeExtraction(
         MediatorTestHost host,
-        bool imagesFail,
+        Func<IReadOnlyList<EmbeddingInput>, Result<IReadOnlyList<ReadOnlyMemory<float>>>> embed,
         params ExtractedChunk[] chunks)
     {
         ArrangeExtractor(host)
@@ -550,19 +826,49 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
             .Returns(Result<ExtractedDocument>.Success(new ExtractedDocument("Tunisia", null, chunks)));
 
         host.Mock<IEmbedder>().EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>())
-            .Returns(call =>
-            {
-                var inputs = (IReadOnlyList<EmbeddingInput>)call[0];
-
-                return imagesFail && inputs.Any(input => input is ImageEmbeddingInput)
-                    ? Result<IReadOnlyList<ReadOnlyMemory<float>>>.Failure(
-                        Error.Unexpected("ai.embedding_failed", "403 fetching image"))
-                    : Result<IReadOnlyList<ReadOnlyMemory<float>>>.Success(
-                        [.. inputs.Select(_ => new ReadOnlyMemory<float>(new float[4]))]);
-            });
+            .Returns(call => embed((IReadOnlyList<EmbeddingInput>)call[0]));
 
         return host.Mock<IKnowledgeIndex>();
     }
+
+    /// <summary>Embeds text normally and answers image requests with <paramref name="images"/>.</summary>
+    private static Func<IReadOnlyList<EmbeddingInput>, Result<IReadOnlyList<ReadOnlyMemory<float>>>> WhenEmbeddingImages(
+        Func<IReadOnlyList<ImageEmbeddingInput>, Result<IReadOnlyList<ReadOnlyMemory<float>>>> images) =>
+        inputs => inputs.OfType<ImageEmbeddingInput>().ToList() is { Count: > 0 } imageInputs
+            ? images(imageInputs)
+            : EmbedEverything(inputs);
+
+    private static Result<IReadOnlyList<ReadOnlyMemory<float>>> EmbedEverything(IReadOnlyList<EmbeddingInput> inputs) =>
+        Result<IReadOnlyList<ReadOnlyMemory<float>>>.Success([.. inputs.Select(_ => new ReadOnlyMemory<float>(new float[4]))]);
+
+    private static Result<IReadOnlyList<ReadOnlyMemory<float>>> Rejected(string message) =>
+        Result<IReadOnlyList<ReadOnlyMemory<float>>>.Failure(Error.Validation(EmbeddingErrorCodes.Rejected, message));
+
+    private static Result<IReadOnlyList<ReadOnlyMemory<float>>> Unavailable(string message) =>
+        Result<IReadOnlyList<ReadOnlyMemory<float>>>.Failure(Error.Unexpected(EmbeddingErrorCodes.Failed, message));
+
+    private static Result<IReadOnlyList<ReadOnlyMemory<float>>> RateLimited() =>
+        Result<IReadOnlyList<ReadOnlyMemory<float>>>.Failure(
+            Error.Conflict(EmbeddingErrorCodes.RateLimited, "The embedding provider is rate-limiting us right now."));
+
+    /// <summary>The image inputs of every embedding request that carried images, in the order they were sent.</summary>
+    private static IReadOnlyList<IReadOnlyList<ImageEmbeddingInput>> ImageCalls(MediatorTestHost host) =>
+    [
+        .. host.Mock<IEmbedder>().ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IEmbedder.EmbedAsync))
+            .Select(call => ((IReadOnlyList<EmbeddingInput>)call.GetArguments()[0]!).OfType<ImageEmbeddingInput>().ToList())
+            .Where(images => images.Count > 0)
+    ];
+
+    private static IReadOnlyList<KnowledgePoint> LastWrite(IKnowledgeIndex index) =>
+        index.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IKnowledgeIndex.UpsertAsync))
+            .Select(call => (IReadOnlyList<KnowledgePoint>)call.GetArguments()[0]!)
+            .Last();
+
+    /// <summary>One image chunk per key, each with an image named after its key.</summary>
+    private static ExtractedChunk[] ImageChunks(params string[] keys) =>
+        [.. keys.Select(key => Chunk(key, $"caption {key}", imageUrl: $"https://i.imgur.com/{key}.png"))];
 
     private static ExtractedChunk Chunk(string key, string text, string? imageUrl = null) =>
         new(key, "Tunisia > Identifying", text, imageUrl);

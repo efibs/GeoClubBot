@@ -254,6 +254,40 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
         hits.Should().ContainSingle();
     }
 
+    [Fact]
+    public async Task ReadSourcesMissingImageVectors_FindsImagesThatWereNeverEmbedded()
+    {
+        // An image chunk is written without its image vector when embedding fails, so the missing vector
+        // is the only durable record that a picture never made it in. Text chunks never carry one.
+        var index = await CreateIndexAsync();
+
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(Chunk("prose", KnowledgeChunkKind.Text, sourceKey: "tunisia"), Axis(0)),
+            new KnowledgePoint(
+                Chunk("embedded", KnowledgeChunkKind.Image, imageUrl: "https://i.imgur.com/ok.png", sourceKey: "tunisia"),
+                Axis(1), Axis(2)),
+            new KnowledgePoint(
+                Chunk("lost", KnowledgeChunkKind.Image, imageUrl: "https://i.imgur.com/lost.png", sourceKey: "kenya"),
+                Axis(3)),
+            new KnowledgePoint(
+                Chunk("lost-too", KnowledgeChunkKind.Image, imageUrl: "https://i.imgur.com/lost2.png", sourceKey: "kenya"),
+                Axis(4))
+        ], "run-1");
+
+        var missing = await index.ReadSourcesMissingImageVectorsAsync();
+
+        missing.Should().Equal(new IndexedSourceKey("plonkit", "kenya"));
+    }
+
+    [Fact]
+    public async Task ReadSourcesMissingImageVectors_IsEmpty_BeforeTheCollectionExists()
+    {
+        var index = fixture.CreateKnowledgeIndex(QdrantFixture.NewCollectionName(), VectorSize);
+
+        (await index.ReadSourcesMissingImageVectorsAsync()).Should().BeEmpty();
+    }
+
     private async Task<Infrastructure.OutputAdapters.AI.QdrantKnowledgeIndex> CreateIndexAsync()
     {
         var index = fixture.CreateKnowledgeIndex(QdrantFixture.NewCollectionName(), VectorSize);

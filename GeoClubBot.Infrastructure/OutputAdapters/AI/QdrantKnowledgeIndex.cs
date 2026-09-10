@@ -219,6 +219,62 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         return [.. countries.OrderBy(country => country, StringComparer.OrdinalIgnoreCase)];
     }
 
+    public async Task<IReadOnlyList<IndexedSourceKey>> ReadSourcesMissingImageVectorsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!collections.Any(name => name == collectionName))
+        {
+            return [];
+        }
+
+        // An image chunk is written with its image vector when embedding succeeds and without it when
+        // not, so the absence of the named vector is exactly "this picture never made it in".
+        var missing = new Filter
+        {
+            Must = { KeywordCondition("chunkKind", "image") },
+            MustNot = { new Condition { HasVector = new HasVectorCondition { HasVector = ImageVectorName } } }
+        };
+
+        var payloadSelector = new WithPayloadSelector
+        {
+            Include = new PayloadIncludeSelector { Fields = { "sourceType", "sourceKey" } }
+        };
+
+        var sources = new HashSet<IndexedSourceKey>();
+        var offset = default(PointId);
+        do
+        {
+            var page = await client.ScrollAsync(
+                collectionName: collectionName,
+                filter: missing,
+                limit: ScrollPageSize,
+                payloadSelector: payloadSelector,
+                vectorsSelector: false,
+                offset: offset,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (var point in page.Result)
+            {
+                var sourceType = ReadString(point.Payload, "sourceType");
+                var sourceKey = ReadString(point.Payload, "sourceKey");
+
+                if (sourceType.Length > 0 && sourceKey.Length > 0)
+                {
+                    sources.Add(new IndexedSourceKey(sourceType, sourceKey));
+                }
+            }
+
+            offset = page.NextPageOffset;
+        }
+        while (offset is not null);
+
+        return [.. sources.OrderBy(source => source.SourceType, StringComparer.Ordinal)
+            .ThenBy(source => source.SourceKey, StringComparer.Ordinal)];
+    }
+
     private static PrefetchQuery BuildPrefetch(ReadOnlyMemory<float> vector, string vectorName, Filter? filter)
     {
         var prefetch = new PrefetchQuery

@@ -86,6 +86,7 @@ worth knowing:
 | `AI:OpenRouter:PreferredModelPrefixes` | `[]` | Pin a model family you trust, e.g. `["google/"]` |
 | `AI:OpenRouter:BlockedModelIds` | `[]` | Exclude a model that answers badly |
 | `AI:Ingestion:MaxDailyBudgetPercent` | 60 | Share of the allowance indexing may spend |
+| `AI:Ingestion:MaxSourcesPerRun` | 25 | Raise after the $10 top-up — a run stops here whatever the allowance |
 | `AI:Ingestion:MetaLibrarySheetId` | empty | Google Sheets id of a community library to sync |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:ImageRelay:PublicBaseUrl` | empty | **Required for images from blocked hosts** — see below |
@@ -235,6 +236,13 @@ Some guide sites answer unattended clients with 403 — plonkit.net's image CDN 
 provider fetches image URLs **server-side**, those images are unusable no matter how relevant they
 are. The relay copies them once during indexing and serves them from this bot instead.
 
+Relayed images are sent to the embedding provider **inline**, as bytes, never by their relay URL. It
+used to fetch them back through the bot's public address, and that failed intermittently in a way no
+daytime test reproduced: behind Tailscale Funnel, the provider's fetches during the 05:00 UTC run came
+back as Cloudflare `525`s, while the same images — one, a batch of 32, six batches back to back —
+fetched fine at midday. Sending the bytes removes the question. The public URL is still what Discord
+shows, so it still has to work, but indexing no longer depends on it.
+
 It is off until you give it a public base URL:
 
 ```json
@@ -248,7 +256,7 @@ It is off until you give it a public base URL:
 
 That URL **cannot be inferred**. Behind a tunnel or reverse proxy the bot only ever sees an internal
 address, so it has to be told its public one. It must be reachable from the public internet, because
-the fetcher is the AI provider and Discord's embed renderer — not a browser on your network.
+the fetcher is Discord's embed renderer — not a browser on your network.
 
 If you expose the bot with Tailscale Funnel, this is the `https://<machine>.<tailnet>.ts.net` address
 the funnel already serves; no extra routing is needed, since the funnel forwards everything to the
@@ -262,8 +270,9 @@ cloudflared tunnel --url http://localhost:5194
 
 Put the `https://<random>.trycloudflare.com` hostname it prints into `PublicBaseUrl` and restart the
 bot. Note that a quick tunnel mints a **new** hostname every run, and the relayed URL is stored in the
-index — so image chunks indexed under an old hostname stop resolving once the tunnel is restarted, and
-have to be re-indexed with `/ai ingest force: true`. A named tunnel
+index — so images indexed under an old hostname stop showing in Discord once the tunnel is restarted,
+and have to be re-indexed with `/ai ingest force: true` to pick up the new one. (Embedding is unaffected:
+the relay finds its copy by content hash, whatever host the stored URL names.) A named tunnel
 (`cloudflared tunnel create` + `route dns` + `run`) gives a hostname that survives restarts and avoids
 this entirely.
 
@@ -339,14 +348,54 @@ Indexing may spend `MaxDailyBudgetPercent` (60%) of the daily allowance, leaving
 questions — otherwise the overnight job would spend everything before anyone was awake and the bot
 would be mute all day.
 
-| Allowance | Sources per night | ~590 sources |
-|---|---|---|
-| 45/day (free tier) | ~13 | about six weeks |
-| 950/day (after $10) | ~280 | about two nights |
+A run also stops after `MaxSourcesPerRun` sources (25 by default), whatever allowance is left — and
+after the top-up, that is the limit you hit first.
+
+| Allowance | `MaxSourcesPerRun` | Sources per night | ~590 sources |
+|---|---|---|---|
+| 45/day (free tier) | 25 | ~13 | about six weeks |
+| 950/day (after $10) | 25 | 25 | about three weeks |
+| 950/day (after $10) | 300 | ~280 | about two nights |
 
 A run that stops early leaves untouched sources at the front of the queue, so successive runs resume
 rather than repeating. Failures back off exponentially, and a source that upstream stops listing is
 tombstoned rather than deleted.
+
+### Rate limits and images that fail
+
+The $10 top-up raises the daily allowance but **not** the per-minute one: free models stay at 20
+requests a minute. Requests are paced evenly under `PerMinuteRequestBudget` (18) — a small burst, then
+one token every few seconds — because a limiter that refills its whole minute at once lets a burst
+straddle the refill and send twice the budget in seconds. Retries queue for a token like any other
+request.
+
+When the provider still answers 429, the request waits for its window to turn over (the stated reset,
+or the next wall-clock minute) and tries once more. If *that* is refused too, something else is
+spending the same key — often a dev instance running with the production key — and the run stops,
+leaving the source it was on untouched and first in line for the next run. It is not recorded as a
+failure, so it does not back off.
+
+Images are embedded in groups, and a group's failure is judged by its cause:
+
+| What happened | What ingestion does |
+|---|---|
+| The provider rejected the group (e.g. an image it could not fetch) | Halves it until the image at fault is found; indexes the rest, and that image without its picture |
+| More than three images rejected in one source | Stops narrowing — that reads as the provider refusing images in general — and comes back for them next run |
+| The provider failed, timed out, or the allowance ran out | Keeps what succeeded and comes back for the rest next run |
+| Still rate-limited after waiting | Keeps what succeeded, comes back for the rest, and ends the run |
+
+A source that is "coming back" is due again immediately instead of waiting out `ReingestAfterDays`.
+
+Sources indexed before this behaviour existed may have lost their images for good: a failed batch
+used to leave the source recorded as fully indexed, and unchanged content is never embedded again.
+Recover them once with:
+
+```
+/ai backfill-images
+```
+
+It asks the index which image chunks have no image vector, queues their sources, and lets the normal
+runs re-embed them.
 
 ---
 
@@ -379,6 +428,9 @@ tombstoned rather than deleted.
 | Answers ignore the guides | Check `/ai search` first: it costs one request and shows what retrieval returns |
 | Guide images show as broken in Discord | `AI:ImageRelay:PublicBaseUrl` unset, wrong, or not reachable from the public internet |
 | Catalog source is `None` | The model roster could not be read; the fallback router is in use |
+| `/ai ingest` stopped early, "kept rate-limiting" | Something else is using the same API key — check for a dev instance with the production key |
+| Indexing is slow even after the $10 top-up | `MaxSourcesPerRun` caps each run at 25 sources; raise it |
+| Image search misses pictures that should be indexed | Run `/ai backfill-images` once; images lost before failed batches were retried are re-queued |
 
 `/ai search` is the tool to reach for. It costs a single embedding request instead of the two a full
 question costs, and shows exactly what the model would have been given — which is usually the
