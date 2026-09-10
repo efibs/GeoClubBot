@@ -29,4 +29,15 @@ public interface IImageRelay
 
     /// <summary>Reads a stored image back for serving. Null when the hash is unknown.</summary>
     Task<RelayedImageContent?> ReadAsync(string hash, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A relayed image as a <c>data:</c> URL, so the AI provider receives the bytes instead of fetching
+    /// them back from this host. Null when <paramref name="imageUrl"/> is not a relayed image or its file
+    /// is no longer on disk.
+    ///
+    /// Sending the bytes removes the one thing indexing needed this host to be for the provider: reachable
+    /// at the moment the job runs. Through a home tunnel in the early morning it intermittently was not,
+    /// and every image in the batch was lost with it. Discord still shows the public URL.
+    /// </summary>
+    Task<string?> ReadAsDataUrlAsync(string imageUrl, CancellationToken cancellationToken = default);
 }

@@ -58,9 +58,10 @@ public partial class RefitChatModelClient(
             return Error.Unexpected("ai.model_roster_unavailable",
                 $"Could not read the model roster from the AI provider (HTTP {(int)ex.StatusCode}).");
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (ApiRequestException ex)
         {
-            LogRosterFailed(logger, 0, ex.Message, ex);
+            // Refit's wrapper for every failure to get a response, timeouts included.
+            LogRosterFailed(logger, 0, ex.InnerException?.Message ?? ex.Message, ex);
             return Error.Unexpected("ai.model_roster_unavailable",
                 "Could not reach the AI provider to read the model roster.");
         }
@@ -120,9 +121,11 @@ public partial class RefitChatModelClient(
                 ? Error.Conflict("ai.rate_limited", "The AI provider is rate-limiting us right now. Please try again shortly.")
                 : Error.Unexpected("ai.chat_request_failed", "The AI provider could not answer that right now.");
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (ApiRequestException ex)
         {
-            LogCompletionFailed(logger, 0, ex.Message, ex);
+            // Refit's wrapper for every failure to get a response, timeouts included. Catching the inner
+            // types directly let a timed-out answer escape instead of reporting it.
+            LogCompletionFailed(logger, 0, ex.InnerException?.Message ?? ex.Message, ex);
             return Error.Unexpected("ai.chat_request_failed", "Could not reach the AI provider.");
         }
     }

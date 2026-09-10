@@ -10,8 +10,18 @@ public class AiConfiguration
     /// </summary>
     public bool Active { get; set; }
 
+    /// <summary>
+    /// Longest a single request to the AI provider may take. Enforced per attempt, so a hung attempt is
+    /// retried instead of consuming the whole call.
+    /// </summary>
     public int RequestTimeoutSeconds { get; set; } = 60;
 
+    /// <summary>
+    /// Longest a call may take in total: queueing for a rate-limit token, waiting out the provider's
+    /// per-minute window after a 429, and the retries. Must comfortably exceed
+    /// <see cref="RequestTimeoutSeconds"/> plus a minute, or a rate-limited request is abandoned just
+    /// before the retry that would have succeeded.
+    /// </summary>
     public int OverallTimeoutSeconds { get; set; } = 180;
 
     /// <summary>Chat provider settings. Embeddings are computed in-process and need no provider.</summary>

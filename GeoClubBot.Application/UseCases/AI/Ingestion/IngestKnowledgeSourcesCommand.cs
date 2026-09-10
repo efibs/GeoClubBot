@@ -21,6 +21,11 @@ public sealed record IngestKnowledgeSourcesCommand(
     bool Force = false) : ICommand<Result<IngestionReport>>;
 
 /// <param name="BudgetExhausted">True when the run stopped early because the daily allowance ran out.</param>
+/// <param name="RateLimited">
+/// True when the run stopped because the provider was still rate-limiting after its window had been
+/// waited out — a sign something else is spending the same key. Carrying on would record every remaining
+/// source as failed for a reason that has nothing to do with them.
+/// </param>
 public sealed record IngestionReport(
     int Attempted,
     int Ingested,
@@ -28,7 +33,8 @@ public sealed record IngestionReport(
     int Failed,
     int Skipped,
     int ChunksWritten,
-    bool BudgetExhausted);
+    bool BudgetExhausted,
+    bool RateLimited = false);
 
 public sealed partial class IngestKnowledgeSourcesHandler(
     IKnowledgeSourceRepository sources,
@@ -80,6 +86,15 @@ public sealed partial class IngestKnowledgeSourcesHandler(
                 // Stop the whole run: every remaining source needs embedding requests we no longer
                 // have, and attempting them would only earn a stream of rate-limit errors.
                 LogBudgetExhausted(logger, report.Attempted);
+                break;
+            }
+
+            if (outcome.RateLimited)
+            {
+                // The request layer has already waited out the provider's window once. Still being
+                // limited means the window is being spent elsewhere, and every further source would hit
+                // the same wall.
+                LogRateLimited(logger, report.Attempted);
                 break;
             }
         }
@@ -144,10 +159,17 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
         if (written.IsFailure)
         {
+            // Neither is the source's fault, so its state is left untouched and it is first in line next
+            // run. Recording a rate limit as a failure is what backed off good sources one after another,
+            // as each remaining source in the run met the same spent window.
             if (written.Error.Code == BudgetExhaustedCode)
             {
-                // Not the source's fault: leave its state untouched so it is retried first next run.
                 return Outcome.OutOfBudget;
+            }
+
+            if (written.Error.Code == EmbeddingErrorCodes.RateLimited)
+            {
+                return Outcome.RateLimitedBeforeWriting;
             }
 
             source.MarkFailed(written.Error.Message, now);
@@ -162,7 +184,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             written.Value.ImageCount, now, written.Value.ImagesDeferred);
         LogIngested(logger, source.SourceType, source.NaturalKey, written.Value.ChunkCount, written.Value.ImageCount);
 
-        return Outcome.Ingested(written.Value.ChunkCount);
+        return Outcome.Ingested(written.Value.ChunkCount, written.Value.RateLimited);
     }
 
     private async Task<Result<WriteResult>> WriteAsync(
@@ -181,7 +203,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             .Select(chunk => (EmbeddingInput)new TextEmbeddingInput(EmbeddingTextBuilder.Build(descriptor, chunk)))
             .ToList();
 
-        if (!await TryReserveAsync(textInputs.Count, cancellationToken).ConfigureAwait(false))
+        if (!await TryReserveForInputsAsync(textInputs.Count, cancellationToken).ConfigureAwait(false))
         {
             return Error.Conflict(BudgetExhaustedCode, "Indexing has used its share of today's AI allowance.");
         }
@@ -192,7 +214,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             return textVectors.Error;
         }
 
-        var imageVectors = await EmbedImagesAsync(chunks, settings, cancellationToken).ConfigureAwait(false);
+        var images = await EmbedImagesAsync(chunks, settings, cancellationToken).ConfigureAwait(false);
 
         var points = new List<KnowledgePoint>(chunks.Count);
         for (var index = 0; index < chunks.Count; index++)
@@ -203,7 +225,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             // could not be embedded must carry no image vector at all, and that distinction is too
             // easy to lose in a conditional expression.
             ReadOnlyMemory<float>? imageVector = null;
-            if (chunk.ImageUrl is { } imageUrl && imageVectors.Vectors.TryGetValue(imageUrl, out var embedded))
+            if (chunk.ImageUrl is { } imageUrl && images.Vectors.TryGetValue(imageUrl, out var embedded))
             {
                 imageVector = embedded;
             }
@@ -230,7 +252,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
         await knowledgeIndex.UpsertAsync(points, ingestRun, cancellationToken).ConfigureAwait(false);
 
-        return new WriteResult(points.Count, imageVectors.Vectors.Count, imageVectors.DeferredForBudget);
+        return new WriteResult(points.Count, images.Vectors.Count, images.Deferred, images.RateLimited);
     }
 
     /// <summary>
@@ -261,73 +283,164 @@ public sealed partial class IngestKnowledgeSourcesHandler(
     }
 
     /// <summary>
-    /// Embeds images separately from text, and tolerates total failure.
+    /// Embeds a source's images in request-sized groups, keeping whatever succeeds.
     ///
-    /// The provider fetches image URLs server-side, and one unreachable URL fails the whole batch —
-    /// several guide sites block unattended clients. Isolating images means a blocked host costs
-    /// image search for that source rather than removing the source from the index entirely.
+    /// Images are embedded apart from text so that losing them costs image search, never the source.
+    /// Each group stands alone, so one that fails costs its own images rather than every image after it.
+    /// Relayed images travel inline, so the provider never has to fetch them back from this host.
     /// </summary>
-    private async Task<ImageEmbeddingResult> EmbedImagesAsync(
+    private async Task<ImageEmbeddingState> EmbedImagesAsync(
         IReadOnlyList<ExtractedChunk> chunks,
         AiIngestionConfiguration settings,
         CancellationToken cancellationToken)
     {
-        var empty = ImageEmbeddingResult.None;
+        var state = new ImageEmbeddingState();
         if (!settings.EmbedImages)
         {
-            return empty;
+            return state;
         }
 
-        var imageUrls = chunks
-            .Select(chunk => chunk.ImageUrl)
-            .Where(url => url is not null)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var openRouter = aiConfiguration.Value.OpenRouter;
+        var maxInputs = Math.Max(1, openRouter.EmbeddingBatchSize);
+        var maxBytes = Math.Max(1, openRouter.EmbeddingMaxRequestBytes);
 
-        if (imageUrls.Count == 0)
+        var group = new List<ImageInput>();
+        var groupBytes = 0L;
+
+        foreach (var imageUrl in chunks.Select(chunk => chunk.ImageUrl).OfType<string>().Distinct(StringComparer.Ordinal))
         {
-            return empty;
+            var image = await PrepareImageAsync(imageUrl, cancellationToken).ConfigureAwait(false);
+
+            // Bounded by bytes as well as count: inline pictures make a batch of thirty-two anywhere from
+            // a few kilobytes to far more than the provider accepts in one request.
+            if (group.Count > 0 && (group.Count == maxInputs || groupBytes + image.Size > maxBytes))
+            {
+                await EmbedImageGroupAsync(group, state, cancellationToken).ConfigureAwait(false);
+                group = [];
+                groupBytes = 0;
+
+                if (state.MustStop)
+                {
+                    return state;
+                }
+            }
+
+            group.Add(image);
+            groupBytes += image.Size;
         }
 
-        if (!await TryReserveAsync(imageUrls.Count, cancellationToken).ConfigureAwait(false))
+        if (group.Count > 0)
         {
-            // The text is already written, so the source stays usable — but it is only half indexed,
-            // and saying so is what brings it back for its images instead of leaving them lost until
-            // someone forces a rebuild.
-            LogImagesDeferred(logger, imageUrls.Count);
-            return ImageEmbeddingResult.Deferred;
+            await EmbedImageGroupAsync(group, state, cancellationToken).ConfigureAwait(false);
         }
 
-        var inputs = imageUrls.Select(url => (EmbeddingInput)new ImageEmbeddingInput(url!)).ToList();
-        var vectors = await embedder.EmbedAsync(inputs, cancellationToken).ConfigureAwait(false);
-
-        if (vectors.IsFailure)
-        {
-            LogImageEmbeddingFailed(logger, imageUrls.Count, vectors.Error.Message);
-            return empty;
-        }
-
-        var result = new Dictionary<string, ReadOnlyMemory<float>>(StringComparer.Ordinal);
-        for (var index = 0; index < imageUrls.Count; index++)
-        {
-            result[imageUrls[index]!] = vectors.Value[index];
-        }
-
-        return new ImageEmbeddingResult(result, DeferredForBudget: false);
+        return state;
     }
 
-    /// <summary>Claims the embedding requests this batch will cost before spending them.</summary>
-    private async Task<bool> TryReserveAsync(int inputCount, CancellationToken cancellationToken)
+    /// <summary>The image as the provider will receive it: inline when the relay holds a copy, by URL otherwise.</summary>
+    private async Task<ImageInput> PrepareImageAsync(string imageUrl, CancellationToken cancellationToken)
+    {
+        var inline = await imageRelay.ReadAsDataUrlAsync(imageUrl, cancellationToken).ConfigureAwait(false);
+        var sent = string.IsNullOrEmpty(inline) ? imageUrl : inline;
+
+        return new ImageInput(imageUrl, new ImageEmbeddingInput(sent), sent.Length);
+    }
+
+    /// <summary>
+    /// Embeds one group in one request, and decides what a failure is worth.
+    ///
+    /// A group the provider rejects is split in half until the image at fault is found: one dead picture
+    /// would otherwise take its batch-mates down with it, and on every run, because a rejection recurs.
+    /// Past a handful of rejections in one source it stops narrowing, since that reads as the provider
+    /// refusing images in general, and narrowing that down one request at a time would spend the day's
+    /// allowance learning nothing.
+    /// </summary>
+    private async Task EmbedImageGroupAsync(
+        IReadOnlyList<ImageInput> group,
+        ImageEmbeddingState state,
+        CancellationToken cancellationToken)
+    {
+        if (state.MustStop)
+        {
+            return;
+        }
+
+        if (state.RejectingImagesInGeneral)
+        {
+            state.Defer();
+            return;
+        }
+
+        if (!await TryReserveRequestsAsync(1, cancellationToken).ConfigureAwait(false))
+        {
+            LogImagesDeferred(logger, group.Count);
+            state.StopForBudget();
+            return;
+        }
+
+        var embedded = await embedder.EmbedAsync([.. group.Select(image => image.Input)], cancellationToken)
+            .ConfigureAwait(false);
+
+        if (embedded.IsSuccess)
+        {
+            for (var index = 0; index < group.Count; index++)
+            {
+                state.Vectors[group[index].Url] = embedded.Value[index];
+            }
+
+            return;
+        }
+
+        var error = embedded.Error;
+
+        if (error.Code == EmbeddingErrorCodes.RateLimited)
+        {
+            LogImagesRateLimited(logger, group.Count);
+            state.StopForRateLimit();
+            return;
+        }
+
+        if (error.Code != EmbeddingErrorCodes.Rejected)
+        {
+            // About the moment, not the images: they go back in the queue for the next run.
+            LogImageGroupFailed(logger, group.Count, error.Message);
+            state.Defer();
+            return;
+        }
+
+        if (group.Count > 1)
+        {
+            var half = group.Count / 2;
+            await EmbedImageGroupAsync([.. group.Take(half)], state, cancellationToken).ConfigureAwait(false);
+            await EmbedImageGroupAsync([.. group.Skip(half)], state, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (++state.IsolatedRejections > MaxIsolatedImageRejections)
+        {
+            LogImagesRejectedInGeneral(logger, MaxIsolatedImageRejections, error.Message);
+            state.RejectingImagesInGeneral = true;
+            state.Defer();
+            return;
+        }
+
+        // Found it. Indexed without its picture, and not retried: it would be rejected the same way.
+        LogImageRejected(logger, group[0].Url, error.Message);
+    }
+
+    /// <summary>Claims what embedding these inputs will cost, before spending it.</summary>
+    private Task<bool> TryReserveForInputsAsync(int inputCount, CancellationToken cancellationToken)
     {
         var batchSize = Math.Max(1, aiConfiguration.Value.OpenRouter.EmbeddingBatchSize);
-        var requests = (int)Math.Ceiling(inputCount / (double)batchSize);
+        return TryReserveRequestsAsync((int)Math.Ceiling(inputCount / (double)batchSize), cancellationToken);
+    }
 
-        return await budget.TryReserveRequestsAsync(
+    private async Task<bool> TryReserveRequestsAsync(int requests, CancellationToken cancellationToken) =>
+        await budget.TryReserveRequestsAsync(
             DateOnly.FromDateTime(DateTime.UtcNow),
             requests,
             ReadIngestionDailyCap(),
             cancellationToken).ConfigureAwait(false);
-    }
 
     /// <summary>
     /// Indexing claims against a fraction of the day's allowance rather than all of it.
@@ -378,21 +491,48 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
     private const string BudgetExhaustedCode = "ai.budget_exhausted";
 
-    private sealed record WriteResult(int ChunkCount, int ImageCount, bool ImagesDeferred);
+    /// <summary>
+    /// Rejected images tolerated in one source before rejection is taken to mean the provider is refusing
+    /// images in general rather than a few broken ones.
+    /// </summary>
+    private const int MaxIsolatedImageRejections = 3;
 
-    /// <param name="DeferredForBudget">
-    /// Distinguishes "ran out of allowance" from "the images could not be embedded". Only the former
-    /// is worth retrying; a permanently blocked image host would otherwise be retried every run.
-    /// </param>
-    private sealed record ImageEmbeddingResult(
-        Dictionary<string, ReadOnlyMemory<float>> Vectors,
-        bool DeferredForBudget)
+    private sealed record WriteResult(int ChunkCount, int ImageCount, bool ImagesDeferred, bool RateLimited);
+
+    /// <param name="Url">The image as stored in the index — never the inline form, which is only for sending.</param>
+    /// <param name="Size">Characters the input adds to a request body, which for an inline image is its base64.</param>
+    private sealed record ImageInput(string Url, EmbeddingInput Input, long Size);
+
+    private sealed class ImageEmbeddingState
     {
-        public static ImageEmbeddingResult None =>
-            new(new Dictionary<string, ReadOnlyMemory<float>>(StringComparer.Ordinal), false);
+        public Dictionary<string, ReadOnlyMemory<float>> Vectors { get; } = new(StringComparer.Ordinal);
 
-        public static ImageEmbeddingResult Deferred =>
-            new(new Dictionary<string, ReadOnlyMemory<float>>(StringComparer.Ordinal), true);
+        /// <summary>Some images are still owed for a reason that may not recur, so the source comes back for them.</summary>
+        public bool Deferred { get; private set; }
+
+        public bool RateLimited { get; private set; }
+
+        /// <summary>No further request is worth making for this source this run.</summary>
+        public bool MustStop { get; private set; }
+
+        public int IsolatedRejections { get; set; }
+
+        public bool RejectingImagesInGeneral { get; set; }
+
+        public void Defer() => Deferred = true;
+
+        public void StopForBudget()
+        {
+            Deferred = true;
+            MustStop = true;
+        }
+
+        public void StopForRateLimit()
+        {
+            Deferred = true;
+            RateLimited = true;
+            MustStop = true;
+        }
     }
 
     private readonly record struct Outcome(
@@ -401,13 +541,19 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         bool WasFailed,
         bool WasSkipped,
         bool BudgetExhausted,
+        bool RateLimited,
         int ChunkCount)
     {
-        public static Outcome Ingested(int chunkCount) => new(true, false, false, false, false, chunkCount);
-        public static readonly Outcome Unchanged = new(false, true, false, false, false, 0);
-        public static readonly Outcome Failed = new(false, false, true, false, false, 0);
-        public static readonly Outcome Skipped = new(false, false, false, true, false, 0);
-        public static readonly Outcome OutOfBudget = new(false, false, false, false, true, 0);
+        public static Outcome Ingested(int chunkCount, bool rateLimited) =>
+            new(true, false, false, false, false, rateLimited, chunkCount);
+
+        public static readonly Outcome Unchanged = new(false, true, false, false, false, false, 0);
+        public static readonly Outcome Failed = new(false, false, true, false, false, false, 0);
+        public static readonly Outcome Skipped = new(false, false, false, true, false, false, 0);
+        public static readonly Outcome OutOfBudget = new(false, false, false, false, true, false, 0);
+
+        /// <summary>Refused by the provider before anything was written; the source is left as it was.</summary>
+        public static readonly Outcome RateLimitedBeforeWriting = new(false, false, false, false, false, true, 0);
     }
 
     private sealed class Counters
@@ -420,12 +566,21 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         private int Skipped { get; set; }
         private int Chunks { get; set; }
         private bool BudgetExhausted { get; set; }
+        private bool RateLimited { get; set; }
 
         public void Apply(Outcome outcome)
         {
+            RateLimited = RateLimited || outcome.RateLimited;
+
             if (outcome.BudgetExhausted)
             {
                 BudgetExhausted = true;
+                return;
+            }
+
+            // A source the provider refused before anything was written was not really attempted.
+            if (outcome is { RateLimited: true, WasIngested: false })
+            {
                 return;
             }
 
@@ -443,17 +598,32 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         }
 
         public IngestionReport ToReport() =>
-            new(Attempted, Ingested, Unchanged, Failed, Skipped, Chunks, BudgetExhausted);
+            new(Attempted, Ingested, Unchanged, Failed, Skipped, Chunks, BudgetExhausted, RateLimited);
     }
 
     [LoggerMessage(LogLevel.Information, "Indexed {SourceType}:{NaturalKey} - {ChunkCount} chunk(s), {ImageCount} image(s).")]
     static partial void LogIngested(ILogger logger, string sourceType, string naturalKey, int chunkCount, int imageCount);
 
-    [LoggerMessage(LogLevel.Warning, "Could not embed {ImageCount} image(s); indexing text only ({Reason}).")]
-    static partial void LogImageEmbeddingFailed(ILogger logger, int imageCount, string reason);
+    [LoggerMessage(LogLevel.Warning, "Could not embed {ImageCount} image(s) this run; they will be retried ({Reason}).")]
+    static partial void LogImageGroupFailed(ILogger logger, int imageCount, string reason);
+
+    [LoggerMessage(LogLevel.Warning, "Indexing without an image the embedding provider rejected: {ImageUrl} ({Reason})")]
+    static partial void LogImageRejected(ILogger logger, string imageUrl, string reason);
+
+    [LoggerMessage(LogLevel.Warning,
+        "The embedding provider rejected more than {Limit} image(s) in one source; postponing the rest to a later run ({Reason}).")]
+    static partial void LogImagesRejectedInGeneral(ILogger logger, int limit, string reason);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Still rate-limited after waiting out the provider's window; postponed {ImageCount} image(s) to a later run.")]
+    static partial void LogImagesRateLimited(ILogger logger, int imageCount);
 
     [LoggerMessage(LogLevel.Information, "Postponed {ImageCount} image(s) until the allowance resets.")]
     static partial void LogImagesDeferred(ILogger logger, int imageCount);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Stopping ingestion after {Attempted} source(s): the AI provider is still rate-limiting after its window was waited out.")]
+    static partial void LogRateLimited(ILogger logger, int attempted);
 
     [LoggerMessage(LogLevel.Information,
         "Stopping ingestion after {Attempted} source(s): indexing has used its share of today's AI allowance.")]
