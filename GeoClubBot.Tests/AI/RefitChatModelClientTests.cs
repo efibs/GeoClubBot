@@ -158,6 +158,30 @@ public sealed class RefitChatModelClientTests
     }
 
     [Fact]
+    public async Task Complete_ReportsATimeout_AsAFailure_RatherThanThrowing()
+    {
+        // Refit wraps a timeout in its own request exception, which this adapter did not catch, so an
+        // answer that took too long escaped as an exception instead of the "could not answer" reply.
+        var client = CreateClient(new UnreachableHandler(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.")));
+
+        var result = await client.CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")]));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("ai.chat_request_failed");
+    }
+
+    [Fact]
+    public async Task ReadFreeModels_ReportsAnUnreachableProvider_RatherThanThrowing()
+    {
+        var client = CreateClient(new UnreachableHandler(new HttpRequestException("Name or service not known")));
+
+        var result = await client.ReadFreeModelsAsync();
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("ai.model_roster_unavailable");
+    }
+
+    [Fact]
     public async Task Complete_TrimsAnOverLongChain_ButKeepsTheFallbackRouter()
     {
         // OpenRouter refuses a request naming more than three models, and answers with a plain 400 —
@@ -204,7 +228,7 @@ public sealed class RefitChatModelClientTests
         return new CapturingHandler(await File.ReadAllTextAsync(path));
     }
 
-    private static RefitChatModelClient CreateClient(CapturingHandler handler)
+    private static RefitChatModelClient CreateClient(HttpMessageHandler handler)
     {
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://openrouter.ai") };
 
@@ -237,5 +261,11 @@ public sealed class RefitChatModelClientTests
                 RequestMessage = request
             };
         }
+    }
+
+    private sealed class UnreachableHandler(Exception failure) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throw failure;
     }
 }

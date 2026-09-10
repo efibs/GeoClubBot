@@ -164,7 +164,10 @@ API + Discord (controllers, slash command modules)
   is off** — MediatR's assembly scan picks up every Application handler regardless, so the container
   must be able to construct their dependencies or start-up validation fails. Guide images from hosts
   that refuse unattended clients are copied during indexing and served from
-  `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy. See
+  `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy — but are sent
+  to the embedder **inline**, so indexing never depends on the provider reaching this host. In the
+  OpenRouter resilience pipeline, retry must stay *outside* the rate limiter (every attempt takes a
+  token); `OpenRouterResiliencePipelineTests` pins this. See
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 

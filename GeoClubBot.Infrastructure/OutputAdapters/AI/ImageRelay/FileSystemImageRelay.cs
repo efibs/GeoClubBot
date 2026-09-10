@@ -165,6 +165,23 @@ public sealed partial class FileSystemImageRelay(
             new RelayedImageContent(content, ContentTypesByExtension[extension]));
     }
 
+    public async Task<string?> ReadAsDataUrlAsync(string imageUrl, CancellationToken cancellationToken = default)
+    {
+        if (!TryReadRelayedName(imageUrl, out var name) || !TrySplitName(name, out var digest, out var extension))
+        {
+            return null;
+        }
+
+        var path = BuildPath(digest, extension);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        var content = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        return $"data:{ContentTypesByExtension[extension]};base64,{Convert.ToBase64String(content)}";
+    }
+
     /// <summary>Name of the HttpClient used to fetch images, configured with the polite content pipeline.</summary>
     public const string HttpClientName = "AiImageRelay";
 
@@ -229,6 +246,32 @@ public sealed partial class FileSystemImageRelay(
                                     && content[8] == 0x57 && content[9] == 0x45
             ? ".webp"
             : null;
+    }
+
+    /// <summary>
+    /// Takes the stored name out of a relayed URL. Matched on the route rather than the host, so images
+    /// indexed under an earlier public base URL are still found on disk after the bot's address changes —
+    /// a quick tunnel mints a new one every run. Nothing else in the URL is trusted: the name must still
+    /// pass <see cref="TrySplitName"/> before it can reach a path.
+    /// </summary>
+    private static bool TryReadRelayedName(string imageUrl, out string name)
+    {
+        name = string.Empty;
+
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
+        {
+            return false;
+        }
+
+        var marker = $"/{RoutePrefix}/";
+        var start = uri.AbsolutePath.LastIndexOf(marker, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return false;
+        }
+
+        name = uri.AbsolutePath[(start + marker.Length)..];
+        return name.Length > 0;
     }
 
     /// <summary>Splits a served name into its digest and extension, rejecting anything malformed.</summary>

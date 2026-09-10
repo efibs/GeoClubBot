@@ -94,6 +94,9 @@ public sealed record KnowledgeHit(
     string? Author,
     int Priority);
 
+/// <summary>A document in the index, identified the same way as its source record.</summary>
+public sealed record IndexedSourceKey(string SourceType, string SourceKey);
+
 /// <summary>
 /// The vector store holding all indexed guide content.
 /// </summary>
@@ -119,4 +122,11 @@ public interface IKnowledgeIndex
     Task<long> CountAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<string>> ListCountriesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sources holding image chunks that carry no image vector — pictures indexed but never embedded.
+    /// Asked of the index because only it knows: the source registry cannot tell a source with no
+    /// pictures from one whose pictures were lost.
+    /// </summary>
+    Task<IReadOnlyList<IndexedSourceKey>> ReadSourcesMissingImageVectorsAsync(CancellationToken cancellationToken = default);
 }

@@ -121,7 +121,7 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
             // A run that attempts nothing is the common first-time case, and four zeros explain
             // none of it: the queue is empty because nothing has been catalogued, or because
             // everything catalogued was indexed recently and is not due again yet.
-            if (report.Attempted == 0 && !report.BudgetExhausted)
+            if (report.Attempted == 0 && !report.BudgetExhausted && !report.RateLimited)
             {
                 await FollowupAsync(await DescribeEmptyRunAsync(ct).ConfigureAwait(false), ephemeral: true)
                     .ConfigureAwait(false);
@@ -137,8 +137,37 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                 message.AppendLine("\n⚠️ Stopped early — indexing has used its share of today's AI allowance.");
             }
 
+            if (report.RateLimited)
+            {
+                message.AppendLine("\n⚠️ Stopped early — the AI provider kept rate-limiting even after waiting "
+                                   + "out its window. Something else may be using the same API key; the rest is "
+                                   + "picked up on the next run.");
+            }
+
             await FollowupAsync(message.ToString(), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to index guide sources.");
+
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("backfill-images", "Queue indexed guides whose images were never embedded")]
+    public Task BackfillImagesAsync() =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new BackfillMissingImagesCommand(), ct).ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            var report = result.Value;
+            var message = report.SourcesWithMissingImages == 0
+                ? "Every indexed image has been embedded — nothing to backfill."
+                : $"Queued **{report.Queued}** of **{report.SourcesWithMissingImages}** source(s) with missing "
+                  + "images. The nightly runs pick them up, or `/ai ingest` does sooner.";
+
+            await FollowupAsync(message, ephemeral: true).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to queue the image backfill.");
 
     /// <summary>
     /// Explains a run that indexed nothing. Which of the two reasons applies is the difference

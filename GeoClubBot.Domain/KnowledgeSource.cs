@@ -87,13 +87,14 @@ public class KnowledgeSource : BaseEntity
     public int ImageCount { get; private set; }
 
     /// <summary>
-    /// True when a run indexed this source's text but had to postpone its images because the daily
-    /// allowance ran out mid-source. Such a source is usable but incomplete, so it is due again
-    /// immediately rather than waiting out the normal re-ingest interval.
+    /// True when a run indexed this source's text but not all of its images, for a reason that need not
+    /// recur: the daily allowance ran out, the provider rate-limited, or it failed on its side. Such a
+    /// source is usable but incomplete, so it is due again immediately rather than waiting out the normal
+    /// re-ingest interval.
     ///
-    /// Deliberately not set when image embedding *failed* — a permanently blocked image host would
-    /// then put the source into an endless retry loop, spending the allowance every run to fail the
-    /// same way.
+    /// Not set for an image the provider <em>rejects</em> — one it cannot fetch or read. Ingestion narrows
+    /// a rejected batch down to that image and indexes the rest without it, because retrying a rejection
+    /// fails the same way every run and spends the allowance each time.
     /// </summary>
     public bool ImagesDeferred { get; private set; }
 
@@ -151,7 +152,8 @@ public class KnowledgeSource : BaseEntity
     }
 
     /// <param name="imagesDeferred">
-    /// True when the images were postponed for lack of allowance rather than indexed or failed.
+    /// True when some images are still owed for a reason that may not recur, so the source comes back
+    /// for them; see <see cref="ImagesDeferred"/>.
     /// </param>
     public void MarkIngested(
         string contentHash,
@@ -175,6 +177,23 @@ public class KnowledgeSource : BaseEntity
 
     /// <summary>Whether unchanged content still needs work, because its images were never embedded.</summary>
     public bool NeedsImageBackfill => ImagesDeferred;
+
+    /// <summary>
+    /// Queues an indexed source to have its images embedded again, for pictures an earlier run lost.
+    /// Only an indexed source can be missing them: a pending or failed one is re-indexed in full anyway,
+    /// and a skipped one never will be.
+    /// </summary>
+    /// <returns>Whether the source was queued; false when it already was or is not indexed.</returns>
+    public bool RequestImageBackfill()
+    {
+        if (Status != KnowledgeSourceStatus.Ingested || ImagesDeferred)
+        {
+            return false;
+        }
+
+        ImagesDeferred = true;
+        return true;
+    }
 
     public void MarkFailed(string reason, DateTimeOffset nowUtc)
     {

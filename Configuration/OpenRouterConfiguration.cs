@@ -17,7 +17,11 @@ public class OpenRouterConfiguration
     /// </summary>
     public int DailyRequestBudget { get; set; } = 45;
 
-    /// <summary>Kept just under the provider's 20/min ceiling; enforced by a waiting rate limiter.</summary>
+    /// <summary>
+    /// Kept just under the provider's 20/min ceiling, which still applies to free models after the $10
+    /// top-up. Requests are paced evenly across the minute rather than released in one lump, because a
+    /// lump lets a burst straddle the refill and send twice this in a few seconds.
+    /// </summary>
     public int PerMinuteRequestBudget { get; set; } = 18;
 
     /// <summary>Model id prefixes that outrank everything else, e.g. "google/". Lets an operator pin a family without chasing version suffixes.</summary>
@@ -55,6 +59,13 @@ public class OpenRouterConfiguration
     /// requests, not inputs, so a corpus that would need thousands of calls needs tens.
     /// </summary>
     public int EmbeddingBatchSize { get; set; } = 32;
+
+    /// <summary>
+    /// Largest embedding request body, in bytes. Images held by the relay travel inline as base64, so a
+    /// batch of large pictures grows fast and is split to stay under this. A 9.6 MB batch of 32 guide
+    /// images was accepted when measured, so the default keeps a margin below what is known to work.
+    /// </summary>
+    public int EmbeddingMaxRequestBytes { get; set; } = 8 * 1024 * 1024;
 
     /// <summary>Sent as HTTP-Referer; OpenRouter uses it for attribution on their leaderboards.</summary>
     public string? SiteUrl { get; set; }

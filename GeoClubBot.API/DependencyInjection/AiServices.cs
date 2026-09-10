@@ -48,7 +48,10 @@ public static class AiServices
         services.AddHttpClient(RefitChatModelClient.HttpClientName, client =>
             {
                 client.BaseAddress = new Uri(openRouter.BaseUrl);
-                client.Timeout = TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds);
+
+                // The whole call: queueing for a token, waiting out a rate-limit window, and the retry
+                // after it. Each attempt is bounded separately, inside the pipeline.
+                client.Timeout = TimeSpan.FromSeconds(Math.Max(aiConfig.OverallTimeoutSeconds, aiConfig.RequestTimeoutSeconds));
 
                 if (!string.IsNullOrWhiteSpace(openRouter.ApiKey))
                 {
@@ -64,9 +67,13 @@ public static class AiServices
 
                 client.DefaultRequestHeaders.Add("X-Title", openRouter.AppName);
             })
+            .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "OpenRouterResiliencePipeline",
-                builder => ResiliencePipelines.AddOpenRouterResiliencePipeline(builder, openRouter.PerMinuteRequestBudget));
+                builder => ResiliencePipelines.AddOpenRouterResiliencePipeline(
+                    builder,
+                    openRouter.PerMinuteRequestBudget,
+                    TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds)));
 
         // TimeProvider is not otherwise used in this solution; registering the system implementation
         // keeps the catalog's failure-decay logic swappable in tests without a new dependency.
@@ -96,6 +103,9 @@ public static class AiServices
                     "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
                 client.Timeout = TimeSpan.FromSeconds(30);
             })
+            // Outside the pipeline, so a guide host that trips the circuit breaker fails one source
+            // rather than escaping the extractor and ending the whole run.
+            .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "ContentSourceResiliencePipeline",
                 ResiliencePipelines.AddContentSourceResiliencePipeline);
@@ -135,6 +145,7 @@ public static class AiServices
             // The relay chases redirects itself so it can rewrite the referer at each hop; letting the
             // handler follow them silently is what makes a regional image mirror answer 403.
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "ContentSourceResiliencePipeline",
                 ResiliencePipelines.AddContentSourceResiliencePipeline);

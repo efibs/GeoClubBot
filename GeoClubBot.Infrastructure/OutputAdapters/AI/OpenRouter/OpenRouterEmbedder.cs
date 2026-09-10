@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Configuration;
 using Infrastructure.OutputAdapters.AI.OpenRouter.Dtos;
 using Microsoft.Extensions.Logging;
@@ -73,8 +74,8 @@ public partial class OpenRouterEmbedder(
             {
                 // A single unreachable image URL fails the entire batch, so the message is worth
                 // surfacing verbatim — it names the offending URL.
-                LogBatchRejected(logger, error.Message ?? "(no message)");
-                return Error.Unexpected("ai.embedding_failed", "The embedding provider rejected the request.");
+                LogBatchRejected(logger, error.Code ?? 0, error.Message ?? "(no message)");
+                return Classify(error.Code ?? 0, error.Message);
             }
 
             if (response.Data is not { Count: > 0 } data || data.Count != batch.Length)
@@ -114,16 +115,80 @@ public partial class OpenRouterEmbedder(
         catch (ApiException ex)
         {
             LogBatchFailed(logger, (int)ex.StatusCode, Describe(ex), ex);
-            return (int)ex.StatusCode == 429
-                ? Error.Conflict("ai.rate_limited", "The embedding provider is rate-limiting us right now.")
-                : Error.Unexpected("ai.embedding_failed", "The embedding provider could not be reached.");
+            return Classify((int)ex.StatusCode, ReadProviderMessage(ex));
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (ApiRequestException ex)
         {
-            LogBatchFailed(logger, 0, ex.Message, ex);
-            return Error.Unexpected("ai.embedding_failed", "The embedding provider could not be reached.");
+            // Refit wraps every failure to get a response — a timeout, a refused connection, a request the
+            // resilience pipeline declined to send — in this type, so catching the inner exception types
+            // directly let all of them escape.
+            LogBatchFailed(logger, 0, ex.InnerException?.Message ?? ex.Message, ex);
+            return Error.Unexpected(EmbeddingErrorCodes.Failed, "The embedding provider could not be reached.");
         }
     }
+
+    /// <summary>
+    /// Sorts a provider error by what a caller can do about it.
+    ///
+    /// Only statuses that describe the request itself count as a rejection — an image the provider could
+    /// not fetch arrives as a 400 — which is what lets a caller narrow a rejected batch down to the input
+    /// at fault. Everything else is about the moment and worth trying again later. Before this, every
+    /// status but 429 was reported as "could not be reached", including rejections from a provider that
+    /// had been reached perfectly well.
+    /// </summary>
+    private static Error Classify(int statusCode, string? providerMessage)
+    {
+        var detail = string.IsNullOrWhiteSpace(providerMessage)
+            ? string.Empty
+            : $": {Truncate(providerMessage.Trim(), MaxErrorDetailLength)}";
+
+        return statusCode switch
+        {
+            429 => Error.Conflict(EmbeddingErrorCodes.RateLimited,
+                "The embedding provider is rate-limiting us right now."),
+            400 or 413 or 415 or 422 => Error.Validation(EmbeddingErrorCodes.Rejected,
+                $"The embedding provider rejected the request (HTTP {statusCode}){detail}"),
+            > 0 => Error.Unexpected(EmbeddingErrorCodes.Failed,
+                $"The embedding provider failed (HTTP {statusCode}){detail}"),
+            _ => Error.Unexpected(EmbeddingErrorCodes.Failed,
+                $"The embedding provider reported an error{detail}")
+        };
+    }
+
+    /// <summary>The provider's own explanation from an error body, when it sent one it could be read from.</summary>
+    private static string? ReadProviderMessage(ApiException exception)
+    {
+        if (string.IsNullOrWhiteSpace(exception.Content))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(exception.Content);
+
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                   && document.RootElement.TryGetProperty("error", out var error)
+                   && error.ValueKind == JsonValueKind.Object
+                   && error.TryGetProperty("message", out var message)
+                   && message.ValueKind == JsonValueKind.String
+                ? message.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length > maxLength ? value[..maxLength] + "…" : value;
+
+    /// <summary>
+    /// Provider detail carried into an error message. It reaches a Discord reply and a source's recorded
+    /// failure reason, so it names what went wrong without pasting a whole response body.
+    /// </summary>
+    private const int MaxErrorDetailLength = 200;
 
     private static OpenRouterEmbeddingInputDto ToInputDto(EmbeddingInput input) => input switch
     {
@@ -148,8 +213,8 @@ public partial class OpenRouterEmbedder(
     [LoggerMessage(LogLevel.Debug, "Embedded {VectorCount} input(s) using {TokenCount} token(s).")]
     static partial void LogBatchEmbedded(ILogger logger, int vectorCount, int tokenCount);
 
-    [LoggerMessage(LogLevel.Warning, "The embedding provider rejected a batch: {Message}")]
-    static partial void LogBatchRejected(ILogger logger, string message);
+    [LoggerMessage(LogLevel.Warning, "The embedding provider reported an in-band error {Code}: {Message}")]
+    static partial void LogBatchRejected(ILogger logger, int code, string message);
 
     /// <summary>
     /// The provider names the offending input or model in the response body; the status code alone

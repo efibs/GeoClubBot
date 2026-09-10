@@ -120,6 +120,56 @@ public sealed class FileSystemImageRelayTests : IDisposable
     }
 
     [Fact]
+    public async Task ReadAsDataUrl_ReturnsARelayedImageInline()
+    {
+        // The provider used to fetch relayed images back from this host, which through a home tunnel in
+        // the early morning intermittently failed and took whole batches down with it. Inline, there is
+        // no fetch to fail.
+        var relay = Create();
+        var stored = await relay.StoreAsync(PngBytes, "image/png");
+
+        var inline = await relay.ReadAsDataUrlAsync(stored.Value);
+
+        inline.Should().Be($"data:image/png;base64,{Convert.ToBase64String(PngBytes)}");
+    }
+
+    [Fact]
+    public async Task ReadAsDataUrl_FindsAnImageStoredUnderAnEarlierPublicAddress()
+    {
+        // A stored URL keeps the host it was indexed under, and a quick tunnel mints a new host every run.
+        var stored = await Create(publicBaseUrl: "https://old-tunnel.trycloudflare.com").StoreAsync(PngBytes, "image/png");
+
+        var inline = await Create().ReadAsDataUrlAsync(stored.Value);
+
+        inline.Should().StartWith("data:image/png;base64,");
+    }
+
+    [Theory]
+    [InlineData("https://i.imgur.com/abc.png")]
+    [InlineData("https://host.tailnet.ts.net/api/v1/ai/images/not-a-hash.png")]
+    [InlineData("https://host.tailnet.ts.net/api/v1/ai/images/../../../etc/passwd")]
+    [InlineData("data:image/png;base64,AAAA")]
+    [InlineData("not a url")]
+    public async Task ReadAsDataUrl_ReturnsNull_ForAnythingThatIsNotAStoredImage(string imageUrl)
+    {
+        // The URL only points at a name, and the name reaches a path only if it is exactly a content hash.
+        var relay = Create();
+        await relay.StoreAsync(PngBytes, "image/png");
+
+        (await relay.ReadAsDataUrlAsync(imageUrl)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ReadAsDataUrl_ReturnsNull_WhenTheFileIsGone()
+    {
+        var relay = Create();
+        var stored = await relay.StoreAsync(PngBytes, "image/png");
+        Directory.Delete(_directory, recursive: true);
+
+        (await relay.ReadAsDataUrlAsync(stored.Value)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task Resolve_LeavesAloneWhatTheProviderCanAlreadyFetch()
     {
         // Copying someone's images is a bigger imposition than linking them, so only hosts known to
