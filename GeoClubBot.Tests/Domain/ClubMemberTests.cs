@@ -116,4 +116,37 @@ public sealed class ClubMemberTests
         member.DomainEvents.OfType<PlayerLeftClubEvent>().Single()
             .PrivateTextChannelId.Should().Be(555UL);
     }
+
+    [Fact]
+    public void ArchivePrivateTextChannel_StampsTheTimestamp_AndRestoreClearsIt()
+    {
+        var member = ClubMember.Create(User(), ClubA, xp: 0, joinedAt: DateTimeOffset.UtcNow);
+        member.SetPrivateTextChannelId(123UL);
+        member.PrivateTextChannelArchivedAt.Should().BeNull();
+
+        var archivedAt = DateTimeOffset.UtcNow.AddDays(-3);
+        member.ArchivePrivateTextChannel(archivedAt);
+
+        member.PrivateTextChannelArchivedAt.Should().Be(archivedAt);
+        member.PrivateTextChannelId.Should().Be(123UL, "archiving keeps the channel, it only moves it");
+
+        member.RestorePrivateTextChannel();
+
+        member.PrivateTextChannelArchivedAt.Should().BeNull();
+        member.PrivateTextChannelId.Should().Be(123UL);
+    }
+
+    [Fact]
+    public void SetPrivateTextChannelId_ClearsTheArchiveTimestamp()
+    {
+        var member = ClubMember.Create(User(), ClubA, xp: 0, joinedAt: DateTimeOffset.UtcNow);
+        member.SetPrivateTextChannelId(123UL);
+        member.ArchivePrivateTextChannel(DateTimeOffset.UtcNow.AddDays(-40));
+
+        // Deleting the channel for good must not leave a dangling archive timestamp behind.
+        member.SetPrivateTextChannelId(null);
+
+        member.PrivateTextChannelId.Should().BeNull();
+        member.PrivateTextChannelArchivedAt.Should().BeNull();
+    }
 }

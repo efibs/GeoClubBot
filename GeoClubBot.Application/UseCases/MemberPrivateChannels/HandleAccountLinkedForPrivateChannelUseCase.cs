@@ -28,6 +28,21 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
 
             if (clubMember.PrivateTextChannelId is not null)
             {
+                if (clubMember.PrivateTextChannelArchivedAt is null)
+                {
+                    return;
+                }
+
+                // An archived channel is theirs again the moment they are back in a club.
+                var restoreResult = await mediator
+                    .Send(new RestoreMemberPrivateChannelCommand(clubMember), cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (restoreResult.IsFailure)
+                {
+                    LogFailedToRestorePrivateChannel(logger, notification.Nickname, restoreResult.Error.Message);
+                }
+
                 return;
             }
 
@@ -47,6 +62,10 @@ public partial class HandleAccountLinkedForPrivateChannelUseCase(
         "Handling account linked for creating private text channel for club member '{clubMemberNickname}'...")]
     static partial void LogCreatingPrivateChannel(ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger,
         string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to restore member private channel for member '{clubMemberNickname}': {Error}")]
+    static partial void LogFailedToRestorePrivateChannel(ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger,
+        string clubMemberNickname, string error);
 
     [LoggerMessage(LogLevel.Error, "Error while handling HandleAccountLinkedForPrivateChannelUseCase")]
     static partial void LogUnhandled(ILogger<HandleAccountLinkedForPrivateChannelUseCase> logger, Exception ex);

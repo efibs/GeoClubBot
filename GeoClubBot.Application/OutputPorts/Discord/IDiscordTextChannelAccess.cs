@@ -11,7 +11,11 @@ public interface IDiscordTextChannelAccess
         IEnumerable<ulong>? allowedRoleIds,
         CancellationToken cancellationToken = default);
 
-    Task UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Applies the non-null parts of <paramref name="newTextChannel"/> (name, description, category)
+    /// to the existing channel. Returns false when the channel no longer exists.
+    /// </summary>
+    Task<bool> UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteTextChannelAsync(ulong textChannelId, CancellationToken cancellationToken = default);
 

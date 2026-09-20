@@ -490,8 +490,8 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
             IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds,
             CancellationToken cancellationToken = default) => Task.FromResult<ulong?>(null);
 
-        public Task UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task<bool> UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
 
         public Task<bool> DeleteTextChannelAsync(ulong textChannelId, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);

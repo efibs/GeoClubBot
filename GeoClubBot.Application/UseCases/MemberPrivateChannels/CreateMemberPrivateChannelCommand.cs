@@ -28,7 +28,7 @@ public sealed partial class CreateMemberPrivateChannelHandler(
         var clubMember = request.ClubMember;
         LogCreatingPrivateChannel(logger, clubMember.User.Nickname);
 
-        var textChannelName = $"{clubMember.User.Nickname.ToLowerInvariant()}-private-channel";
+        var textChannelName = MemberPrivateChannelName.For(clubMember.User.Nickname);
 
         var textChannelId = await discordTextChannelAccess.CreatePrivateTextChannelAsync(
                 _privateTextChannelCategoryId,

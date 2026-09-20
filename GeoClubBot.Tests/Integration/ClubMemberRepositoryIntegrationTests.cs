@@ -117,4 +117,75 @@ public sealed class ClubMemberRepositoryIntegrationTests(PostgresFixture fixture
         (await repo.ReadClubMemberByUserIdAsync(hasHistory)).Should().NotBeNull();
         (await repo.ReadClubMemberByUserIdAsync(hasStrike)).Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task DeleteClubMembersWithoutHistoryAndStrikesAsync_KeepsMembersStillHoldingAPrivateChannel()
+    {
+        var clubId = Guid.NewGuid();
+        var hasChannel = NewUserId();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(clubId, $"club-{clubId:N}", 1));
+            var user = GeoGuessrUser.Create(hasChannel, $"nick-{hasChannel}");
+            seed.Add(user);
+            var member = ClubMember.Create(user, clubId: null, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-2));
+            member.SetPrivateTextChannelId(4242UL);
+            member.ArchivePrivateTextChannel(DateTimeOffset.UtcNow.AddDays(-5));
+            seed.Add(member);
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var act = fixture.CreateDbContext())
+        {
+            await new EfClubMemberRepository(act).DeleteClubMembersWithoutHistoryAndStrikesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var kept = await new EfClubMemberRepository(read).ReadClubMemberByUserIdAsync(hasChannel);
+        kept.Should().NotBeNull("deleting the row would strand the archived Discord channel");
+        kept!.PrivateTextChannelId.Should().Be(4242UL);
+    }
+
+    [Fact]
+    public async Task ReadMembersWithExpiredArchivedPrivateChannelsAsync_OnlyReturnsExpiredArchivesOfClublessMembers()
+    {
+        var clubId = Guid.NewGuid();
+        var expired = NewUserId();
+        var fresh = NewUserId();
+        var backInAClub = NewUserId();
+        var neverArchived = NewUserId();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(clubId, $"club-{clubId:N}", 1));
+
+            void AddMember(string userId, Guid? club, ulong channelId, DateTimeOffset? archivedAt)
+            {
+                var user = GeoGuessrUser.Create(userId, $"nick-{userId}");
+                seed.Add(user);
+                var member = ClubMember.Create(user, club, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-2));
+                member.SetPrivateTextChannelId(channelId);
+                if (archivedAt is not null)
+                {
+                    member.ArchivePrivateTextChannel(archivedAt.Value);
+                }
+                seed.Add(member);
+            }
+
+            AddMember(expired, null, 1UL, DateTimeOffset.UtcNow.AddDays(-40));
+            AddMember(fresh, null, 2UL, DateTimeOffset.UtcNow.AddDays(-2));
+            AddMember(backInAClub, clubId, 3UL, DateTimeOffset.UtcNow.AddDays(-40));
+            AddMember(neverArchived, null, 4UL, null);
+
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var due = await new EfClubMemberRepository(read)
+            .ReadMembersWithExpiredArchivedPrivateChannelsAsync(DateTimeOffset.UtcNow.AddDays(-30));
+
+        due.Select(m => m.UserId).Should().Contain(expired);
+        due.Select(m => m.UserId).Should().NotContain([fresh, backInAClub, neverArchived]);
+    }
 }
