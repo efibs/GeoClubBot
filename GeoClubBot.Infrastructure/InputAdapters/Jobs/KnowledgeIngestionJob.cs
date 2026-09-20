@@ -21,7 +21,7 @@ public partial class KnowledgeIngestionJob(
     IOptions<AiConfiguration> configuration,
     ILogger<KnowledgeIngestionJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         if (!configuration.Value.Active)
         {
@@ -30,7 +30,7 @@ public partial class KnowledgeIngestionJob(
 
         try
         {
-            var result = await mediator.Send(new IngestKnowledgeSourcesCommand(), context.CancellationToken)
+            var result = await mediator.Send(new IngestKnowledgeSourcesCommand(), cancellationToken)
                 .ConfigureAwait(false);
 
             if (result.IsSuccess)

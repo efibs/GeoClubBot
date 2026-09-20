@@ -20,7 +20,7 @@ public partial class AiModelCatalogRefreshJob(
     IOptions<AiConfiguration> configuration,
     ILogger<AiModelCatalogRefreshJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         // Quartz discovers every IJob in the assembly regardless of feature flags, but the AI services
         // are only registered when the feature is on — so without this guard the job would fail to
@@ -32,7 +32,7 @@ public partial class AiModelCatalogRefreshJob(
 
         try
         {
-            await mediator.Send(new RefreshChatModelCatalogCommand(), context.CancellationToken).ConfigureAwait(false);
+            await mediator.Send(new RefreshChatModelCatalogCommand(), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

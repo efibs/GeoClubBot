@@ -16,7 +16,7 @@ public partial class AiConversationCleanupJob(
     IOptions<AiConfiguration> configuration,
     ILogger<AiConversationCleanupJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         // Quartz discovers every IJob regardless of feature flags; skip the work when AI is off.
         if (!configuration.Value.Active)
@@ -26,7 +26,7 @@ public partial class AiConversationCleanupJob(
 
         try
         {
-            var result = await mediator.Send(new PruneAiConversationsCommand(), context.CancellationToken)
+            var result = await mediator.Send(new PruneAiConversationsCommand(), cancellationToken)
                 .ConfigureAwait(false);
 
             if (result.IsSuccess && result.Value > 0)

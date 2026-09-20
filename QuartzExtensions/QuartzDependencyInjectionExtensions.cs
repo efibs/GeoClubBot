@@ -5,7 +5,7 @@ namespace QuartzExtensions;
 
 public static class QuartzDependencyInjectionExtensions
 {
-    public static void AddCronJobs(this IServiceCollectionQuartzConfigurator q, Assembly assembly)
+    public static void AddCronJobs(this IQuartzBuilder q, Assembly assembly)
     {
         // Get the job type
         var jobType = typeof(IJob);
@@ -31,7 +31,7 @@ public static class QuartzDependencyInjectionExtensions
             var jobKey = new JobKey(cronJobType.Name);
 
             // Add the job
-            q.AddJob(cronJobType, jobKey, _ => { });
+            q.AddJob(cronJobType, j => j.WithIdentity(jobKey));
 
             // Add the trigger
             q.AddTrigger(o => o.ForJob(jobKey)

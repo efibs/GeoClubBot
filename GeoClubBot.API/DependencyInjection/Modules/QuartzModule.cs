@@ -1,7 +1,6 @@
 using Constants;
 using Infrastructure.InputAdapters.Jobs;
 using Quartz;
-using Quartz.Impl.Matchers;
 using QuartzExtensions;
 
 namespace GeoClubBot.DependencyInjection.Modules;
@@ -14,13 +13,13 @@ public static class QuartzModule
 
         services.AddQuartz(q =>
         {
-            q.SchedulerId = StringConstants.QuartzSchedulerName;
+            q.ConfigureScheduler(o => o.InstanceId = StringConstants.QuartzSchedulerName);
 
             var commandsAssembly = typeof(IJobAssemblyMarker).Assembly;
             q.AddCronJobs(commandsAssembly);
 
             // Listener records per-job duration + failures into JobMetrics.
-            q.AddJobListener<QuartzJobMetricsListener>(GroupMatcher<JobKey>.AnyGroup());
+            q.AddJobListener<QuartzJobMetricsListener>([GroupMatcher<JobKey>.AnyGroup()]);
         });
 
         services.AddQuartzHostedService(options =>

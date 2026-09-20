@@ -13,11 +13,11 @@ public partial class DailyMissionCompletionSnapshotJob(
     ISender mediator,
     ILogger<DailyMissionCompletionSnapshotJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         try
         {
-            await mediator.Send(new SnapshotDailyMissionCompletionsCommand(), context.CancellationToken).ConfigureAwait(false);
+            await mediator.Send(new SnapshotDailyMissionCompletionsCommand(), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

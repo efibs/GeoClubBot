@@ -28,7 +28,7 @@ public sealed class CronScheduleConfigurationTests
         {
             foreach (var (key, expression) in ReadSchedules(path))
             {
-                if (!CronExpression.IsValidExpression(expression))
+                if (!CronExpression.TryParse(expression, out _))
                 {
                     invalid.Add($"{Path.GetFileName(path)} → {key} = \"{expression}\"");
                 }

@@ -139,7 +139,9 @@ repositories, so there's nothing to add there.
 1. **Job** → `GeoClubBot.Infrastructure/InputAdapters/Jobs/<Name>Job.cs`:
    `: IJob`, annotate with `[DisallowConcurrentExecution]` and
    `[ConfiguredCronJob(ConfigKeys.<Name>CronScheduleConfigurationKey)]`. Inject
-   `ISender` and delegate to a MediatR command in `Execute(...)`.
+   `ISender` and delegate to a MediatR command in
+   `Execute(IJobExecutionContext context, CancellationToken cancellationToken)`, which returns
+   `ValueTask` since Quartz 4.
 2. **Config key** → add the key constant in `Constants/ConfigKeys.cs` and a cron
    expression under that key in `appsettings*.json`.
 3. *(Auto-wired — `QuartzModule` scans the Jobs assembly.)* Model on
