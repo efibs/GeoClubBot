@@ -88,6 +88,8 @@ worth knowing:
 | `AI:Ingestion:MaxDailyBudgetPercent` | 60 | Share of the allowance indexing may spend |
 | `AI:Ingestion:MaxSourcesPerRun` | 25 | Raise after the $10 top-up — a run stops here whatever the allowance |
 | `AI:Ingestion:MetaLibrarySheetId` | empty | Google Sheets id of a community library to sync |
+| `AI:Ingestion:SourceOverallTimeoutSeconds` | 300 | Lower only if a guide host should be given up on sooner; it bounds a whole fetch, the download included |
+| `AI:Ingestion:MaxDocumentExportBytes` | 32 MB | Past this a Google Docs export is abandoned and the text-only export indexed instead |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:ImageRelay:PublicBaseUrl` | empty | **Required for images from blocked hosts** — see below |
 | `AI:Conversation:RetentionDays` | 30 | How long stored questions are kept |
@@ -331,7 +333,7 @@ After that a nightly job drains the queue on its own.
 | plonkit.net country guides | Full text **and** images. Discovered from the site's own sitemap (~157 pages). |
 | rmrg.me country guides | Full text **and** images. Discovered from the site's own sitemap (12 countries). Fewer countries than plonkit and far more detail in each — ~30–180 clues per country, every one a picture paired with the prose describing it. Its images need no relay entry: they are served to anyone who asks. |
 | imgur albums | Infographics — often the most useful artefact for a meta. Images indexed. |
-| Google Docs | Text, plus embedded images when the relay is configured. |
+| Google Docs | Text, plus embedded images when the relay is configured. An export too large to take — 332 MB for one library document, and Google refuses to build some at all — is indexed as text only. |
 | Google Slides | Text, speaker notes, and embedded images when the relay is configured. |
 | Google Sheets | Rows grouped into blocks, each carrying the header. |
 | Direct image links | Captioned from the catalogue entry. |
@@ -375,11 +377,20 @@ spending the same key — often a dev instance running with the production key �
 leaving the source it was on untouched and first in line for the next run. It is not recorded as a
 failure, so it does not back off.
 
-Images are embedded in groups, and a group's failure is judged by its cause:
+Images in a format the provider cannot read never reach it. It refuses anything it cannot decode as a
+picture — vector images above all, and rmrg.me draws a good share of its illustrations as `.svgz` —
+and a refusal fails the whole request the image travelled in, which is then narrowed one request at a
+time to find the culprit. Those chunks are indexed on their text alone, and the image URL is dropped
+rather than stored: Discord will not render one either. Only formats *known* to be unusable are turned
+away (`.svg`, `.svgz`, `.avif`, `.bmp`, `.ico`, `.tif`, `.heic`, `.pdf`); an extensionless URL is
+still tried, because plenty of hosts serve ordinary JPEGs from one.
+
+The rest are embedded in groups, and a group's failure is judged by its cause:
 
 | What happened | What ingestion does |
 |---|---|
-| The provider rejected the group (e.g. an image it could not fetch) | Halves it until the image at fault is found; indexes the rest, and that image without its picture |
+| The provider rejected the group and named the image at fault | Drops that image and re-sends the rest in one more request |
+| The provider rejected the group without naming anything | Halves it until the image at fault is found; indexes the rest, and that image without its picture |
 | More than three images rejected in one source | Stops narrowing — that reads as the provider refusing images in general — and comes back for them next run |
 | The provider failed, timed out, or the allowance ran out | Keeps what succeeded and comes back for the rest next run |
 | Still rate-limited after waiting | Keeps what succeeded, comes back for the rest, and ends the run |
@@ -431,6 +442,9 @@ runs re-embed them.
 | `/ai ingest` stopped early, "kept rate-limiting" | Something else is using the same API key — check for a dev instance with the production key |
 | Indexing is slow even after the $10 top-up | `MaxSourcesPerRun` caps each run at 25 sources; raise it |
 | Image search misses pictures that should be indexed | Run `/ai backfill-images` once; images lost before failed batches were retried are re-queued |
+| A guide has no images at all, but its text is indexed | Its pictures are vectors (`.svgz`), which no part of this pipeline can use — expected, not a fault |
+| A Google Doc is indexed but has no images | Its export was too large to take, or Google refused to build it; the text is indexed and the log says so at Information |
+| "Could not fetch the Google document …" with a timeout | Google is taking longer than `AI:Ingestion:SourceRequestTimeoutSeconds` to build the export; the source is retried on the next run either way |
 
 `/ai search` is the tool to reach for. It costs a single embedding request instead of the two a full
 question costs, and shows exactly what the model would have been given — which is usually the

@@ -138,8 +138,10 @@ public sealed partial class RmrgSourceExtractor(
     {
         // The site's own item id: it is both the share anchor and a path of slugs the authors chose,
         // so it survives edits and reordering. A positional key would turn every later chunk into a
-        // duplicate the moment the guide gains an item.
-        var itemId = item.GetAttributeValue("id", string.Empty);
+        // duplicate the moment the guide gains an item. Decoded like every other attribute here: an
+        // encoded character would otherwise make both the point id and the deep link name something
+        // the page does not contain.
+        var itemId = HtmlEntity.DeEntitize(item.GetAttributeValue("id", string.Empty));
         if (string.IsNullOrWhiteSpace(itemId))
         {
             return null;
@@ -231,6 +233,11 @@ public sealed partial class RmrgSourceExtractor(
     /// The optimised copy is taken over the original deliberately: they are the same picture, and
     /// originals here reach several megabytes, which the AI provider would then fetch server-side on
     /// every embedding call.
+    ///
+    /// Vector sources are passed over wherever they turn up. Some items here are illustrations rather
+    /// than photographs and the site serves those as <c>.svgz</c> from every attribute, overlay class
+    /// or not; the AI provider answers 415 for them and the whole request they were batched into fails
+    /// with them. Such an item is indexed on its prose alone.
     /// </summary>
     private static string? ReadImageUrl(HtmlNode item)
     {
@@ -248,13 +255,21 @@ public sealed partial class RmrgSourceExtractor(
             }
 
             var source = new[] { "data-optimized-src", "src", "data-original-src" }
-                .Select(attribute => image.GetAttributeValue(attribute, string.Empty))
-                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+                // Attribute values arrive HTML-encoded, and these paths contain the characters that
+                // get encoded: one category here is "linguistic & culture". Left as "&amp;" the URL
+                // names a path that does not exist, and every picture under it 404s — for the
+                // embedding provider and for Discord alike.
+                .Select(attribute => HtmlEntity.DeEntitize(image.GetAttributeValue(attribute, string.Empty)))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                // Site-relative in the markup; the provider fetches these itself, so it has to be
+                // absolute — and escaped, because the same category puts spaces in the path and
+                // ToString() would hand out the display form of the URL rather than a fetchable one.
+                .Select(value => new Uri(BaseUri, value).AbsoluteUri)
+                .FirstOrDefault(ImageFormats.CanEmbed);
 
             if (source is not null)
             {
-                // Site-relative in the markup; the provider fetches these itself, so it has to be absolute.
-                return new Uri(BaseUri, source).ToString();
+                return source;
             }
         }
 

@@ -3,11 +3,33 @@ using System.Net;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
+using Polly.Telemetry;
 
 namespace GeoClubBot;
 
 internal static class ResiliencePipelines
 {
+    /// <summary>
+    /// Keeps events the pipeline handled itself out of the operator's alert channel.
+    ///
+    /// Polly reports a timeout at Error and a retry at Warning, and the Discord sink forwards
+    /// everything from Warning up — so every slow provider call that was then retried successfully
+    /// arrived as a failure someone had to look at, alongside the one line the caller writes when a
+    /// call really does fail. Lowered rather than suppressed: the events still reach the telemetry
+    /// stream, where flakiness is worth seeing.
+    ///
+    /// Only the events that describe an attempt the pipeline went on to handle are lowered. A circuit
+    /// opening or a request the limiter turned away is left where it is: neither was handled, and both
+    /// mean something the operator has to know.
+    /// </summary>
+    public static IServiceCollection AddResilienceTelemetryDefaults(this IServiceCollection services) =>
+        services.Configure<TelemetryOptions>(options =>
+            options.SeverityProvider = arguments => arguments.Event.EventName switch
+            {
+                "OnTimeout" or "OnRetry" or "ExecutionAttempt" => ResilienceEventSeverity.Information,
+                _ => arguments.Event.Severity
+            });
+
     public static void AddGeoGuessrApiResiliencePipeline(ResiliencePipelineBuilder<HttpResponseMessage> builder)
     {
         // Configure a token bucket rate limiter that WAITS, not throws
@@ -50,7 +72,14 @@ internal static class ResiliencePipelines
     /// Deliberately slow. These are other people's sites being read in bulk by an unattended job, so
     /// the limiter is set for politeness rather than throughput; a nightly run has all night.
     /// </summary>
-    public static void AddContentSourceResiliencePipeline(ResiliencePipelineBuilder<HttpResponseMessage> builder)
+    /// <param name="attemptTimeout">
+    /// Bounds one attempt, innermost, so it measures the fetch rather than the time spent queueing for
+    /// a token or backing off from an earlier try. The whole call is bounded by the HttpClient's own
+    /// timeout, which must therefore be the larger of the two.
+    /// </param>
+    public static void AddContentSourceResiliencePipeline(
+        ResiliencePipelineBuilder<HttpResponseMessage> builder,
+        TimeSpan attemptTimeout)
     {
         var rateLimiter = new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
         {
@@ -80,7 +109,8 @@ internal static class ResiliencePipelines
         builder
             .AddRateLimiter(rateLimiter)
             .AddRetry(retryStrategy)
-            .AddCircuitBreaker(circuitBreakerStrategy);
+            .AddCircuitBreaker(circuitBreakerStrategy)
+            .AddTimeout(attemptTimeout);
     }
 
     /// <summary>

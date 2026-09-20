@@ -171,6 +171,59 @@ public sealed class RmrgSourceExtractorTests
     }
 
     [Fact]
+    public async Task Extract_KeepsAClueWhosePictureIsAVector_WithoutThePicture()
+    {
+        // Not every item here is a photograph: symbols and flags are drawn, and the site serves those
+        // as .svgz from every attribute rather than only as an overlay. The AI provider answers 415 for
+        // them and fails the whole request they were batched into, so the prose is indexed on its own.
+        const string html = """
+            <html><body>
+              <h2 class="country-title">Indonesia</h2>
+              <div class="category-section"><h3 class="category-title">Culture &amp; Language</h3>
+                <div class="meta-item" id="culture-language/religion/hinduism-2">
+                  <div class="meta-image-wrapper"><img class="meta-image" src="/guides/indonesia/vectors/religion/hinduism-2.svg?v=8" data-optimized-src="/guides/indonesia/vectors-optimized/religion/hinduism-2.svgz?v=8" /></div>
+                  <div class="meta-content"><div class="meta-description">Balinese Hindu shrines are common in the east.</div></div>
+                </div>
+              </div>
+            </body></html>
+            """;
+
+        var result = await CreateExtractor(html).ExtractAsync(
+            new SourceDescriptor("rmrg", "indonesia", new Uri("https://rmrg.me/indonesia/")));
+
+        var clue = result.Value.Chunks.Should().ContainSingle().Subject;
+        clue.Text.Should().Be("Balinese Hindu shrines are common in the east.");
+        clue.ImageUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Extract_DecodesImagePaths_SoACategoryWithAnAmpersandIsNotA404()
+    {
+        // Measured against the live site: the Greek guide files four of its pictures under a
+        // "linguistic & culture" category, and the attribute carries that as "&amp;". Sent on
+        // unchanged it names a path the host does not have, so every image under it came back 404 —
+        // for the embedding provider and for Discord alike. The space has to survive as %20 too,
+        // which is why the escaped form of the URL is what gets stored.
+        const string html = """
+            <html><body>
+              <h2 class="country-title">Greece</h2>
+              <div class="category-section"><h3 class="category-title">Linguistic &amp; Culture</h3>
+                <div class="meta-item" id="linguistic-culture/cultural/macedonian-sun">
+                  <div class="meta-image-wrapper"><img class="meta-image" data-optimized-src="/guides/greece/images-optimized/linguistic &amp; culture/cultural/macedonian-sun.webp?v=9" /></div>
+                  <div class="meta-content"><div class="meta-description">The Vergina Sun appears on shop signs.</div></div>
+                </div>
+              </div>
+            </body></html>
+            """;
+
+        var result = await CreateExtractor(html).ExtractAsync(
+            new SourceDescriptor("rmrg", "greece", new Uri("https://rmrg.me/greece/")));
+
+        result.Value.Chunks.Should().ContainSingle().Which.ImageUrl.Should().Be(
+            "https://rmrg.me/guides/greece/images-optimized/linguistic%20&%20culture/cultural/macedonian-sun.webp?v=9");
+    }
+
+    [Fact]
     public async Task List_ReadsGuideSlugsFromTheSitemap()
     {
         const string sitemap = """

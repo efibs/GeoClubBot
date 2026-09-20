@@ -11,6 +11,9 @@ public static class ClubBotServices
 {
     public static void AddClubBotServices(this IServiceCollection services, IConfiguration configuration)
     {
+        // Applies to every resilience pipeline in the app, wherever it is registered.
+        services.AddResilienceTelemetryDefaults();
+
         services.AddPersistenceModule(configuration);
         services.AddDiscordAdaptersModule();
         services.AddDiscordActivityModule();

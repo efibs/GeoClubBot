@@ -21,13 +21,16 @@ public static class AiServices
     {
         var aiConfig = configuration.GetSection(AiConfiguration.SectionName).Get<AiConfiguration>() ?? new AiConfiguration();
 
+        var ingestionConfig = configuration.GetSection(AiIngestionConfiguration.SectionName)
+            .Get<AiIngestionConfiguration>() ?? new AiIngestionConfiguration();
+
         // Registered even when the feature is off. MediatR's assembly scan picks up every handler in
         // the Application assembly unconditionally, so the container must be able to construct the
         // AI handlers' dependencies or service-descriptor validation fails at start-up. Nothing here
         // performs I/O until it is called, and the listener below is only added when AI is enabled.
         services.AddOpenRouterServices(aiConfig);
         services.AddKnowledgeIndex(configuration, aiConfig);
-        services.AddSourceExtractors();
+        services.AddSourceExtractors(ingestionConfig);
 
         if (!aiConfig.Active)
         {
@@ -93,22 +96,30 @@ public static class AiServices
     /// Extractors that read third-party guide content, plus the registry that picks between them.
     /// Adding a source family is one extractor class and one line here.
     /// </summary>
-    private static void AddSourceExtractors(this IServiceCollection services)
+    private static void AddSourceExtractors(this IServiceCollection services, AiIngestionConfiguration ingestionConfig)
     {
+        // The whole fetch: queueing behind the politeness limiter, the attempts, and the backoff
+        // between them. Each attempt is bounded separately, inside the pipeline — one client timeout
+        // doing both jobs is what abandoned a slow Google Docs export before its first try was over.
+        var overallTimeout = TimeSpan.FromSeconds(
+            Math.Max(ingestionConfig.SourceOverallTimeoutSeconds, ingestionConfig.SourceRequestTimeoutSeconds));
+
+        var attemptTimeout = TimeSpan.FromSeconds(ingestionConfig.SourceRequestTimeoutSeconds);
+
         services.AddHttpClient(PlonkItSourceExtractor.HttpClientName, client =>
             {
                 // Identify ourselves: an unattended reader that says who it is and how to reach the
                 // author is one a site operator can contact rather than simply block.
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(
                     "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
-                client.Timeout = TimeSpan.FromSeconds(30);
+                client.Timeout = overallTimeout;
             })
             // Outside the pipeline, so a guide host that trips the circuit breaker fails one source
             // rather than escaping the extractor and ending the whole run.
             .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "ContentSourceResiliencePipeline",
-                ResiliencePipelines.AddContentSourceResiliencePipeline);
+                builder => ResiliencePipelines.AddContentSourceResiliencePipeline(builder, attemptTimeout));
 
         // Registered against both ports: the same adapter knows how to list the site's pages and how
         // to read one of them.
@@ -140,7 +151,7 @@ public static class AiServices
             {
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(
                     "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
-                client.Timeout = TimeSpan.FromSeconds(30);
+                client.Timeout = overallTimeout;
             })
             // The relay chases redirects itself so it can rewrite the referer at each hop; letting the
             // handler follow them silently is what makes a regional image mirror answer 403.
@@ -148,7 +159,7 @@ public static class AiServices
             .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "ContentSourceResiliencePipeline",
-                ResiliencePipelines.AddContentSourceResiliencePipeline);
+                builder => ResiliencePipelines.AddContentSourceResiliencePipeline(builder, attemptTimeout));
 
         services.AddSingleton<IImageRelay, FileSystemImageRelay>();
     }

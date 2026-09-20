@@ -384,6 +384,93 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
+    public async Task Ingest_DropsOnlyTheImageTheProviderNames_RatherThanHalvingTheBatch()
+    {
+        // The provider names the URL it refused. Halving costs a request per level, and every one of
+        // them comes out of the same daily allowance the guides are being indexed with: dropping what
+        // was named and re-sending the rest settles a batch of four in two requests instead of five.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost(batchSize: 4);
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var index = ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(images => images.Any(image => image.ImageUrl.EndsWith("/c.png", StringComparison.Ordinal))
+                ? Rejected("The embedding provider rejected the request (HTTP 415): URL did not return an "
+                           + "image (received text/error content): https://i.imgur.com/c.png")
+                : EmbedEverything(images)),
+            ImageChunks("a", "b", "c", "d"));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        LastWrite(index).Where(point => point.ImageVector != null).Select(point => point.Chunk.LocalKey)
+            .Should().BeEquivalentTo("a", "b", "d");
+
+        ImageCalls(host).Should().HaveCount(2, "all four, then the three the provider did not name");
+        (await ReadSourceAsync(key))!.ImagesDeferred.Should().BeFalse("the image at fault would be rejected again");
+    }
+
+    [Fact]
+    public async Task Ingest_IgnoresAMessageNamingEveryImage_AndNarrowsAsUsual()
+    {
+        // A message naming every image in the request says the request was refused, not that each
+        // picture is broken. Read as names, it would cost a source all of its images at once.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost(batchSize: 2);
+        ArrangeCatalog(host, Descriptor(NewKey()));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var index = ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(images => images.Count > 1
+                ? Rejected($"too many images: {string.Join(", ", images.Select(image => image.ImageUrl))}")
+                : EmbedEverything(images)),
+            ImageChunks("a", "b"));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        LastWrite(index).Where(point => point.ImageVector != null).Select(point => point.Chunk.LocalKey)
+            .Should().BeEquivalentTo("a", "b");
+    }
+
+    [Fact]
+    public async Task Ingest_IndexesAChunkWithoutItsPicture_WhenTheFormatCannotBeEmbedded()
+    {
+        // A guide's vector illustrations are refused by the provider, and a refusal fails the whole
+        // request they travelled in. Sending them at all cost the images batched alongside them, then
+        // the requests spent narrowing the batch down — every run, since the rejection recurs.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var index = ArrangeExtraction(
+            host,
+            Chunk("a", "Balinese shrines", imageUrl: "https://rmrg.me/guides/id/vectors/hinduism-2.svgz?v=8"),
+            Chunk("b", "A map of area codes.", imageUrl: "https://i.imgur.com/map.png"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Ingested.Should().Be(1);
+
+        var written = LastWrite(index);
+        written.Single(point => point.Chunk.LocalKey == "a").Chunk.ImageUrl
+            .Should().BeNull("a picture nothing downstream can render is not worth citing either");
+        written.Single(point => point.Chunk.LocalKey == "b").ImageVector.Should().NotBeNull();
+
+        ImageCalls(host).SelectMany(images => images).Should().OnlyContain(image => image.ImageUrl.EndsWith(".png"),
+            "the unusable format never reaches the provider");
+
+        (await ReadSourceAsync(key))!.ImagesDeferred.Should().BeFalse("nothing is owed for a later run");
+    }
+
+    [Fact]
     public async Task Ingest_StopsNarrowing_WhenTheProviderRejectsImagesInGeneral()
     {
         // Every image rejected reads as the provider refusing images, not as sixteen broken pictures.

@@ -174,6 +174,49 @@ public sealed class SourceExtractorTests
     }
 
     [Fact]
+    public async Task GoogleDoc_FallsBackToTheTextExport_WhenTheArchiveIsTooLargeToTake()
+    {
+        // Measured on the live library: one guide of a few pages exports 332 MB of embedded images,
+        // against ~10 KB of text. Nothing announces that size beforehand, so the download is abandoned
+        // once it passes the limit — and the text, which is what the model reads, is taken instead.
+        var handler = new FormatHandler(
+            ("zip", HttpStatusCode.OK, new byte[4096]),
+            ("txt", HttpStatusCode.OK, Encoding.UTF8.GetBytes("Tunisian roads\n\nAre numbered oddly.")));
+
+        var extractor = CreateDocExtractor(
+            Factory(handler),
+            Relay(enabled: true),
+            settings: new AiIngestionConfiguration { EmbedImages = true, MaxDocumentExportBytes = 1024 });
+
+        var result = await extractor.ExtractAsync(GoogleDoc());
+
+        handler.RequestedFormats.Should().Equal("zip", "txt");
+        result.IsSuccess.Should().BeTrue();
+
+        // "Tunisian roads" is short and unpunctuated, so the text export's heading heuristic takes it
+        // as the section it labels rather than as content of its own.
+        var chunk = result.Value.Chunks.Should().ContainSingle().Subject;
+        chunk.Text.Should().Be("Are numbered oddly.");
+        chunk.ImageUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GoogleDoc_FallsBackToTheTextExport_WhenGoogleRefusesToBuildTheArchive()
+    {
+        // Google answers 413 for an export it considers too big, after spending most of a minute on
+        // it. Treated as a failure, the document was retried — and warned about — on every run.
+        var handler = new FormatHandler(
+            ("zip", HttpStatusCode.RequestEntityTooLarge, Encoding.UTF8.GetBytes("<html>too big</html>")),
+            ("txt", HttpStatusCode.OK, Encoding.UTF8.GetBytes("Tunisian roads\n\nAre numbered oddly.")));
+
+        var result = await CreateDocExtractor(Factory(handler), Relay(enabled: true)).ExtractAsync(GoogleDoc());
+
+        handler.RequestedFormats.Should().Equal("zip", "txt");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Chunks.Should().ContainSingle().Which.Text.Should().Be("Are numbered oddly.");
+    }
+
+    [Fact]
     public async Task GoogleDoc_ReadsImagesFromTheZipExport_AndCaptionsThemFromTheirParagraph()
     {
         // An image in one of these guides is often the actual answer, and a written question reaches
@@ -273,11 +316,36 @@ public sealed class SourceExtractorTests
     private static GoogleDocSourceExtractor CreateDocExtractor(
         IHttpClientFactory factory,
         IImageRelay? relay = null,
-        bool relayEnabled = false) =>
+        bool relayEnabled = false,
+        AiIngestionConfiguration? settings = null) =>
         new(factory,
             relay ?? Relay(relayEnabled),
-            Options.Create(new AiIngestionConfiguration { EmbedImages = true }),
+            Options.Create(settings ?? new AiIngestionConfiguration { EmbedImages = true }),
             NullLogger<GoogleDocSourceExtractor>.Instance);
+
+    /// <summary>Answers each export format differently, and remembers which were asked for.</summary>
+    private sealed class FormatHandler(params (string Format, HttpStatusCode Status, byte[] Body)[] answers)
+        : HttpMessageHandler
+    {
+        public List<string> RequestedFormats { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var uri = request.RequestUri?.ToString() ?? string.Empty;
+            var format = uri.Contains("format=zip", StringComparison.Ordinal) ? "zip" : "txt";
+            RequestedFormats.Add(format);
+
+            var answer = answers.First(candidate => candidate.Format == format);
+
+            return Task.FromResult(new HttpResponseMessage(answer.Status)
+            {
+                Content = new ByteArrayContent(answer.Body),
+                RequestMessage = request
+            });
+        }
+    }
 
     private static IHttpClientFactory Factory(HttpMessageHandler handler)
     {

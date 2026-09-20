@@ -14,6 +14,33 @@ public class AiIngestionConfiguration
     public int ReingestAfterDays { get; set; } = 14;
 
     /// <summary>
+    /// Largest document export downloaded, in bytes.
+    ///
+    /// A Google Docs export carries the document's images, and a guide of a few pages can carry a
+    /// third of a gigabyte of them — measured, on a library document. Nothing announces that size
+    /// beforehand, so it is read until it is over this and then abandoned; the text export is taken
+    /// instead, which is a few kilobytes and most of what the model reads anyway.
+    /// </summary>
+    public int MaxDocumentExportBytes { get; set; } = 32 * 1024 * 1024;
+
+    /// <summary>
+    /// Longest one fetch of third-party content may take, per attempt. A Google Docs export is by far
+    /// the slowest thing the job asks for: Google spends up to a minute building one before it either
+    /// arrives or is refused, and at 30 seconds every one of those was abandoned mid-build.
+    /// </summary>
+    public int SourceRequestTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>
+    /// Longest a fetch may take in total: queueing behind the politeness limiter, every attempt, and
+    /// the backoff between them.
+    ///
+    /// Enforced by the HttpClient, so it has to exceed the attempts it is meant to contain. At 30
+    /// seconds it was shorter than a single slow export, and a document that would have arrived was
+    /// reported as unreachable — and retried the same way on every run.
+    /// </summary>
+    public int SourceOverallTimeoutSeconds { get; set; } = 300;
+
+    /// <summary>
     /// Share of the daily AI request allowance that indexing may consume, as a percentage.
     ///
     /// Indexing and answering draw on the same daily counter, and the indexing job runs overnight —
