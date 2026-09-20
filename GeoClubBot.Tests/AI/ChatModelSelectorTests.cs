@@ -296,6 +296,26 @@ public sealed class ChatModelSelectorTests
         ExpiryHorizon = TimeSpan.FromHours(48)
     };
 
+    [Fact]
+    public void Rank_NeverOffersASafetyClassifier()
+    {
+        // Given the best context window on the roster it would otherwise win outright. It has to be
+        // an eligibility rule rather than something the failure tracker learns: a classifier returns
+        // a perfectly valid completion, so the request succeeds, nothing is recorded as a failure,
+        // and the model keeps its rank and its turn.
+        var ranked = ChatModelSelector.Rank(
+            [
+                Model("nvidia/nemotron-3.5-content-safety:free", 128_000, isGuardrail: true),
+                Model("good/model", 8_192)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranked.Select(candidate => candidate.Id).Should().Equal("good/model");
+    }
+
     private static ChatModelDescriptor Model(
         string id,
         int contextLength,
@@ -303,7 +323,8 @@ public sealed class ChatModelSelectorTests
         bool supportsTools = false,
         DateTimeOffset? expiresAt = null,
         DateTimeOffset? createdAt = null,
-        bool producesTextOnly = true) =>
+        bool producesTextOnly = true,
+        bool isGuardrail = false) =>
         new(
             id,
             id,
@@ -313,6 +334,7 @@ public sealed class ChatModelSelectorTests
             producesTextOnly,
             supportsTools,
             SupportsStructuredOutputs: false,
+            isGuardrail,
             createdAt ?? Now.AddDays(-60),
             expiresAt);
 }

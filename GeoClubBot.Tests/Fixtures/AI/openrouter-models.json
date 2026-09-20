@@ -3,6 +3,7 @@
     {
       "id": "liquid/lfm-2.5-2.6b:free",
       "name": "LiquidAI: LFM2.5-2.6B (free)",
+      "description": "LiquidAI LFM2.5-2.6B is a small instruction-tuned assistant model for general chat and reasoning.",
       "created": 1786470519,
       "context_length": 128000,
       "architecture": {
@@ -84,6 +85,7 @@
     {
       "id": "nvidia/nemotron-3.5-content-safety:free",
       "name": "NVIDIA: Nemotron 3.5 Content Safety (free)",
+      "description": "NVIDIA Nemotron 3.5 Content Safety is a compact 4B-parameter multimodal guardrail model from NVIDIA, fine-tuned from Google Gemma-3-4B. It moderates both inputs to and responses from LLMs and VLMs.",
       "created": 1780581864,
       "context_length": 128000,
       "architecture": {

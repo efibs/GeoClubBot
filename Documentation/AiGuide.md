@@ -140,6 +140,18 @@ chat model declares `output_modalities: ["text"]` and nothing else, while a gene
 *and* audio or image. The rule is therefore text-only output, not text-among-others —
 `google/lyria-3-pro-preview` advertises `["text", "audio"]` and would slip past a "contains text" check.
 
+**Safety classifiers are the harder case.** A guardrail model like
+`nvidia/nemotron-3.5-content-safety:free` moderates other models' traffic, and answers a question
+with a verdict on it — `User Safety: safe` — instead of a reply. Structurally it is indistinguishable
+from an assistant: text in, text out, free, 128k of context, so it ranks *well*. There is no category
+or flag on the roster to sort it by, and the failure tracker cannot learn it either, because the
+request succeeds and the completion is valid. The only signal the provider gives is its own prose, so
+a model whose description says **guardrail**, **content safety** or **safeguard** is skipped. Measured
+against the full 446-model roster those three terms catch all four classifiers and nothing else; the
+rule is kept narrow on purpose, since a missed guardrail costs one odd answer somebody can thumbs-down
+while a wrongly excluded model is silently never used again. `AI:OpenRouter:BlockedModelIds` is the
+manual override for anything that slips through.
+
 ### Citations
 
 Excerpts are numbered in the prompt, and the model cites them inline as `[1]`. A bare number is
@@ -469,6 +481,10 @@ runs re-embed them.
   around 2 KB; the zip export carrying its images is around 1.5 MB, and a slide deck about 7 MB. The
   heavier export is only fetched when images can actually be served, and the nightly job is paced for
   it — but a full re-index moves hundreds of megabytes rather than a few.
+- **A strange answer may be the model, not the bot.** Free models vary wildly, and one that answers
+  a greeting with something that reads like a system message is usually a classifier or a
+  mis-tuned model rather than a bug. The footer names it, and 👎 records it — check
+  `/ai feedback` for a model with a lopsided split before assuming the pipeline is at fault.
 - **Answer quality varies with whatever is free today.** Auto-selection optimises for availability,
   not quality. Use `PreferredModelPrefixes` to steer it, and the model named in each answer's footer
   to work out what to steer towards.
