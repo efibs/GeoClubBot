@@ -117,8 +117,26 @@ public sealed class SchedulerE2ETests : IAsyncLifetime
         durations.Should().NotBeEmpty("the job listener should have recorded the execution");
     }
 
-    private async Task<IScheduler> GetSchedulerAsync() =>
-        await _factory.Services.GetRequiredService<ISchedulerFactory>().GetScheduler();
+    /// <summary>
+    /// The scheduler, once the hosted service has actually started it. <c>AwaitApplicationStarted</c>
+    /// is on, so that start is queued off the host's "started" notification instead of happening
+    /// inside <c>StartAsync</c> - a client created in the constructor can win the race and find the
+    /// scheduler still in <see cref="SchedulerStatus.Created"/>. Waiting keeps the assertions about
+    /// what the hosted service does rather than how promptly the thread pool gets to it; a scheduler
+    /// that never starts still fails the test, it just takes the timeout to say so.
+    /// </summary>
+    private async Task<IScheduler> GetSchedulerAsync()
+    {
+        var scheduler = await _factory.Services.GetRequiredService<ISchedulerFactory>().GetScheduler();
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (scheduler.Status != SchedulerStatus.Running && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(25);
+        }
+
+        return scheduler;
+    }
 
     /// <summary>
     /// Triggers the job and waits for the scheduler to report it finished. Quartz fires jobs on its
