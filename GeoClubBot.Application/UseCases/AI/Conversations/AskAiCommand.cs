@@ -32,6 +32,12 @@ public sealed record AiAnswerSource(int? Marker, string Label, string Url);
 
 /// <param name="ConversationId">Root message id; the caller stores it on both resulting turns.</param>
 /// <param name="IsLongThread">True when the branch is deep enough to suggest starting a fresh one.</param>
+/// <param name="RetrievedSourceUrls">
+/// Every guide offered to the model, best match first — not only the ones it used. Stored rather
+/// than only rendered, because a rated-bad answer has two causes that read identically in the text:
+/// the right guide was never retrieved, or it was retrieved and the model ignored it.
+/// </param>
+/// <param name="CitedSourceUrls">The guides the answer actually pointed at, as shown beneath it.</param>
 public sealed record AiAnswer(
     string Text,
     IReadOnlyList<AiAnswerImage> Images,
@@ -39,7 +45,9 @@ public sealed record AiAnswer(
     string ModelUsed,
     ulong ConversationId,
     int Depth,
-    bool IsLongThread);
+    bool IsLongThread,
+    IReadOnlyList<string> RetrievedSourceUrls,
+    IReadOnlyList<string> CitedSourceUrls);
 
 public sealed partial class AskAiHandler(
     IAiConversationRepository conversations,
@@ -172,7 +180,10 @@ public sealed partial class AskAiHandler(
             completion.Value.ModelUsed,
             ResolveConversationId(context, request),
             depth,
-            depth >= limits.LongThreadDepth);
+            depth >= limits.LongThreadDepth,
+            // Offer order is hit order, so rank position survives without storing the scores.
+            [.. prompt.Excerpts.Select(excerpt => excerpt.SourceUrl).Distinct(StringComparer.Ordinal)],
+            [.. citedSources.Select(excerpt => excerpt.SourceUrl).Distinct(StringComparer.Ordinal)]);
     }
 
     private async Task<bool> IsUserThrottledAsync(

@@ -23,6 +23,7 @@ public sealed partial class AiConversationGateway(
     DiscordBotReadyService botReadyService,
     IServiceScopeFactory scopeFactory,
     IOptions<AiConfiguration> configuration,
+    IOptions<AiFeedbackConfiguration> feedbackConfiguration,
     ILogger<AiConversationGateway> logger) : IHostedService
 {
     /// <summary>
@@ -168,13 +169,44 @@ public sealed partial class AiConversationGateway(
         }
 
         var rendering = AiAnswerFormatter.Render(result.Value);
-        var lastMessageId = await PostAsync(message, rendering).ConfigureAwait(false);
+        var posted = await PostAsync(message, rendering).ConfigureAwait(false);
 
         await mediator.Send(new RecordAiTurnsCommand(
-            message.Id, parentMessageId, lastMessageId, result.Value.ConversationId,
+            message.Id, parentMessageId, posted.LastMessageId, result.Value.ConversationId,
             message.Channel.Id, guildId, message.Author.Id, client.CurrentUser.Id,
-            content, attachments, result.Value.Text, result.Value.ModelUsed, result.Value.Depth))
+            content, attachments, result.Value.Text, result.Value.ModelUsed,
+            result.Value.RetrievedSourceUrls, result.Value.CitedSourceUrls,
+            posted.EarlierMessageIds, result.Value.Depth))
             .ConfigureAwait(false);
+
+        // Strictly after the turn is recorded. Offering the affordance before the answer is
+        // resolvable would let a fast reader rate a message the feedback handler cannot find yet.
+        await OfferFeedbackReactionsAsync(posted.LastMessage).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Puts 👍/👎 on the answer, because nobody rates what they do not know they can rate.
+    ///
+    /// Failures are swallowed: the answer has already been delivered, and a guild that has not
+    /// granted Add Reactions should lose the affordance, not the reply.
+    /// </summary>
+    private async Task OfferFeedbackReactionsAsync(IUserMessage? answer)
+    {
+        var config = feedbackConfiguration.Value;
+        if (answer is null || !config.Enabled || !config.PrefillReactions)
+        {
+            return;
+        }
+
+        try
+        {
+            await answer.AddReactionsAsync(
+                [new Emoji(config.PositiveEmoji), new Emoji(config.NegativeEmoji)]).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            LogFeedbackPromptFailed(logger, answer.Id, exception);
+        }
     }
 
     /// <summary>
@@ -182,10 +214,12 @@ public sealed partial class AiConversationGateway(
     /// continuation chunks as plain channel messages, so a long answer's tail was not a reply and the
     /// message a user would naturally reply to was not the one holding the conversation.
     /// </summary>
-    private static async Task<ulong> PostAsync(SocketUserMessage message, AiAnswerRendering rendering)
+    private static async Task<PostedAnswer> PostAsync(SocketUserMessage message, AiAnswerRendering rendering)
     {
         IUserMessage replyTarget = message;
+        IUserMessage? lastMessage = null;
         var lastMessageId = message.Id;
+        var earlierMessageIds = new List<ulong>();
 
         for (var index = 0; index < rendering.MessageChunks.Count; index++)
         {
@@ -198,12 +232,28 @@ public sealed partial class AiConversationGateway(
                 // Nothing the model writes may ping anyone.
                 allowedMentions: AllowedMentions.None).ConfigureAwait(false);
 
+            if (lastMessage is not null)
+            {
+                earlierMessageIds.Add(lastMessage.Id);
+            }
+
             replyTarget = posted;
+            lastMessage = posted;
             lastMessageId = posted.Id;
         }
 
-        return lastMessageId;
+        return new PostedAnswer(lastMessageId, lastMessage, earlierMessageIds);
     }
+
+    /// <param name="EarlierMessageIds">
+    /// Every chunk but the last. The turn is keyed by the last message — that is what a reply
+    /// attaches to — so these are stored alongside it to keep a reaction on an earlier part of a long
+    /// answer from resolving to nothing.
+    /// </param>
+    private sealed record PostedAnswer(
+        ulong LastMessageId,
+        IUserMessage? LastMessage,
+        IReadOnlyList<ulong> EarlierMessageIds);
 
     /// <summary>Cheap filters applied before any I/O.</summary>
     private bool ShouldConsider(SocketUserMessage message)
@@ -258,4 +308,7 @@ public sealed partial class AiConversationGateway(
 
     [LoggerMessage(LogLevel.Error, "Unhandled failure while answering message {MessageId}.")]
     static partial void LogUnhandled(ILogger logger, ulong messageId, Exception exception);
+
+    [LoggerMessage(LogLevel.Debug, "Could not add the feedback reactions to answer {MessageId}.")]
+    static partial void LogFeedbackPromptFailed(ILogger logger, ulong messageId, Exception exception);
 }

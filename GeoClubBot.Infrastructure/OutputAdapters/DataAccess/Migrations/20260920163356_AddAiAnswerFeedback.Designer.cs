@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 {
     [DbContext(typeof(GeoClubBotDbContext))]
-    partial class GeoClubBotDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260920163356_AddAiAnswerFeedback")]
+    partial class AddAiAnswerFeedback
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -90,14 +93,6 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("numeric(20,0)");
 
-                    b.PrimitiveCollection<decimal[]>("ChunkMessageIds")
-                        .IsRequired()
-                        .HasColumnType("numeric(20,0)[]");
-
-                    b.PrimitiveCollection<List<string>>("CitedSourceUrls")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasMaxLength(8000)
@@ -128,10 +123,6 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.Property<decimal?>("ParentDiscordMessageId")
                         .HasColumnType("numeric(20,0)");
-
-                    b.PrimitiveCollection<List<string>>("RetrievedSourceUrls")
-                        .IsRequired()
-                        .HasColumnType("text[]");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -179,10 +170,6 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.Property<decimal>("AuthorDiscordUserId")
                         .HasColumnType("numeric(20,0)");
 
-                    b.PrimitiveCollection<List<string>>("CitedSourceUrls")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasMaxLength(8000)
@@ -207,10 +194,6 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.Property<int>("Ordinal")
                         .HasColumnType("integer");
-
-                    b.PrimitiveCollection<List<string>>("RetrievedSourceUrls")
-                        .IsRequired()
-                        .HasColumnType("text[]");
 
                     b.Property<string>("Role")
                         .IsRequired()

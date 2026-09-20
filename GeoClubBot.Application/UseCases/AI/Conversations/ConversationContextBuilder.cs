@@ -59,9 +59,7 @@ public static class ConversationContextBuilder
             return ConversationContext.Empty;
         }
 
-        var byMessageId = conversationTurns
-            .GroupBy(turn => turn.DiscordMessageId)
-            .ToDictionary(group => group.Key, group => group.First());
+        var byMessageId = IndexByMessageId(conversationTurns);
 
         if (!byMessageId.TryGetValue(parentMessageId, out var parent))
         {
@@ -82,6 +80,41 @@ public static class ConversationContextBuilder
 
         return new ConversationContext(BuildViews(trimmed, limits.MaxImagesInContext), wasTrimmed, parent.Depth);
     }
+
+    /// <summary>
+    /// The full ancestor path down to <paramref name="leafMessageId"/>, oldest first, with none of
+    /// the context limits applied. Returns an empty list when the leaf is not part of the collection.
+    ///
+    /// Feedback archives the branch exactly as it was rated, so the idle window and the character
+    /// budget — which exist to make history fit a model's context — must not decide what is kept.
+    /// </summary>
+    public static IReadOnlyList<AiConversationTurn> BuildBranch(
+        IReadOnlyCollection<AiConversationTurn> conversationTurns,
+        ulong leafMessageId)
+    {
+        ArgumentNullException.ThrowIfNull(conversationTurns);
+
+        if (conversationTurns.Count == 0)
+        {
+            return [];
+        }
+
+        var byMessageId = IndexByMessageId(conversationTurns);
+
+        return byMessageId.TryGetValue(leafMessageId, out var leaf)
+            ? WalkToRoot(byMessageId, leaf)
+            : [];
+    }
+
+    /// <summary>
+    /// Grouped rather than indexed directly: a duplicate message id would otherwise throw, and a
+    /// malformed row is not a reason to fail a question or refuse feedback.
+    /// </summary>
+    private static Dictionary<ulong, AiConversationTurn> IndexByMessageId(
+        IReadOnlyCollection<AiConversationTurn> conversationTurns) =>
+        conversationTurns
+            .GroupBy(turn => turn.DiscordMessageId)
+            .ToDictionary(group => group.Key, group => group.First());
 
     /// <summary>Collects the ancestor path, oldest first.</summary>
     private static List<AiConversationTurn> WalkToRoot(

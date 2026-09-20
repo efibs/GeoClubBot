@@ -13,6 +13,14 @@ namespace UseCases.UseCases.AI.Conversations;
 /// id of the bot's reply, which does not exist until the reply is sent. Writing both together also
 /// means a failed or unsent answer leaves nothing behind for a later reply to attach to.
 /// </summary>
+/// <param name="BotMessageId">
+/// The last message of the answer. A long answer is posted as a chain of replies and this is the one
+/// a follow-up attaches to, so it is what identifies the turn.
+/// </param>
+/// <param name="EarlierBotMessageIds">
+/// The other messages of a split answer. Recorded so a reaction or a reply on any part of it still
+/// resolves to this turn.
+/// </param>
 public sealed record RecordAiTurnsCommand(
     ulong UserMessageId,
     ulong? ParentMessageId,
@@ -26,6 +34,9 @@ public sealed record RecordAiTurnsCommand(
     IReadOnlyList<string> AttachmentImageUrls,
     string Answer,
     string? ModelUsed,
+    IReadOnlyList<string> RetrievedSourceUrls,
+    IReadOnlyList<string> CitedSourceUrls,
+    IReadOnlyList<ulong> EarlierBotMessageIds,
     int Depth) : ICommand<Result>;
 
 public sealed class RecordAiTurnsHandler(IAiConversationRepository conversations)
@@ -54,6 +65,9 @@ public sealed class RecordAiTurnsHandler(IAiConversationRepository conversations
             request.BotUserId,
             Truncate(request.Answer),
             request.ModelUsed,
+            request.RetrievedSourceUrls,
+            request.CitedSourceUrls,
+            request.EarlierBotMessageIds,
             request.Depth + 1,
             DateTimeOffset.UtcNow));
 

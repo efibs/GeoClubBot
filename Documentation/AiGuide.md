@@ -16,6 +16,8 @@ This document covers what it is, what it costs, how to turn it on, and what it d
   digging into the same answer never see each other's follow-ups.
 - Answers cite the guides they used and attach the guide images they relied on.
 - Each answer's footer names the model that produced it.
+- **Rate an answer** with the 👍 / 👎 the bot puts on it, or right-click it → Apps →
+  **👍 Good AI answer** / **👎 Bad AI answer** to add a comment. See [Feedback](#feedback).
 
 Admin and diagnostic commands are documented in [the command guide](../BotCommandsGuide.md#-feature-ai-assistant).
 
@@ -93,6 +95,11 @@ worth knowing:
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:ImageRelay:PublicBaseUrl` | empty | **Required for images from blocked hosts** — see below |
 | `AI:Conversation:RetentionDays` | 30 | How long stored questions are kept |
+| `AI:Feedback:Enabled` | `true` | Collect 👍/👎 on answers at all |
+| `AI:Feedback:PrefillReactions` | `true` | Whether the bot puts 👍/👎 on its own answers |
+| `AI:Feedback:ConfirmWithReaction` | `true` | Whether a rated answer gets a ✅ |
+| `AI:Feedback:RetentionDays` | 0 (forever) | How long rated conversations are kept |
+| `AI:Feedback:MaxExportRecords` | 2000 | Cap on one `/ai feedback-export` |
 
 `AI:Active` requires a running Qdrant (`docker compose up qdrant`) and PostgreSQL.
 
@@ -231,6 +238,48 @@ chain. Images are capped separately at 2, because an image costs roughly 1800 to
 window that free models keep small.
 
 Stored questions are personal data. Retention is bounded and swept nightly.
+
+### Feedback
+
+Answers can be rated, and **a rated conversation is the only kind that is kept permanently.**
+
+Two ways to rate, both landing in the same place:
+
+- **React 👍 or 👎.** The bot prefills both on its own answer, so the affordance is visible without
+  anyone having to know about it. Anyone in the guild can rate; each person's verdict is stored
+  separately, and reacting the other way corrects your own rather than adding a second.
+- **Right-click the answer → Apps → 👍 Good AI answer / 👎 Bad AI answer.** Same verdict, plus a
+  comment box. Two menu entries rather than one because a message command may take only the message,
+  and modals have no dropdowns — so a single entry would cost an extra click before the comment box.
+
+Once an answer carries a verdict the bot adds ✅ to it. That marks *the answer*, not any one
+reviewer — several people can rate the same one. It exists because a click that silently did nothing,
+on an answer that has already aged out of `AI:Conversation:RetentionDays`, otherwise looks exactly
+like one that worked.
+
+**What gets stored, and when.** Ordinary turns live in `AiConversationTurns` under the retention
+sweep above. The first time someone rates an answer, the branch that produced it — root down to that
+answer — is *copied* into `AiAnswerFeedbacks` and `AiFeedbackTurns`, which the sweep never touches.
+Unrated conversations still disappear on schedule. Removing your reaction deletes the copy again,
+comment included: the conversation was only kept because of the verdict.
+
+The copy is frozen at the moment it was rated. A branch keeps growing afterwards, and those later
+turns are not part of what was judged; changing your mind later reuses the snapshot rather than
+rebuilding it, since a posted message's ancestors never change.
+
+**What the record carries.** The transcript, the model, the verdict and the comment — plus the guides
+that were **offered** to the model for that answer, in rank order, and the ones it actually **cited**.
+That last pair is the reason the archive is worth having: a bad answer where the right guide was never
+retrieved and a bad answer where it was retrieved and ignored read identically in the transcript, and
+they need completely different fixes. The excerpt text itself is not stored.
+
+**Reading it back.** `/ai feedback [days]` shows the counts, a per-model split and recent comments.
+`/ai feedback-export [rating] [days]` returns the archive as a JSONL attachment — one conversation per
+line, ready to hand to whatever is analysing it. Both are admin-only. Note that the export carries
+Discord user ids off the server.
+
+A long answer arrives as several Discord messages, and only the last is the stored turn; a reaction on
+any earlier part resolves to the same answer, so rating the first chunk works as expected.
 
 ### The image relay
 
@@ -425,6 +474,12 @@ runs re-embed them.
   to work out what to steer towards.
 - **Guild channels only.** Direct messages are ignored: they bypass the channel allowlist and are an
   easy way to drain the allowance.
+- **An answer that has aged out cannot be rated.** Feedback archives the conversation, and past
+  `AI:Conversation:RetentionDays` there is nothing left to archive. The reaction is simply ignored.
+- **Clearing reactions does not delete feedback.** Only removing your own 👍/👎 does. A moderator
+  clearing all reactions on a message leaves the stored verdicts in place.
+- **Feedback left through the right-click menu has no reaction to take back.** Removing it means
+  deleting the row.
 
 ---
 

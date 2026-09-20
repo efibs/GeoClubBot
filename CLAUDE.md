@@ -167,7 +167,10 @@ API + Discord (controllers, slash command modules)
   `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy — but are sent
   to the embedder **inline**, so indexing never depends on the provider reaching this host. In the
   OpenRouter resilience pipeline, retry must stay *outside* the rate limiter (every attempt takes a
-  token); `OpenRouterResiliencePipelineTests` pins this. See
+  token); `OpenRouterResiliencePipelineTests` pins this. Answers can be rated (👍/👎 reaction, or a
+  message context menu for a written comment); a rated conversation is **copied** into
+  `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep never touches — that
+  copy is the only permanently stored conversation. See
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 

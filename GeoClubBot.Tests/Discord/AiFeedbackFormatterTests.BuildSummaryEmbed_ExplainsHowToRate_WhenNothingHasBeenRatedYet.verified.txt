@@ -1,0 +1,8 @@
+﻿Title: 🗳️ AI answer feedback
+Description:
+Window: all time
+
+[👍 Good] 0
+[👎 Bad] 0
+[With a comment] 0
+[Nothing rated yet] React 👍 or 👎 on one of my answers, or right-click it → Apps → **👎 Bad AI answer** to add a comment.

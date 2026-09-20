@@ -331,7 +331,8 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
         await host.SendAsync(new RecordAiTurnsCommand(
             userMessageId ?? NewSnowflake(), parentId, botMessageId, answer.ConversationId,
             ChannelId: 5, GuildId: 7, userId, BotUserId: 1,
-            question, [], answer.Text, answer.ModelUsed, answer.Depth));
+            question, [], answer.Text, answer.ModelUsed,
+            answer.RetrievedSourceUrls, answer.CitedSourceUrls, EarlierBotMessageIds: [], answer.Depth));
 
         return botMessageId;
     }

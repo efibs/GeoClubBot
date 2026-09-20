@@ -38,6 +38,10 @@ public static class AiServices
         }
 
         services.AddHostedService<AiConversationGateway>();
+
+        // Verdicts on those answers. Registered inside the same gate, so it disappears with the
+        // feature rather than listening to every reaction in the guild for nothing.
+        services.AddHostedService<AiFeedbackReactionListener>();
     }
 
     /// <summary>
