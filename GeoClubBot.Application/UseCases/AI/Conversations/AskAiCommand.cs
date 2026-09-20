@@ -296,9 +296,14 @@ public sealed partial class AskAiHandler(
     /// <summary>
     /// A continued branch keeps its existing root; a fresh conversation is rooted at the message that
     /// started it.
+    ///
+    /// The root comes from the parent turn rather than from the message being replied to. Those are
+    /// the same thing only on the very first follow-up: past that, using the parent's id re-roots the
+    /// tree at every exchange, so a conversation ends up stored as a chain of two-turn fragments and
+    /// both the replayed history and the archived transcript stop at the last one.
     /// </summary>
     private static ulong ResolveConversationId(ConversationContext context, AskAiCommand request) =>
-        context.IsNewConversation ? request.DiscordMessageId : request.ParentDiscordMessageId!.Value;
+        context.ConversationId ?? request.DiscordMessageId;
 
     [LoggerMessage(LogLevel.Warning,
         "Guide index search failed (text vector: {TextVectorLength}, image vector: {ImageVectorLength}).")]

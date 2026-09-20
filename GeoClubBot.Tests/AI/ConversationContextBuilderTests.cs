@@ -238,6 +238,34 @@ public sealed class ConversationContextBuilderTests
     }
 
     [Fact]
+    public void Build_CarriesTheExistingRoot_NotTheMessageBeingRepliedTo()
+    {
+        // The two coincide only on the first follow-up. Deriving the root from the parent message id
+        // re-roots the tree at every exchange, and a conversation then lives in the database as a
+        // chain of two-turn fragments — which truncates the next reply's history and anything that
+        // later archives the branch.
+        var turns = Chain(4);
+
+        var context = ConversationContextBuilder.Build(turns, ParentOf(turns), Limits(), Now);
+
+        context.ConversationId.Should().Be(100, "every turn of this tree is rooted at message 100");
+        context.ConversationId.Should().NotBe(ParentOf(turns));
+    }
+
+    [Fact]
+    public void Build_ReportsNoRoot_WhenTheReplyStartsAFreshConversation()
+    {
+        // Idle past the window. The caller roots the new conversation at the incoming message, which
+        // it can only do if the context says there is no existing root to keep.
+        var stale = Chain(2);
+
+        var context = ConversationContextBuilder.Build(stale, ParentOf(stale), Limits(maxIdleHours: 0), Now);
+
+        context.IsNewConversation.Should().BeTrue();
+        context.ConversationId.Should().BeNull();
+    }
+
+    [Fact]
     public void BuildBranch_ReturnsTheWholeAncestorPath_IgnoringTheContextLimits()
     {
         // The archive keeps the branch as it was rated. MaxTurns and MaxContextCharacters exist to

@@ -12,12 +12,19 @@ public sealed record ConversationTurnView(
 
 /// <param name="WasTrimmed">True when history was dropped, so the model can be told the thread is partial.</param>
 /// <param name="ParentDepth">Depth of the turn being replied to; the new turn sits one below.</param>
+/// <param name="ConversationId">
+/// The root this branch already belongs to, carried out so the new turns are stored under it.
+/// Null when the reply starts a fresh conversation. Deriving it from the parent message id instead
+/// re-roots the tree at every exchange, which quietly truncates both the replayed history and any
+/// later archive of it.
+/// </param>
 public sealed record ConversationContext(
     IReadOnlyList<ConversationTurnView> Turns,
     bool WasTrimmed,
-    int ParentDepth)
+    int ParentDepth,
+    ulong? ConversationId)
 {
-    public static readonly ConversationContext Empty = new([], false, -1);
+    public static readonly ConversationContext Empty = new([], false, -1, null);
 
     public bool IsNewConversation => Turns.Count == 0;
 }
@@ -78,7 +85,8 @@ public static class ConversationContextBuilder
         var path = WalkToRoot(byMessageId, parent);
         var (trimmed, wasTrimmed) = ApplyLimits(path, limits);
 
-        return new ConversationContext(BuildViews(trimmed, limits.MaxImagesInContext), wasTrimmed, parent.Depth);
+        return new ConversationContext(
+            BuildViews(trimmed, limits.MaxImagesInContext), wasTrimmed, parent.Depth, parent.ConversationId);
     }
 
     /// <summary>
