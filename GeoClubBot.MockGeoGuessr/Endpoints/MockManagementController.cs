@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using GeoClubBot.MockGeoGuessr.DataStore;
 using Microsoft.AspNetCore.Mvc;
 using Quartz;
-using Quartz.Impl.Matchers;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace GeoClubBot.MockGeoGuessr.Endpoints;
@@ -463,8 +462,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             jobs.Add(new
             {
                 Name = key.Name,
-                NextFire = trigger?.GetNextFireTimeUtc()?.ToString("yyyy-MM-dd HH:mm:ss"),
-                LastFire = trigger?.GetPreviousFireTimeUtc()?.ToString("yyyy-MM-dd HH:mm:ss")
+                NextFire = trigger?.NextFireTimeUtc?.ToString("yyyy-MM-dd HH:mm:ss"),
+                LastFire = trigger?.PreviousFireTimeUtc?.ToString("yyyy-MM-dd HH:mm:ss")
             });
         }
 

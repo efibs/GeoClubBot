@@ -17,9 +17,18 @@ namespace GeoClubBot.Tests.Integration.E2E;
 /// (the Discord gateway connection and Quartz cron jobs) are stripped so the host starts cleanly
 /// and only the HTTP surface is exercised.
 /// </summary>
-public sealed class GeoClubBotApiFactory(string connectionString, Guid mainClubId)
+/// <param name="runScheduler">
+/// Keeps the Quartz hosted service alive instead of stripping it, for tests that exercise the
+/// scheduler itself. Every cron schedule is then rewritten to a date that never arrives, so jobs
+/// only run when a test triggers them by hand — a live schedule would otherwise fire real jobs
+/// against GeoGuessr mid-test, on whatever cadence appsettings.json happens to carry.
+/// </param>
+public sealed class GeoClubBotApiFactory(string connectionString, Guid mainClubId, bool runScheduler = false)
     : WebApplicationFactory<Program>
 {
+    /// <summary>1 January 2100 — a valid cron expression whose next fire time is beyond any test run.</summary>
+    private const string NeverFires = "0 0 0 1 1 ? 2100";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -41,6 +50,19 @@ public sealed class GeoClubBotApiFactory(string connectionString, Guid mainClubI
                 ["GeoGuessr:Clubs:0:IsMain"] = "true",
                 ["GeoGuessr:Clubs:0:NcfaToken"] = "test-ncfa-token",
             });
+
+            if (runScheduler)
+            {
+                // The schedules live under a dozen unrelated config sections, so they are found the
+                // way the job scanner finds them — by key — rather than listed here, where a newly
+                // added job would be missed and would start firing for real inside the test host.
+                var schedules = config.Build().AsEnumerable()
+                    .Where(entry => entry.Key.Contains("Schedule", StringComparison.Ordinal)
+                                    && !string.IsNullOrEmpty(entry.Value))
+                    .ToDictionary(entry => entry.Key, _ => (string?)NeverFires);
+
+                config.AddInMemoryCollection(schedules);
+            }
         });
 
         builder.ConfigureTestServices(services =>
@@ -78,12 +100,13 @@ public sealed class GeoClubBotApiFactory(string connectionString, Guid mainClubI
     }
 
     /// <summary>
-    /// True when the hosted-service descriptor originates from one of our GeoClubBot.* assemblies or
-    /// the Quartz scheduler. Handles both <c>AddHostedService&lt;T&gt;()</c> (ImplementationType set)
+    /// True when the hosted-service descriptor originates from one of our GeoClubBot.* assemblies, or
+    /// from the Quartz scheduler unless <c>runScheduler</c> asked to keep it. Handles both
+    /// <c>AddHostedService&lt;T&gt;()</c> (ImplementationType set)
     /// and the factory form <c>AddHostedService(p =&gt; ...)</c> (ImplementationType null — the type is
     /// recovered from the delegate's declaring type, i.e. the compiler-generated closure).
     /// </summary>
-    private static bool IsOwnBackgroundService(ServiceDescriptor descriptor)
+    private bool IsOwnBackgroundService(ServiceDescriptor descriptor)
     {
         var implementationType = descriptor.ImplementationType
                                  ?? descriptor.ImplementationInstance?.GetType()
@@ -94,7 +117,11 @@ public sealed class GeoClubBotApiFactory(string connectionString, Guid mainClubI
             return false;
         }
 
-        return implementationType.Assembly.GetName().Name?.StartsWith("GeoClubBot", StringComparison.Ordinal) == true
-               || implementationType.Namespace?.StartsWith("Quartz", StringComparison.Ordinal) == true;
+        if (implementationType.Namespace?.StartsWith("Quartz", StringComparison.Ordinal) == true)
+        {
+            return !runScheduler;
+        }
+
+        return implementationType.Assembly.GetName().Name?.StartsWith("GeoClubBot", StringComparison.Ordinal) == true;
     }
 }

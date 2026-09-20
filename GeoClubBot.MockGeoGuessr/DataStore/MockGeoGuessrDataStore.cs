@@ -66,7 +66,7 @@ public class MockGeoGuessrDataStore
 
     /// <summary>
     /// Appends an activity. <paramref name="type"/> is GeoGuessr's activity type - 1 daily mission,
-    /// 2 weekly mission, 4 daily challenge / duel win - which is what the bot classifies on now
+    /// 2 weekly mission, 4 daily challenge / duel - which is what the bot classifies on now
     /// that the daily mission and the daily challenge are both worth 20 XP.
     /// </summary>
     public void AddActivity(Guid clubId, string userId, int xpReward, int type)

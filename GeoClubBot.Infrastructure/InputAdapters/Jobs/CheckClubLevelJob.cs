@@ -11,11 +11,11 @@ namespace Infrastructure.InputAdapters.Jobs;
 [ConfiguredCronJob(ConfigKeys.ClubLevelCheckerCronScheduleConfigurationKey)]
 public partial class CheckClubLevelJob(ISender mediator, ILogger<CheckClubLevelJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         try
         {
-            await mediator.Send(new CheckClubLevelCommand(), context.CancellationToken).ConfigureAwait(false);
+            await mediator.Send(new CheckClubLevelCommand(), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

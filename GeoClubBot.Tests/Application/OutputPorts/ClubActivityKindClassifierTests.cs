@@ -9,7 +9,7 @@ namespace GeoClubBot.Tests.Application.OutputPorts;
 
 /// <summary>
 /// The classifier is the one place that knows why a club activity awarded XP. It matters most for
-/// the two 20 XP awards - the daily mission and the daily challenge / duel win - which are
+/// the two 20 XP awards - the daily mission and the daily challenge / duel - which are
 /// indistinguishable by amount and only separable by GeoGuessr's activity type.
 /// </summary>
 public sealed class ClubActivityKindClassifierTests

@@ -11,11 +11,11 @@ namespace Infrastructure.InputAdapters.Jobs;
 [ConfiguredCronJob(ConfigKeys.GeoGuessrClubSyncScheduleConfigurationKey)]
 public partial class SyncClubsJob(ISender mediator, ILogger<SyncClubsJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         try
         {
-            await mediator.Send(new SyncClubsCommand(), context.CancellationToken).ConfigureAwait(false);
+            await mediator.Send(new SyncClubsCommand(), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

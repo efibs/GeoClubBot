@@ -41,7 +41,7 @@ internal static class DailyMissionStatisticsFormatter
             .AppendLine($"**Club:** {stats.ClubName ?? "All clubs"}")
             .AppendLine($"**Days with data:** {stats.DaysWithMissionData.ToString(Invariant)}")
             .AppendLine($"**Avg club completion:** {FormatRate(stats.AverageDayCompletionRate)}")
-            .AppendLine($"**Avg daily challenge / duel win:** {FormatChallengeRate(stats)}");
+            .AppendLine($"**Avg daily challenge / duel:** {FormatChallengeRate(stats)}");
 
         if (stats.Kinds.Count == 0)
         {
@@ -113,7 +113,7 @@ internal static class DailyMissionStatisticsFormatter
     }
 
     /// <summary>
-    /// The daily challenge / duel win only became a club-XP source on 2026-08-25, and the bot only
+    /// The daily challenge / duel only became a club-XP source on 2026-08-25, and the bot only
     /// records it from the day this tracking shipped, so say so rather than implying a 0% history.
     /// </summary>
     private static string FormatChallengeRate(MissionStatistics stats) =>

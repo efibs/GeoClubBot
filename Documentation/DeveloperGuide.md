@@ -42,7 +42,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | Add a **guide source** the AI can read | `GeoClubBot.Infrastructure/OutputAdapters/AI/Extractors/` — see recipe 6 |
 | Change **how the AI answers** | `GeoClubBot.Application/UseCases/AI/Conversations/` (prompt, context, orchestration) |
 | Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` |
-| Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily mission and the daily challenge / duel win are both 20 XP |
+| Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily mission and the daily challenge / duel are both 20 XP |
 | Find out **what the GeoGuessr API actually returns** | `dotnet run --project Tools/GeoClubBot.ApiProbe -- activities` ([README](../Tools/GeoClubBot.ApiProbe/README.md)) — the typed DTOs drop undeclared fields, so don't read them for this |
 
 > The AI feature has its own document: [`AiGuide.md`](AiGuide.md) covers how it works, what it costs
@@ -139,7 +139,9 @@ repositories, so there's nothing to add there.
 1. **Job** → `GeoClubBot.Infrastructure/InputAdapters/Jobs/<Name>Job.cs`:
    `: IJob`, annotate with `[DisallowConcurrentExecution]` and
    `[ConfiguredCronJob(ConfigKeys.<Name>CronScheduleConfigurationKey)]`. Inject
-   `ISender` and delegate to a MediatR command in `Execute(...)`.
+   `ISender` and delegate to a MediatR command in
+   `Execute(IJobExecutionContext context, CancellationToken cancellationToken)`, which returns
+   `ValueTask` since Quartz 4.
 2. **Config key** → add the key constant in `Constants/ConfigKeys.cs` and a cron
    expression under that key in `appsettings*.json`.
 3. *(Auto-wired — `QuartzModule` scans the Jobs assembly.)* Model on

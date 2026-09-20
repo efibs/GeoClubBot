@@ -10,9 +10,10 @@ public class DailyMissionReminderConfiguration
     public required string Schedule { get; set; }
 
     /// <summary>
-    /// Template for the reminder DM. Supports <c>{{outstanding_text}}</c> (what the user still has
-    /// to do today - the daily mission, the daily challenge, or both) and <c>{{mission_text}}</c>
-    /// (today's rendered mission list, empty when the mission is already done).
+    /// Template for the reminder DM. Supports one placeholder, <c>{{outstanding_text}}</c>: what
+    /// the user still has to do today - the daily challenge, the daily mission spelled out as
+    /// today's actual missions, or both. It ends the sentence and may span several lines, so put
+    /// it last. <c>{{mission_text}}</c> is accepted as a legacy alias for the same text.
     /// </summary>
     [Required(AllowEmptyStrings = false)]
     public required string DefaultMessage { get; set; }

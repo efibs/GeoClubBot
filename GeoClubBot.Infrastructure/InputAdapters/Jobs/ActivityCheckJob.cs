@@ -20,10 +20,8 @@ public partial class ActivityCheckJob(
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     ILogger<ActivityCheckJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken ct)
     {
-        var ct = context.CancellationToken;
-
         // Each club gets its own DI scope so the parallel branches don't share a DbContext.
         var perClubResults = await Task.WhenAll(geoGuessrConfig.Value.Clubs.Select(async club =>
         {
