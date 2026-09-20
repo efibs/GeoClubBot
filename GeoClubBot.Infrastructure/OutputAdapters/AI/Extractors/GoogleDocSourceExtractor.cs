@@ -21,6 +21,10 @@ namespace Infrastructure.OutputAdapters.AI.Extractors;
 /// The HTML export is never used — it inlines every image as base64, costing the same bandwidth as
 /// the zip while making the images harder to pull out. Note the size gap is almost entirely images:
 /// the HTML inside the zip is around 10 KB.
+///
+/// That gap also has no upper bound worth trusting. One library document exports 332 MB, and Google
+/// refuses to build an export larger still, answering 413 after the best part of a minute. Either way
+/// the text export is what gets indexed instead — a few kilobytes, and everything the model reads.
 /// </summary>
 public sealed partial class GoogleDocSourceExtractor(
     IHttpClientFactory httpClientFactory,
@@ -42,46 +46,135 @@ public sealed partial class GoogleDocSourceExtractor(
         SourceDescriptor source,
         CancellationToken cancellationToken = default)
     {
+        var settings = ingestionConfiguration.Value;
+
         // Fetching the heavier export is only worth it if the images can actually be served
         // afterwards; without a relay their bytes have nowhere to live.
-        var wantsImages = imageRelay.IsEnabled && ingestionConfiguration.Value.EmbedImages;
+        var wantsImages = imageRelay.IsEnabled && settings.EmbedImages;
 
-        var format = wantsImages ? "zip" : "txt";
+        if (wantsImages)
+        {
+            var archive = await FetchAsync(source, "zip", settings, cancellationToken).ConfigureAwait(false);
+
+            if (archive.IsSuccess)
+            {
+                return Document(
+                    await ReadArchiveAsync(archive.Value, source, cancellationToken).ConfigureAwait(false), source);
+            }
+
+            if (archive.Error.Code != ExportTooLargeCode)
+            {
+                return archive.Error;
+            }
+
+            // The text is most of the value and costs kilobytes, so an export too big to take is
+            // worth falling back on rather than giving up: these are guides of a few pages whose
+            // embedded images happen to be enormous. Measured at 332 MB for one of them, against
+            // around 10 KB of text.
+            LogExportTooLarge(logger, source.NaturalKey);
+        }
+
+        var text = await FetchAsync(source, "txt", settings, cancellationToken).ConfigureAwait(false);
+
+        return text.IsFailure
+            ? text.Error
+            : Document(ParseText(System.Text.Encoding.UTF8.GetString(text.Value), source), source);
+    }
+
+    private static Result<ExtractedDocument> Document(List<ExtractedChunk> chunks, SourceDescriptor source) =>
+        chunks.Count == 0
+            ? Error.Validation("ai.document_empty", "This document has no readable text.")
+            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks);
+
+    /// <summary>
+    /// Downloads one export, refusing to hold more of it than <see cref="AiIngestionConfiguration.MaxDocumentExportBytes"/>.
+    /// </summary>
+    private async Task<Result<byte[]>> FetchAsync(
+        SourceDescriptor source,
+        string format,
+        AiIngestionConfiguration settings,
+        CancellationToken cancellationToken)
+    {
         var endpoint = new Uri($"https://docs.google.com/document/d/{source.NaturalKey}/export?format={format}");
 
-        byte[] payload;
+        // Bounds the download as well as the request. The HttpClient's own timeout stops once the
+        // headers are in, so reading the body — which is where this spends its time — has nothing else
+        // holding it to a limit.
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bounded.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, settings.SourceOverallTimeoutSeconds)));
+
         try
         {
             var client = httpClientFactory.CreateClient(PlonkItSourceExtractor.HttpClientName);
-            using var response = await client.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
+
+            // Headers first, so an oversized export is abandoned while it downloads rather than after.
+            using var response = await client
+                .GetAsync(endpoint, HttpCompletionOption.ResponseHeadersRead, bounded.Token)
+                .ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
                 // A document that is not publicly shared answers 401/403 and will keep doing so, so it
                 // is reported as validation and recorded as skipped rather than retried nightly.
-                return (int)response.StatusCode is 401 or 403 or 404
-                    ? Error.Validation("ai.document_not_public",
-                        $"This document is not publicly readable (HTTP {(int)response.StatusCode}).")
-                    : Error.Unexpected("ai.source_unreachable",
-                        $"Could not fetch the document (HTTP {(int)response.StatusCode}).");
+                return (int)response.StatusCode switch
+                {
+                    401 or 403 or 404 => Error.Validation("ai.document_not_public",
+                        $"This document is not publicly readable (HTTP {(int)response.StatusCode})."),
+
+                    // Google spends the best part of a minute building an export it then refuses.
+                    413 => Error.Validation(ExportTooLargeCode,
+                        "Google refused to export this document (HTTP 413); it is too large."),
+
+                    _ => Error.Unexpected("ai.source_unreachable",
+                        $"Could not fetch the document (HTTP {(int)response.StatusCode}).")
+                };
             }
 
-            payload = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadCappedAsync(response, settings.MaxDocumentExportBytes, bounded.Token)
+                .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             LogFetchFailed(logger, source.NaturalKey, ex);
             return Error.Unexpected("ai.source_unreachable", $"Could not fetch the document {source.NaturalKey}.");
         }
-
-        var chunks = wantsImages
-            ? await ReadArchiveAsync(payload, source, cancellationToken).ConfigureAwait(false)
-            : ParseText(System.Text.Encoding.UTF8.GetString(payload), source);
-
-        return chunks.Count == 0
-            ? Error.Validation("ai.document_empty", "This document has no readable text.")
-            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks);
     }
+
+    /// <summary>
+    /// Reads the body, giving up once it passes <paramref name="maxBytes"/>.
+    ///
+    /// The export arrives chunked, so its size is never announced and a header check would let it
+    /// through: the only way to find out is to read until it is too much. Buffering the lot is what
+    /// this avoids — one guide's export is a third of a gigabyte, in one array, in a container with a
+    /// memory limit.
+    /// </summary>
+    private static async Task<Result<byte[]>> ReadCappedAsync(
+        HttpResponseMessage response,
+        int maxBytes,
+        CancellationToken cancellationToken)
+    {
+        await using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        using var buffer = new MemoryStream();
+        var window = new byte[81920];
+
+        int read;
+        while ((read = await content.ReadAsync(window, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                return Error.Validation(ExportTooLargeCode,
+                    $"This document's export is larger than the {maxBytes} byte limit.");
+            }
+
+            await buffer.WriteAsync(window.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+        }
+
+        return buffer.ToArray();
+    }
+
+    /// <summary>An export too big to take. Distinguished because the text export is still worth asking for.</summary>
+    private const string ExportTooLargeCode = "ai.export_too_large";
 
     /// <summary>
     /// Reads the zip export: the document's HTML plus its images as separate entries, so each image
@@ -186,7 +279,9 @@ public sealed partial class GoogleDocSourceExtractor(
         HtmlNode image,
         CancellationToken cancellationToken)
     {
-        var source = image.GetAttributeValue("src", string.Empty);
+        // Decoded before it is matched: the attribute is HTML-encoded and the entry name it has to
+        // equal is not, so an encoded character would silently drop the image.
+        var source = HtmlEntity.DeEntitize(image.GetAttributeValue("src", string.Empty));
         if (string.IsNullOrWhiteSpace(source))
         {
             return null;
@@ -256,6 +351,10 @@ public sealed partial class GoogleDocSourceExtractor(
         && !paragraph.EndsWith('.')
         && !paragraph.EndsWith(',')
         && !paragraph.EndsWith(':');
+
+    [LoggerMessage(LogLevel.Information,
+        "The export of Google document {DocumentId} is too large to take; indexing its text without images.")]
+    static partial void LogExportTooLarge(ILogger logger, string documentId);
 
     [LoggerMessage(LogLevel.Warning, "Could not fetch the Google document {DocumentId}.")]
     static partial void LogFetchFailed(ILogger logger, string documentId, Exception exception);

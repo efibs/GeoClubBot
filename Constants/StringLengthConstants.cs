@@ -23,6 +23,9 @@ public static class StringLengthConstants
 
     public const int AiModelIdMaxLength = 128;
 
+    /// <summary>Must match AiAnswerFeedback's own clamp; the Domain layer cannot reference this project.</summary>
+    public const int AiFeedbackCommentMaxLength = 1000;
+
     public const int KnowledgeSourceTypeMaxLength = 32;
     public const int KnowledgeSourceNaturalKeyMaxLength = 256;
     public const int KnowledgeSourceUrlMaxLength = 1024;

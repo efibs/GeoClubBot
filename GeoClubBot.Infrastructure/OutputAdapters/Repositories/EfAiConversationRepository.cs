@@ -15,6 +15,19 @@ public class EfAiConversationRepository(GeoClubBotDbContext dbContext) : IAiConv
             .FirstOrDefaultAsync(turn => turn.DiscordMessageId == discordMessageId, cancellationToken)
             .ConfigureAwait(false);
 
+    public async Task<AiConversationTurn?> ReadAssistantTurnByAnyMessageIdAsync(
+        ulong discordMessageId,
+        CancellationToken cancellationToken = default) =>
+        await dbContext.Set<AiConversationTurn>()
+            .AsNoTracking()
+            // Npgsql turns the Contains into `= ANY(...)`, so the alias match stays one query.
+            .FirstOrDefaultAsync(
+                turn => turn.Role == AiTurnRole.Assistant
+                        && (turn.DiscordMessageId == discordMessageId
+                            || turn.ChunkMessageIds.Contains(discordMessageId)),
+                cancellationToken)
+            .ConfigureAwait(false);
+
     public async Task<IReadOnlyList<AiConversationTurn>> ReadConversationAsync(
         ulong conversationId,
         CancellationToken cancellationToken = default) =>

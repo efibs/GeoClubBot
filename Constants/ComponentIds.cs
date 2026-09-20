@@ -15,6 +15,11 @@ public class ComponentIds
     public const string GeoGuessrAccountLinkingCancelButtonId =
         "gg-acc-link-cancel-btn";
 
+    public const string AiFeedbackCommentModalId =
+        "ai-feedback-modal";
+    public const string AiFeedbackCommentTextInputId =
+        "ai-feedback-comment-input";
+
     public const string SelfRolesSelectButtonId =
         "self-roles-select-btn";
     public const string SelfRolesSelectMenuId =

@@ -14,6 +14,13 @@ namespace UseCases.OutputPorts.AI;
 /// output, and are billed per second or per picture rather than per token — so both token prices read
 /// "0" and a free-price filter waves them straight through.
 /// </param>
+/// <param name="IsGuardrail">
+/// Whether the model is a safety classifier rather than an assistant. These moderate other models'
+/// traffic and answer with a verdict — "User Safety: safe" — so one picked to answer a question
+/// replies with that instead of an answer, and nothing about the exchange looks like a failure.
+/// They are indistinguishable from chat models structurally: same text-to-text modality, same free
+/// price, large context windows, so they rank well. Only the provider's own prose gives them away.
+/// </param>
 /// <param name="ExpiresAt">
 /// When the provider has announced a retirement date. Free models frequently carry one, which is the
 /// main reason a hardcoded model id rots.
@@ -27,5 +34,6 @@ public sealed record ChatModelDescriptor(
     bool ProducesTextOnly,
     bool SupportsTools,
     bool SupportsStructuredOutputs,
+    bool IsGuardrail,
     DateTimeOffset? CreatedAt,
     DateTimeOffset? ExpiresAt);

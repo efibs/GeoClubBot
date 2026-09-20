@@ -28,7 +28,7 @@ public sealed class AiPromptBuilderTests
             new ConversationTurnView(AiTurnRole.User, 42, "first question", []),
             new ConversationTurnView(AiTurnRole.Assistant, 1, "an answer", []),
             new ConversationTurnView(AiTurnRole.User, 99, "second question", [])
-        ], WasTrimmed: false, ParentDepth: 2);
+        ], WasTrimmed: false, ParentDepth: 2, ConversationId: 100);
 
         var (messages, _, _) = AiPromptBuilder.Build(context, "third question", [], []);
 
@@ -41,7 +41,7 @@ public sealed class AiPromptBuilderTests
     [Fact]
     public void Build_TellsTheModel_WhenHistoryWasTrimmed()
     {
-        var context = new ConversationContext([], WasTrimmed: true, ParentDepth: 5);
+        var context = new ConversationContext([], WasTrimmed: true, ParentDepth: 5, ConversationId: 100);
 
         var (messages, _, _) = AiPromptBuilder.Build(context, "question", [], []);
 

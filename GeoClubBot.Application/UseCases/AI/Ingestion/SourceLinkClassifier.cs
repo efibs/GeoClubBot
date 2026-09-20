@@ -31,8 +31,6 @@ public static partial class SourceLinkClassifier
     /// </summary>
     public const string Unsupported = "unsupported";
 
-    private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
-
     public static ClassifiedLink Classify(Uri url)
     {
         ArgumentNullException.ThrowIfNull(url);
@@ -122,9 +120,11 @@ public static partial class SourceLinkClassifier
         };
     }
 
-    private static bool IsDirectImage(Uri url) =>
-        ImageExtensions.Any(extension =>
-            url.AbsolutePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// A known-good raster format, from the one list that decides this. A vector image is catalogued
+    /// as unsupported rather than as an image source: nothing downstream can embed or show it.
+    /// </summary>
+    private static bool IsDirectImage(Uri url) => ImageFormats.IsSupportedPath(url.AbsolutePath);
 
     [GeneratedRegex(@"^/(?<kind>document|presentation|spreadsheets)/d/(?<id>[A-Za-z0-9_-]+)",
         RegexOptions.CultureInvariant)]

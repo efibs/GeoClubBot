@@ -49,6 +49,27 @@ public class AiConversationTurn : BaseEntity
     /// <summary>Which model answered, on assistant turns. Makes "the bot got worse" diagnosable.</summary>
     public string? ModelId { get; private set; }
 
+    /// <summary>
+    /// Every guide offered to the model for this answer, best match first. Kept because a bad answer
+    /// has two very different causes that look identical in the text: the right guide was never
+    /// retrieved, or it was retrieved and the model ignored it. Rank position stands in for the
+    /// similarity score; the excerpt text itself is deliberately not stored.
+    /// </summary>
+    public List<string> RetrievedSourceUrls { get; private set; } = [];
+
+    /// <summary>
+    /// What the answer actually pointed at. Empty alongside a populated offer list is the uncited
+    /// fallback, where the guides were credited on the model's behalf rather than cited by it.
+    /// </summary>
+    public List<string> CitedSourceUrls { get; private set; } = [];
+
+    /// <summary>
+    /// The earlier messages of an answer that was split across several, on assistant turns. The turn
+    /// itself is keyed by the last message — that is the one a reply attaches to — so without these
+    /// a reaction on the first part of a long answer would resolve to nothing at all.
+    /// </summary>
+    public List<ulong> ChunkMessageIds { get; private set; } = [];
+
     /// <summary>Distance from the root, used to cap runaway threads without re-walking the tree.</summary>
     public int Depth { get; private set; }
 
@@ -75,7 +96,8 @@ public class AiConversationTurn : BaseEntity
         }
 
         return Create(discordMessageId, parentDiscordMessageId, conversationId, channelId, guildId,
-            authorDiscordUserId, AiTurnRole.User, content, urls, modelId: null, depth, createdAtUtc);
+            authorDiscordUserId, AiTurnRole.User, content, urls, modelId: null,
+            retrievedSourceUrls: null, citedSourceUrls: null, chunkMessageIds: null, depth, createdAtUtc);
     }
 
     public static AiConversationTurn CreateAssistantTurn(
@@ -87,10 +109,14 @@ public class AiConversationTurn : BaseEntity
         ulong botUserId,
         string content,
         string? modelId,
+        IEnumerable<string>? retrievedSourceUrls,
+        IEnumerable<string>? citedSourceUrls,
+        IEnumerable<ulong>? chunkMessageIds,
         int depth,
         DateTimeOffset createdAtUtc) =>
         Create(discordMessageId, parentDiscordMessageId, conversationId, channelId, guildId,
-            botUserId, AiTurnRole.Assistant, content, [], modelId, depth, createdAtUtc);
+            botUserId, AiTurnRole.Assistant, content, [], modelId,
+            retrievedSourceUrls, citedSourceUrls, chunkMessageIds, depth, createdAtUtc);
 
     private static AiConversationTurn Create(
         ulong discordMessageId,
@@ -103,6 +129,9 @@ public class AiConversationTurn : BaseEntity
         string content,
         List<string> imageUrls,
         string? modelId,
+        IEnumerable<string>? retrievedSourceUrls,
+        IEnumerable<string>? citedSourceUrls,
+        IEnumerable<ulong>? chunkMessageIds,
         int depth,
         DateTimeOffset createdAtUtc)
     {
@@ -129,6 +158,9 @@ public class AiConversationTurn : BaseEntity
             Content = content,
             ImageUrls = imageUrls,
             ModelId = modelId,
+            RetrievedSourceUrls = retrievedSourceUrls?.ToList() ?? [],
+            CitedSourceUrls = citedSourceUrls?.ToList() ?? [],
+            ChunkMessageIds = chunkMessageIds?.ToList() ?? [],
             Depth = depth,
             CreatedAtUtc = createdAtUtc
         };

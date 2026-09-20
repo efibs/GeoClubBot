@@ -134,6 +134,7 @@ public sealed class ChatModelCatalogTests
             ProducesTextOnly: true,
             SupportsTools: false,
             SupportsStructuredOutputs: false,
+            IsGuardrail: false,
             Start.AddDays(-60),
             ExpiresAt: null);
 

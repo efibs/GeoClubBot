@@ -265,6 +265,54 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
         assistant.ModelId.Should().Be("test/model");
     }
 
+    [Fact]
+    public async Task AskAi_KeepsAWholeThreadUnderOneRoot_AcrossSeveralExchanges()
+    {
+        // Rooting a continuation at the message being replied to holds only for the first follow-up.
+        // Past that it re-roots the tree every exchange, so the conversation is stored as a chain of
+        // two-turn fragments: the third question replays only the second, and anything that later
+        // walks the branch sees only the last pair.
+        using var host = CreateHost();
+        var chat = ArrangeProviders(host, answer: "answer");
+
+        var (rootMessageId, firstBotId, conversationId) = await SeedExchangeAsync(
+            host, "what country is this pole from?", "Looks Ghanaian.");
+
+        conversationId.Should().Be(rootMessageId);
+
+        var secondUserId = NewSnowflake();
+        var second = await host.SendAsync(Ask(secondUserId, firstBotId, "and the wires?", authorId: 55));
+        second.Value.ConversationId.Should().Be(rootMessageId);
+
+        var secondBotId = await RecordAsync(
+            host, second.Value, firstBotId, "and the wires?", userId: 55, secondUserId);
+
+        var third = await host.SendAsync(Ask(NewSnowflake(), secondBotId, "and the bollards?", authorId: 55));
+
+        third.Value.ConversationId.Should().Be(rootMessageId, "every turn of a thread shares its root");
+        // Depth of the incoming question: 0 root, 1 first answer, 2 second question, 3 second answer.
+        third.Value.Depth.Should().Be(4, "depth keeps counting across exchanges even when the root did not");
+
+        var replayed = chat.ReceivedCalls()
+            .Select(call => call.GetArguments()[0])
+            .OfType<AiChatRequest>()
+            .Last()
+            .Messages
+            .Select(message => message.ToPlainText())
+            .ToList();
+
+        replayed.Should().Contain(text => text.Contains("what country is this pole from?"),
+            "the third question must still see the first");
+        replayed.Should().Contain(text => text.Contains("and the wires?"));
+
+        await using var db = fixture.CreateDbContext();
+        var stored = await db.AiConversationTurns
+            .Where(turn => turn.ConversationId == rootMessageId)
+            .CountAsync();
+
+        stored.Should().Be(4, "all four stored turns belong to one conversation");
+    }
+
     private async Task ResetTodaysBudgetAsync()
     {
         await using var db = fixture.CreateDbContext();
@@ -331,7 +379,8 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
         await host.SendAsync(new RecordAiTurnsCommand(
             userMessageId ?? NewSnowflake(), parentId, botMessageId, answer.ConversationId,
             ChannelId: 5, GuildId: 7, userId, BotUserId: 1,
-            question, [], answer.Text, answer.ModelUsed, answer.Depth));
+            question, [], answer.Text, answer.ModelUsed,
+            answer.RetrievedSourceUrls, answer.CitedSourceUrls, EarlierBotMessageIds: [], answer.Depth));
 
         return botMessageId;
     }

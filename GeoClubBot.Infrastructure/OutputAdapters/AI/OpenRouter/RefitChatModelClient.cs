@@ -196,9 +196,30 @@ public partial class RefitChatModelClient(
             outputs.Count == 0 || outputs.All(output => output.Equals("text", StringComparison.OrdinalIgnoreCase)),
             parameters.Contains("tools", StringComparer.OrdinalIgnoreCase),
             parameters.Contains("structured_outputs", StringComparer.OrdinalIgnoreCase),
+            IsGuardrail(model.Description),
             model.Created is { } created ? DateTimeOffset.FromUnixTimeSeconds(created) : null,
             ParseExpiration(model.ExpirationDate));
     }
+
+    /// <summary>
+    /// Terms a provider uses for a safety classifier and, measured against the whole roster, for
+    /// nothing else. Kept deliberately narrow — a rule broad enough to catch every future guardrail
+    /// would also throw away ordinary models whose blurb mentions safety, and the cost of the two
+    /// mistakes is not symmetric: a missed guardrail produces one strange answer that a thumbs-down
+    /// records, while a wrongly excluded model is silently never used again.
+    /// </summary>
+    private static readonly string[] GuardrailTerms = ["guardrail", "content safety", "safeguard"];
+
+    /// <summary>
+    /// A guardrail model is a classifier wearing a chat model's clothes: text in, text out, free,
+    /// long context. Nothing in the structured roster separates it from an assistant — no category,
+    /// no flag — so the provider's own description is the only signal there is. Absent a description
+    /// the model is taken at face value, because a provider that stops sending the field must not
+    /// empty the roster.
+    /// </summary>
+    private static bool IsGuardrail(string? description) =>
+        description is not null
+        && GuardrailTerms.Any(term => description.Contains(term, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The API sends a bare date; treat it as end-of-day UTC so a model is usable all day.</summary>
     private static DateTimeOffset? ParseExpiration(string? value) =>

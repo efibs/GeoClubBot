@@ -12,12 +12,19 @@ public sealed record ConversationTurnView(
 
 /// <param name="WasTrimmed">True when history was dropped, so the model can be told the thread is partial.</param>
 /// <param name="ParentDepth">Depth of the turn being replied to; the new turn sits one below.</param>
+/// <param name="ConversationId">
+/// The root this branch already belongs to, carried out so the new turns are stored under it.
+/// Null when the reply starts a fresh conversation. Deriving it from the parent message id instead
+/// re-roots the tree at every exchange, which quietly truncates both the replayed history and any
+/// later archive of it.
+/// </param>
 public sealed record ConversationContext(
     IReadOnlyList<ConversationTurnView> Turns,
     bool WasTrimmed,
-    int ParentDepth)
+    int ParentDepth,
+    ulong? ConversationId)
 {
-    public static readonly ConversationContext Empty = new([], false, -1);
+    public static readonly ConversationContext Empty = new([], false, -1, null);
 
     public bool IsNewConversation => Turns.Count == 0;
 }
@@ -59,9 +66,7 @@ public static class ConversationContextBuilder
             return ConversationContext.Empty;
         }
 
-        var byMessageId = conversationTurns
-            .GroupBy(turn => turn.DiscordMessageId)
-            .ToDictionary(group => group.Key, group => group.First());
+        var byMessageId = IndexByMessageId(conversationTurns);
 
         if (!byMessageId.TryGetValue(parentMessageId, out var parent))
         {
@@ -80,8 +85,44 @@ public static class ConversationContextBuilder
         var path = WalkToRoot(byMessageId, parent);
         var (trimmed, wasTrimmed) = ApplyLimits(path, limits);
 
-        return new ConversationContext(BuildViews(trimmed, limits.MaxImagesInContext), wasTrimmed, parent.Depth);
+        return new ConversationContext(
+            BuildViews(trimmed, limits.MaxImagesInContext), wasTrimmed, parent.Depth, parent.ConversationId);
     }
+
+    /// <summary>
+    /// The full ancestor path down to <paramref name="leafMessageId"/>, oldest first, with none of
+    /// the context limits applied. Returns an empty list when the leaf is not part of the collection.
+    ///
+    /// Feedback archives the branch exactly as it was rated, so the idle window and the character
+    /// budget — which exist to make history fit a model's context — must not decide what is kept.
+    /// </summary>
+    public static IReadOnlyList<AiConversationTurn> BuildBranch(
+        IReadOnlyCollection<AiConversationTurn> conversationTurns,
+        ulong leafMessageId)
+    {
+        ArgumentNullException.ThrowIfNull(conversationTurns);
+
+        if (conversationTurns.Count == 0)
+        {
+            return [];
+        }
+
+        var byMessageId = IndexByMessageId(conversationTurns);
+
+        return byMessageId.TryGetValue(leafMessageId, out var leaf)
+            ? WalkToRoot(byMessageId, leaf)
+            : [];
+    }
+
+    /// <summary>
+    /// Grouped rather than indexed directly: a duplicate message id would otherwise throw, and a
+    /// malformed row is not a reason to fail a question or refuse feedback.
+    /// </summary>
+    private static Dictionary<ulong, AiConversationTurn> IndexByMessageId(
+        IReadOnlyCollection<AiConversationTurn> conversationTurns) =>
+        conversationTurns
+            .GroupBy(turn => turn.DiscordMessageId)
+            .ToDictionary(group => group.Key, group => group.First());
 
     /// <summary>Collects the ancestor path, oldest first.</summary>
     private static List<AiConversationTurn> WalkToRoot(
