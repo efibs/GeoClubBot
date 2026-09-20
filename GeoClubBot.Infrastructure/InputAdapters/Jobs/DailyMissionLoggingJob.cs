@@ -11,11 +11,11 @@ namespace Infrastructure.InputAdapters.Jobs;
 [ConfiguredCronJob(ConfigKeys.DailyMissionLoggingCronScheduleConfigurationKey)]
 public partial class DailyMissionLoggingJob(ISender mediator, ILogger<DailyMissionLoggingJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         try
         {
-            await mediator.Send(new LogDailyMissionsCommand(), context.CancellationToken).ConfigureAwait(false);
+            await mediator.Send(new LogDailyMissionsCommand(), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

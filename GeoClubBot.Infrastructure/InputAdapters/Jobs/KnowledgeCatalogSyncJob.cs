@@ -20,7 +20,7 @@ public partial class KnowledgeCatalogSyncJob(
     IOptions<AiConfiguration> configuration,
     ILogger<KnowledgeCatalogSyncJob> logger) : IJob
 {
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         // Quartz discovers every IJob regardless of feature flags; skip the work when AI is off.
         if (!configuration.Value.Active)
@@ -30,7 +30,7 @@ public partial class KnowledgeCatalogSyncJob(
 
         try
         {
-            await mediator.Send(new SyncSourceCatalogsCommand(), context.CancellationToken).ConfigureAwait(false);
+            await mediator.Send(new SyncSourceCatalogsCommand(), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
