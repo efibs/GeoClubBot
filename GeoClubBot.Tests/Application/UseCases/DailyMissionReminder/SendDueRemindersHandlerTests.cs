@@ -44,7 +44,7 @@ public sealed class SendDueRemindersHandlerTests
         Options.Create(new DailyMissionReminderConfiguration
         {
             Schedule = "0 * * * * ?",
-            DefaultMessage = "Don't forget your daily missions!\n\n{{mission_text}}"
+            DefaultMessage = "Don't forget to complete {{outstanding_text}}"
         }),
         _logger);
 
@@ -254,9 +254,9 @@ public sealed class SendDueRemindersHandlerTests
     }
 
     [Fact]
-    public async Task Handle_SubstitutesMissionText_IntoCustomMessage()
+    public async Task Handle_NamesTodaysMissions_InACustomMessage()
     {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Today: {{mission_text}} - go!");
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Today you owe {{outstanding_text}}");
         ArrangeReminderThatWillBeSent(reminder);
 
         ArrangeMissions(
@@ -265,11 +265,13 @@ public sealed class SendDueRemindersHandlerTests
 
         var captured = await CaptureSentMessageAsync();
 
-        captured.Should().Be("Today: Play the Daily Challenge\nWin 5 Team Duels - go!");
+        captured.Should().Be(
+            "Today you owe your daily missions and the daily challenge (or a duel) today:\n"
+            + "- Play the Daily Challenge\n- Win 5 Team Duels");
     }
 
     [Fact]
-    public async Task Handle_SubstitutesMissionText_IntoDefaultMessage()
+    public async Task Handle_NamesTodaysMissions_InTheDefaultMessage()
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
         ArrangeReminderThatWillBeSent(reminder);
@@ -278,20 +280,69 @@ public sealed class SendDueRemindersHandlerTests
 
         var captured = await CaptureSentMessageAsync();
 
-        captured.Should().Be("Don't forget your daily missions!\n\nPlay the Daily Challenge");
+        captured.Should().Be(
+            "Don't forget to complete your daily mission and the daily challenge (or a duel) "
+            + "today:\n- Play the Daily Challenge");
     }
 
     [Fact]
-    public async Task Handle_TrimsMissionPlaceholder_WhenNoMissionsStored()
+    public async Task Handle_SubstitutesTheLegacyMissionTextPlaceholder_InReminderStoredBeforeTheCollapse()
+    {
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Today you owe {{mission_text}}");
+        ArrangeReminderThatWillBeSent(reminder);
+
+        ArrangeMissions(("PlayGames", "Play the Daily Challenge"));
+
+        var captured = await CaptureSentMessageAsync();
+
+        captured.Should().Be(
+            "Today you owe your daily mission and the daily challenge (or a duel) today:\n"
+            + "- Play the Daily Challenge");
+    }
+
+    [Fact]
+    public async Task Handle_DropsTodaysMissions_WhenTheDailyMissionIsAlreadyDone()
+    {
+        // There is one daily mission a day even when the API lists several, so the daily-mission XP
+        // means it is behind them: only the challenge is named, and no mission is listed.
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
+        _reminders.ReadDueRemindersForUpdateAsync(
+                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns([reminder]);
+
+        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
+        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
+            Arg.Any<CancellationToken>()).Returns(linkedUser);
+
+        var member = new ClubMemberBuilder()
+            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
+        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
+
+        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(new List<ReadClubActivitiesItemDto> { ClubActivities.Mission("user-1") });
+
+        ArrangeMissions(
+            ("PlayGames", "Play the Daily Challenge"),
+            ("WinGames", "Win 5 Team Duels"));
+
+        var captured = await CaptureSentMessageAsync();
+
+        captured.Should().Be("Don't forget to complete the daily challenge (or a duel) today!");
+        await _dailyMissions.DidNotReceive().ReadLatestFetchedMissionsAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_StaysGeneric_WhenNoMissionsStored()
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
         ArrangeReminderThatWillBeSent(reminder);
 
-        // Repository default already returns no missions, so the placeholder renders to empty
-        // and the trailing whitespace from the default message must be trimmed away.
+        // Repository default already returns no missions, so there is nothing concrete to name and
+        // the reminder falls back to the plain phrase rather than an empty bullet list.
         var captured = await CaptureSentMessageAsync();
 
-        captured.Should().Be("Don't forget your daily missions!");
+        captured.Should().Be(
+            "Don't forget to complete your daily mission and the daily challenge (or a duel) today!");
     }
 
     [Fact]

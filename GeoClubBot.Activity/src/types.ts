@@ -70,7 +70,7 @@ export interface MeDto {
 export interface DayMissionDto {
   date: string; // ISO date (yyyy-MM-dd)
   missionCompleted: boolean;
-  // Playing the daily challenge or winning a duel — the second 20 XP award of the day.
+  // Playing the daily challenge or a duel — the second 20 XP award of the day.
   challengeCompleted: boolean;
 }
 
@@ -120,7 +120,7 @@ export interface MissionStatsDto {
   totalMissionAppearances: number;
   averageDayCompletionRate: number | null;
   kinds: MissionKindStatsDto[];
-  // Share of members playing the daily challenge / winning a duel. Null before the bot tracked it.
+  // Share of members playing the daily challenge / a duel. Null before the bot tracked it.
   averageDayChallengeRate: number | null;
   daysWithChallengeData: number;
   challengeTrackedFrom: string | null;

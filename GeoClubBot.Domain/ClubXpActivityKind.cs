@@ -27,7 +27,7 @@ public enum ClubXpActivityKind
     ClubChallengePlayed = 3,
 
     /// <summary>
-    /// Feed type 4 — the daily challenge was played or a duel was won. 20 XP, at most once per
+    /// Feed type 4 — the daily challenge or a duel was played. 20 XP, at most once per
     /// day. GeoGuessr does not separate the two, and for the bot's purposes they are one thing:
     /// the second way to earn the day's club XP.
     /// </summary>

@@ -14,7 +14,7 @@ public class DailyMissionMemberCompletion : BaseEntity
     public int CompletedCount { get; private set; }
 
     /// <summary>
-    /// Daily challenges played / duels won that day - the second way to earn the day's club XP,
+    /// Daily challenges or duels played that day - the second way to earn the day's club XP,
     /// which GeoGuessr introduced on 2026-08-25.
     ///
     /// Nullable because rows written before the bot tracked it carry no information either way:

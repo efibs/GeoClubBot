@@ -53,8 +53,8 @@ Starts the linking process for your account.
 ## ⏰ Feature: Daily Reminder
 Reminds you (via DM) every day to earn your club XP, at times you choose. There are **two** ways to
 earn it and each is worth 20 XP, so a reminder only stops once you've done **both**: completing the
-**daily mission**, and playing the **daily challenge** or winning a **duel**. The message names
-whichever one you still owe. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. By default a reminder also lists **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels"), so you know exactly what to do — that list is dropped once the mission itself is done and only the daily challenge is left. If the bot happens to be offline right when a reminder is due (for example during an update), it catches up as soon as it's back online: you'll get the missed reminder shortly after the bot starts — at most one catch-up message, even if the bot was down for a long time or you missed several reminder times that day.
+**daily mission**, and playing the **daily challenge** or a **duel**. The message names
+whichever one you still owe, and when the mission is one of them it spells out **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels") instead of just saying "your daily mission" — once you've done the mission those are gone from the message and only the daily challenge is named. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. If the bot happens to be offline right when a reminder is due (for example during an update), it catches up as soon as it's back online: you'll get the missed reminder shortly after the bot starts — at most one catch-up message, even if the bot was down for a long time or you missed several reminder times that day.
 
 ### `/daily-reminder add`
 Adds a new reminder (or updates the one already set at that time).
@@ -62,28 +62,33 @@ Adds a new reminder (or updates the one already set at that time).
 **Parameters:**
 - `time` *(required)* — the time you want to be reminded, in 24-hour `HH:mm` format. Example: `09:00`, `21:30`.
 - `timezone` *(optional)* — an IANA timezone ID, e.g. `Europe/Berlin`, `America/New_York`, `Asia/Tokyo`. If you leave it blank, the bot uses **UTC**.
-- `message` *(optional)* — your own reminder message. If you leave it blank, the bot uses its default message, which already includes today's missions.
+- `message` *(optional)* — your own reminder message. If you leave it blank, the bot uses its default message, which already names what you still owe.
 
-**Showing the missions in your own message**
-If you write your own message, you can choose **where** the list of today's missions appears. Just type `{{mission_text}}` (copy it exactly, with the double curly braces) at the spot where you want the missions to show up. When the reminder is sent, the bot replaces `{{mission_text}}` with the real missions for that day.
+**Showing what you still owe in your own message**
+If you write your own message, you can choose **where** that goes. Just type `{{outstanding_text}}` (copy it exactly, with the double curly braces) at the spot where it should appear. When the reminder is sent, the bot replaces `{{outstanding_text}}` with what is actually left for you that day — and with today's missions listed underneath, whenever the daily mission is still one of them.
 
-- ✅ If you include `{{mission_text}}`, the missions appear right there.
-- ⚠️ If you **don't** include `{{mission_text}}` in your custom message, the missions won't be shown — only your text will be sent.
+- ✅ If you include `{{outstanding_text}}`, it appears right there.
+- ⚠️ If you **don't** include `{{outstanding_text}}` in your custom message, only your own text will be sent.
+- 💡 It finishes the sentence and can run over several lines, so it reads best at the **end** of your message.
+- ℹ️ `{{mission_text}}` from older reminders still works — it inserts the same text.
 
 **Example** — you set this custom message:
 
 ```
-Time for GeoGuessr! 🌍
-{{mission_text}}
-Good luck!
+Time for GeoGuessr! 🌍 Don't forget {{outstanding_text}}
 ```
 
 The DM you actually receive looks like this:
 
 ```
-Time for GeoGuessr! 🌍
-Play the Daily Challenge
-Good luck!
+Time for GeoGuessr! 🌍 Don't forget your daily mission and the daily challenge (or a duel) today:
+- Play the Daily Challenge
+```
+
+Once you've completed the mission, the same reminder that evening says:
+
+```
+Time for GeoGuessr! 🌍 Don't forget the daily challenge (or a duel) today!
 ```
 
 ### `/daily-reminder remove`
@@ -121,7 +126,7 @@ Requires your GeoGuessr account to be linked (see `/gg-account link`).
 Check how the club as a whole is performing.
 
 ### `/club-stats todays-xp`
-Shows how much XP a club has earned today, plus how many members earned each of the two daily awards (the daily mission, and the daily challenge or a duel win) — they're counted separately because a member can do one, both, or neither.
+Shows how much XP a club has earned today, plus how many members earned each of the two daily awards (the daily mission, and the daily challenge or a duel) — they're counted separately because a member can do one, both, or neither.
 
 **Parameters:**
 - `clubName` *(optional)* — the name of the club. If left blank, the default club is used.
@@ -135,7 +140,7 @@ Curious which daily missions show up the most, how big they usually are, or how 
 ### `/daily-missions stats`
 Shows an overview table with one row per mission kind (for example "Win Duels" or "Score points in Classic"): how often it appeared, on what share of days, the average target count (e.g. how many duels you have to play), the club's average completion rate on the days it appeared, and when it was last seen.
 
-The summary above the table also reports how often the club played the **daily challenge** (or won a duel) — the club's other daily XP award. That figure only covers days the bot has tracked it; the footer names the first such day.
+The summary above the table also reports how often the club played the **daily challenge** (or a duel) — the club's other daily XP award. That figure only covers days the bot has tracked it; the footer names the first such day.
 
 **Parameters:**
 - `days` *(optional)* — how many days back to include, from `1` to `365`. Defaults to `30`.

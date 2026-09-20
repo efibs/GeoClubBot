@@ -35,7 +35,7 @@ internal static class InactiveMembersFormatter
         var description = new StringBuilder()
             .Append(BuildSection("🎯 Haven't done the daily mission", report.MissionInactive, report.TotalMembers, day))
             .AppendLine()
-            .Append(BuildSection("🌍 Haven't played the daily challenge (or won a duel)", report.ChallengeInactive, report.TotalMembers, day));
+            .Append(BuildSection("🌍 Haven't played the daily challenge (or a duel)", report.ChallengeInactive, report.TotalMembers, day));
 
         return new EmbedBuilder()
             .WithTitle(title)
