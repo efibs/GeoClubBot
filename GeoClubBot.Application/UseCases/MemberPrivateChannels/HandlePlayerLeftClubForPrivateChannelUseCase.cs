@@ -25,14 +25,19 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
                 .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (clubMember is null)
+            if (clubMember?.PrivateTextChannelId is null)
             {
                 return;
             }
 
-            await mediator
-                .Send(new DeleteMemberPrivateChannelCommand(clubMember), cancellationToken)
+            var result = await mediator
+                .Send(new ArchiveMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                LogFailedToArchivePrivateChannel(logger, notification.Nickname, result.Error.Message);
+            }
         }
         catch (Exception e)
         {
@@ -41,9 +46,13 @@ public partial class HandlePlayerLeftClubForPrivateChannelUseCase(
     }
 
     [LoggerMessage(LogLevel.Information,
-        "Detected leave of member '{clubMemberNickname}'. Removing private channel...")]
+        "Detected leave of member '{clubMemberNickname}'. Archiving private channel...")]
     static partial void LogLeaveDetected(ILogger<HandlePlayerLeftClubForPrivateChannelUseCase> logger,
         string clubMemberNickname);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to archive member private channel for member '{clubMemberNickname}': {Error}")]
+    static partial void LogFailedToArchivePrivateChannel(ILogger<HandlePlayerLeftClubForPrivateChannelUseCase> logger,
+        string clubMemberNickname, string error);
 
     [LoggerMessage(LogLevel.Error, "Error while handling HandlePlayerLeftClubForPrivateChannelUseCase")]
     static partial void LogUnhandled(ILogger<HandlePlayerLeftClubForPrivateChannelUseCase> logger, Exception ex);

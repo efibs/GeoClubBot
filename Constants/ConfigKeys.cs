@@ -26,6 +26,8 @@ public static class ConfigKeys
 
     public const string DailyMissionStatisticsSnapshotCronScheduleConfigurationKey = "DailyMissionStatistics:SnapshotSchedule";
 
+    public const string MemberPrivateChannelArchiveCleanupCronScheduleConfigurationKey = "MemberPrivateChannels:ArchiveCleanupSchedule";
+
     public const string AiModelCatalogRefreshCronScheduleConfigurationKey = "AI:ModelCatalogRefreshSchedule";
 
     public const string AiConversationCleanupCronScheduleConfigurationKey = "AI:ConversationCleanupSchedule";

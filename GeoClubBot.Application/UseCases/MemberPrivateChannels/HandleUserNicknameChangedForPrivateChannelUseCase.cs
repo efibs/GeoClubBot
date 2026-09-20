@@ -41,7 +41,7 @@ public partial class HandleUserNicknameChangedForPrivateChannelUseCase(
                 return;
             }
 
-            var textChannelName = $"{clubMember.User.Nickname.ToLowerInvariant()}-private-channel";
+            var textChannelName = MemberPrivateChannelName.For(clubMember.User.Nickname);
 
             var newTextChannel = new TextChannel(clubMember.PrivateTextChannelId.Value)
             {

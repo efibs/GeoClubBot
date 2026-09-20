@@ -16,6 +16,12 @@ public class ClubMember : BaseEntity
 
     public ulong? PrivateTextChannelId { get; private set; }
 
+    /// <summary>
+    /// When the private text channel was moved to the archive category because the member left
+    /// every club. Null while the channel is live, or while there is no channel at all.
+    /// </summary>
+    public DateTimeOffset? PrivateTextChannelArchivedAt { get; private set; }
+
     public List<ClubMemberHistoryEntry> History { get; private set; } = [];
 
     public List<ClubMemberStrike> Strikes { get; private set; } = [];
@@ -67,7 +73,17 @@ public class ClubMember : BaseEntity
         }
     }
 
-    public void SetPrivateTextChannelId(ulong? channelId) => PrivateTextChannelId = channelId;
+    public void SetPrivateTextChannelId(ulong? channelId)
+    {
+        PrivateTextChannelId = channelId;
+
+        // A channel that was just created or just deleted is never still archived.
+        PrivateTextChannelArchivedAt = null;
+    }
+
+    public void ArchivePrivateTextChannel(DateTimeOffset archivedAt) => PrivateTextChannelArchivedAt = archivedAt;
+
+    public void RestorePrivateTextChannel() => PrivateTextChannelArchivedAt = null;
 
     private ClubMember()
     {

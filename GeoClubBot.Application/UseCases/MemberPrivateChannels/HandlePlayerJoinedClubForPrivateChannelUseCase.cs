@@ -21,11 +21,6 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
                 return;
             }
 
-            if (notification.PrivateTextChannelId is not null)
-            {
-                return;
-            }
-
             var clubMember = await clubMembers
                 .ReadClubMemberByUserIdAsync(notification.UserId, cancellationToken)
                 .ConfigureAwait(false);
@@ -35,9 +30,31 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
                 return;
             }
 
-            await mediator
-                .Send(new CreateMemberPrivateChannelCommand(clubMember), cancellationToken)
+            if (clubMember.PrivateTextChannelId is null)
+            {
+                await mediator
+                    .Send(new CreateMemberPrivateChannelCommand(clubMember), cancellationToken)
+                    .ConfigureAwait(false);
+
+                return;
+            }
+
+            if (clubMember.PrivateTextChannelArchivedAt is null)
+            {
+                // Channel is already live — nothing to do.
+                return;
+            }
+
+            // They left and came back (most often a hop to the second club, which the sync sees as a
+            // leave followed by a join): bring the same channel back instead of making a new one.
+            var result = await mediator
+                .Send(new RestoreMemberPrivateChannelCommand(clubMember), cancellationToken)
                 .ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                LogFailedToRestorePrivateChannel(logger, notification.Nickname, result.Error.Message);
+            }
         }
         catch (Exception e)
         {
@@ -45,7 +62,12 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
         }
     }
 
-    [LoggerMessage(LogLevel.Information, "Detected join of member '{clubMemberNickname}'. Creating private channel...")]
+    [LoggerMessage(LogLevel.Warning, "Failed to restore member private channel for member '{clubMemberNickname}': {Error}")]
+    static partial void LogFailedToRestorePrivateChannel(ILogger<HandlePlayerJoinedClubForPrivateChannelUseCase> logger,
+        string clubMemberNickname, string error);
+
+    [LoggerMessage(LogLevel.Information,
+        "Detected join of member '{clubMemberNickname}'. Creating or restoring private channel...")]
     static partial void LogJoinDetected(ILogger<HandlePlayerJoinedClubForPrivateChannelUseCase> logger,
         string clubMemberNickname);
 

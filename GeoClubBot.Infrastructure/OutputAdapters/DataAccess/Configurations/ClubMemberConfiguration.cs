@@ -19,6 +19,7 @@ public class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMember>
         builder.Property(x => x.Xp).IsRequired();
         builder.Property(x => x.JoinedAt).IsRequired();
         builder.Property(x => x.PrivateTextChannelId).IsRequired(false);
+        builder.Property(x => x.PrivateTextChannelArchivedAt).IsRequired(false);
 
         // Bypass private setters so EF hydrates straight into the backing fields.
         builder.UsePropertyAccessMode(PropertyAccessMode.Field);

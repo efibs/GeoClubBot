@@ -11,6 +11,8 @@ public sealed class ClubMemberBuilder
     private int _xp = 1000;
     private DateTimeOffset _joinedAt = DateTimeOffset.UtcNow.AddMonths(-6);
     private readonly List<ClubMemberStrike> _strikes = [];
+    private ulong? _privateTextChannelId;
+    private DateTimeOffset? _privateTextChannelArchivedAt;
 
     public ClubMemberBuilder WithUserId(string userId)
     {
@@ -56,10 +58,26 @@ public sealed class ClubMemberBuilder
         return this;
     }
 
+    public ClubMemberBuilder WithPrivateChannel(ulong channelId, DateTimeOffset? archivedAt = null)
+    {
+        _privateTextChannelId = channelId;
+        _privateTextChannelArchivedAt = archivedAt;
+        return this;
+    }
+
     public ClubMember Build()
     {
         var user = GeoGuessrUser.Create(_userId, _nickname, _discordUserId);
         var member = ClubMember.Create(user, _clubId, _xp, _joinedAt);
+        if (_privateTextChannelId is not null)
+        {
+            member.SetPrivateTextChannelId(_privateTextChannelId.Value);
+
+            if (_privateTextChannelArchivedAt is not null)
+            {
+                member.ArchivePrivateTextChannel(_privateTextChannelArchivedAt.Value);
+            }
+        }
         foreach (var strike in _strikes)
         {
             member.Strikes.Add(strike);
