@@ -141,6 +141,64 @@ public sealed class EfAiConversationRepositoryIntegrationTests(PostgresFixture f
         remaining.Should().ContainSingle().Which.DiscordMessageId.Should().Be(keptId);
     }
 
+    [Fact]
+    public async Task ReadAssistantTurnByAnyMessageId_MatchesAnEarlierChunkOfASplitAnswer()
+    {
+        // A long answer is posted as a chain of messages and only the last one is the stored turn.
+        // Without this lookup a reaction on the first part would resolve to nothing at all.
+        var conversationId = NewSnowflake();
+        var answerId = NewSnowflake();
+        var firstChunkId = NewSnowflake();
+
+        await using (var db = fixture.CreateDbContext())
+        {
+            var repository = new EfAiConversationRepository(db);
+            repository.AddTurn(UserTurn(conversationId, null, conversationId, "q", depth: 0));
+            repository.AddTurn(AiConversationTurn.CreateAssistantTurn(
+                answerId, conversationId, conversationId, channelId: 5, guildId: 7, botUserId: 1,
+                "a long answer", "test/model",
+                retrievedSourceUrls: ["https://plonkit.net/ghana"],
+                citedSourceUrls: [],
+                chunkMessageIds: [firstChunkId], depth: 1, Now));
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var reader = new EfAiConversationRepository(read);
+
+        var viaChunk = await reader.ReadAssistantTurnByAnyMessageIdAsync(firstChunkId);
+        var viaAnswer = await reader.ReadAssistantTurnByAnyMessageIdAsync(answerId);
+
+        viaChunk.Should().NotBeNull();
+        viaChunk!.DiscordMessageId.Should().Be(answerId);
+        viaAnswer!.DiscordMessageId.Should().Be(answerId);
+
+        // The retrieval trace is what makes a rated-bad answer diagnosable, so it has to survive the
+        // round trip through the array columns.
+        viaChunk.RetrievedSourceUrls.Should().Equal("https://plonkit.net/ghana");
+        viaChunk.CitedSourceUrls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReadAssistantTurnByAnyMessageId_IgnoresQuestions()
+    {
+        // You rate an answer, not a question — and a reaction on someone's own message is far more
+        // common than one on the bot's.
+        var conversationId = NewSnowflake();
+
+        await using (var db = fixture.CreateDbContext())
+        {
+            new EfAiConversationRepository(db).AddTurn(
+                UserTurn(conversationId, null, conversationId, "q", depth: 0));
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+
+        (await new EfAiConversationRepository(read).ReadAssistantTurnByAnyMessageIdAsync(conversationId))
+            .Should().BeNull();
+    }
+
     private static AiConversationTurn UserTurn(
         ulong messageId,
         ulong? parentId,
@@ -161,7 +219,8 @@ public sealed class EfAiConversationRepositoryIntegrationTests(PostgresFixture f
         ulong? authorId = null,
         DateTimeOffset? createdAt = null) =>
         AiConversationTurn.CreateAssistantTurn(messageId, parentId, conversationId, channelId: 5, guildId: 7,
-            authorId ?? 1, content, "test/model", depth, createdAt ?? Now);
+            authorId ?? 1, content, "test/model", retrievedSourceUrls: null, citedSourceUrls: null,
+            chunkMessageIds: null, depth, createdAt ?? Now);
 
     /// <summary>A random Discord-shaped id, so tests never collide in the shared container.</summary>
     private static ulong NewSnowflake() => (ulong)Random.Shared.NextInt64(1_000_000_000, long.MaxValue);

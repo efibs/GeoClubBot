@@ -91,6 +91,9 @@ public static class DependencyInjectionExtensions
         services.AddOptions<AiConversationConfiguration>()
             .Bind(config.GetSection(AiConversationConfiguration.SectionName));
 
+        services.AddOptions<AiFeedbackConfiguration>()
+            .Bind(config.GetSection(AiFeedbackConfiguration.SectionName));
+
         services.AddOptions<AiIngestionConfiguration>()
             .Bind(config.GetSection(AiIngestionConfiguration.SectionName));
 

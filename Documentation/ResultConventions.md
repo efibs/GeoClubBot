@@ -48,8 +48,10 @@ Examples in use:
 | `strike.not_found` | `RevokeStrikeCommand`, `UnrevokeStrikeCommand` | `NotFound` |
 | `club_member.not_found` | `CheckGeoGuessrPlayerActivityHandler`, `ReadOrSyncClubMember` | `NotFound` |
 | `daily_mission_reminder.not_found` | `StopDailyMissionReminderCommand` | `NotFound` |
-| `member_private_channel.not_found` | `DeleteMemberPrivateChannelCommand` | `NotFound` |
+| `member_private_channel.not_found` | `DeleteMemberPrivateChannelCommand`, `ArchiveMemberPrivateChannelCommand`, `RestoreMemberPrivateChannelCommand` | `NotFound` |
 | `member_private_channel.delete_failed` | `DeleteMemberPrivateChannelCommand` | `Unexpected` |
+| `member_private_channel.archive_failed` | `ArchiveMemberPrivateChannelCommand` | `Unexpected` |
+| `member_private_channel.restore_failed` | `RestoreMemberPrivateChannelCommand` | `Unexpected` |
 
 Rules:
 

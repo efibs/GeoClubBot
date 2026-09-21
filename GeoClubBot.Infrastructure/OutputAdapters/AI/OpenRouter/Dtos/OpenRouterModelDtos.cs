@@ -21,6 +21,13 @@ public sealed class OpenRouterModelDto
     [JsonPropertyName("name")]
     public string? Name { get; set; }
 
+    /// <summary>
+    /// Prose written by the provider. Read only to recognise guardrail models, which declare exactly
+    /// the same shape as a chat model and can be told apart no other way.
+    /// </summary>
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
     /// <summary>Unix seconds.</summary>
     [JsonPropertyName("created")]
     public long? Created { get; set; }

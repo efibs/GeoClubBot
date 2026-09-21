@@ -18,10 +18,66 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Entities.AiAnswerFeedback", b =>
+                {
+                    b.Property<Guid>("FeedbackId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AnswerDepth")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<decimal>("ConversationId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("GuildId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<decimal>("RatedDiscordMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("Rating")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<decimal>("ReviewerDiscordUserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("FeedbackId");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("Rating");
+
+                    b.HasIndex("RatedDiscordMessageId", "ReviewerDiscordUserId")
+                        .IsUnique();
+
+                    b.ToTable("AiAnswerFeedbacks");
+                });
 
             modelBuilder.Entity("Entities.AiConversationTurn", b =>
                 {
@@ -33,6 +89,14 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.Property<decimal>("ChannelId")
                         .HasColumnType("numeric(20,0)");
+
+                    b.PrimitiveCollection<decimal[]>("ChunkMessageIds")
+                        .IsRequired()
+                        .HasColumnType("numeric(20,0)[]");
+
+                    b.PrimitiveCollection<List<string>>("CitedSourceUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.Property<string>("Content")
                         .IsRequired()
@@ -64,6 +128,10 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.Property<decimal?>("ParentDiscordMessageId")
                         .HasColumnType("numeric(20,0)");
+
+                    b.PrimitiveCollection<List<string>>("RetrievedSourceUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -101,6 +169,60 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.HasKey("DateUtc");
 
                     b.ToTable("AiDailyBudgets");
+                });
+
+            modelBuilder.Entity("Entities.AiFeedbackTurn", b =>
+                {
+                    b.Property<Guid>("FeedbackTurnId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AuthorDiscordUserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.PrimitiveCollection<List<string>>("CitedSourceUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("DiscordMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<Guid>("FeedbackId")
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<string>>("ImageUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
+
+                    b.PrimitiveCollection<List<string>>("RetrievedSourceUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("FeedbackTurnId");
+
+                    b.HasIndex("FeedbackId", "Ordinal")
+                        .IsUnique();
+
+                    b.ToTable("AiFeedbackTurns");
                 });
 
             modelBuilder.Entity("Entities.Club", b =>
@@ -159,6 +281,9 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("JoinedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("PrivateTextChannelArchivedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal?>("PrivateTextChannelId")
@@ -514,6 +639,15 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("KnowledgeSources");
                 });
 
+            modelBuilder.Entity("Entities.AiFeedbackTurn", b =>
+                {
+                    b.HasOne("Entities.AiAnswerFeedback", null)
+                        .WithMany("Turns")
+                        .HasForeignKey("FeedbackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Entities.ClubMember", b =>
                 {
                     b.HasOne("Entities.Club", null)
@@ -569,6 +703,11 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("ClubMember");
+                });
+
+            modelBuilder.Entity("Entities.AiAnswerFeedback", b =>
+                {
+                    b.Navigation("Turns");
                 });
 
             modelBuilder.Entity("Entities.ClubMember", b =>

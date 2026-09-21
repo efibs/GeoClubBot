@@ -124,6 +124,15 @@ public static class ChatModelSelector
             return false;
         }
 
+        // A safety classifier answers with a verdict on the message rather than a reply to it, so a
+        // question routed to one comes back as "User Safety: safe". It is a valid completion, the
+        // request succeeds, no failure is recorded, and the model keeps its rank — which is why this
+        // has to be an eligibility rule rather than something the failure tracker could learn.
+        if (model.IsGuardrail)
+        {
+            return false;
+        }
+
         if (requirements.NeedsImageInput && !model.SupportsImageInput)
         {
             return false;

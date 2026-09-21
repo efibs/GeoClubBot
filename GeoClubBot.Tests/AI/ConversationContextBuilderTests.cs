@@ -237,6 +237,104 @@ public sealed class ConversationContextBuilderTests
             .IsNewConversation.Should().BeTrue();
     }
 
+    [Fact]
+    public void Build_CarriesTheExistingRoot_NotTheMessageBeingRepliedTo()
+    {
+        // The two coincide only on the first follow-up. Deriving the root from the parent message id
+        // re-roots the tree at every exchange, and a conversation then lives in the database as a
+        // chain of two-turn fragments — which truncates the next reply's history and anything that
+        // later archives the branch.
+        var turns = Chain(4);
+
+        var context = ConversationContextBuilder.Build(turns, ParentOf(turns), Limits(), Now);
+
+        context.ConversationId.Should().Be(100, "every turn of this tree is rooted at message 100");
+        context.ConversationId.Should().NotBe(ParentOf(turns));
+    }
+
+    [Fact]
+    public void Build_ReportsNoRoot_WhenTheReplyStartsAFreshConversation()
+    {
+        // Idle past the window. The caller roots the new conversation at the incoming message, which
+        // it can only do if the context says there is no existing root to keep.
+        var stale = Chain(2);
+
+        var context = ConversationContextBuilder.Build(stale, ParentOf(stale), Limits(maxIdleHours: 0), Now);
+
+        context.IsNewConversation.Should().BeTrue();
+        context.ConversationId.Should().BeNull();
+    }
+
+    [Fact]
+    public void BuildBranch_ReturnsTheWholeAncestorPath_IgnoringTheContextLimits()
+    {
+        // The archive keeps the branch as it was rated. MaxTurns and MaxContextCharacters exist to
+        // make history fit a model's context window, which has nothing to do with what is worth
+        // storing, so BuildBranch must not honour them.
+        var turns = Chain(10);
+
+        var branch = ConversationContextBuilder.BuildBranch(turns, ParentOf(turns));
+
+        branch.Should().HaveCount(10);
+        branch.Select(turn => turn.Content).Should().ContainInOrder("turn-0", "turn-1", "turn-9");
+    }
+
+    [Fact]
+    public void BuildBranch_IgnoresTheIdleWindow()
+    {
+        // A verdict can arrive days after the answer. Applying the staleness rule here would refuse
+        // to archive exactly the old, forgotten answers most worth reviewing.
+        var question = User(100, null, 100, UserA, "q", createdAt: Now.AddDays(-30));
+        var answer = Assistant(101, 100, 100, "a", depth: 1, createdAt: Now.AddDays(-30));
+
+        var branch = ConversationContextBuilder.BuildBranch([question, answer], 101);
+
+        branch.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void BuildBranch_ExcludesSiblingBranches()
+    {
+        //   100 userA asks -> 101 bot -> { 102 userA, 104 userB }
+        var turns = new[]
+        {
+            User(100, null, 100, UserA, "root"),
+            Assistant(101, 100, 100, "answer", depth: 1),
+            User(102, 101, 100, UserA, "mine", depth: 2),
+            Assistant(103, 102, 100, "to mine", depth: 3),
+            User(104, 101, 100, UserB, "theirs", depth: 2),
+            Assistant(105, 104, 100, "to theirs", depth: 3)
+        };
+
+        var branch = ConversationContextBuilder.BuildBranch(turns, 103);
+
+        branch.Select(turn => turn.Content).Should().Equal("root", "answer", "mine", "to mine");
+    }
+
+    [Fact]
+    public void BuildBranch_ReturnsEmpty_WhenTheLeafIsUnknown()
+    {
+        ConversationContextBuilder.BuildBranch(Chain(4), leafMessageId: 999).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildBranch_ReturnsEmpty_ForAnEmptyConversation()
+    {
+        ConversationContextBuilder.BuildBranch([], leafMessageId: 100).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildBranch_Terminates_WhenTheStoredTreeHasACycle()
+    {
+        // A malformed parent edge must not hang the walk; the same guard Build relies on.
+        var first = User(100, 101, 100, UserA, "a");
+        var second = Assistant(101, 100, 100, "b", depth: 1);
+
+        var branch = ConversationContextBuilder.BuildBranch([first, second], 101);
+
+        branch.Should().HaveCount(2);
+    }
+
     private static AiConversationConfiguration Limits(
         int maxTurns = 12,
         int maxCharacters = 12_000,
@@ -278,5 +376,6 @@ public sealed class ConversationContextBuilderTests
         int depth = 0,
         DateTimeOffset? createdAt = null) =>
         AiConversationTurn.CreateAssistantTurn(messageId, parentId, conversationId, channelId: 5, guildId: 7,
-            Bot, content, modelId: "test/model", depth, createdAt ?? Now.AddMinutes(-1));
+            Bot, content, modelId: "test/model", retrievedSourceUrls: null, citedSourceUrls: null,
+            chunkMessageIds: null, depth, createdAt ?? Now.AddMinutes(-1));
 }

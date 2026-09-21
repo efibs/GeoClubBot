@@ -195,6 +195,9 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         AiIngestionConfiguration settings,
         CancellationToken cancellationToken)
     {
+        // Dropped before the relay is asked to fetch them, let alone the provider to read them.
+        chunks = DropUnusableImages(chunks);
+
         // Rewritten before anything else uses the URL, so the embedder and the eventual Discord embed
         // both point at the same fetchable image.
         chunks = await RelayImagesAsync(chunks, cancellationToken).ConfigureAwait(false);
@@ -253,6 +256,30 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         await knowledgeIndex.UpsertAsync(points, ingestRun, cancellationToken).ConfigureAwait(false);
 
         return new WriteResult(points.Count, images.Vectors.Count, images.Deferred, images.RateLimited);
+    }
+
+    /// <summary>
+    /// Keeps the text of chunks whose picture is in a format nothing downstream can read.
+    ///
+    /// The chunk stays indexed and searchable; only the image URL goes. Storing it would mean a
+    /// citation pointing at something Discord cannot render, and sending it would fail the whole
+    /// embedding request it travelled in — which is what a guide's vector illustrations did every
+    /// night, costing the images batched alongside them and the requests spent finding the culprit.
+    /// </summary>
+    private IReadOnlyList<ExtractedChunk> DropUnusableImages(IReadOnlyList<ExtractedChunk> chunks)
+    {
+        static bool IsUnusable(ExtractedChunk chunk) =>
+            chunk.ImageUrl is not null && !ImageFormats.CanEmbed(chunk.ImageUrl);
+
+        var dropped = chunks.Count(IsUnusable);
+        if (dropped == 0)
+        {
+            return chunks;
+        }
+
+        LogImagesUnusable(logger, dropped);
+
+        return [.. chunks.Select(chunk => IsUnusable(chunk) ? chunk with { ImageUrl = null } : chunk)];
     }
 
     /// <summary>
@@ -410,12 +437,64 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
         if (group.Count > 1)
         {
+            // The provider names the URL it refused, so usually no narrowing is needed at all: drop
+            // what it named and re-send the rest in one request. Halving costs a request per level,
+            // and every one of them comes out of the same daily allowance the guides are indexed with.
+            var named = ReadNamedImages(group, error.Message);
+            if (named.Count > 0)
+            {
+                foreach (var image in named)
+                {
+                    RejectImage(image, error, state);
+                }
+
+                // Re-entered rather than continued inline, so a rejection that has just been judged
+                // general stops here on the guard at the top instead of spending another request.
+                await EmbedImageGroupAsync([.. group.Except(named)], state, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             var half = group.Count / 2;
             await EmbedImageGroupAsync([.. group.Take(half)], state, cancellationToken).ConfigureAwait(false);
             await EmbedImageGroupAsync([.. group.Skip(half)], state, cancellationToken).ConfigureAwait(false);
             return;
         }
 
+        // Found it, by narrowing or by name.
+        RejectImage(group[0], error, state);
+    }
+
+    /// <summary>
+    /// The images of this group the provider's own message names, and never all of them — a message
+    /// naming every image says the request was refused rather than a picture in it, and dropping the
+    /// lot on that reading would silently cost a source all its images.
+    ///
+    /// Matched without the query string: the message is truncated to keep a failure reason readable,
+    /// and a cache-busting <c>?v=…</c> is the first thing to be cut off.
+    /// </summary>
+    private static IReadOnlyList<ImageInput> ReadNamedImages(IReadOnlyList<ImageInput> group, string message)
+    {
+        var named = group
+            .Where(image => message.Contains(UrlWithoutQuery(image.Url), StringComparison.Ordinal))
+            .ToList();
+
+        return named.Count == group.Count ? [] : named;
+    }
+
+    private static string UrlWithoutQuery(string url)
+    {
+        var query = url.IndexOf('?', StringComparison.Ordinal);
+        return query < 0 ? url : url[..query];
+    }
+
+    /// <summary>
+    /// Records one image as refused for good — indexed without its picture, and not retried, because
+    /// it would be refused the same way. Past a handful in one source it stops counting them
+    /// individually: that reads as the provider refusing images in general, and narrowing that down
+    /// one request at a time would spend the day's allowance learning nothing.
+    /// </summary>
+    private void RejectImage(ImageInput image, Error error, ImageEmbeddingState state)
+    {
         if (++state.IsolatedRejections > MaxIsolatedImageRejections)
         {
             LogImagesRejectedInGeneral(logger, MaxIsolatedImageRejections, error.Message);
@@ -424,8 +503,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             return;
         }
 
-        // Found it. Indexed without its picture, and not retried: it would be rejected the same way.
-        LogImageRejected(logger, group[0].Url, error.Message);
+        LogImageRejected(logger, image.Url, error.Message);
     }
 
     /// <summary>Claims what embedding these inputs will cost, before spending it.</summary>
@@ -603,6 +681,10 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
     [LoggerMessage(LogLevel.Information, "Indexed {SourceType}:{NaturalKey} - {ChunkCount} chunk(s), {ImageCount} image(s).")]
     static partial void LogIngested(ILogger logger, string sourceType, string naturalKey, int chunkCount, int imageCount);
+
+    [LoggerMessage(LogLevel.Information,
+        "Indexed {ImageCount} chunk(s) without their picture: the format is one the AI provider cannot read.")]
+    static partial void LogImagesUnusable(ILogger logger, int imageCount);
 
     [LoggerMessage(LogLevel.Warning, "Could not embed {ImageCount} image(s) this run; they will be retried ({Reason}).")]
     static partial void LogImageGroupFailed(ILogger logger, int imageCount, string reason);

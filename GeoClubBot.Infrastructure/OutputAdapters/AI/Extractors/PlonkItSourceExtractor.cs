@@ -109,11 +109,23 @@ public sealed partial class PlonkItSourceExtractor(
         }
     }
 
-    private static ExtractedDocument Parse(string payload, SourceDescriptor source)
+    private static Result<ExtractedDocument> Parse(string payload, SourceDescriptor source)
     {
         using var document = JsonDocument.Parse(payload);
 
-        var guide = document.RootElement.GetProperty("data").GetProperty("public");
+        // The site embeds a payload on pages that are not guides too: /guide is the index of all of
+        // them, and its "data" is an array rather than the guide object. Reported as validation so it
+        // is recorded as skipped, rather than failing and being retried — with a warning — every
+        // night. Checked by shape rather than caught as an exception, so a genuine guide whose schema
+        // changed upstream is still reported as a failure worth looking at.
+        if (!document.RootElement.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("public", out var guide)
+            || guide.ValueKind != JsonValueKind.Object)
+        {
+            return Error.Validation("ai.not_a_guide_page", "This PlonkIt page carries no guide content.");
+        }
+
         var title = guide.TryGetProperty("title", out var titleElement) ? titleElement.GetString() : source.Title;
 
         DateTimeOffset? updatedAt = guide.TryGetProperty("updatedAt", out var updatedElement)

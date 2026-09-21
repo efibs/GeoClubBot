@@ -114,6 +114,24 @@ public sealed class PlonkItSourceExtractorTests
     }
 
     [Fact]
+    public async Task Extract_ReportsTheGuideIndexAsSkippable_NotAsAParseFailure()
+    {
+        // /guide carries a payload like a guide page does, but its "data" is the array of all 140
+        // guides rather than one guide object. Parsing it threw, which recorded the page as failed —
+        // so it was retried, and warned about, on every nightly run. It is simply not a guide.
+        const string html = """
+            <html><script>window.__d={"success":true,"data":[{"slug":"tunisia"},{"slug":"greece"}]}</script></html>
+            """;
+
+        var result = await CreateExtractor(html).ExtractAsync(
+            new SourceDescriptor("plonkit", "guide", new Uri("https://www.plonkit.net/guide")));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("ai.not_a_guide_page");
+        result.Error.Type.Should().Be(ErrorType.Validation);
+    }
+
+    [Fact]
     public async Task Extract_SurvivesBracesInsideGuideProse()
     {
         // The payload is located by brace-matching, which must respect string state — a brace written

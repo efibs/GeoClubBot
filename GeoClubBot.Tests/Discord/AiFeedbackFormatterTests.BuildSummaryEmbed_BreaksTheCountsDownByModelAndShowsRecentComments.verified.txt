@@ -1,0 +1,11 @@
+﻿Title: 🗳️ AI answer feedback
+Description:
+Window: last 30 day(s)
+
+[👍 Good] 12
+[👎 Bad] 5
+[With a comment] 3
+[By model] `google/gemma-4-31b-it:free` — 👍 3 · 👎 4
+`test/model` — 👍 9 · 👎 1
+[Recent comments] 👎 <t:1789905600:R> — Said Ghana but the bollards are Togolese.
+👍 <t:1789905600:R> — Spot on, and the guide link was the right one.

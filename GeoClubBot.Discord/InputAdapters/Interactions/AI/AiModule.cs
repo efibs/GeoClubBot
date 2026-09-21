@@ -2,11 +2,13 @@ using System.Globalization;
 using System.Text;
 using Discord;
 using Discord.Interactions;
+using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts.AI;
+using UseCases.UseCases.AI.Feedback;
 using UseCases.UseCases.AI.Ingestion;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
@@ -77,6 +79,68 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
 
             await FollowupAsync(FormatHits(result.Value), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to search the guide index.");
+
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("feedback", "Show how people have rated my answers")]
+    public Task FeedbackAsync(
+        [Summary(description: "Days to count over; 0 counts everything")] int days = 30) =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new ReadAiFeedbackSummaryQuery(days), ct).ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            await FollowupAsync(embed: AiFeedbackFormatter.BuildSummaryEmbed(result.Value, days), ephemeral: true)
+                .ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to read the feedback summary.");
+
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("feedback-export", "Download the rated conversations as JSONL")]
+    public Task FeedbackExportAsync(
+        [Summary(description: "Only good or only bad answers")]
+        [Choice("good", "positive")] [Choice("bad", "negative")] string? rating = null,
+        [Summary(description: "Days to export; 0 exports everything")] int days = 90) =>
+        ExecuteAsync(async ct =>
+        {
+            AiFeedbackRating? wanted = rating switch
+            {
+                "positive" => AiFeedbackRating.Positive,
+                "negative" => AiFeedbackRating.Negative,
+                _ => null
+            };
+
+            var result = await Mediator.Send(new ExportAiFeedbackQuery(wanted, days, Limit: null), ct)
+                .ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            if (result.Value.Count == 0)
+            {
+                await FollowupAsync("Nothing has been rated in that window yet.", ephemeral: true)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            // Written to a stream rather than a message: a single archived conversation already
+            // exceeds Discord's 2000-character message limit.
+            using var stream = new MemoryStream(
+                Encoding.UTF8.GetBytes(AiFeedbackFormatter.RenderJsonLines(result.Value)));
+
+            var fileName = $"ai-feedback-{DateOnly.FromDateTime(DateTime.UtcNow):yyyyMMdd}.jsonl";
+
+            await FollowupWithFileAsync(stream, fileName,
+                    text: $"**{result.Value.Count}** rated conversation(s), newest first.",
+                    ephemeral: true)
+                .ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to export the feedback archive.");
 
     [DefaultMemberPermissions(GuildPermission.Administrator)]
     [SlashCommand("sync-sources", "Refresh the catalogue of known guide sources")]

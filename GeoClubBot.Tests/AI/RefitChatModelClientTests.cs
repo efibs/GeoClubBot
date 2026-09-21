@@ -53,6 +53,26 @@ public sealed class RefitChatModelClientTests
     }
 
     [Fact]
+    public async Task ReadFreeModels_FlagsASafetyClassifier()
+    {
+        // nvidia/nemotron-3.5-content-safety:free is a real entry, and the reason this flag exists:
+        // it is free, text-to-text, multimodal and 128k of context, so it ranks well and answers a
+        // question with "User Safety: safe". Nothing in the structured roster separates it from an
+        // assistant — the provider's own description is the only signal there is.
+        var client = CreateClient(await ReadFixtureAsync("openrouter-models.json"));
+
+        var result = await client.ReadFreeModelsAsync();
+
+        var classifier = result.Value.Single(model => model.Id == "nvidia/nemotron-3.5-content-safety:free");
+        classifier.IsGuardrail.Should().BeTrue();
+        classifier.ProducesTextOnly.Should().BeTrue("it really does only emit text, which is the trap");
+
+        result.Value.Where(model => model.Id != "nvidia/nemotron-3.5-content-safety:free")
+            .Should().OnlyContain(model => !model.IsGuardrail,
+                "a described assistant model must not be caught by the same rule");
+    }
+
+    [Fact]
     public async Task ReadFreeModels_MapsTheFieldsTheSelectorDependsOn()
     {
         var client = CreateClient(await ReadFixtureAsync("openrouter-models.json"));

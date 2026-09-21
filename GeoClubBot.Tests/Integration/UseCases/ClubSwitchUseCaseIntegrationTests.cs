@@ -48,6 +48,9 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
             {
                 ["MemberPrivateChannels:CategoryId"] = "42",
                 ["MemberPrivateChannels:Description"] = "Private channel",
+                ["MemberPrivateChannels:ArchiveCategoryId"] = "43",
+                ["MemberPrivateChannels:ArchiveKeepTimeSpan"] = "30.00:00:00",
+                ["MemberPrivateChannels:ArchiveCleanupSchedule"] = "0 0 3 * * ?",
             });
 
     private async Task SeedClubsAsync(params Guid[] clubIds)
@@ -62,7 +65,8 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
 
     /// <summary>Seeds a Discord-linked GeoGuessr user and, optionally, an existing club membership.</summary>
     private async Task<(string userId, string nickname, ulong discordId)> SeedLinkedMemberAsync(
-        Guid? clubId, ulong discordId, ulong? privateChannelId = null, bool withMember = false)
+        Guid? clubId, ulong discordId, ulong? privateChannelId = null, bool withMember = false,
+        DateTimeOffset? privateChannelArchivedAt = null)
     {
         var userId = NewUserId();
         var nickname = NewNickname();
@@ -77,6 +81,11 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
             if (privateChannelId is not null)
             {
                 member.SetPrivateTextChannelId(privateChannelId.Value);
+
+                if (privateChannelArchivedAt is not null)
+                {
+                    member.ArchivePrivateTextChannel(privateChannelArchivedAt.Value);
+                }
             }
             seed.Add(member);
         }
@@ -141,7 +150,7 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task SaveClubMembers_MemberLeavesClub_RemovesRoleAndDeletesPrivateChannel()
+    public async Task SaveClubMembers_MemberLeavesClub_RemovesRoleAndArchivesPrivateChannel()
     {
         var clubA = Guid.NewGuid();
         var clubB = Guid.NewGuid();
@@ -152,7 +161,7 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
 
         using var host = CreateHost(clubA, clubB);
         host.Mock<IDiscordTextChannelAccess>()
-            .DeleteTextChannelAsync(channelId, Arg.Any<CancellationToken>())
+            .UpdateTextChannelAsync(Arg.Any<TextChannel>(), Arg.Any<CancellationToken>())
             .Returns(true);
 
         // A null TargetClubId is exactly what SyncClubs emits for a member no longer in any roster.
@@ -163,7 +172,8 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
         await using var read = fixture.CreateDbContext();
         var member = await new EfClubMemberRepository(read).ReadClubMemberByUserIdAsync(userId);
         member!.ClubId.Should().BeNull();
-        member.PrivateTextChannelId.Should().BeNull("the deleted channel id should be cleared on success");
+        member.PrivateTextChannelId.Should().Be(channelId, "leaving archives the channel rather than deleting it");
+        member.PrivateTextChannelArchivedAt.Should().NotBeNull();
 
         await host.Mock<IDiscordServerRolesAccess>()
             .Received()
@@ -171,7 +181,48 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
                 discordId, Arg.Is<IEnumerable<ulong>>(roles => roles!.Contains(RoleA)), Arg.Any<CancellationToken>());
         await host.Mock<IDiscordTextChannelAccess>()
             .Received()
-            .DeleteTextChannelAsync(channelId, Arg.Any<CancellationToken>());
+            .UpdateTextChannelAsync(
+                Arg.Is<TextChannel>(c => c.Id == channelId && c.CategoryId == 43UL), Arg.Any<CancellationToken>());
+        await host.Mock<IDiscordTextChannelAccess>()
+            .DidNotReceive()
+            .DeleteTextChannelAsync(Arg.Any<ulong>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SaveClubMembers_MemberWithArchivedChannelRejoins_RestoresTheSameChannel()
+    {
+        var clubA = Guid.NewGuid();
+        var clubB = Guid.NewGuid();
+        await SeedClubsAsync(clubA, clubB);
+
+        // The shape a hop to the second club leaves behind: out of every club, channel archived.
+        const ulong channelId = 777UL;
+        var (userId, nickname, _) = await SeedLinkedMemberAsync(clubId: null, discordId: NewDiscordId(),
+            privateChannelId: channelId, privateChannelArchivedAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        using var host = CreateHost(clubA, clubB);
+        host.Mock<IDiscordTextChannelAccess>()
+            .UpdateTextChannelAsync(Arg.Any<TextChannel>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        var snapshot = new ClubMemberSyncSnapshot(userId, nickname, clubB, 100, DateTimeOffset.UtcNow.AddMonths(-3));
+
+        await host.SendAsync(new SaveClubMembersCommand([snapshot]));
+
+        await using var read = fixture.CreateDbContext();
+        var member = await new EfClubMemberRepository(read).ReadClubMemberByUserIdAsync(userId);
+        member!.ClubId.Should().Be(clubB);
+        member.PrivateTextChannelId.Should().Be(channelId);
+        member.PrivateTextChannelArchivedAt.Should().BeNull("rejoining takes the channel out of the archive");
+
+        await host.Mock<IDiscordTextChannelAccess>()
+            .Received()
+            .UpdateTextChannelAsync(
+                Arg.Is<TextChannel>(c => c.Id == channelId && c.CategoryId == 42UL), Arg.Any<CancellationToken>());
+        await host.Mock<IDiscordTextChannelAccess>()
+            .DidNotReceive()
+            .CreatePrivateTextChannelAsync(Arg.Any<ulong>(), Arg.Any<string>(), Arg.Any<string>(),
+                Arg.Any<IEnumerable<ulong>?>(), Arg.Any<IEnumerable<ulong>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

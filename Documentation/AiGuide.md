@@ -16,6 +16,8 @@ This document covers what it is, what it costs, how to turn it on, and what it d
   digging into the same answer never see each other's follow-ups.
 - Answers cite the guides they used and attach the guide images they relied on.
 - Each answer's footer names the model that produced it.
+- **Rate an answer** with the 👍 / 👎 the bot puts on it, or right-click it → Apps →
+  **👍 Good AI answer** / **👎 Bad AI answer** to add a comment. See [Feedback](#feedback).
 
 Admin and diagnostic commands are documented in [the command guide](../BotCommandsGuide.md#-feature-ai-assistant).
 
@@ -88,9 +90,16 @@ worth knowing:
 | `AI:Ingestion:MaxDailyBudgetPercent` | 60 | Share of the allowance indexing may spend |
 | `AI:Ingestion:MaxSourcesPerRun` | 25 | Raise after the $10 top-up — a run stops here whatever the allowance |
 | `AI:Ingestion:MetaLibrarySheetId` | empty | Google Sheets id of a community library to sync |
+| `AI:Ingestion:SourceOverallTimeoutSeconds` | 300 | Lower only if a guide host should be given up on sooner; it bounds a whole fetch, the download included |
+| `AI:Ingestion:MaxDocumentExportBytes` | 32 MB | Past this a Google Docs export is abandoned and the text-only export indexed instead |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:ImageRelay:PublicBaseUrl` | empty | **Required for images from blocked hosts** — see below |
 | `AI:Conversation:RetentionDays` | 30 | How long stored questions are kept |
+| `AI:Feedback:Enabled` | `true` | Collect 👍/👎 on answers at all |
+| `AI:Feedback:PrefillReactions` | `true` | Whether the bot puts 👍/👎 on its own answers |
+| `AI:Feedback:ConfirmWithReaction` | `true` | Whether a rated answer gets a ✅ |
+| `AI:Feedback:RetentionDays` | 0 (forever) | How long rated conversations are kept |
+| `AI:Feedback:MaxExportRecords` | 2000 | Cap on one `/ai feedback-export` |
 
 `AI:Active` requires a running Qdrant (`docker compose up qdrant`) and PostgreSQL.
 
@@ -130,6 +139,18 @@ with context windows of 1M they rank near the top. They are excluded by output m
 chat model declares `output_modalities: ["text"]` and nothing else, while a generator declares text
 *and* audio or image. The rule is therefore text-only output, not text-among-others —
 `google/lyria-3-pro-preview` advertises `["text", "audio"]` and would slip past a "contains text" check.
+
+**Safety classifiers are the harder case.** A guardrail model like
+`nvidia/nemotron-3.5-content-safety:free` moderates other models' traffic, and answers a question
+with a verdict on it — `User Safety: safe` — instead of a reply. Structurally it is indistinguishable
+from an assistant: text in, text out, free, 128k of context, so it ranks *well*. There is no category
+or flag on the roster to sort it by, and the failure tracker cannot learn it either, because the
+request succeeds and the completion is valid. The only signal the provider gives is its own prose, so
+a model whose description says **guardrail**, **content safety** or **safeguard** is skipped. Measured
+against the full 446-model roster those three terms catch all four classifiers and nothing else; the
+rule is kept narrow on purpose, since a missed guardrail costs one odd answer somebody can thumbs-down
+while a wrongly excluded model is silently never used again. `AI:OpenRouter:BlockedModelIds` is the
+manual override for anything that slips through.
 
 ### Citations
 
@@ -229,6 +250,48 @@ chain. Images are capped separately at 2, because an image costs roughly 1800 to
 window that free models keep small.
 
 Stored questions are personal data. Retention is bounded and swept nightly.
+
+### Feedback
+
+Answers can be rated, and **a rated conversation is the only kind that is kept permanently.**
+
+Two ways to rate, both landing in the same place:
+
+- **React 👍 or 👎.** The bot prefills both on its own answer, so the affordance is visible without
+  anyone having to know about it. Anyone in the guild can rate; each person's verdict is stored
+  separately, and reacting the other way corrects your own rather than adding a second.
+- **Right-click the answer → Apps → 👍 Good AI answer / 👎 Bad AI answer.** Same verdict, plus a
+  comment box. Two menu entries rather than one because a message command may take only the message,
+  and modals have no dropdowns — so a single entry would cost an extra click before the comment box.
+
+Once an answer carries a verdict the bot adds ✅ to it. That marks *the answer*, not any one
+reviewer — several people can rate the same one. It exists because a click that silently did nothing,
+on an answer that has already aged out of `AI:Conversation:RetentionDays`, otherwise looks exactly
+like one that worked.
+
+**What gets stored, and when.** Ordinary turns live in `AiConversationTurns` under the retention
+sweep above. The first time someone rates an answer, the branch that produced it — root down to that
+answer — is *copied* into `AiAnswerFeedbacks` and `AiFeedbackTurns`, which the sweep never touches.
+Unrated conversations still disappear on schedule. Removing your reaction deletes the copy again,
+comment included: the conversation was only kept because of the verdict.
+
+The copy is frozen at the moment it was rated. A branch keeps growing afterwards, and those later
+turns are not part of what was judged; changing your mind later reuses the snapshot rather than
+rebuilding it, since a posted message's ancestors never change.
+
+**What the record carries.** The transcript, the model, the verdict and the comment — plus the guides
+that were **offered** to the model for that answer, in rank order, and the ones it actually **cited**.
+That last pair is the reason the archive is worth having: a bad answer where the right guide was never
+retrieved and a bad answer where it was retrieved and ignored read identically in the transcript, and
+they need completely different fixes. The excerpt text itself is not stored.
+
+**Reading it back.** `/ai feedback [days]` shows the counts, a per-model split and recent comments.
+`/ai feedback-export [rating] [days]` returns the archive as a JSONL attachment — one conversation per
+line, ready to hand to whatever is analysing it. Both are admin-only. Note that the export carries
+Discord user ids off the server.
+
+A long answer arrives as several Discord messages, and only the last is the stored turn; a reaction on
+any earlier part resolves to the same answer, so rating the first chunk works as expected.
 
 ### The image relay
 
@@ -331,7 +394,7 @@ After that a nightly job drains the queue on its own.
 | plonkit.net country guides | Full text **and** images. Discovered from the site's own sitemap (~157 pages). |
 | rmrg.me country guides | Full text **and** images. Discovered from the site's own sitemap (12 countries). Fewer countries than plonkit and far more detail in each — ~30–180 clues per country, every one a picture paired with the prose describing it. Its images need no relay entry: they are served to anyone who asks. |
 | imgur albums | Infographics — often the most useful artefact for a meta. Images indexed. |
-| Google Docs | Text, plus embedded images when the relay is configured. |
+| Google Docs | Text, plus embedded images when the relay is configured. An export too large to take — 332 MB for one library document, and Google refuses to build some at all — is indexed as text only. |
 | Google Slides | Text, speaker notes, and embedded images when the relay is configured. |
 | Google Sheets | Rows grouped into blocks, each carrying the header. |
 | Direct image links | Captioned from the catalogue entry. |
@@ -375,11 +438,20 @@ spending the same key — often a dev instance running with the production key �
 leaving the source it was on untouched and first in line for the next run. It is not recorded as a
 failure, so it does not back off.
 
-Images are embedded in groups, and a group's failure is judged by its cause:
+Images in a format the provider cannot read never reach it. It refuses anything it cannot decode as a
+picture — vector images above all, and rmrg.me draws a good share of its illustrations as `.svgz` —
+and a refusal fails the whole request the image travelled in, which is then narrowed one request at a
+time to find the culprit. Those chunks are indexed on their text alone, and the image URL is dropped
+rather than stored: Discord will not render one either. Only formats *known* to be unusable are turned
+away (`.svg`, `.svgz`, `.avif`, `.bmp`, `.ico`, `.tif`, `.heic`, `.pdf`); an extensionless URL is
+still tried, because plenty of hosts serve ordinary JPEGs from one.
+
+The rest are embedded in groups, and a group's failure is judged by its cause:
 
 | What happened | What ingestion does |
 |---|---|
-| The provider rejected the group (e.g. an image it could not fetch) | Halves it until the image at fault is found; indexes the rest, and that image without its picture |
+| The provider rejected the group and named the image at fault | Drops that image and re-sends the rest in one more request |
+| The provider rejected the group without naming anything | Halves it until the image at fault is found; indexes the rest, and that image without its picture |
 | More than three images rejected in one source | Stops narrowing — that reads as the provider refusing images in general — and comes back for them next run |
 | The provider failed, timed out, or the allowance ran out | Keeps what succeeded and comes back for the rest next run |
 | Still rate-limited after waiting | Keeps what succeeded, comes back for the rest, and ends the run |
@@ -409,11 +481,21 @@ runs re-embed them.
   around 2 KB; the zip export carrying its images is around 1.5 MB, and a slide deck about 7 MB. The
   heavier export is only fetched when images can actually be served, and the nightly job is paced for
   it — but a full re-index moves hundreds of megabytes rather than a few.
+- **A strange answer may be the model, not the bot.** Free models vary wildly, and one that answers
+  a greeting with something that reads like a system message is usually a classifier or a
+  mis-tuned model rather than a bug. The footer names it, and 👎 records it — check
+  `/ai feedback` for a model with a lopsided split before assuming the pipeline is at fault.
 - **Answer quality varies with whatever is free today.** Auto-selection optimises for availability,
   not quality. Use `PreferredModelPrefixes` to steer it, and the model named in each answer's footer
   to work out what to steer towards.
 - **Guild channels only.** Direct messages are ignored: they bypass the channel allowlist and are an
   easy way to drain the allowance.
+- **An answer that has aged out cannot be rated.** Feedback archives the conversation, and past
+  `AI:Conversation:RetentionDays` there is nothing left to archive. The reaction is simply ignored.
+- **Clearing reactions does not delete feedback.** Only removing your own 👍/👎 does. A moderator
+  clearing all reactions on a message leaves the stored verdicts in place.
+- **Feedback left through the right-click menu has no reaction to take back.** Removing it means
+  deleting the row.
 
 ---
 
@@ -431,6 +513,9 @@ runs re-embed them.
 | `/ai ingest` stopped early, "kept rate-limiting" | Something else is using the same API key — check for a dev instance with the production key |
 | Indexing is slow even after the $10 top-up | `MaxSourcesPerRun` caps each run at 25 sources; raise it |
 | Image search misses pictures that should be indexed | Run `/ai backfill-images` once; images lost before failed batches were retried are re-queued |
+| A guide has no images at all, but its text is indexed | Its pictures are vectors (`.svgz`), which no part of this pipeline can use — expected, not a fault |
+| A Google Doc is indexed but has no images | Its export was too large to take, or Google refused to build it; the text is indexed and the log says so at Information |
+| "Could not fetch the Google document …" with a timeout | Google is taking longer than `AI:Ingestion:SourceRequestTimeoutSeconds` to build the export; the source is retried on the next run either way |
 
 `/ai search` is the tool to reach for. It costs a single embedding request instead of the two a full
 question costs, and shows exactly what the model would have been given — which is usually the

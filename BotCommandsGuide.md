@@ -28,6 +28,9 @@ Some commands can be triggered directly on another person:
 
 User commands are basically a shortcut that runs a slash command with that user pre-filled as the parameter.
 
+The same **Apps** menu appears when you right-click a **message** rather than a user — that is how
+you leave written feedback on one of the bot's AI answers.
+
 ---
 
 # ✨ Features & Commands
@@ -225,6 +228,20 @@ conversation, so your follow-ups and someone else's never get mixed together. If
 A conversation goes quiet after a day of inactivity; replying after that starts a fresh one. Very long
 threads get a nudge suggesting you start over, which keeps answers sharp.
 
+### Rating an answer
+Every answer comes with 👍 and 👎 on it. Click one — that is the whole thing. Clicking the other one
+changes your mind; clicking the same one again takes your rating back.
+
+To say *why*, **right-click the answer** → **Apps** → **👍 Good AI answer** or **👎 Bad AI answer**,
+and a box opens for a comment. The comment is optional.
+
+Anyone can rate an answer, and everyone's rating is counted separately. Once an answer has been rated
+the bot marks it with ✅.
+
+> Rating an answer is what makes the bot **keep** that conversation. Unrated conversations are deleted
+> after a while; rated ones are saved so the answers can be improved. Taking your rating back deletes
+> the saved copy again.
+
 ### `/ai search`
 Shows what the guide library returns for a query, **without** asking an AI model to write an answer.
 Useful for finding the source guide itself, and for checking whether the bot actually has anything
@@ -249,6 +266,10 @@ These require the **Administrator** permission:
 
 - `/ai sync-sources` — refresh the catalogue of known guide sources.
 - `/ai ingest` — index a batch of guides now. Parameters: `count`, `source-type`, `force`.
+- `/ai feedback` — how answers have been rated: totals, a split by model, and recent comments.
+  Parameter: `days` (0 counts everything).
+- `/ai feedback-export` — download the rated conversations as a JSONL file, for working out what to
+  improve. Parameters: `rating` (good/bad), `days`.
 
 Indexing normally runs by itself overnight, so these are only needed to kick things along or after
 changing what the bot should read.

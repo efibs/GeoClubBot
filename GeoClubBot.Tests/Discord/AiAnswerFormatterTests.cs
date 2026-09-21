@@ -20,7 +20,9 @@ public sealed class AiAnswerFormatterTests
             "google/gemma-4-31b-it:free",
             ConversationId: 100,
             Depth: 1,
-            IsLongThread: false);
+            IsLongThread: false,
+            RetrievedSourceUrls: [],
+            CitedSourceUrls: []);
 
         return Verify(Render(AiAnswerFormatter.Render(answer)));
     }
@@ -38,7 +40,9 @@ public sealed class AiAnswerFormatterTests
             "nvidia/nemotron-3.5-content-safety:free",
             ConversationId: 100,
             Depth: 3,
-            IsLongThread: false);
+            IsLongThread: false,
+            RetrievedSourceUrls: [],
+            CitedSourceUrls: []);
 
         return Verify(Render(AiAnswerFormatter.Render(answer)));
     }
@@ -59,7 +63,9 @@ public sealed class AiAnswerFormatterTests
             "minimax/minimax-m3:free",
             ConversationId: 100,
             Depth: 1,
-            IsLongThread: false);
+            IsLongThread: false,
+            RetrievedSourceUrls: [],
+            CitedSourceUrls: []);
 
         return Verify(Render(AiAnswerFormatter.Render(answer)));
     }
@@ -79,7 +85,9 @@ public sealed class AiAnswerFormatterTests
             "minimax/minimax-m3:free",
             ConversationId: 100,
             Depth: 1,
-            IsLongThread: false);
+            IsLongThread: false,
+            RetrievedSourceUrls: [],
+            CitedSourceUrls: []);
 
         return Verify(Render(AiAnswerFormatter.Render(answer)));
     }
@@ -87,7 +95,7 @@ public sealed class AiAnswerFormatterTests
     [Fact]
     public Task Render_SuggestsAFreshThread_WhenTheBranchIsLong()
     {
-        var answer = new AiAnswer("Still here.", [], [], "test/model", ConversationId: 100, Depth: 21, IsLongThread: true);
+        var answer = new AiAnswer("Still here.", [], [], "test/model", ConversationId: 100, Depth: 21, IsLongThread: true, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
         return Verify(Render(AiAnswerFormatter.Render(answer)));
     }
@@ -99,7 +107,7 @@ public sealed class AiAnswerFormatterTests
         // several messages rather than being truncated or dropped.
         var answer = new AiAnswer(
             string.Join("\n", Enumerable.Repeat("A fairly long line about bollards.", 120)),
-            [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false);
+            [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
         var rendering = AiAnswerFormatter.Render(answer);
 
@@ -113,7 +121,7 @@ public sealed class AiAnswerFormatterTests
     {
         // Discord rejects an empty message outright, which would surface as an exception rather than
         // a visible failure.
-        var answer = new AiAnswer("   ", [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false);
+        var answer = new AiAnswer("   ", [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
         var rendering = AiAnswerFormatter.Render(answer);
 

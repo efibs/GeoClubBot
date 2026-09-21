@@ -39,13 +39,20 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
         return createdTextChannel?.Id;
     }
 
-    public async Task UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default)
+    public async Task<bool> UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default)
     {
         // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
 
         // Get the text channel
         var textChannel = guild.GetTextChannel(newTextChannel.Id);
+
+        // If the text channel was not found
+        if (textChannel == null)
+        {
+            // Nothing to do
+            return false;
+        }
 
         // Update the text channel
         await textChannel.ModifyAsync(options =>
@@ -63,7 +70,17 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
                 // Update the topic
                 options.Topic = newTextChannel.Description;
             }
+
+            // If a category is given
+            if (newTextChannel.CategoryId is not null)
+            {
+                // Move the channel into it. Explicit permission overwrites survive the move, so a
+                // private channel stays private to the same people.
+                options.CategoryId = newTextChannel.CategoryId.Value;
+            }
         }).ConfigureAwait(false);
+
+        return true;
     }
 
     public async Task<bool> DeleteTextChannelAsync(ulong textChannelId, CancellationToken cancellationToken = default)

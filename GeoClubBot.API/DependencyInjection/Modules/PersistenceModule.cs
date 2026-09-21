@@ -33,6 +33,7 @@ public static class PersistenceModule
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
         services.AddTransient<IAiBudgetRepository, EfAiBudgetRepository>();
         services.AddTransient<IAiConversationRepository, EfAiConversationRepository>();
+        services.AddTransient<IAiFeedbackRepository, EfAiFeedbackRepository>();
         services.AddTransient<IKnowledgeSourceRepository, EfKnowledgeSourceRepository>();
 
         var connectionString = configuration.GetConnectionString(ConfigKeys.PostgresConnectionString)!;

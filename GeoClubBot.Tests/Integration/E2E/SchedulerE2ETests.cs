@@ -117,19 +117,27 @@ public sealed class SchedulerE2ETests : IAsyncLifetime
         durations.Should().NotBeEmpty("the job listener should have recorded the execution");
     }
 
+    /// <summary>How long a started scheduler is given to report itself running.</summary>
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>
-    /// The scheduler, once the hosted service has actually started it. <c>AwaitApplicationStarted</c>
-    /// is on, so that start is queued off the host's "started" notification instead of happening
-    /// inside <c>StartAsync</c> - a client created in the constructor can win the race and find the
-    /// scheduler still in <see cref="SchedulerStatus.Created"/>. Waiting keeps the assertions about
-    /// what the hosted service does rather than how promptly the thread pool gets to it; a scheduler
-    /// that never starts still fails the test, it just takes the timeout to say so.
+    /// The scheduler, once the hosted service has actually started it.
+    ///
+    /// <c>AwaitApplicationStarted</c> is on, so Quartz does not start inside StartAsync — it hooks
+    /// ApplicationStarted and starts from that callback. CreateClient() returns as soon as the host
+    /// is up, which can be before that callback has run, so reading Status straight away is a race:
+    /// it passes on an idle machine and reports Created on a loaded CI runner. Triggering a job on a
+    /// scheduler that has not started yet is the same race wearing a different hat — the job is
+    /// queued, never fires, and the test fails on its completion timeout instead.
+    ///
+    /// Waiting rather than asserting outright keeps the assertion honest: a scheduler that is never
+    /// started still fails, it just takes the timeout to say so.
     /// </summary>
     private async Task<IScheduler> GetSchedulerAsync()
     {
         var scheduler = await _factory.Services.GetRequiredService<ISchedulerFactory>().GetScheduler();
 
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var deadline = DateTime.UtcNow + StartupTimeout;
         while (scheduler.Status != SchedulerStatus.Running && DateTime.UtcNow < deadline)
         {
             await Task.Delay(25);

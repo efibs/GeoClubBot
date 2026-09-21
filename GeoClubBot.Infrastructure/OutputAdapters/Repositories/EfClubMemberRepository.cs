@@ -88,12 +88,28 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .ConfigureAwait(false);
     }
 
+    public async Task<List<ClubMember>> ReadMembersWithExpiredArchivedPrivateChannelsAsync(DateTimeOffset threshold,
+        CancellationToken cancellationToken = default)
+    {
+        return await dbContext.ClubMembers
+            .AsNoTracking()
+            .Include(m => m.User)
+            .Where(m => m.ClubId == null
+                        && m.PrivateTextChannelArchivedAt != null
+                        && m.PrivateTextChannelArchivedAt < threshold)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync(CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers
             .Include(m => m.History)
             .Include(m => m.Strikes)
-            .Where(m => !m.History.Any() && !m.Strikes.Any())
+            // A member still holding a private channel is kept: deleting the row would strand the
+            // Discord channel with nothing left pointing at it. The archive sweep clears the id
+            // first, and the next cleanup then removes the row.
+            .Where(m => !m.History.Any() && !m.Strikes.Any() && m.PrivateTextChannelId == null)
             .ExecuteDeleteAsync(cancellationToken)
             .ConfigureAwait(false);
     }
