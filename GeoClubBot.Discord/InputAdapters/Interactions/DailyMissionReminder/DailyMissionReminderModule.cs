@@ -20,7 +20,7 @@ public class DailyMissionReminderModule(
     public Task AddReminderAsync(
         [Summary(description: "Time in HH:mm format (e.g. 09:00)")] string time,
         [Autocomplete(typeof(TimezoneAutocompleteHandler))][Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
-        [Summary(description: "Custom reminder message. Use {{mission_text}} to insert today's mission.")] string? message = null) =>
+        [Summary(description: "Custom reminder message. Use {{outstanding_text}} to insert what you still owe today.")] string? message = null) =>
         ExecuteAsync(
             async ct =>
             {

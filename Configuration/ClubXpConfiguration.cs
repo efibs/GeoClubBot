@@ -19,7 +19,7 @@ public class ClubXpConfiguration
     public int DailyMissionXpReward { get; set; } = 20;
 
     /// <summary>
-    /// XP awarded for playing the daily challenge or winning a duel (activity type 4). Once per
+    /// XP awarded for playing the daily challenge or a duel (activity type 4). Once per
     /// day, and worth the same as the daily mission — which is why the type is needed to tell
     /// them apart.
     /// </summary>

@@ -41,7 +41,7 @@ challenges, send mission reminders, and link Discord accounts to GeoGuessr profi
   periods, automatic strikes, and time-based strike decay.
 - **🏆 Daily challenges** — scheduled challenges with podium roles for the top three finishers.
 - **⏰ Daily reminders** — per-user, timezone-aware DM reminders covering both of the day's club-XP
-  awards: the GeoGuessr daily mission, and playing the daily challenge or winning a duel. The DM
+  awards: the GeoGuessr daily mission, and playing the daily challenge or a duel. The DM
   only stops once both are done.
 - **📈 Club & member stats** — today's club XP, personal current-week / rolling-window progress,
   level-up announcements, and MVP rewards.

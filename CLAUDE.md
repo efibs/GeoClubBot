@@ -84,7 +84,7 @@ and per payload index, and the default limit is exhausted part-way through a run
 Set `GeoGuessr:UseMock=true` (default in `appsettings.Development.json`) to run against the
 in-process **GeoClubBot.MockGeoGuessr** instead of the real GeoGuessr API. It serves a mock API
 plus a UI (URL logged at startup) for seeding/driving fake club data. The club view's *Add
-Activity* form picks the activity kind (daily mission / daily challenge or duel win / weekly /
+Activity* form picks the activity kind (daily mission / daily challenge or duel / weekly /
 club challenge), which is how you exercise the two same-priced daily XP awards locally.
 
 > The whole mock UI is one embedded file, `GeoClubBot.MockGeoGuessr/wwwroot/mock.html` (plain HTML
@@ -151,7 +151,7 @@ API + Discord (controllers, slash command modules)
 - **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/<Feature>/` (feature subfolders mirroring `Application/UseCases/`), auto-discovered via `InteractionsAssemblyMarker` — no manual registration. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
 - **Club XP activity kinds**: GeoGuessr's club activity feed labels each entry with a numeric
   `type`. Since 2026-08-25 there are **two** 20 XP daily awards — the daily mission (type 1) and
-  playing the daily challenge / winning a duel (type 4) — so an XP amount no longer identifies
+  playing the daily challenge / a duel (type 4) — so an XP amount no longer identifies
   anything. `ClubActivityKindClassifier` (`Application/OutputPorts/GeoGuessr/`) is the only place
   that decides; call `IsDailyMission` / `IsDailyChallenge` rather than comparing `XpReward`.
   Amounts in the `ClubXp` config section are just the fallback for untyped entries.

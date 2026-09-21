@@ -2,7 +2,7 @@ namespace Entities;
 
 /// <summary>
 /// What a member earned club XP for on one day. There are two independent sources - the daily
-/// mission, and playing the daily challenge or winning a duel - and a day only counts as fully
+/// mission, and playing the daily challenge or a duel - and a day only counts as fully
 /// done when both happened.
 /// </summary>
 public record DayMissionStatus(DateOnly Date, bool MissionCompleted, bool ChallengeCompleted)
@@ -24,7 +24,7 @@ public record ClubMemberWeekActivity(
     /// <summary>Days on which the member completed the daily mission, whatever else they did.</summary>
     public int NumMissionDaysDone => DailyMissions.Count(d => d.MissionCompleted);
 
-    /// <summary>Days on which the member played the daily challenge or won a duel.</summary>
+    /// <summary>Days on which the member played the daily challenge or a duel.</summary>
     public int NumChallengeDaysDone => DailyMissions.Count(d => d.ChallengeCompleted);
 
     public bool AllDaysCompleted => DailyMissions.Count > 0 && DailyMissions.All(d => d.BothCompleted);

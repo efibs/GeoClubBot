@@ -34,7 +34,7 @@ public class ClubStatsModule(
                     return;
                 }
 
-                // Two separate counts: the daily mission and the daily challenge / duel win are
+                // Two separate counts: the daily mission and the daily challenge / duel are
                 // independent 20 XP awards, so one number would hide half the picture.
                 await FollowupAsync(
                         $"{result.ClubName} currently has {result.Xp} XP today. "
