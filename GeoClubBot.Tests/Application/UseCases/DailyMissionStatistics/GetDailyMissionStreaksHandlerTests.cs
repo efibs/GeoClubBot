@@ -179,7 +179,7 @@ public sealed class GetDailyMissionStreaksHandlerTests
     [Fact]
     public async Task Handle_BreaksTheStreak_OnADayWithOnlyTheMissionDone()
     {
-        // Both awards are needed: winning a duel without doing the mission (or the reverse) no
+        // Both awards are needed: playing a duel without doing the mission (or the reverse) no
         // longer keeps a streak alive.
         ArrangeMembers(Member("u1", "Alice"));
         ArrangeCompletions(

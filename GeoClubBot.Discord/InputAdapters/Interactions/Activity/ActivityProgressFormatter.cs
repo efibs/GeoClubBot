@@ -32,7 +32,7 @@ internal static class ActivityProgressFormatter
             : string.Join(" ", missions.Select(d => d.Date.Day.ToString("D2")));
 
         // Three states, because a day now has two independent awards: the daily mission, and
-        // playing the daily challenge or winning a duel.
+        // playing the daily challenge or a duel.
         var emojiRow = string.Join(" ", missions.Select(DayEmoji));
 
         return $"`{labelRow}`\n{emojiRow}";

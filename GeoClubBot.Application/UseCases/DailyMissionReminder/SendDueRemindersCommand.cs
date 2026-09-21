@@ -90,9 +90,10 @@ public sealed partial class SendDueRemindersHandler(
 
         var defaultMessage = config.Value.DefaultMessage;
 
-        // Today's mission text is the same for everyone, so render it once on demand and reuse it.
-        // Left null until the first reminder that will actually be sent, so an all-skipped run does no DB query.
-        string? missionText = null;
+        // Today's missions are the same for everyone, so render them once on demand and reuse them.
+        // Left null until the first reminder that actually names them, so a run where every user is
+        // done - or has the mission behind them - does no DB query.
+        IReadOnlyList<string>? missionLines = null;
 
         foreach (var userReminders in dueReminders.GroupBy(r => r.DiscordUserId))
         {
@@ -102,7 +103,7 @@ public sealed partial class SendDueRemindersHandler(
             var progress = await GetTodaysProgressAsync(discordUserId, cancellationToken).ConfigureAwait(false);
 
             // Two independent ways to earn the day's club XP, so the reminder is only pointless
-            // once both are done. Someone who won a duel but skipped the mission still gets nagged.
+            // once both are done. Someone who played a duel but skipped the mission still gets nagged.
             if (progress.IsComplete)
             {
                 MarkAllSent(userReminders, today);
@@ -110,24 +111,28 @@ public sealed partial class SendDueRemindersHandler(
                 continue;
             }
 
-            // The mission list is only worth rendering when the mission itself is still outstanding.
-            var showMissionText = !progress.MissionDone;
-            if (showMissionText)
+            // The missions are only named while the mission itself is outstanding. There is one
+            // daily mission a day even when the API lists several, so the daily-mission XP means it
+            // is behind them and nothing from that list belongs in the reminder any more.
+            if (!progress.MissionDone)
             {
-                missionText ??= await BuildMissionTextAsync(cancellationToken).ConfigureAwait(false);
+                missionLines ??= await BuildMissionLinesAsync(cancellationToken).ConfigureAwait(false);
             }
+
+            var outstandingText = BuildOutstandingText(
+                progress, progress.MissionDone ? [] : missionLines!);
 
             var template = string.IsNullOrWhiteSpace(reminder.CustomMessage)
                 ? defaultMessage
                 : reminder.CustomMessage;
 
-            var message = RenderMessage(template, progress, showMissionText ? missionText! : string.Empty);
+            var message = RenderMessage(template, outstandingText);
 
             // A custom message that collapses to empty - it was only placeholders, and nothing was
             // substituted - would be rejected by Discord, so fall back to the default in that case.
             if (string.IsNullOrWhiteSpace(message))
             {
-                message = RenderMessage(defaultMessage, progress, showMissionText ? missionText! : string.Empty);
+                message = RenderMessage(defaultMessage, outstandingText);
             }
 
             var dmResult = await directMessageAccess
@@ -207,11 +212,38 @@ public sealed partial class SendDueRemindersHandler(
             ChallengeDone: mine.Any(activityKinds.IsDailyChallenge));
     }
 
-    private static string RenderMessage(string template, DailyProgress progress, string missionText) =>
+    private static string RenderMessage(string template, string outstandingText) =>
         template
-            .Replace("{{outstanding_text}}", progress.OutstandingText)
-            .Replace("{{mission_text}}", missionText)
+            .Replace("{{outstanding_text}}", outstandingText)
+            // The reminder used to carry a second placeholder for the mission list, which is now
+            // part of the outstanding text. Messages stored back then still contain it, so it maps
+            // onto the same text instead of being DMed to the user verbatim.
+            .Replace("{{mission_text}}", outstandingText)
             .Trim();
+
+    /// <summary>
+    /// Names what the user still owes today: the daily mission - spelled out as the missions
+    /// themselves, so the reminder says "Win 5 Team Duels" rather than "your daily mission" - the
+    /// daily challenge, or both. <paramref name="missionLines"/> is empty when the mission is
+    /// already done or nothing has been fetched yet, and the text then stays generic.
+    /// </summary>
+    private static string BuildOutstandingText(DailyProgress progress, IReadOnlyList<string> missionLines)
+    {
+        var missionPart = missionLines.Count > 1 ? "your daily missions" : "your daily mission";
+
+        var phrase = (progress.MissionDone, progress.ChallengeDone) switch
+        {
+            (false, true) => $"{missionPart} today",
+            (true, false) => "the daily challenge (or a duel) today",
+            _ => $"{missionPart} and the daily challenge (or a duel) today"
+        };
+
+        // The text ends the sentence itself - a template cannot put its own full stop after a
+        // bullet list without the punctuation landing on the last mission.
+        return missionLines.Count == 0
+            ? $"{phrase}!"
+            : $"{phrase}:\n{string.Join("\n", missionLines.Select(line => $"- {line}"))}";
+    }
 
     /// <summary>The two independent daily club-XP sources, and what is still missing.</summary>
     private readonly record struct DailyProgress(bool MissionDone, bool ChallengeDone)
@@ -219,19 +251,12 @@ public sealed partial class SendDueRemindersHandler(
         public static DailyProgress Nothing => new(MissionDone: false, ChallengeDone: false);
 
         public bool IsComplete => MissionDone && ChallengeDone;
-
-        public string OutstandingText => (MissionDone, ChallengeDone) switch
-        {
-            (false, true) => "your daily mission",
-            (true, false) => "the daily challenge (or a duel win)",
-            _ => "your daily mission and the daily challenge (or a duel win)"
-        };
     }
 
-    private async Task<string> BuildMissionTextAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> BuildMissionLinesAsync(CancellationToken cancellationToken)
     {
         var missions = await dailyMissions.ReadLatestFetchedMissionsAsync(cancellationToken).ConfigureAwait(false);
-        return string.Join("\n", missions.Select(m => renderer.RenderMission(ToDto(m))));
+        return missions.Select(m => renderer.RenderMission(ToDto(m))).ToList();
     }
 
     private static DailyMissionDto ToDto(DailyMission mission) => new()

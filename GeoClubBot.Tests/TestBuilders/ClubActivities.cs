@@ -7,7 +7,7 @@ namespace GeoClubBot.Tests.TestBuilders;
 
 /// <summary>
 /// Builds club activity feed entries and the classifier that reads them. Entries carry GeoGuessr's
-/// activity type, because the daily mission and the daily challenge / duel win are both worth
+/// activity type, because the daily mission and the daily challenge / duel are both worth
 /// 20 XP and only the type separates them.
 /// </summary>
 public static class ClubActivities
