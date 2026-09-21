@@ -14,7 +14,7 @@ This probe issues the same requests by hand and prints the **raw JSON**, plus a 
 that summarises every property the payload contains.
 
 It was written to answer one specific question: *the daily mission gives 20 club XP, and so does
-playing the daily challenge or winning a duel — can the club activity feed tell them apart?*
+playing the daily challenge or a duel — can the club activity feed tell them apart?*
 It is deliberately general enough to answer the next such question too.
 
 ## Read-only by construction
@@ -147,7 +147,7 @@ from a 35-member club spanning 2026-07-31 to 2026-08-30. Each item is
 | 1 | 20 | once per member per day | Daily mission completed |
 | 2 | 1000 | once per member per day | Weekly mission completed |
 | 3 | 0 | — | Club challenge played (carries `challengeToken`) |
-| 4 | 20 | once per member per day | Daily challenge played **or** duel won |
+| 4 | 20 | once per member per day | Daily challenge **or** duel played |
 
 Notes, all of which the bot now depends on:
 
@@ -156,8 +156,11 @@ Notes, all of which the bot now depends on:
 - **Type 4 first appears at `2026-08-25T00:15:41Z`** — nothing before it, then 25-26 entries a day,
   roughly the club's size. That is GeoGuessr shipping the second XP source, and it is how the two
   types were told apart: type 1 spans the whole window, type 4 only the tail.
-- **GeoGuessr does not separate "daily challenge played" from "duel won"** — both are type 4. For
-  the bot they are one thing, modelled as `ClubXpActivityKind.DailyChallengeOrDuel`.
+- **GeoGuessr does not separate "daily challenge played" from "duel played"** — both are type 4.
+  For the bot they are one thing, modelled as `ClubXpActivityKind.DailyChallengeOrDuel`. When this
+  probe ran the duel had to be *won*; GeoGuessr has since dropped that, so playing one is enough.
+  Nothing in the feed changed with it — same type, same XP, same cap — so the bot only had to
+  reword what it tells members.
 - **The daily mission awards club XP once per day**, not once per mission: 829 of 829 member-days
   had exactly one type-1 entry. (`GET /v4/missions` also returned a single mission for the day.)
 - `newLevel` is set inline on whichever award crossed a club level boundary, rather than being its

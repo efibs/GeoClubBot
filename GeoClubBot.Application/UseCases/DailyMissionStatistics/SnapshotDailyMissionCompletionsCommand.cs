@@ -11,7 +11,7 @@ namespace UseCases.UseCases.DailyMissionStatistics;
 
 /// <summary>
 /// Persists, for every configured club, what each member earned club XP for on the previous UTC
-/// day: daily-mission completions and daily challenges played / duels won, counted separately.
+/// day: daily-mission completions and daily challenges / duels played, counted separately.
 /// Runs shortly after midnight so the whole day's activity feed is final. One row is written per
 /// member — including zero counts, so the row count per (club, day) is the denominator for both
 /// rates.

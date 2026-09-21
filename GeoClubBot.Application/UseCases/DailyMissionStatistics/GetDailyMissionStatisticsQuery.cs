@@ -24,7 +24,7 @@ public sealed record DailyMissionStatistics(
     int TotalMissionAppearances,
     double? AverageDayCompletionRate,
     IReadOnlyList<DailyMissionKindStatistics> Kinds,
-    // How often the club's other daily XP award - playing the daily challenge or winning a duel -
+    // How often the club's other daily XP award - playing the daily challenge or a duel -
     // was earned. Separate from the mission figures above, and only computable for days the bot
     // has actually tracked it: null everywhere before ChallengeTrackedFrom.
     double? AverageDayChallengeRate,
@@ -145,7 +145,7 @@ public sealed class DailyMissionStatisticsHandlers(
     /// * <b>mission</b> — completion events / (member rows × missions that day), capped at 100%.
     ///   The snapshot's completion events carry no mission identity, so days with several missions
     ///   get one blended rate. Only days with both a snapshot and logged missions are computable.
-    /// * <b>challenge</b> — member rows that played the daily challenge or won a duel / member rows.
+    /// * <b>challenge</b> — member rows that played the daily challenge or a duel / member rows.
     ///   At most one such award exists per member per day, so no mission-count denominator applies.
     ///   Rows written before the bot tracked it hold null, and those days are left out entirely
     ///   rather than counted as nobody having played.

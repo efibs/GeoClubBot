@@ -4,7 +4,7 @@ Description:
 **Club:** All clubs
 **Days with data:** 28
 **Avg club completion:** 62%
-**Avg daily challenge / duel win:** 41% (over 12 day(s))
+**Avg daily challenge / duel:** 41% (over 12 day(s))
 
 ```
 Mission                 │   # │ Appeared │ Avg cnt │ Done │ Last seen

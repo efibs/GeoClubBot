@@ -11,7 +11,7 @@ namespace UseCases.UseCases.InactiveMembers;
 /// <summary>
 /// The club members who have not yet earned today's (UTC) club XP, reported as two independent
 /// lists because there are two independent ways to earn it: completing the daily mission, and
-/// playing the daily challenge or winning a duel. A member can be missing either, both, or
+/// playing the daily challenge or a duel. A member can be missing either, both, or
 /// neither, so the lists overlap freely. A <c>null</c> <paramref name="ClubId"/> targets the
 /// configured main club.
 /// </summary>

@@ -9,7 +9,7 @@ namespace UseCases.OutputPorts.GeoGuessr;
 ///
 /// The single place that knows how GeoGuessr labels activities. Everything that used to ask
 /// "is this entry worth exactly 20 XP?" asks this instead, because since 2026-08-25 that question
-/// has two answers: the daily mission and the daily challenge / duel win are both worth 20.
+/// has two answers: the daily mission and the daily challenge / duel are both worth 20.
 ///
 /// Classification prefers the feed's own <c>type</c> field. When it is absent — a stand-in that
 /// doesn't set it, or a fixture written before the field was known — it falls back to the
@@ -48,7 +48,7 @@ public sealed class ClubActivityKindClassifier(IOptions<ClubXpConfiguration> con
     public bool IsDailyMission(ReadClubActivitiesItemDto activity) =>
         Classify(activity) == ClubXpActivityKind.DailyMission;
 
-    /// <summary>The daily challenge was played, or a duel was won — the second daily XP source.</summary>
+    /// <summary>The daily challenge or a duel was played — the second daily XP source.</summary>
     public bool IsDailyChallenge(ReadClubActivitiesItemDto activity) =>
         Classify(activity) == ClubXpActivityKind.DailyChallengeOrDuel;
 

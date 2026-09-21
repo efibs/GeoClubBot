@@ -51,7 +51,7 @@ public sealed class CatchUpMissedRemindersHandlerTests
         Options.Create(new DailyMissionReminderConfiguration
         {
             Schedule = "0 * * * * ?",
-            DefaultMessage = "Don't forget your daily missions!\n\n{{mission_text}}"
+            DefaultMessage = "Don't forget to complete {{outstanding_text}}"
         }),
         _logger);
 
