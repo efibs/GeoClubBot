@@ -69,6 +69,14 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
             .ConfigureAwait(false);
     }
 
+    public async Task<List<ClubMemberStrike>> ReadAllActiveForUpdateAsync(CancellationToken cancellationToken = default)
+    {
+        return await dbContext.ClubMemberStrikes
+            .WhereActive()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMemberStrikes

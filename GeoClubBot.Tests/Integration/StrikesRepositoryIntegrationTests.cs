@@ -113,4 +113,26 @@ public sealed class StrikesRepositoryIntegrationTests(PostgresFixture fixture)
 
         strikes.Should().BeNull();
     }
+
+    [Fact]
+    public async Task ReadAllActiveForUpdateAsync_ReturnsOnlyActiveStrikes()
+    {
+        var (_, userId, _) = await SeedMemberAsync(Guid.NewGuid());
+
+        var active = ClubMemberStrike.Create(userId, DateTimeOffset.UtcNow.AddDays(-2));
+        var revoked = ClubMemberStrike.Create(userId, DateTimeOffset.UtcNow.AddDays(-1));
+        revoked.Revoke();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.AddRange(active, revoked);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var strikes = await new EfStrikesRepository(read).ReadAllActiveForUpdateAsync();
+
+        strikes.Should().OnlyContain(s => !s.Revoked);
+        strikes.Select(s => s.StrikeId).Should().Contain(active.StrikeId).And.NotContain(revoked.StrikeId);
+    }
 }

@@ -168,6 +168,35 @@ public sealed class StrikesUseCaseIntegrationTests(PostgresFixture fixture)
         result.Error.Type.Should().Be(ErrorType.NotFound);
     }
 
+    // ---- RevokeAll --------------------------------------------------------
+
+    [Fact]
+    public async Task RevokeAllStrikes_RevokesEveryActiveStrike()
+    {
+        var (_, userId, _) = await SeedMemberAsync();
+        var first = ClubMemberStrike.Create(userId, DateTimeOffset.UtcNow.AddDays(-3));
+        var second = ClubMemberStrike.Create(userId, DateTimeOffset.UtcNow.AddDays(-2));
+        var alreadyRevoked = ClubMemberStrike.Create(userId, DateTimeOffset.UtcNow.AddDays(-1));
+        alreadyRevoked.Revoke();
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.AddRange(first, second, alreadyRevoked);
+            await seed.SaveChangesAsync();
+        }
+
+        using var host = CreateHost();
+        var numRevoked = await host.SendAsync(new RevokeAllStrikesCommand());
+
+        // The container is shared, so other tests' active strikes may be revoked too.
+        numRevoked.Should().BeGreaterThanOrEqualTo(2);
+
+        await using var read = fixture.CreateDbContext();
+        var repo = new EfStrikesRepository(read);
+        (await repo.ReadNumberOfActiveStrikesByMemberUserIdAsync(userId))
+            .Should().Be(0, "the revocations must be committed by the unit-of-work behavior");
+        (await repo.ReadForUpdateByIdAsync(alreadyRevoked.StrikeId))!.Revoked.Should().BeTrue();
+    }
+
     // ---- Read queries -----------------------------------------------------
 
     [Fact]
