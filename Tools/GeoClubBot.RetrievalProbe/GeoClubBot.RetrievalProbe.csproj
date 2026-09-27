@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>GeoClubBot.RetrievalProbe</RootNamespace>
+    </PropertyGroup>
+
+    <!-- Unlike GeoClubBot.ApiProbe, this references the bot, on purpose: it exists to replay the bot's
+         own retrieval - QdrantKnowledgeIndex, KnowledgeHitFusion, OpenRouterEmbedder,
+         EmbeddingTextBuilder - so a change is measured as it ships rather than as re-implemented here.
+         That puts write-capable code within reach, which is why every call to the index passes
+         ReadOnlyQdrantInterceptor and every call to OpenRouter passes EmbeddingsOnlyHandler. See README.md. -->
+    <ItemGroup>
+        <ProjectReference Include="..\..\GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj" />
+    </ItemGroup>
+
+</Project>

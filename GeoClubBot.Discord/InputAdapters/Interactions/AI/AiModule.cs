@@ -35,14 +35,31 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
             var chain = await _catalog.ReadChainAsync(new ChatModelRequirements(), ct).ConfigureAwait(false);
             var sources = await Mediator.Send(new ReadKnowledgeSourceStatusQuery(), ct).ConfigureAwait(false);
 
-            var embed = new EmbedBuilder()
+            var builder = new EmbedBuilder()
                 .WithTitle("🤖 AI status")
                 .AddField("Free models known", $"{status.ModelCount} ({status.VisionModelCount} accept images)", inline: true)
                 .AddField("Catalog", status.Source.ToString(), inline: true)
                 .AddField("Refreshed", status.LastRefreshedAtUtc is { } at
                     ? TimestampTag.FromDateTimeOffset(at, TimestampTagStyles.Relative).ToString()
                     : "never", inline: true)
-                .AddField("Model chain", $"`{string.Join("` → `", chain)}`")
+                .AddField("Model chain", $"`{string.Join("` → `", chain)}`");
+
+            // Shown so a runtime exclusion is noticed without reading logs: it is forgotten on restart,
+            // and each one is a candidate for the configured block list. Capped well inside Discord's
+            // 1024-character field limit; a longer list is in the logs.
+            if (status.LearnedUnfitModelIds.Count > 0)
+            {
+                const int maxListed = 8;
+                var listed = string.Join("`, `", status.LearnedUnfitModelIds.Take(maxListed));
+                var more = status.LearnedUnfitModelIds.Count > maxListed
+                    ? $" and {status.LearnedUnfitModelIds.Count - maxListed} more"
+                    : string.Empty;
+
+                builder.AddField("Excluded until restart",
+                    $"`{listed}`{more} — add to `AI:OpenRouter:BlockedModelIds` to keep them out");
+            }
+
+            var embed = builder
                 .AddField("Indexed chunks", await ReadIndexSizeAsync(ct).ConfigureAwait(false), inline: true)
                 .AddField("Sources", sources switch
                 {

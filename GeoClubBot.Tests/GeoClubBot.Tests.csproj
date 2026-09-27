@@ -20,6 +20,8 @@
         <ProjectReference Include="..\GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj" />
         <ProjectReference Include="..\Extensions\Extensions.csproj" />
         <ProjectReference Include="..\Utilities\Utilities.csproj" />
+        <!-- The retrieval probe points at production, so its read-only guard is tested against a real Qdrant. -->
+        <ProjectReference Include="..\Tools\GeoClubBot.RetrievalProbe\GeoClubBot.RetrievalProbe.csproj" />
     </ItemGroup>
 
     <ItemGroup>

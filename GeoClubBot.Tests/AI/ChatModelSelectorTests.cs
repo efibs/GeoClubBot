@@ -16,7 +16,7 @@ public sealed class ChatModelSelectorTests
     private const string Fallback = "openrouter/free";
 
     [Fact]
-    public void SelectChain_RanksBiggerContextFirst_AndAlwaysEndsWithTheFallbackRouter()
+    public void SelectChain_RanksBiggerContextFirst_AndAppendsTheRouter_WhenCandidatesRunShort()
     {
         var chain = ChatModelSelector.SelectChain(
             [Model("small/model", contextLength: 16_000), Model("big/model", contextLength: 512_000)],
@@ -25,8 +25,67 @@ public sealed class ChatModelSelectorTests
             failurePenalties: null,
             Now);
 
-        chain.Should().ContainInOrder("big/model", "small/model", Fallback);
-        chain[^1].Should().Be(Fallback, "the router is the last resort and must always be reachable");
+        // Two vetted models cannot fill three slots, and the router fills the one left over.
+        chain.Should().Equal("big/model", "small/model", Fallback);
+    }
+
+    [Fact]
+    public void SelectChain_LeavesTheRouterOut_WhenEnoughVettedModelsQualify()
+    {
+        // The router picks at random, safety classifiers included: every "User Safety: safe" answer
+        // beta testers saw came from it, after the ranked models ahead of it had failed upstream.
+        var roster = Enumerable.Range(0, 5)
+            .Select(index => Model($"model/{index}", contextLength: 16_000 + index))
+            .ToList();
+
+        var chain = ChatModelSelector.SelectChain(roster, new ChatModelRequirements(), Options(), null, Now);
+
+        chain.Should().Equal("model/4", "model/3", "model/2");
+    }
+
+    [Fact]
+    public void SelectChain_SkipsModelsAlreadyTried_CaseInsensitively()
+    {
+        var roster = Enumerable.Range(0, 5)
+            .Select(index => Model($"model/{index}", contextLength: 16_000 + index))
+            .ToList();
+
+        // Built case-sensitively on purpose: the selector must not depend on the caller's comparer.
+        var tried = new HashSet<string>(StringComparer.Ordinal) { "MODEL/4", "model/3" };
+
+        var chain = ChatModelSelector.SelectChain(
+            roster, new ChatModelRequirements(ExcludedModelIds: tried), Options(), null, Now);
+
+        chain.Should().Equal("model/2", "model/1", "model/0");
+    }
+
+    [Fact]
+    public void SelectChain_AppendsTheRouter_OnlyOnceTheVettedModelsAreExhausted()
+    {
+        var roster = new[] { Model("a/model", 64_000), Model("b/model", 32_000), Model("c/model", 16_000) };
+
+        var chain = ChatModelSelector.SelectChain(
+            roster,
+            new ChatModelRequirements(ExcludedModelIds: new HashSet<string> { "a/model", "b/model" }),
+            Options(),
+            null,
+            Now);
+
+        chain.Should().Equal("c/model", Fallback);
+    }
+
+    [Fact]
+    public void SelectChain_ReturnsNothing_WhenTheRouterWasTriedAndNothingElseRemains()
+    {
+        // At most one random pick per question: a retry never goes back to the router.
+        var chain = ChatModelSelector.SelectChain(
+            [Model("a/model", 64_000)],
+            new ChatModelRequirements(ExcludedModelIds: new HashSet<string> { "a/model", Fallback }),
+            Options(),
+            null,
+            Now);
+
+        chain.Should().BeEmpty();
     }
 
     [Fact]
@@ -191,8 +250,8 @@ public sealed class ChatModelSelectorTests
             failurePenalties: null,
             Now);
 
-        chain.Should().HaveCount(3, "two ranked candidates plus the fallback router");
-        chain[^1].Should().Be(Fallback);
+        chain.Should().HaveCount(3, "three vetted models, and no slot left for the router");
+        chain.Should().NotContain(Fallback);
     }
 
     [Theory]
@@ -216,9 +275,9 @@ public sealed class ChatModelSelectorTests
             failurePenalties: null,
             Now);
 
-        // The router is always present, so a length below one still yields a chain of one.
+        // A length below one still yields a chain of one, and ten candidates leave no slot for the router.
         chain.Should().HaveCount(Math.Max(1, chainLength));
-        chain[^1].Should().Be(Fallback);
+        chain.Should().NotContain(Fallback);
         chain.Should().OnlyHaveUniqueItems();
     }
 
@@ -314,6 +373,65 @@ public sealed class ChatModelSelectorTests
             Now);
 
         ranked.Select(candidate => candidate.Id).Should().Equal("good/model");
+    }
+
+    [Fact]
+    public void InferFailedModels_BlamesTheModelsSkippedBeforeTheOneThatAnswered()
+    {
+        // The provider tries the chain in order, so a model reached only after others means they failed.
+        ChatModelSelector.InferFailedModels(["a/model", "b/model", "c/model"], "c/model", Fallback, [])
+            .Should().Equal("a/model", "b/model");
+    }
+
+    [Fact]
+    public void InferFailedModels_BlamesNobody_WhenTheFirstModelAnswered() =>
+        ChatModelSelector.InferFailedModels(["a/model", "b/model"], "A/MODEL", Fallback, [])
+            .Should().BeEmpty();
+
+    [Fact]
+    public void InferFailedModels_BlamesEveryRankedModel_WhenTheRoutersPickAnswered()
+    {
+        // An answer from outside the chain is the router's pick, so every model ahead of it failed.
+        var roster = new[] { Model("nvidia/nemotron-3.5-content-safety:free", 128_000, isGuardrail: true) };
+
+        ChatModelSelector.InferFailedModels(
+                ["a/model", "b/model", Fallback], "nvidia/nemotron-3.5-content-safety:free", Fallback, roster)
+            .Should().Equal("a/model", "b/model");
+    }
+
+    [Fact]
+    public void InferFailedModels_BlamesNobody_ForAnIdItCannotPlace()
+    {
+        // "a/model" reported back as "a/model-20260901" must not cost "a/model" its rank for answering.
+        ChatModelSelector.InferFailedModels(["a/model", "b/model", Fallback], "a/model-20260901", Fallback, [])
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public void InferFailedModels_BlamesEveryRankedModel_ButNeverTheRouter_WhenNothingAnswered() =>
+        ChatModelSelector.InferFailedModels(["a/model", "b/model", Fallback], answeredBy: null, Fallback, [])
+            .Should().Equal("a/model", "b/model");
+
+    [Theory]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    public void IsUnfitToAnswer_FlagsClassifiersGeneratorsAndBlockedModels(bool isGuardrail, bool producesTextOnly, bool blocked)
+    {
+        var model = Model("odd/model", 64_000, isGuardrail: isGuardrail, producesTextOnly: producesTextOnly);
+        var options = blocked
+            ? Options() with { BlockedModelIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "odd/model" } }
+            : Options();
+
+        ChatModelSelector.IsUnfitToAnswer("odd/model", model, options).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsUnfitToAnswer_TrustsAModelTheRosterDoesNotKnow()
+    {
+        // A stale roster is no reason to throw away an answer from a model we have not heard of yet.
+        ChatModelSelector.IsUnfitToAnswer("new/model", model: null, Options()).Should().BeFalse();
+        ChatModelSelector.IsUnfitToAnswer("good/model", Model("good/model", 64_000), Options()).Should().BeFalse();
     }
 
     private static ChatModelDescriptor Model(

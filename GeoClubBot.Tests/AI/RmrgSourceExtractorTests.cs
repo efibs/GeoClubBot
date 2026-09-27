@@ -171,6 +171,31 @@ public sealed class RmrgSourceExtractorTests
     }
 
     [Fact]
+    public async Task Extract_DecodesEmoji_InHeadingsAndText()
+    {
+        // A numeric entity for an emoji came out as "&##128204;" under the previous decoder, in the
+        // text the model reads and the heading shown under an answer.
+        const string html = """
+            <html><body>
+              <h2 class="country-title">Greece</h2>
+              <div class="category-section"><h3 class="category-title">Signs &#128204;</h3>
+                <div class="meta-item" id="signs/a2">
+                  <div class="meta-image-wrapper"><img class="meta-image" src="/guides/greece/a2.webp" /></div>
+                  <div class="meta-content"><div class="meta-description">Yellow signs &#9888;&#65039; mark caf&#233;s on the A2 &#128128;</div></div>
+                </div>
+              </div>
+            </body></html>
+            """;
+
+        var result = await CreateExtractor(html).ExtractAsync(
+            new SourceDescriptor("rmrg", "greece", new Uri("https://rmrg.me/greece/")));
+
+        var clue = result.Value.Chunks.Should().ContainSingle().Subject;
+        clue.Text.Should().Be("Yellow signs ⚠️ mark cafés on the A2 💀");
+        clue.SectionPath.Should().Be("Greece > Signs 📌");
+    }
+
+    [Fact]
     public async Task Extract_KeepsAClueWhosePictureIsAVector_WithoutThePicture()
     {
         // Not every item here is a photograph: symbols and flags are drawn, and the site serves those

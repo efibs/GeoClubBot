@@ -108,14 +108,116 @@ public sealed class ChatModelCatalogTests
         ranking[0].Score.Should().BeGreaterThan(0);
     }
 
-    private static (ChatModelCatalog Catalog, IChatModelClient Client, FixedTimeProvider Time) CreateCatalog()
+    [Fact]
+    public async Task ReadChain_NeverNamesMoreModelsThanOneRequestMayCarry()
+    {
+        // OpenRouter refuses more than three. Clamping here rather than trimming on the wire keeps the
+        // chain a caller is handed — and later blames, or excludes on a retry — the one actually sent.
+        var (catalog, client, _) = CreateCatalog(chainLength: 5);
+        await RefreshWithAsync(catalog, client,
+            [.. Enumerable.Range(0, 6).Select(index => Model($"model/{index}", contextLength: 16_000 + index))]);
+
+        (await catalog.ReadChainAsync(new ChatModelRequirements())).Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task ReportUnfit_KeepsTheModelOutOfLaterChains_AndFlagsItUnfit()
+    {
+        // A classifier whose description gave nothing away, caught only by what it answered. A failure
+        // penalty would have faded within the hour and let it answer "User Safety: safe" again.
+        var (catalog, client, time) = CreateCatalog();
+        await RefreshWithAsync(catalog, client, [Model("sneaky/classifier", contextLength: 512_000), Model("real/model")]);
+
+        catalog.ReportUnfit("sneaky/classifier");
+        time.Now = Start.AddDays(1);
+
+        (await catalog.ReadChainAsync(new ChatModelRequirements())).Should().NotContain("sneaky/classifier");
+        catalog.IsUnfitToAnswer("SNEAKY/classifier").Should().BeTrue();
+        catalog.ReadStatus().LearnedUnfitModelIds.Should().Equal("sneaky/classifier");
+    }
+
+    [Fact]
+    public void ReportUnfit_IgnoresTheFallbackRouter()
+    {
+        // The router is not a model; "excluding" it would only clutter /ai status.
+        var (catalog, _, _) = CreateCatalog();
+
+        catalog.ReportUnfit("openrouter/free");
+
+        catalog.ReadStatus().LearnedUnfitModelIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task IsUnfitToAnswer_RecognisesWhatTheRosterSaysIsNotAChatModel()
+    {
+        // The router's picks bypass the ranking, so its answers are screened against the same rules.
+        var (catalog, client, _) = CreateCatalog(blocked: ["blocked/model"]);
+        await RefreshWithAsync(catalog, client,
+        [
+            Model("nvidia/nemotron-3.5-content-safety:free", isGuardrail: true),
+            Model("google/lyria-3-pro-preview", producesTextOnly: false),
+            Model("real/model")
+        ]);
+
+        catalog.IsUnfitToAnswer("nvidia/nemotron-3.5-content-safety:free").Should().BeTrue();
+        catalog.IsUnfitToAnswer("google/lyria-3-pro-preview").Should().BeTrue();
+        catalog.IsUnfitToAnswer("blocked/model").Should().BeTrue();
+        catalog.IsUnfitToAnswer("real/model").Should().BeFalse();
+        catalog.IsUnfitToAnswer("unknown/model").Should().BeFalse("a stale roster is no reason to discard an answer");
+    }
+
+    [Fact]
+    public async Task ReportChainOutcome_DemotesOnlyTheModelsSkippedBeforeTheAnswer()
+    {
+        var (catalog, client, _) = CreateCatalog();
+        await RefreshWithAsync(catalog, client,
+            [Model("a/model", contextLength: 512_000), Model("b/model", contextLength: 256_000), Model("c/model", contextLength: 128_000)]);
+
+        catalog.ReportChainOutcome(["a/model", "b/model", "c/model"], answeredBy: "b/model");
+
+        var ranking = await catalog.ReadRankingAsync(new ChatModelRequirements());
+        ranking.Single(candidate => candidate.Id == "a/model").FailurePenalty.Should().BeGreaterThan(0);
+        ranking.Single(candidate => candidate.Id == "b/model").FailurePenalty.Should().Be(0, "it answered");
+        ranking.Single(candidate => candidate.Id == "c/model").FailurePenalty.Should().Be(0, "it was never reached");
+    }
+
+    [Fact]
+    public async Task ReportChainOutcome_BlamesNothing_ForAnIdItCannotPlace()
+    {
+        var (catalog, client, _) = CreateCatalog();
+        await RefreshWithAsync(catalog, client, [Model("a/model"), Model("b/model")]);
+
+        catalog.ReportChainOutcome(["a/model", "b/model", "openrouter/free"], answeredBy: "a/model-20260901");
+
+        (await catalog.ReadRankingAsync(new ChatModelRequirements()))
+            .Should().OnlyContain(candidate => candidate.FailurePenalty == 0);
+    }
+
+    private static async Task RefreshWithAsync(
+        ChatModelCatalog catalog,
+        IChatModelClient client,
+        IReadOnlyList<ChatModelDescriptor> roster)
+    {
+        client.ReadFreeModelsAsync(Arg.Any<CancellationToken>())
+            .Returns(Result<IReadOnlyList<ChatModelDescriptor>>.Success(roster));
+        await catalog.RefreshAsync();
+    }
+
+    private static (ChatModelCatalog Catalog, IChatModelClient Client, FixedTimeProvider Time) CreateCatalog(
+        int chainLength = 3,
+        List<string>? blocked = null)
     {
         var client = Substitute.For<IChatModelClient>();
         var time = new FixedTimeProvider(Start);
 
         var configuration = Options.Create(new AiConfiguration
         {
-            OpenRouter = new OpenRouterConfiguration { FallbackModelId = "openrouter/free", ChainLength = 3 }
+            OpenRouter = new OpenRouterConfiguration
+            {
+                FallbackModelId = "openrouter/free",
+                ChainLength = chainLength,
+                BlockedModelIds = blocked ?? []
+            }
         });
 
         return (new ChatModelCatalog(client, configuration, time, NullLogger<ChatModelCatalog>.Instance), client, time);
@@ -124,17 +226,19 @@ public sealed class ChatModelCatalogTests
     private static ChatModelDescriptor Model(
         string id,
         int contextLength = 64_000,
-        bool supportsImageInput = false) =>
+        bool supportsImageInput = false,
+        bool producesTextOnly = true,
+        bool isGuardrail = false) =>
         new(
             id,
             id,
             contextLength,
             MaxCompletionTokens: 8_192,
             supportsImageInput,
-            ProducesTextOnly: true,
+            producesTextOnly,
             SupportsTools: false,
             SupportsStructuredOutputs: false,
-            IsGuardrail: false,
+            isGuardrail,
             Start.AddDays(-60),
             ExpiresAt: null);
 

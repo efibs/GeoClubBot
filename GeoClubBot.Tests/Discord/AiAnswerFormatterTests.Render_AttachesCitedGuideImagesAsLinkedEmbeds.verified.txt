@@ -1,12 +1,15 @@
 ﻿--- message 1 ---
-The area codes are laid out by governorate.
+The area codes are laid out by governorate [1], and signs show them in blue [2][3].
 
--# via nvidia/nemotron-3.5-content-safety:free
+-# [1] 🖼️ [Tunisia · Area codes](https://docs.google.com/document/d/abc)
+-# [2] [Tunisia > Signs](https://www.plonkit.net/tunisia#s1gn)
+-# [3] 🖼️ [Tunisia > Signs](https://www.plonkit.net/tunisia)
+-# via dots-studio/dots-3-note-preview:free
 --- embed ---
-Title: Tunisia area codes
+Title: [1] Tunisia area codes
 Image: https://i.imgur.com/map.png
 Url:   https://docs.google.com/document/d/abc
 --- embed ---
-Title: Guide image
+Title: [3] Guide image
 Image: https://i.imgur.com/signs.png
 Url:   https://www.plonkit.net/tunisia

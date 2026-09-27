@@ -75,7 +75,9 @@ and per payload index, and the default limit is exhausted part-way through a run
   `dotnet tool restore && dotnet stryker`.
 - **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
   (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
-  chunk keys must stay stable or every re-ingest duplicates instead of updating) over thousands of
+  chunk keys must stay stable or every re-ingest duplicates instead of updating; the AI citation
+  resolver, whose numbers must run 1..k and all lead somewhere; the retrieval fusion, which must never
+  offer the same text twice) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
 
@@ -103,6 +105,21 @@ dotnet run --project Tools/GeoClubBot.ApiProbe -- activities --pages 3
 It prints raw JSON plus a field census (every property, its distinct values, and a cross-tab
 against `xpReward`). It only ever issues GETs, and it needs an `_ncfa` token —
 see [`Tools/GeoClubBot.ApiProbe/README.md`](Tools/GeoClubBot.ApiProbe/README.md).
+
+### Measuring the AI's retrieval
+
+When a feedback export (`/ai feedback-export`) shows bad answers, or before changing retrieval, replay
+the rated questions through the bot's own search against the real index instead of guessing:
+
+```bash
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- replay ai_feedback/<export>.jsonl --out ai_feedback/replay.md
+```
+
+`replay` shows what each question is offered and where every excerpt came from. `compare` counts
+alternative fusion weights; `grep` answers "is it in the index at all?"; `similarity` tries a re-worded
+chunk. It reaches production Qdrant over an SSH tunnel to the gRPC port, only ever reads (a gRPC
+allow-list, tested against a real Qdrant), and caches the question embeddings it pays for — see
+[`Tools/GeoClubBot.RetrievalProbe/README.md`](Tools/GeoClubBot.RetrievalProbe/README.md).
 
 ## Architecture
 
@@ -167,10 +184,17 @@ API + Discord (controllers, slash command modules)
   `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy — but are sent
   to the embedder **inline**, so indexing never depends on the provider reaching this host. In the
   OpenRouter resilience pipeline, retry must stay *outside* the rate limiter (every attempt takes a
-  token); `OpenRouterResiliencePipelineTests` pins this. Answers can be rated (👍/👎 reaction, or a
-  message context menu for a written comment); a rated conversation is **copied** into
-  `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep never touches — that
-  copy is the only permanently stored conversation. See
+  token); `OpenRouterResiliencePipelineTests` pins this. The fallback router `openrouter/free` picks a
+  **random** free model (safety classifiers and 2B models included) and cannot exclude any, so chains
+  reach it only when too few vetted models qualify; every answer is screened
+  (`GuardrailVerdictDetector`, `IChatModelCatalog.IsUnfitToAnswer`) and a failed or unusable first
+  chain is retried once against untried models. Model citations are rewritten by `CitationResolver`
+  into one `[n]` numbering, pictures included. Retrieval fuses its per-vector searches client-side
+  (`KnowledgeHitFusion`: weighted RRF plus collapsing of identical texts) because Qdrant 1.15 cannot
+  weight RRF; the weights were measured on production — see the guide before changing them. Answers
+  can be rated (👍/👎 reaction, or a message context menu for a written comment); a rated conversation
+  is **copied** into `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep
+  never touches — that copy is the only permanently stored conversation. See
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 

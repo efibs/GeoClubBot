@@ -141,7 +141,7 @@ public sealed partial class RmrgSourceExtractor(
         // duplicate the moment the guide gains an item. Decoded like every other attribute here: an
         // encoded character would otherwise make both the point id and the deep link name something
         // the page does not contain.
-        var itemId = HtmlEntity.DeEntitize(item.GetAttributeValue("id", string.Empty));
+        var itemId = HtmlText.Decode(item.GetAttributeValue("id", string.Empty));
         if (string.IsNullOrWhiteSpace(itemId))
         {
             return null;
@@ -183,7 +183,7 @@ public sealed partial class RmrgSourceExtractor(
         var section = item.Ancestors("div").FirstOrDefault(node => node.HasClass(sectionClass));
         var heading = section?.SelectSingleNode($".//{headingElement}");
 
-        return heading is null ? null : Normalise(HtmlEntity.DeEntitize(heading.InnerText));
+        return heading is null ? null : Normalise(HtmlText.Decode(heading.InnerText));
     }
 
     private static string? ReadTitle(HtmlDocument document)
@@ -194,7 +194,7 @@ public sealed partial class RmrgSourceExtractor(
             return null;
         }
 
-        var title = Normalise(HtmlEntity.DeEntitize(heading.InnerText));
+        var title = Normalise(HtmlText.Decode(heading.InnerText));
         return title.Length > 0 ? title : null;
     }
 
@@ -210,7 +210,7 @@ public sealed partial class RmrgSourceExtractor(
             return null;
         }
 
-        var match = UpdatedAt().Match(HtmlEntity.DeEntitize(stamp.InnerText));
+        var match = UpdatedAt().Match(HtmlText.Decode(stamp.InnerText));
         if (!match.Success)
         {
             return null;
@@ -259,7 +259,7 @@ public sealed partial class RmrgSourceExtractor(
                 // get encoded: one category here is "linguistic & culture". Left as "&amp;" the URL
                 // names a path that does not exist, and every picture under it 404s — for the
                 // embedding provider and for Discord alike.
-                .Select(attribute => HtmlEntity.DeEntitize(image.GetAttributeValue(attribute, string.Empty)))
+                .Select(attribute => HtmlText.Decode(image.GetAttributeValue(attribute, string.Empty)))
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 // Site-relative in the markup; the provider fetches these itself, so it has to be
                 // absolute — and escaped, because the same category puts spaces in the path and
@@ -296,7 +296,7 @@ public sealed partial class RmrgSourceExtractor(
         {
             if (child.NodeType == HtmlNodeType.Text)
             {
-                builder.Append(HtmlEntity.DeEntitize(child.InnerText));
+                builder.Append(HtmlText.Decode(child.InnerText));
                 continue;
             }
 
