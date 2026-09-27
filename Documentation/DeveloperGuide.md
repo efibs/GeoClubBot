@@ -27,6 +27,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API for local dev (`GeoGuessr:UseMock=true`) |
 | **GeoClubBot.Tests** | xUnit unit + Testcontainers integration tests |
 | **Tools/GeoClubBot.ApiProbe** | Read-only console tool that dumps raw GeoGuessr API responses ([README](../Tools/GeoClubBot.ApiProbe/README.md)) |
+| **Tools/GeoClubBot.RetrievalProbe** | Read-only console tool that replays rated questions through the bot's own retrieval against the real index ([README](../Tools/GeoClubBot.RetrievalProbe/README.md)) |
 
 ### "I want to change X → go here"
 
@@ -41,7 +42,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | Change **error → user message** mapping | see [`ResultConventions.md`](ResultConventions.md) |
 | Add a **guide source** the AI can read | `GeoClubBot.Infrastructure/OutputAdapters/AI/Extractors/` — see recipe 6 |
 | Change **how the AI answers** | `GeoClubBot.Application/UseCases/AI/Conversations/` (prompt, context, orchestration) |
-| Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` |
+| Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` — measure first with `Tools/GeoClubBot.RetrievalProbe` (`replay`, `compare`) ([README](../Tools/GeoClubBot.RetrievalProbe/README.md)) |
 | Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily mission and the daily challenge / duel are both 20 XP |
 | Find out **what the GeoGuessr API actually returns** | `dotnet run --project Tools/GeoClubBot.ApiProbe -- activities` ([README](../Tools/GeoClubBot.ApiProbe/README.md)) — the typed DTOs drop undeclared fields, so don't read them for this |
 

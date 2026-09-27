@@ -30,14 +30,20 @@ public sealed class AiAnswerFormatterTests
     [Fact]
     public Task Render_AttachesCitedGuideImagesAsLinkedEmbeds()
     {
+        // Pictures are numbered like every other citation — in the prose, in the list and on the
+        // embed — so "[2]" in a sentence leads to the picture that shows it.
         var answer = new AiAnswer(
-            "The area codes are laid out by governorate.",
+            "The area codes are laid out by governorate [1], and signs show them in blue [2][3].",
             [
-                new AiAnswerImage("https://i.imgur.com/map.png", "https://docs.google.com/document/d/abc", "Tunisia area codes"),
-                new AiAnswerImage("https://i.imgur.com/signs.png", "https://www.plonkit.net/tunisia", null)
+                new AiAnswerImage(1, "https://i.imgur.com/map.png", "https://docs.google.com/document/d/abc", "Tunisia area codes"),
+                new AiAnswerImage(3, "https://i.imgur.com/signs.png", "https://www.plonkit.net/tunisia", null)
             ],
-            [],
-            "nvidia/nemotron-3.5-content-safety:free",
+            [
+                new AiAnswerSource(1, "Tunisia · Area codes", "https://docs.google.com/document/d/abc", IsImage: true),
+                new AiAnswerSource(2, "Tunisia > Signs", "https://www.plonkit.net/tunisia#s1gn"),
+                new AiAnswerSource(3, "Tunisia > Signs", "https://www.plonkit.net/tunisia", IsImage: true)
+            ],
+            "dots-studio/dots-3-note-preview:free",
             ConversationId: 100,
             Depth: 3,
             IsLongThread: false,
@@ -54,11 +60,11 @@ public sealed class AiAnswerFormatterTests
         // listed below it with the heading the model saw and a link to the guide it came from.
         var answer = new AiAnswer(
             "Roads starting with MR are exclusive to Eswatini [1], and the MR9 runs through dark, "
-            + "wooded highlands [3].",
+            + "wooded highlands [2].",
             [],
             [
                 new AiAnswerSource(1, "Eswatini > Identifying", "https://www.plonkit.net/eswatini#m1jr"),
-                new AiAnswerSource(3, "Eswatini > Regional clues", "https://www.plonkit.net/eswatini#1chu")
+                new AiAnswerSource(2, "Eswatini > Regional clues", "https://www.plonkit.net/eswatini#1chu")
             ],
             "minimax/minimax-m3:free",
             ConversationId: 100,
@@ -71,10 +77,11 @@ public sealed class AiAnswerFormatterTests
     }
 
     [Fact]
-    public Task Render_ListsRelatedGuides_WhenTheModelCitedNothing()
+    public Task Render_SaysTheAnswerCitesNoGuide_WhenTheModelCitedNothing()
     {
         // Unnumbered, because there is no marker in the prose for a number to point at, and headed so
-        // the list does not read as citations that lost their numbers.
+        // the list does not read as backing the answer never claimed: "I can't confirm if it is
+        // actually correct since there is no source to back those claims."
         var answer = new AiAnswer(
             "Roads starting with MR are exclusive to Eswatini.",
             [],
@@ -98,6 +105,21 @@ public sealed class AiAnswerFormatterTests
         var answer = new AiAnswer("Still here.", [], [], "test/model", ConversationId: 100, Depth: 21, IsLongThread: true, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
         return Verify(Render(AiAnswerFormatter.Render(answer)));
+    }
+
+    [Fact]
+    public void Render_KeepsALongPictureTitleWithinDiscordsLimit()
+    {
+        // Discord rejects the whole message when an embed title runs past 256 characters.
+        var answer = new AiAnswer(
+            "See [1].",
+            [new AiAnswerImage(1, "https://i.imgur.com/a.png", "https://guide/a", new string('x', 400))],
+            [new AiAnswerSource(1, "A", "https://guide/a", IsImage: true)],
+            "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
+
+        var rendering = AiAnswerFormatter.Render(answer);
+
+        rendering.Embeds.Single().Title.Should().StartWith("[1] ").And.HaveLength(256);
     }
 
     [Fact]

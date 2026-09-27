@@ -26,9 +26,10 @@ public partial class RefitChatModelClient(
     /// <summary>
     /// Most models one request may name. OpenRouter refuses a longer list outright with
     /// <c>'models' array must have 3 items or fewer</c>, so it is enforced here rather than trusted to
-    /// configuration: a wire limit belongs with the wire format.
+    /// configuration: a wire limit belongs with the wire format. The catalog clamps its chains to this
+    /// too, so the models a caller believes it asked are the ones that actually went out.
     /// </summary>
-    private const int MaxModelsPerRequest = 3;
+    internal const int MaxModelsPerRequest = 3;
 
     /// <summary>Response bodies are logged for diagnosis, so cap what a failing provider can write to the log.</summary>
     private const int MaxLoggedBodyLength = 500;
@@ -73,7 +74,7 @@ public partial class RefitChatModelClient(
     {
         if (request.ModelChain.Count == 0)
         {
-            return Error.Unexpected("ai.no_model_available", "No AI model is currently available.");
+            return Error.Unexpected(ChatErrorCodes.NoModelAvailable, "No AI model is currently available.");
         }
 
         var payload = new OpenRouterChatRequestDto
@@ -95,7 +96,7 @@ public partial class RefitChatModelClient(
             if (response.Error is { } error)
             {
                 LogCompletionRejected(logger, error.Code ?? 0, error.Message ?? "(no message)");
-                return Error.Unexpected("ai.chat_request_failed",
+                return Error.Unexpected(ChatErrorCodes.RequestFailed,
                     "The AI provider rejected the request. Please try again in a moment.");
             }
 
@@ -103,7 +104,7 @@ public partial class RefitChatModelClient(
             if (string.IsNullOrWhiteSpace(text))
             {
                 LogCompletionEmpty(logger, response.Model ?? "(unknown)");
-                return Error.Unexpected("ai.empty_response", "The AI model returned an empty response.");
+                return Error.Unexpected(ChatErrorCodes.EmptyResponse, "The AI model returned an empty response.");
             }
 
             return new AiChatResponse(
@@ -115,30 +116,40 @@ public partial class RefitChatModelClient(
         {
             LogCompletionFailed(logger, (int)ex.StatusCode, Describe(ex), ex);
 
-            // 429 survives the whole chain only when every model is exhausted, so it is worth its own
-            // message: the caller surfaces it as a budget problem rather than a generic failure.
-            return (int)ex.StatusCode == 429
-                ? Error.Conflict("ai.rate_limited", "The AI provider is rate-limiting us right now. Please try again shortly.")
-                : Error.Unexpected("ai.chat_request_failed", "The AI provider could not answer that right now.");
+            return (int)ex.StatusCode switch
+            {
+                // 429 survives the whole chain only when every model is exhausted, so it is worth its
+                // own message: the caller surfaces it as a budget problem rather than a generic failure.
+                429 => Error.Conflict(ChatErrorCodes.RateLimited,
+                    "The AI provider is rate-limiting us right now. Please try again shortly."),
+                // Any other client error is about the request itself — an expired screenshot link, a body
+                // too large, the key — and would fail the same way against any model. Kept apart from a
+                // model failure so the chain is neither blamed for it nor retried with others.
+                >= 400 and < 500 and not 408 => Error.Unexpected(ChatErrorCodes.Rejected,
+                    "The AI provider could not answer that right now."),
+                _ => Error.Unexpected(ChatErrorCodes.RequestFailed,
+                    "The AI provider could not answer that right now.")
+            };
         }
         catch (ApiRequestException ex)
         {
             // Refit's wrapper for every failure to get a response, timeouts included. Catching the inner
             // types directly let a timed-out answer escape instead of reporting it.
+            //
+            // Kept distinct from a failed request: nothing here says anything about the models named, so
+            // the caller must neither blame them nor spend a retry on others while the provider is out.
             LogCompletionFailed(logger, 0, ex.InnerException?.Message ?? ex.Message, ex);
-            return Error.Unexpected("ai.chat_request_failed", "Could not reach the AI provider.");
+            return Error.Unexpected(ChatErrorCodes.Unreachable, "Could not reach the AI provider.");
         }
     }
 
     /// <summary>
-    /// Trims an over-long chain to what the provider accepts, keeping the head and the final entry.
-    /// The last entry is the fallback router, which is the one that is always reachable — dropping it
-    /// to make room for a ranked model would trade the guarantee for a guess.
+    /// Trims an over-long chain to what the provider accepts, keeping its head. The chain is ordered
+    /// best first, and the fallback router — when it appears at all — is its least preferred entry, so
+    /// the head is exactly what should survive.
     /// </summary>
     private static List<string> BuildFallbackChain(IReadOnlyList<string> chain) =>
-        chain.Count <= MaxModelsPerRequest
-            ? [.. chain]
-            : [.. chain.Take(MaxModelsPerRequest - 1), chain[^1]];
+        [.. chain.Take(MaxModelsPerRequest)];
 
     private static OpenRouterMessageDto ToMessageDto(AiChatMessage message)
     {

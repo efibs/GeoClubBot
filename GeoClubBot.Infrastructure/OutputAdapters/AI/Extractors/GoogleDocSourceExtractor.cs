@@ -231,7 +231,7 @@ public sealed partial class GoogleDocSourceExtractor(
 
         foreach (var block in blocks ?? Enumerable.Empty<HtmlNode>())
         {
-            var text = HtmlEntity.DeEntitize(block.InnerText ?? string.Empty).Trim();
+            var text = HtmlText.Decode(block.InnerText ?? string.Empty).Trim();
             var images = block.SelectNodes(".//img") ?? Enumerable.Empty<HtmlNode>();
 
             if (text.Length > 0)
@@ -281,7 +281,7 @@ public sealed partial class GoogleDocSourceExtractor(
     {
         // Decoded before it is matched: the attribute is HTML-encoded and the entry name it has to
         // equal is not, so an encoded character would silently drop the image.
-        var source = HtmlEntity.DeEntitize(image.GetAttributeValue("src", string.Empty));
+        var source = HtmlText.Decode(image.GetAttributeValue("src", string.Empty));
         if (string.IsNullOrWhiteSpace(source))
         {
             return null;

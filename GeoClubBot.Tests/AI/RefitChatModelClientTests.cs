@@ -177,17 +177,38 @@ public sealed class RefitChatModelClientTests
         result.Error.Code.Should().Be("ai.rate_limited");
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, ChatErrorCodes.Rejected)]
+    [InlineData(HttpStatusCode.PaymentRequired, ChatErrorCodes.Rejected)]
+    [InlineData(HttpStatusCode.RequestEntityTooLarge, ChatErrorCodes.Rejected)]
+    [InlineData(HttpStatusCode.RequestTimeout, ChatErrorCodes.RequestFailed)]
+    [InlineData(HttpStatusCode.BadGateway, ChatErrorCodes.RequestFailed)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, ChatErrorCodes.RequestFailed)]
+    public async Task Complete_TellsARequestRefusedAsSent_FromModelsThatFailed(HttpStatusCode status, string code)
+    {
+        // A replayed screenshot whose link expired fails the same way against every model. Reported as
+        // a model failure, it would have the whole chain demoted and then retried against three more.
+        var client = CreateClient(new CapturingHandler("{}", status));
+
+        var result = await client.CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")]));
+
+        result.Error.Code.Should().Be(code);
+    }
+
     [Fact]
     public async Task Complete_ReportsATimeout_AsAFailure_RatherThanThrowing()
     {
         // Refit wraps a timeout in its own request exception, which this adapter did not catch, so an
         // answer that took too long escaped as an exception instead of the "could not answer" reply.
+        //
+        // Reported as unreachable rather than as a failed request: no model answered, so none may be
+        // blamed for it, and retrying against other models would only add to the wait.
         var client = CreateClient(new UnreachableHandler(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.")));
 
         var result = await client.CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")]));
 
         result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("ai.chat_request_failed");
+        result.Error.Code.Should().Be(ChatErrorCodes.Unreachable);
     }
 
     [Fact]
@@ -202,11 +223,12 @@ public sealed class RefitChatModelClientTests
     }
 
     [Fact]
-    public async Task Complete_TrimsAnOverLongChain_ButKeepsTheFallbackRouter()
+    public async Task Complete_TrimsAnOverLongChain_ToItsBestRankedHead()
     {
         // OpenRouter refuses a request naming more than three models, and answers with a plain 400 —
         // so the limit is enforced here rather than trusted to whatever the selector was configured
-        // with. The router is the entry that is always reachable, so it survives the trim.
+        // with. The chain is ordered best first and the router, when present, is its least preferred
+        // entry: it once survived every trim, and it is what answered with a safety classifier.
         var handler = new CapturingHandler("""
             {"model":"m","choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
             """);
@@ -216,7 +238,7 @@ public sealed class RefitChatModelClientTests
             [AiChatMessage.User("hi")]));
 
         handler.LastRequestBody.Should()
-            .Contain("\"models\":[\"first/model\",\"second/model\",\"openrouter/free\"]");
+            .Contain("\"models\":[\"first/model\",\"second/model\",\"third/model\"]");
     }
 
     [Fact]

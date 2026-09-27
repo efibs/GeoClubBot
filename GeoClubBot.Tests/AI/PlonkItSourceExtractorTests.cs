@@ -40,6 +40,22 @@ public sealed class PlonkItSourceExtractorTests
     }
 
     [Fact]
+    public async Task Extract_ReducesLinksToTheirText()
+    {
+        // The guide links example locations and species pages. The targets say nothing a question
+        // would, and measured against the embedding model they lowered each linked tip's similarity
+        // to the question it answers by 0.04 to 0.06 — from about 8th to 39th for one of them.
+        var result = await CreateExtractor(await ReadFixtureAsync()).ExtractAsync(Tunisia);
+
+        var texts = result.Value.Chunks.Select(chunk => chunk.Text).ToList();
+
+        texts.Should().NotContain(text => text.Contains("](http", StringComparison.Ordinal));
+        texts.Should().NotContain(text => text.Contains("goo.gl", StringComparison.Ordinal));
+        texts.Should().Contain(text => text.Contains("yellow middle lines", StringComparison.Ordinal),
+            "the link's text is kept; only its target goes");
+    }
+
+    [Fact]
     public async Task Extract_KeepsImagesWithTheProseThatDescribesThem()
     {
         // The pairing is the point: a written question reaches the picture through its caption, which

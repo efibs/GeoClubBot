@@ -26,6 +26,13 @@ public partial class ChatModelCatalog(
 
     private readonly ConcurrentDictionary<string, FailureRecord> _failures = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Models that answered with something that was not an answer, kept out until restart. Held apart
+    /// from the failure penalties because those decay within the hour — and a classifier the
+    /// description rules missed would be back answering "User Safety: safe" as soon as they did.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, byte> _learnedUnfit = new(StringComparer.OrdinalIgnoreCase);
+
     // Swapped atomically on refresh so readers never observe a partially-populated roster.
     private volatile RosterSnapshot _roster = RosterSnapshot.Empty;
 
@@ -98,6 +105,50 @@ public partial class ChatModelCatalog(
         LogModelDemoted(logger, modelId);
     }
 
+    public void ReportChainOutcome(IReadOnlyList<string> chain, string? answeredBy)
+    {
+        ArgumentNullException.ThrowIfNull(chain);
+
+        var failed = ChatModelSelector.InferFailedModels(
+            chain,
+            answeredBy,
+            configuration.Value.OpenRouter.FallbackModelId,
+            _roster.Models);
+
+        foreach (var modelId in failed)
+        {
+            ReportFailure(modelId);
+        }
+    }
+
+    public bool IsUnfitToAnswer(string modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            return false;
+        }
+
+        var known = _roster.Models.FirstOrDefault(model =>
+            string.Equals(model.Id, modelId, StringComparison.OrdinalIgnoreCase));
+
+        return ChatModelSelector.IsUnfitToAnswer(modelId, known, BuildSelectionOptions());
+    }
+
+    public void ReportUnfit(string modelId)
+    {
+        // The router is not a model and never ranked, so excluding it would change nothing but the log.
+        if (string.IsNullOrWhiteSpace(modelId)
+            || string.Equals(modelId, configuration.Value.OpenRouter.FallbackModelId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (_learnedUnfit.TryAdd(modelId, 0))
+        {
+            LogModelExcluded(logger, modelId);
+        }
+    }
+
     public AiCatalogStatus ReadStatus()
     {
         var roster = _roster;
@@ -105,18 +156,26 @@ public partial class ChatModelCatalog(
             roster.Models.Count,
             roster.Models.Count(model => model.SupportsImageInput),
             roster.RefreshedAtUtc,
-            roster.Source);
+            roster.Source,
+            [.. _learnedUnfit.Keys.Order(StringComparer.OrdinalIgnoreCase)]);
     }
 
     private ChatModelSelectionOptions BuildSelectionOptions()
     {
         var openRouter = configuration.Value.OpenRouter;
+
+        var blocked = openRouter.BlockedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        blocked.UnionWith(_learnedUnfit.Keys);
+
         return new ChatModelSelectionOptions
         {
             PreferredModelPrefixes = openRouter.PreferredModelPrefixes,
-            BlockedModelIds = openRouter.BlockedModelIds.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            BlockedModelIds = blocked,
             FallbackModelId = openRouter.FallbackModelId,
-            ChainLength = openRouter.ChainLength,
+            // Clamped to what one request may carry, so the chain a caller is handed — and later blames
+            // or excludes on a retry — is exactly what went out, rather than something the client
+            // silently trims.
+            ChainLength = Math.Clamp(openRouter.ChainLength, 1, RefitChatModelClient.MaxModelsPerRequest),
             ExpiryHorizon = TimeSpan.FromHours(openRouter.ExpiryHorizonHours)
         };
     }
@@ -160,4 +219,8 @@ public partial class ChatModelCatalog(
 
     [LoggerMessage(LogLevel.Information, "Demoted AI model {ModelId} after an upstream failure.")]
     static partial void LogModelDemoted(ILogger logger, string modelId);
+
+    [LoggerMessage(LogLevel.Warning,
+        "AI model {ModelId} answered with something that is not an answer and is excluded until restart. Add it to AI:OpenRouter:BlockedModelIds to keep it out for good.")]
+    static partial void LogModelExcluded(ILogger logger, string modelId);
 }

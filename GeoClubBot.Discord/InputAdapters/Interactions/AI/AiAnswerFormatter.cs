@@ -19,6 +19,9 @@ public static class AiAnswerFormatter
     /// <summary>Discord renders at most ten embeds per message.</summary>
     private const int MaxEmbeds = 10;
 
+    /// <summary>Discord rejects an embed whose title is longer, and a guide's section path can be.</summary>
+    private const int MaxEmbedTitleLength = 256;
+
     public static AiAnswerRendering Render(AiAnswer answer)
     {
         var body = answer.Text.Trim();
@@ -39,7 +42,10 @@ public static class AiAnswerFormatter
                 // Linking the embed to its source makes every shown image a citation rather than a
                 // decoration, and credits the guide it came from.
                 .WithUrl(image.SourceUrl)
-                .WithTitle(string.IsNullOrWhiteSpace(image.Title) ? "Guide image" : image.Title)
+                // Numbered like the prose, so "[2]" in a sentence leads to the picture that shows it.
+                .WithTitle(Truncate(
+                    $"[{image.Marker}] {(string.IsNullOrWhiteSpace(image.Title) ? "Guide image" : image.Title)}",
+                    MaxEmbedTitleLength))
                 .Build())
             .ToList();
 
@@ -59,22 +65,25 @@ public static class AiAnswerFormatter
         // label hiding a hostile URL, but honours them in what a bot posts through the API.
         //
         // The number stays outside the link so it still reads as the anchor for the "[1]" in the
-        // prose, and so the label cannot nest brackets inside a masked link.
+        // prose, and so the label cannot nest brackets inside a masked link. Cited pictures are listed
+        // too, marked as such, so the numbers run 1, 2, 3 without a gap where a picture sits.
         if (answer.Sources.Count > 0)
         {
-            // An unnumbered list is the model citing nothing and the guides being credited for it, so
-            // it is introduced as related rather than left looking like citations that lost their
-            // numbers.
+            // An unnumbered list is the model citing nothing and the guides being credited for it.
+            // Said outright, because a reader otherwise takes it for backing the answer never claimed —
+            // "I can't confirm if it is actually correct since there is no source" was the complaint.
             if (answer.Sources.All(source => source.Marker is null))
             {
-                lines.Add("-# Related guides:");
+                lines.Add("-# This answer cites no guide. Closest matches:");
             }
 
             foreach (var source in answer.Sources)
             {
+                var picture = source.IsImage ? "🖼️ " : string.Empty;
+
                 lines.Add(source.Marker is { } marker
-                    ? $"-# [{marker}] [{source.Label}]({source.Url})"
-                    : $"-# [{source.Label}]({source.Url})");
+                    ? $"-# [{marker}] {picture}[{source.Label}]({source.Url})"
+                    : $"-# {picture}[{source.Label}]({source.Url})");
             }
         }
 
@@ -90,4 +99,7 @@ public static class AiAnswerFormatter
 
         return string.Join("\n", lines);
     }
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : $"{value[..(maxLength - 1)]}…";
 }

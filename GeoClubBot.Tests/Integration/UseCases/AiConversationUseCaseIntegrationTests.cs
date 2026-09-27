@@ -244,6 +244,214 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
+    public async Task AskAi_AsksForAVisionModel_WhenTheReplayedHistoryCarriesAnImage()
+    {
+        // "How can I tell this one is Bengali?" attaches nothing, but replays the screenshot it is
+        // about — a text-only model asked it cannot see what "this one" is.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "answer");
+        var catalog = host.Mock<IChatModelCatalog>();
+
+        var rootId = NewSnowflake();
+        var first = await host.SendAsync(Ask(rootId, null, "is this Bengali?", images: ["https://cdn/sign.png"]));
+        var botMessageId = await RecordAsync(host, first.Value, null, "is this Bengali?", userId: 55, rootId,
+            images: ["https://cdn/sign.png"]);
+        catalog.ClearReceivedCalls();
+
+        await host.SendAsync(Ask(NewSnowflake(), botMessageId, "how can you tell?", authorId: 55));
+
+        await catalog.Received().ReadChainAsync(
+            Arg.Is<ChatModelRequirements>(r => r.NeedsImageInput), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAi_RetriesWithOtherModels_WhenTheAnswerIsASafetyVerdict()
+    {
+        // Seen three times in the beta-test feedback: the answer was literally "User Safety: safe".
+        // A classifier's verdict is a valid completion, so nothing noticed it until a reader did.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var catalog = ArrangeChains(host, first: ["a/model", "b/model", "c/model"], retry: ["d/model"]);
+        ArrangeCompletions(host,
+            Success("User Safety: safe", "a/model"),
+            Success("Red soil is common across Malaysia.", "d/model"));
+
+        var before = await ReadTodaysBudgetAsync();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "is red soil in malaysia regional"));
+        var after = await ReadTodaysBudgetAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Text.Should().Be("Red soil is common across Malaysia.");
+        result.Value.ModelUsed.Should().Be("d/model");
+
+        catalog.Received(1).ReportUnfit("a/model");
+        // Only the model that gave the verdict was reached; the two behind it are still worth asking.
+        await catalog.Received().ReadChainAsync(
+            Arg.Is<ChatModelRequirements>(r => r.ExcludedModelIds != null
+                                               && r.ExcludedModelIds.Contains("a/model")
+                                               && !r.ExcludedModelIds.Contains("b/model")),
+            Arg.Any<CancellationToken>());
+
+        (after.Requests - before.Requests).Should().Be(3, "the embedding, the first chain and the retry");
+        (after.PromptTokens - before.PromptTokens).Should().Be(20, "the discarded completion was billed too");
+    }
+
+    [Fact]
+    public async Task AskAi_Retries_WhenTheRouterPickedAModelUnfitToAnswer()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var catalog = ArrangeChains(host, first: ["a/model", "openrouter/free"], retry: ["d/model"]);
+        catalog.IsUnfitToAnswer("nvidia/nemotron-3.5-content-safety:free").Returns(true);
+        ArrangeCompletions(host,
+            Success("I can only classify content.", "nvidia/nemotron-3.5-content-safety:free"),
+            Success("Look at the poles.", "d/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where is this?"));
+
+        result.Value.Text.Should().Be("Look at the poles.");
+        catalog.DidNotReceive().ReportUnfit(Arg.Any<string>());
+        // Answered from outside the chain, so every entry of the chain was tried — the router included.
+        await catalog.Received().ReadChainAsync(
+            Arg.Is<ChatModelRequirements>(r => r.ExcludedModelIds != null
+                                               && r.ExcludedModelIds.Contains("a/model")
+                                               && r.ExcludedModelIds.Contains("openrouter/free")
+                                               && r.ExcludedModelIds.Contains("nvidia/nemotron-3.5-content-safety:free")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAi_RetriesWithModelsNotYetTried_AfterAQuickFailure()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var catalog = ArrangeChains(host, first: ["a/model", "b/model"], retry: ["c/model"]);
+        ArrangeCompletions(host,
+            Failure(ChatErrorCodes.RequestFailed),
+            Success("Ghanaian bollards are white.", "c/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"));
+
+        result.Value.Text.Should().Be("Ghanaian bollards are white.");
+        catalog.Received().ReportChainOutcome(
+            Arg.Is<IReadOnlyList<string>>(chain => chain.SequenceEqual(new[] { "a/model", "b/model" })), null);
+        await catalog.Received().ReadChainAsync(
+            Arg.Is<ChatModelRequirements>(r => r.ExcludedModelIds != null
+                                               && r.ExcludedModelIds.Contains("a/model")
+                                               && r.ExcludedModelIds.Contains("b/model")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(ChatErrorCodes.RateLimited)]
+    [InlineData(ChatErrorCodes.Unreachable)]
+    [InlineData(ChatErrorCodes.Rejected)]
+    public async Task AskAi_DoesNotRetry_WhenOtherModelsWouldFailTheSameWay(string code)
+    {
+        // Every model sits behind the same provider, the same key and the same request; none of these
+        // is the models' fault.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var catalog = ArrangeChains(host, first: ["a/model", "b/model"], retry: ["c/model"]);
+        var chat = ArrangeCompletions(host, Failure(code), Success("never asked", "c/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"));
+
+        result.Error.Code.Should().Be(code);
+        await chat.Received(1).CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>());
+        catalog.DidNotReceive().ReportChainOutcome(Arg.Any<IReadOnlyList<string>>(), Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task AskAi_GivesUp_WhenTheRetryWouldExceedTheBudget()
+    {
+        await ResetTodaysBudgetAsync();
+
+        // Two requests cover the embedding and the first chain, and nothing more.
+        using var host = CreateHost(dailyBudget: 2);
+        ArrangeProviders(host, answer: "unused");
+        ArrangeChains(host, first: ["a/model"], retry: ["b/model"]);
+        var chat = ArrangeCompletions(host, Success("User Safety: safe", "a/model"), Success("never asked", "b/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "question"));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.UnusableAnswer);
+        await chat.Received(1).CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAi_GivesUp_WithoutSpending_WhenNoUntriedModelRemains()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        ArrangeChains(host, first: ["a/model"], retry: []);
+        var chat = ArrangeCompletions(host, Failure(ChatErrorCodes.RequestFailed), Success("never asked", "b/model"));
+
+        var before = await ReadTodaysBudgetAsync();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "question"));
+        var after = await ReadTodaysBudgetAsync();
+
+        result.Error.Code.Should().Be(ChatErrorCodes.RequestFailed);
+        await chat.Received(1).CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>());
+        (after.Requests - before.Requests).Should().Be(2, "a retry with nobody left to ask costs nothing");
+    }
+
+    [Fact]
+    public async Task AskAi_RetriesAtMostOnce()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        ArrangeChains(host, first: ["a/model"], retry: ["b/model"]);
+        var chat = ArrangeCompletions(host,
+            Success("User Safety: safe", "a/model"),
+            Success("Response Safety: safe", "b/model"),
+            Success("never asked", "c/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "question"));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.UnusableAnswer);
+        await chat.Received(2).CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAi_ReportsWhichModelsTheProviderSkipped()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var catalog = ArrangeChains(host, first: ["a/model", "b/model", "c/model"], retry: []);
+        ArrangeCompletions(host, Success("An answer.", "b/model"));
+
+        await host.SendAsync(Ask(NewSnowflake(), null, "question"));
+
+        catalog.Received(1).ReportChainOutcome(
+            Arg.Is<IReadOnlyList<string>>(chain => chain.SequenceEqual(new[] { "a/model", "b/model", "c/model" })),
+            "b/model");
+    }
+
+    [Fact]
+    public async Task AskAi_CountsPictureCitationsAmongTheCitedSources()
+    {
+        // An answer that cited only pictures used to be archived as citing nothing at all.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Thai plates carry two letters [2].");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                Hit("Thai taxis are pink.", "https://www.plonkit.net/thailand#taxi"),
+                new KnowledgeHit(Guid.NewGuid(), 0.8f, KnowledgeChunkKind.Image, "Thai licence plates",
+                    "https://www.plonkit.net/thailand#plates", "https://relay/plates.png",
+                    "Thailand", "thailand", "Thailand > Plates", "Plonk It team", 0)
+            ]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "what do Thai plates look like?"));
+
+        result.Value.Text.Should().Be("Thai plates carry two letters [1].");
+        result.Value.Images.Should().ContainSingle().Which.Marker.Should().Be(1);
+        result.Value.Sources.Should().ContainSingle().Which.IsImage.Should().BeTrue();
+        result.Value.CitedSourceUrls.Should().Equal("https://www.plonkit.net/thailand#plates");
+    }
+
+    [Fact]
     public async Task RecordAiTurns_LinksTheAnswerToTheQuestion()
     {
         using var host = CreateHost();
@@ -320,6 +528,51 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
             $"""DELETE FROM "AiDailyBudgets" WHERE "DateUtc" = {DateOnly.FromDateTime(DateTime.UtcNow)}""");
     }
 
+    /// <summary>
+    /// Today's row is shared by every test in the collection, which run one at a time, so a test reads
+    /// it before and after and compares the difference rather than the totals.
+    /// </summary>
+    private async Task<(int Requests, long PromptTokens)> ReadTodaysBudgetAsync()
+    {
+        await using var db = fixture.CreateDbContext();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var row = await db.AiDailyBudgets.AsNoTracking().SingleOrDefaultAsync(budget => budget.DateUtc == today);
+        return (row?.RequestCount ?? 0, row?.PromptTokens ?? 0);
+    }
+
+    /// <summary>Arranges the chain for a first attempt and, for any request excluding tried models, the retry's.</summary>
+    private static IChatModelCatalog ArrangeChains(MediatorTestHost host, string[] first, string[] retry)
+    {
+        var catalog = host.Mock<IChatModelCatalog>();
+
+        catalog.ReadChainAsync(Arg.Any<ChatModelRequirements>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(first));
+        catalog.ReadChainAsync(
+                Arg.Is<ChatModelRequirements>(r => r.ExcludedModelIds != null && r.ExcludedModelIds.Count > 0),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(retry));
+
+        return catalog;
+    }
+
+    /// <summary>Scripts successive completions, one per attempt.</summary>
+    private static IChatModelClient ArrangeCompletions(
+        MediatorTestHost host,
+        Result<AiChatResponse> first,
+        params Result<AiChatResponse>[] rest)
+    {
+        var chat = host.Mock<IChatModelClient>();
+        chat.CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>()).Returns(first, rest);
+        return chat;
+    }
+
+    private static Result<AiChatResponse> Success(string text, string model) =>
+        Result<AiChatResponse>.Success(new AiChatResponse(text, model, new AiTokenUsage(10, 5)));
+
+    private static Result<AiChatResponse> Failure(string code) =>
+        Result<AiChatResponse>.Failure(Error.Unexpected(code, "failed"));
+
     private MediatorTestHost CreateHost(int dailyBudget = 1000, int perUserPerHour = 0) =>
         new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>
         {
@@ -372,14 +625,15 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
         ulong? parentId,
         string question,
         ulong userId,
-        ulong? userMessageId = null)
+        ulong? userMessageId = null,
+        IReadOnlyList<string>? images = null)
     {
         var botMessageId = NewSnowflake();
 
         await host.SendAsync(new RecordAiTurnsCommand(
             userMessageId ?? NewSnowflake(), parentId, botMessageId, answer.ConversationId,
             ChannelId: 5, GuildId: 7, userId, BotUserId: 1,
-            question, [], answer.Text, answer.ModelUsed,
+            question, images ?? [], answer.Text, answer.ModelUsed,
             answer.RetrievedSourceUrls, answer.CitedSourceUrls, EarlierBotMessageIds: [], answer.Depth));
 
         return botMessageId;

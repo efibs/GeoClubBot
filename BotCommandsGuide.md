@@ -253,7 +253,8 @@ on a topic.
 
 ### `/ai status`
 Shows which AI models are currently available, how much of the guide library is indexed, and how much
-of today's request allowance is left.
+of today's request allowance is left. Models excluded at runtime for answering with something that is
+not an answer are listed too, until the bot restarts.
 
 No parameters.
 

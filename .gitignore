@@ -28,6 +28,10 @@ GeoClubBot.API/wwwroot/
 # Misc files
 OldHistory.json
 ChallengesConfig.json
+
+# AI feedback exports from `/ai feedback-export`. They carry Discord user ids and the rated
+# conversations themselves, so they are analysed locally and never committed.
+ai_feedback/
 .VSCodeCounter
 .idea/
 

@@ -117,7 +117,7 @@ public sealed partial class AiConversationGateway(
         // A reply that pings us but continues someone else's unrelated message starts fresh.
         var effectiveParentId = isContinuation ? parentMessageId : null;
 
-        var content = CleanContent(message);
+        var content = CleanContent(message.Content, client.CurrentUser.Id);
         var attachments = ReadImageAttachments(message);
         if (string.IsNullOrWhiteSpace(content) && attachments.Count == 0)
         {
@@ -288,12 +288,31 @@ public sealed partial class AiConversationGateway(
     private static ulong? ReadReferencedMessageId(SocketUserMessage message) =>
         message.Reference?.MessageId.IsSpecified == true ? message.Reference.MessageId.Value : null;
 
-    /// <summary>Strips the bot mention so the question reads naturally to the model.</summary>
-    private string CleanContent(SocketUserMessage message) =>
-        message.Content
-            .Replace($"<@{client.CurrentUser.Id}>", string.Empty, StringComparison.Ordinal)
-            .Replace($"<@!{client.CurrentUser.Id}>", string.Empty, StringComparison.Ordinal)
+    /// <summary>
+    /// Strips the bot mention so the question reads naturally to the model — together with the
+    /// punctuation that addressed it, or "@Bot, where…" is stored, embedded and replayed as ", where…".
+    /// Only a leading mention takes punctuation with it: a reply that merely starts with ":)" keeps it.
+    /// </summary>
+    internal static string CleanContent(string content, ulong botUserId)
+    {
+        var mention = $"<@{botUserId}>";
+        var nicknameMention = $"<@!{botUserId}>";
+        var cleaned = content.Trim();
+
+        foreach (var prefix in (string[])[mention, nicknameMention])
+        {
+            if (cleaned.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                cleaned = cleaned[prefix.Length..].TrimStart().TrimStart(',', ':', ';');
+                break;
+            }
+        }
+
+        return cleaned
+            .Replace(mention, string.Empty, StringComparison.Ordinal)
+            .Replace(nicknameMention, string.Empty, StringComparison.Ordinal)
             .Trim();
+    }
 
     private static List<string> ReadImageAttachments(SocketUserMessage message) =>
         [.. message.Attachments

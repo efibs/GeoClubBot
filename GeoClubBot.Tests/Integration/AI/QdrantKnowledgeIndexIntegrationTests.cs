@@ -109,11 +109,11 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
     }
 
     [Fact]
-    public async Task Search_ByText_FusesBothModalities_SoAnImageCanOutrankProse()
+    public async Task Search_ByText_StillReachesAThinlyCaptionedImage_ThroughItsPixels()
     {
-        // Fusion is rank-based, so an image that ranks first within the image prefetch competes with
-        // the top text hit even though its raw cross-modal score is much lower. Scored addition would
-        // bury it.
+        // Fusion is rank-based, so an image found by its pixels competes with prose even though its
+        // raw cross-modal score is much lower; scored addition would bury it. It is weighted down so
+        // prose the question is about comes first, but it must still be reachable.
         var index = await CreateIndexAsync();
         await index.UpsertAsync(
         [
@@ -125,9 +125,37 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
 
         var hits = await index.SearchAsync(new KnowledgeQuery { TextVector = Axis(0), Limit = 5 });
 
+        hits.Select(hit => hit.Text).Should().Equal(["loosely related prose", "sparse caption"],
+            "the prose matches the question's text; the picture only its pixels");
+    }
+
+    [Fact]
+    public async Task Search_OffersCopiesOfTheSameTextOnce_KeepingThePicture()
+    {
+        // The same sentence captioning a picture and standing as prose took two of eight slots; one
+        // excerpt now carries it, and the one the model can attach.
+        var index = await CreateIndexAsync();
+
+        // Similarity 0.5 to the question: below the picture's 0.707, so the order is not a tie.
+        var lessRelated = new float[VectorSize];
+        lessRelated[0] = 0.5f;
+        lessRelated[2] = (float)Math.Sqrt(0.75);
+
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(Chunk("prose", KnowledgeChunkKind.Text, text: "Khasi pines grow in Meghalaya."), Axis(0)),
+            new KnowledgePoint(
+                Chunk("picture", KnowledgeChunkKind.Image, text: "**Khasi pines** grow in  Meghalaya.",
+                    imageUrl: "https://i.imgur.com/khasi.png"),
+                Between(0, 1), Axis(4)),
+            new KnowledgePoint(Chunk("other", KnowledgeChunkKind.Text, text: "Chir pines grow in Uttarakhand."), lessRelated)
+        ], "run-1");
+
+        var hits = await index.SearchAsync(new KnowledgeQuery { TextVector = Axis(0), Limit = 5 });
+
         hits.Should().HaveCount(2);
-        hits.Should().Contain(hit => hit.Kind == KnowledgeChunkKind.Image,
-            "the cross-modal prefetch is what lets a thin-captioned image surface at all");
+        hits[0].ImageUrl.Should().Be("https://i.imgur.com/khasi.png");
+        hits[1].Text.Should().Be("Chir pines grow in Uttarakhand.");
     }
 
     [Fact]
