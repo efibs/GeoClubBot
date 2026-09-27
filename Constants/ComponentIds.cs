@@ -20,6 +20,11 @@ public class ComponentIds
     public const string AiFeedbackCommentTextInputId =
         "ai-feedback-comment-input";
 
+    public const string RevokeAllStrikesModalId =
+        "revoke-all-strikes-modal";
+    public const string RevokeAllStrikesConfirmTextInputId =
+        "revoke-all-strikes-confirm-input";
+
     public const string SelfRolesSelectButtonId =
         "self-roles-select-btn";
     public const string SelfRolesSelectMenuId =
