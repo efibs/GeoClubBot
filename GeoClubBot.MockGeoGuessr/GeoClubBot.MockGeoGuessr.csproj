@@ -21,7 +21,7 @@
         <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.AutoActivation" Version="10.10.0" />
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-        <PackageReference Include="Refit" Version="15.2.0" />
+        <PackageReference Include="Refit" Version="16.3.0" />
         <ProjectReference Include="..\GeoClubBot.Application\GeoClubBot.Application.csproj" />
         <ProjectReference Include="..\GeoClubBot.Infrastructure\GeoClubBot.Infrastructure.csproj" />
         <ProjectReference Include="..\Configuration\Configuration.csproj" />
