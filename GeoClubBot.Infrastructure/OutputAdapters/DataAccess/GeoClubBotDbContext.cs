@@ -23,6 +23,12 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<ClubChallengeLink> LatestClubChallengeLinks { get; set; }
 
+    public DbSet<CountryChallengePost> CountryChallengePosts { get; set; }
+
+    public DbSet<CountryChallengePointAward> CountryChallengePointAwards { get; set; }
+
+    public DbSet<CountryChallengeLeaderboardPost> CountryChallengeLeaderboardPosts { get; set; }
+
     public DbSet<GeoGuessrUser> GeoGuessrUsers { get; set; }
 
     public DbSet<GeoGuessrAccountLinkingRequest> GeoGuessrAccountLinkingRequests { get; set; }

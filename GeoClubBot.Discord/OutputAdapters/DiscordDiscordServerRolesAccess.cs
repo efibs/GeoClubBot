@@ -73,8 +73,14 @@ public partial class DiscordDiscordServerRolesAccess(
 
         foreach (var userId in userIds)
         {
-            // Get the user
+            // Get the user. A linked player who has since left the server is not in it any more; skipping
+            // them keeps everyone after them from losing their role too.
             var user = guild.GetUser(userId);
+            if (user is null)
+            {
+                LogMemberNotFound(logger, roleId, userId);
+                continue;
+            }
 
             // Add the role to the user
             await user.AddRoleAsync(roleId).ConfigureAwait(false);
@@ -97,6 +103,9 @@ public partial class DiscordDiscordServerRolesAccess(
 
         return Task.FromResult(usersWithRole);
     }
+
+    [LoggerMessage(LogLevel.Information, "Could not give role {roleId} to user {userId}: they are not a member of the server.")]
+    static partial void LogMemberNotFound(ILogger<DiscordDiscordServerRolesAccess> logger, ulong roleId, ulong userId);
 
     [LoggerMessage(LogLevel.Debug, "Added role {roleId} to member {userDisplayName}.")]
     static partial void LogAddedRoleToMember(ILogger<DiscordDiscordServerRolesAccess> logger, ulong roleId,

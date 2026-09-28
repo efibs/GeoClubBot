@@ -75,6 +75,25 @@ public class MockGeoGuessrDataInitializer(
             dataStore.ChallengeHighscores.TryAdd(link.ChallengeId, []);
         }
 
+        // Country challenges still waiting for their results, due or not, so scores can be added to them
+        // in the mock UI after a restart.
+        var countryChallenges = scope.ServiceProvider.GetRequiredService<ICountryChallengeRepository>();
+        var pendingCountryChallenges = await countryChallenges.ReadPendingPostsAsync(cancellationToken);
+        foreach (var post in pendingCountryChallenges)
+        {
+            dataStore.Challenges.TryAdd(post.ChallengeId, new PostChallengeRequestDto
+            {
+                AccessLevel = 1,
+                ChallengeType = 0,
+                ForbidMoving = post.ForbidMoving,
+                ForbidRotating = post.ForbidRotating,
+                ForbidZooming = post.ForbidZooming,
+                Map = post.MapId,
+                TimeLimit = post.TimeLimit
+            });
+            dataStore.ChallengeHighscores.TryAdd(post.ChallengeId, []);
+        }
+
         // Seed sample daily missions covering all three mission types
         SeedSampleMissions();
 

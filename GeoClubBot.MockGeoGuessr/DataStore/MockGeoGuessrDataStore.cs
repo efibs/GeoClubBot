@@ -56,13 +56,15 @@ public class MockGeoGuessrDataStore
     /// </summary>
     public ConcurrentDictionary<string, RankedPeakRatingResponseDto> RankedPeakRatings { get; } = new();
 
-    private int _challengeCounter;
+    private const string TokenCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-    public string GenerateChallengeToken()
-    {
-        var id = Interlocked.Increment(ref _challengeCounter);
-        return $"mock-challenge-{id:D6}";
-    }
+    /// <summary>
+    /// A 16-character token like GeoGuessr's own: the bot stores challenge ids in 16-character columns,
+    /// so a longer mock token cannot be stored at all. Random rather than counted, so a token issued
+    /// after a restart never repeats one the database still holds from an earlier run.
+    /// </summary>
+    public string GenerateChallengeToken() =>
+        "MOCK" + new string(Random.Shared.GetItems(TokenCharacters.AsSpan(), 12));
 
     /// <summary>
     /// Appends an activity. <paramref name="type"/> is GeoGuessr's activity type - 1 daily mission,

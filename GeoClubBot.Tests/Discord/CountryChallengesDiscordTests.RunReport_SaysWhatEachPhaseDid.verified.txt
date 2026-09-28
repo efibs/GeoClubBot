@@ -1,0 +1,7 @@
+﻿## Country challenges of Friday, 2026-10-02
+- Results evaluated: Indonesia Friday (2026-09-25).
+:warning: The highscores of Argentina Friday (2026-09-25) could not be read; they are retried at the next run.
+- The leaderboard is not due today.
+- Announced: Indonesia Friday.
+- Already posted today: Argentina Friday.
+:warning: Challenges[4] "Japan Wednesday": MapId is required. (the challenge is disabled, so this is only a warning)

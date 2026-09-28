@@ -1,7 +1,9 @@
 using Constants;
+using Infrastructure.OutputAdapters.CountryChallenges;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Repositories;
 using Microsoft.EntityFrameworkCore;
+using UseCases.OutputPorts.CountryChallenges;
 using UseCases.OutputPorts.Repositories;
 
 namespace GeoClubBot.DependencyInjection.Modules;
@@ -27,6 +29,11 @@ public static class PersistenceModule
         services.AddTransient<IGeoGuessrUserRepository, EfGeoGuessrUserRepository>();
         services.AddTransient<IAccountLinkingRequestRepository, EfAccountLinkingRequestRepository>();
         services.AddTransient<IClubChallengeRepository, EfClubChallengeRepository>();
+        services.AddTransient<ICountryChallengeRepository, EfCountryChallengeRepository>();
+
+        // The country challenges keep their configuration in a hand-edited file rather than the database;
+        // the source re-reads it on every call.
+        services.AddSingleton<ICountryChallengeConfigurationSource, JsonFileCountryChallengeConfigurationSource>();
         services.AddTransient<IDailyMissionReminderRepository, EfDailyMissionReminderRepository>();
         services.AddTransient<IDailyMissionRepository, EfDailyMissionRepository>();
         services.AddTransient<IDailyMissionCompletionRepository, EfDailyMissionCompletionRepository>();

@@ -14,6 +14,12 @@ public static class StringLengthConstants
     public const int DailyMissionRewardTypeMaxLength = 32;
     public const int DailyMissionMapSlugMaxLength = 128;
     public const int DailyMissionMapNameMaxLength = 128;
+    public const int CountryChallengeNameMaxLength = 100;
+    public const int CountryChallengeCountryNameMaxLength = 100;
+    public const int CountryChallengeCountryCodeLength = 2;
+    public const int CountryChallengeSeasonMaxLength = 64;
+    public const int GeoGuessrMapIdMaxLength = 64;
+    public const int GeoGuessrMapNameMaxLength = 128;
 
     /// <summary>
     /// A stored AI turn. Larger than Discord's 2000-character message cap because an assistant turn

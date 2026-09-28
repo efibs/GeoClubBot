@@ -44,6 +44,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | Change **how the AI answers** | `GeoClubBot.Application/UseCases/AI/Conversations/` (prompt, context, orchestration) |
 | Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` — measure first with `Tools/GeoClubBot.RetrievalProbe` (`replay`, `compare`) ([README](../Tools/GeoClubBot.RetrievalProbe/README.md)) |
 | Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily mission and the daily challenge / duel are both 20 XP |
+| Change **the country challenges** (what the file allows, how runs behave) | `GeoClubBot.Application/UseCases/CountryChallenges/` — the file's rules live in `Configuration/CountryChallengePlanResolver.cs`, every posted text in `Rendering/CountryChallengeMessages.cs`, which the admin preview shares. See [`CountryChallengesGuide.md`](CountryChallengesGuide.md) |
 | Find out **what the GeoGuessr API actually returns** | `dotnet run --project Tools/GeoClubBot.ApiProbe -- activities` ([README](../Tools/GeoClubBot.ApiProbe/README.md)) — the typed DTOs drop undeclared fields, so don't read them for this |
 
 > The AI feature has its own document: [`AiGuide.md`](AiGuide.md) covers how it works, what it costs

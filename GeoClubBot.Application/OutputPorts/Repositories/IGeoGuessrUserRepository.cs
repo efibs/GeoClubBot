@@ -17,4 +17,10 @@ public interface IGeoGuessrUserRepository
     Task<List<GeoGuessrUser>> ReadAllLinkedUsersAsync(CancellationToken cancellationToken = default);
 
     Task<List<string>> ReadAllLinkedNicknamesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every known user whose nickname equals <paramref name="nickname"/>, ignoring case. GeoGuessr
+    /// nicknames are not unique, so callers must handle several matches.
+    /// </summary>
+    Task<List<GeoGuessrUser>> ReadUsersByNicknameAsync(string nickname, CancellationToken cancellationToken = default);
 }
