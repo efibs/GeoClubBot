@@ -46,7 +46,7 @@ public sealed class AnnounceCountryChallengesHandlerTests
                 return new PostChallengeResponseDto { Token = $"token-{++tokens}" };
             });
 
-        _repository.ReadChallengeNamesPostedOnAsync(Arg.Any<DateOnly>(), Arg.Any<CancellationToken>()).Returns([]);
+        _repository.ReadPostsOnAsync(Arg.Any<DateOnly>(), Arg.Any<CancellationToken>()).Returns([]);
         _repository.ReadCountryHistoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns([]);
         _repository.When(r => r.AddPosts(Arg.Any<IEnumerable<CountryChallengePost>>()))
             .Do(call => _stored.AddRange(call.Arg<IEnumerable<CountryChallengePost>>()));
@@ -83,7 +83,7 @@ public sealed class AnnounceCountryChallengesHandlerTests
     {
         var outcome = await HandleAsync(FridayPlan(), Friday);
 
-        outcome.Announced.Should().Equal("Argentina Friday", "Indonesia Friday");
+        outcome.Announced.Should().Equal("Argentina Friday: Argentina", "Indonesia Friday: Indonesia");
         _created.Select(c => c.Map).Should().Equal(MapIdOf("Argentina"), MapIdOf("Indonesia"));
         _stored.Select(p => (p.ChallengeName, p.Date, p.Country, p.ChallengeId, p.ResultsDueOn))
             .Should().Equal(
@@ -143,6 +143,43 @@ public sealed class AnnounceCountryChallengesHandlerTests
         _created.Single().Map.Should().Be(MapIdOf("Andorra"));
     }
 
+    [Fact]
+    public async Task Handle_PlaysSeveralDifferentCountries_WhenAChallengePicksMoreThanOne()
+    {
+        var plan = Plan(Pool("Middleweight Saturday", DayOfWeek.Saturday, Country("Peru"), Country("Chile"), Country("Japan")) with
+        {
+            Picks = 2
+        });
+
+        var outcome = await HandleAsync(plan, Friday.AddDays(1));
+
+        _stored.Should().HaveCount(2);
+        _stored.Select(p => p.Country).Should().OnlyHaveUniqueItems();
+        _stored.Should().OnlyContain(p => p.ChallengeName == "Middleweight Saturday");
+        outcome.Announced.Should().HaveCount(2).And.OnlyContain(a => a.StartsWith("Middleweight Saturday: "));
+
+        var content = _posted.Should().ContainSingle("both picks are announced together").Subject.Content;
+        content.Should().Contain("token-1").And.Contain("token-2");
+    }
+
+    [Fact]
+    public async Task Handle_OnlyCreatesTheMissingPicks_NeverRepeatingTheCountryAlreadyPlayedThatDay()
+    {
+        var plan = Plan(Pool("Middleweight Saturday", DayOfWeek.Saturday, Country("Peru"), Country("Chile"), Country("Japan")) with
+        {
+            Picks = 2
+        });
+        var saturday = Friday.AddDays(1);
+        _repository.ReadPostsOnAsync(saturday, Arg.Any<CancellationToken>()).Returns([Post("Middleweight Saturday", saturday, "Peru")]);
+        _repository.ReadCountryHistoryAsync("Middleweight Saturday", Arg.Any<CancellationToken>()).Returns(["Chile", "Japan", "Peru"]);
+
+        var outcome = await HandleAsync(plan, saturday);
+
+        // The round ended with Peru, so all three are candidates again — but Peru was already played today.
+        _stored.Should().ContainSingle().Which.Country.Should().NotBe("Peru");
+        outcome.AlreadyPosted.Should().BeEmpty();
+    }
+
     // ---- Nothing to do ----------------------------------------------------
 
     [Fact]
@@ -158,20 +195,20 @@ public sealed class AnnounceCountryChallengesHandlerTests
     [Fact]
     public async Task Handle_SkipsTheChallengesAlreadyPostedThatDay()
     {
-        _repository.ReadChallengeNamesPostedOnAsync(Friday, Arg.Any<CancellationToken>()).Returns(["ARGENTINA FRIDAY"]);
+        _repository.ReadPostsOnAsync(Friday, Arg.Any<CancellationToken>()).Returns([Post("ARGENTINA FRIDAY", Friday, "Argentina")]);
 
         var outcome = await HandleAsync(FridayPlan(), Friday);
 
         outcome.AlreadyPosted.Should().Equal("Argentina Friday");
-        outcome.Announced.Should().Equal("Indonesia Friday");
+        outcome.Announced.Should().Equal("Indonesia Friday: Indonesia");
         _created.Should().ContainSingle().Which.Map.Should().Be(MapIdOf("Indonesia"));
     }
 
     [Fact]
     public async Task Handle_PostsNothing_WhenEveryChallengeWasAlreadyPosted()
     {
-        _repository.ReadChallengeNamesPostedOnAsync(Friday, Arg.Any<CancellationToken>())
-            .Returns(["Argentina Friday", "Indonesia Friday"]);
+        _repository.ReadPostsOnAsync(Friday, Arg.Any<CancellationToken>())
+            .Returns([Post("Argentina Friday", Friday, "Argentina"), Post("Indonesia Friday", Friday, "Indonesia")]);
 
         var outcome = await HandleAsync(FridayPlan(), Friday);
 
@@ -190,10 +227,10 @@ public sealed class AnnounceCountryChallengesHandlerTests
 
         var outcome = await HandleAsync(FridayPlan(), Friday);
 
-        outcome.Announced.Should().Equal("Indonesia Friday");
-        outcome.Failed.Should().Equal("Argentina Friday");
+        outcome.Announced.Should().Equal("Indonesia Friday: Indonesia");
+        outcome.Failed.Should().Equal("Argentina Friday: Argentina");
         _stored.Should().ContainSingle().Which.ChallengeName.Should().Be("Indonesia Friday");
-        _posted.Single().Content.Should().Contain(":warning: **Argentina Friday** could not be created today.");
+        _posted.Single().Content.Should().Contain(":warning: **Argentina Friday** (Argentina) could not be created today.");
     }
 
     [Fact]
@@ -217,7 +254,7 @@ public sealed class AnnounceCountryChallengesHandlerTests
         var outcome = await HandleAsync(FridayPlan(), Friday);
 
         outcome.Announced.Should().BeEmpty();
-        outcome.Failed.Should().Equal("Argentina Friday", "Indonesia Friday");
+        outcome.Failed.Should().Equal("Argentina Friday: Argentina", "Indonesia Friday: Indonesia");
         _posted.Should().BeEmpty("a challenge nobody can be rewarded for must not be announced");
         _removed.Should().BeEquivalentTo(_stored);
     }
@@ -231,7 +268,7 @@ public sealed class AnnounceCountryChallengesHandlerTests
         var outcome = await HandleAsync(FridayPlan(thread: true), Friday);
 
         outcome.Announced.Should().BeEmpty();
-        outcome.Failed.Should().Equal("Argentina Friday", "Indonesia Friday");
+        outcome.Failed.Should().Equal("Argentina Friday: Argentina", "Indonesia Friday: Indonesia");
         _removed.Should().BeEquivalentTo(_stored, "a later run the same day can then announce them");
         await _unitOfWork.Received(2).SaveChangesAsync(Arg.Any<CancellationToken>());
         await _discord.DidNotReceiveWithAnyArgs().CreateThreadAsync(default, default, default!, default, default);
@@ -260,8 +297,8 @@ public sealed class AnnounceCountryChallengesHandlerTests
 
         var outcome = await HandleAsync(plan, Monday);
 
-        outcome.Announced.Should().Equal("Mongolia Monday");
-        outcome.Failed.Should().Equal("Chile Monday");
+        outcome.Announced.Should().Equal("Mongolia Monday: Mongolia");
+        outcome.Failed.Should().Equal("Chile Monday: Chile");
         _removed.Should().ContainSingle().Which.ChallengeName.Should().Be("Chile Monday");
     }
 

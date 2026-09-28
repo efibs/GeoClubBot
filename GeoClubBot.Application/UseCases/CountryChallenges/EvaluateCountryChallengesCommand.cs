@@ -158,7 +158,7 @@ public sealed partial class EvaluateCountryChallengesHandler(
         }
     }
 
-    private static string Label(CountryChallengePost post) => $"{post.ChallengeName} ({post.Date:yyyy-MM-dd})";
+    private static string Label(CountryChallengePost post) => $"{post.ChallengeName}: {post.Country} ({post.Date:yyyy-MM-dd})";
 
     [LoggerMessage(LogLevel.Error, "Could not read the highscores of the country challenge '{challengeName}' of {date} ('{challengeId}').")]
     static partial void LogHighscoresFailed(

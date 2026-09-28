@@ -210,7 +210,7 @@ API + Discord (controllers, slash command modules)
   properties are errors, never ignored. `CountryChallengeMessages` renders every text for both the run and
   `/country-challenges-admin preview`, so keep them on one path. Allowed mentions are taken from the raw
   templates, never the rendered text, so GeoGuessr nicknames cannot ping. Each run phase commits before
-  posting, and each is idempotent per day (unique `(ChallengeName, Date)`, `EvaluatedAt`, one leaderboard
+  posting, and each is idempotent per day (unique `(ChallengeName, Date, Country)`, since `Picks` lets a challenge play several countries a day; `EvaluatedAt`; one leaderboard
   post per date), which is what makes `post-now` safe to repeat. `results-now` evaluates every pending challenge ahead of
   its due day; it and the runs share `CountryChallengeRunLock`. `ConfiguredCronJobAttribute` takes an
   optional time-zone key for this job; every other job stays on UTC. See

@@ -52,9 +52,41 @@ public static class CountryPoolRotation
         return candidates;
     }
 
-    public static CountryPlan Pick(IReadOnlyList<CountryPlan> pool, IReadOnlyList<string> history, Random random)
+    public static CountryPlan Pick(IReadOnlyList<CountryPlan> pool, IReadOnlyList<string> history, Random random) =>
+        PickMany(pool, history, 1, random)[0];
+
+    /// <summary>
+    /// <paramref name="count"/> different countries for one day. Each is drawn as if the ones before it had
+    /// already been played, so the day's picks follow the rotation too. When a round ends part-way through
+    /// the day, the new round starts over from the whole pool — minus the countries already picked that day,
+    /// which must never be played twice on one day.
+    /// </summary>
+    /// <param name="pickedToday">Countries this challenge already played that day, by an earlier run.</param>
+    public static IReadOnlyList<CountryPlan> PickMany(
+        IReadOnlyList<CountryPlan> pool,
+        IReadOnlyList<string> history,
+        int count,
+        Random random,
+        IReadOnlyCollection<string>? pickedToday = null)
     {
-        var candidates = Candidates(pool, history);
-        return candidates[random.Next(candidates.Count)];
+        var played = new List<string>(history);
+        var today = new HashSet<string>(pickedToday ?? [], StringComparer.OrdinalIgnoreCase);
+        var picks = new List<CountryPlan>(count);
+
+        for (var i = 0; i < count; i++)
+        {
+            var candidates = Candidates(pool, played);
+            var fresh = candidates.Where(c => !today.Contains(c.Name)).ToList();
+
+            // Empty only if the pool is smaller than the day's picks, which the file's validation prevents.
+            var from = fresh.Count > 0 ? fresh : candidates;
+            var pick = from[random.Next(from.Count)];
+
+            picks.Add(pick);
+            played.Add(pick.Name);
+            today.Add(pick.Name);
+        }
+
+        return picks;
     }
 }

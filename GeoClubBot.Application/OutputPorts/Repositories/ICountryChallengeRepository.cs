@@ -4,8 +4,8 @@ namespace UseCases.OutputPorts.Repositories;
 
 public interface ICountryChallengeRepository
 {
-    /// <summary>Names of the challenges already posted for <paramref name="date"/>.</summary>
-    Task<List<string>> ReadChallengeNamesPostedOnAsync(DateOnly date, CancellationToken cancellationToken = default);
+    /// <summary>The challenges already posted for <paramref name="date"/>, one per country played.</summary>
+    Task<List<CountryChallengePost>> ReadPostsOnAsync(DateOnly date, CancellationToken cancellationToken = default);
 
     /// <summary>The countries a challenge was played with, oldest first — the input of the pool rotation.</summary>
     Task<List<string>> ReadCountryHistoryAsync(string challengeName, CancellationToken cancellationToken = default);

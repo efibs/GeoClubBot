@@ -175,29 +175,34 @@ public sealed class PreviewCountryChallengesHandler(
             return;
         }
 
-        var postedThatDay = (await repository.ReadChallengeNamesPostedOnAsync(date, cancellationToken).ConfigureAwait(false))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var postedThatDay = (await repository.ReadPostsOnAsync(date, cancellationToken).ConfigureAwait(false))
+            .GroupBy(p => p.ChallengeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(p => p.Country).ToList(), StringComparer.OrdinalIgnoreCase);
         var items = new List<AnnouncementItem>();
 
         foreach (var challenge in scheduled)
         {
-            if (postedThatDay.Contains(challenge.Name))
+            var playedThatDay = postedThatDay.GetValueOrDefault(challenge.Name) ?? [];
+            var missing = challenge.Picks - playedThatDay.Count;
+            if (missing <= 0)
             {
                 notes.Add($"{challenge.Name} was already posted on this day.");
                 continue;
             }
 
             var history = await repository.ReadCountryHistoryAsync(challenge.Name, cancellationToken).ConfigureAwait(false);
-            var candidates = CountryPoolRotation.Candidates(challenge.Countries, history);
-            var country = candidates[Random.Shared.Next(candidates.Count)];
+            var countries = CountryPoolRotation.PickMany(challenge.Countries, history, missing, Random.Shared, playedThatDay);
 
-            if (challenge.Countries.Count > 1)
+            if (challenge.Countries.Count > missing)
             {
-                notes.Add($"{challenge.Name} picks at random from {string.Join(", ", candidates.Select(c => c.Name))} " +
-                          $"({candidates.Count} of {challenge.Countries.Count} left in this round); previewed with {country.Name}.");
+                var candidates = CountryPoolRotation.Candidates(challenge.Countries, history);
+                var picks = missing == 1 ? "picks" : $"picks {missing}";
+                notes.Add($"{challenge.Name} {picks} at random from {string.Join(", ", candidates.Select(c => c.Name))} " +
+                          $"({candidates.Count} of {challenge.Countries.Count} left in this round); " +
+                          $"previewed with {string.Join(" and ", countries.Select(c => c.Name))}.");
             }
 
-            items.Add(new AnnouncementItem(challenge, country, CountryChallengeMessages.PreviewLink));
+            items.AddRange(countries.Select(country => new AnnouncementItem(challenge, country, CountryChallengeMessages.PreviewLink)));
         }
 
         foreach (var announcement in CountryChallengeMessages.Announcements(plan, date, items))
