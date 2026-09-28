@@ -65,6 +65,28 @@ public sealed class CountryPoolRotationPropertyTests
             rest.Should().Contain(run.Pool[^1].Name);
         });
 
+    [Fact]
+    public void Several_picks_a_day_are_all_different_and_rounds_stay_permutations() =>
+        Gen.Select(GenPool.Where(p => p.Count > 1), Gen.Int, Gen.Int[1, 5], Gen.Int[1, 8]).Sample((pool, seed, days, picks) =>
+        {
+            var random = new Random(seed);
+            var picksPerDay = Math.Min(picks, pool.Count);
+            var history = new List<string>();
+
+            for (var day = 0; day < days; day++)
+            {
+                var played = CountryPoolRotation.PickMany(pool, history, picksPerDay, random).Select(c => c.Name).ToList();
+
+                played.Should().OnlyHaveUniqueItems("a country is never played twice on one day");
+                history.AddRange(played);
+            }
+
+            foreach (var round in history.Chunk(pool.Count).Where(r => r.Length == pool.Count))
+            {
+                round.Should().BeEquivalentTo(pool.Select(c => c.Name), "each round is still a permutation of the pool");
+            }
+        });
+
     private static List<string> Play(IReadOnlyList<CountryPlan> pool, int seed, int picks, List<string>? history = null)
     {
         var random = new Random(seed);

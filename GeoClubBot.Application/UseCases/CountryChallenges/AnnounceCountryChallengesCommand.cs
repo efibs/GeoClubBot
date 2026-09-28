@@ -41,10 +41,28 @@ public sealed partial class AnnounceCountryChallengesHandler(
             return CountryChallengeAnnouncementOutcome.Nothing;
         }
 
-        var postedToday = (await repository.ReadChallengeNamesPostedOnAsync(date, cancellationToken).ConfigureAwait(false))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var alreadyPosted = scheduled.Where(c => postedToday.Contains(c.Name)).Select(c => c.Name).ToList();
-        var due = scheduled.Where(c => !postedToday.Contains(c.Name)).ToList();
+        // A challenge with several picks may have been partly posted by an earlier run that day; only the
+        // countries still missing are created, and never one it already played.
+        var postedToday = (await repository.ReadPostsOnAsync(date, cancellationToken).ConfigureAwait(false))
+            .GroupBy(p => p.ChallengeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Select(p => p.Country).ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var alreadyPosted = new List<string>();
+        var due = new List<(ChallengePlan Challenge, int Missing, List<string> PlayedToday)>();
+        foreach (var challenge in scheduled)
+        {
+            var playedToday = postedToday.GetValueOrDefault(challenge.Name) ?? [];
+            var missing = challenge.Picks - playedToday.Count;
+
+            if (missing > 0)
+            {
+                due.Add((challenge, missing, playedToday));
+            }
+            else
+            {
+                alreadyPosted.Add(challenge.Name);
+            }
+        }
 
         if (due.Count == 0)
         {
@@ -67,76 +85,90 @@ public sealed partial class AnnounceCountryChallengesHandler(
             {
                 LogNotStored(logger, ex, date);
                 repository.RemovePosts(posts.Values);
-                return new CountryChallengeAnnouncementOutcome([], alreadyPosted, [.. due.Select(c => c.Name)]);
+                return new CountryChallengeAnnouncementOutcome([], alreadyPosted, [.. items.Select(Label)]);
             }
         }
 
         var announced = new List<string>();
         foreach (var announcement in CountryChallengeMessages.Announcements(plan, date, items))
         {
-            var created = announcement.Items.Where(i => i.Link is not null).Select(i => i.Challenge.Name).ToList();
+            var created = announcement.Items.Where(i => i.Link is not null).ToList();
 
             if (await TryAnnounceAsync(plan, announcement, cancellationToken).ConfigureAwait(false))
             {
-                announced.AddRange(created);
+                announced.AddRange(created.Select(Label));
                 continue;
             }
 
-            failed.AddRange(created);
-            await ForgetAsync([.. created.Select(name => posts[name])], cancellationToken).ConfigureAwait(false);
+            failed.AddRange(created.Select(Label));
+            await ForgetAsync([.. created.Select(item => posts[item])], cancellationToken).ConfigureAwait(false);
         }
 
         return new CountryChallengeAnnouncementOutcome(announced, alreadyPosted, failed);
     }
 
-    private async Task<(List<AnnouncementItem> Items, Dictionary<string, CountryChallengePost> Posts, List<string> Failed)>
-        CreateChallengesAsync(List<ChallengePlan> challenges, DateOnly date, CancellationToken cancellationToken)
+    private static string Label(AnnouncementItem item) => $"{item.Challenge.Name}: {item.Country.Name}";
+
+    /// <summary>
+    /// Creates the missing challenges on GeoGuessr. Returns every item to announce — a failed one without a
+    /// link — and the post of each created one, keyed by its item.
+    /// </summary>
+    private async Task<(List<AnnouncementItem> Items, Dictionary<AnnouncementItem, CountryChallengePost> Posts, List<string> Failed)>
+        CreateChallengesAsync(
+            List<(ChallengePlan Challenge, int Missing, List<string> PlayedToday)> due,
+            DateOnly date,
+            CancellationToken cancellationToken)
     {
         // Challenges are always created on behalf of the main club's account, like the daily challenge.
         var client = geoGuessrClientFactory.CreateClient(geoGuessrConfig.Value.MainClub.ClubId);
         var now = DateTimeOffset.UtcNow;
 
-        var items = new List<AnnouncementItem>(challenges.Count);
-        var posts = new Dictionary<string, CountryChallengePost>(StringComparer.OrdinalIgnoreCase);
+        var items = new List<AnnouncementItem>();
+        var posts = new Dictionary<AnnouncementItem, CountryChallengePost>(ReferenceEqualityComparer.Instance);
         var failed = new List<string>();
 
-        foreach (var challenge in challenges)
+        foreach (var (challenge, missing, playedToday) in due)
         {
             var history = await repository.ReadCountryHistoryAsync(challenge.Name, cancellationToken).ConfigureAwait(false);
-            var country = CountryPoolRotation.Pick(challenge.Countries, history, Random.Shared);
+            var countries = CountryPoolRotation.PickMany(challenge.Countries, history, missing, Random.Shared, playedToday);
 
-            string challengeId;
-            try
+            foreach (var country in countries)
             {
-                challengeId = await CreateChallengeAsync(client, country, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                // Announced as a warning line; a later run the same day tries again.
-                LogCreationFailed(logger, ex, challenge.Name, country.Name);
-                failed.Add(challenge.Name);
-                items.Add(new AnnouncementItem(challenge, country, null));
-                continue;
-            }
+                string challengeId;
+                try
+                {
+                    challengeId = await CreateChallengeAsync(client, country, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // Announced as a warning line; a later run the same day tries again.
+                    LogCreationFailed(logger, ex, challenge.Name, country.Name);
+                    var failedItem = new AnnouncementItem(challenge, country, null);
+                    failed.Add(Label(failedItem));
+                    items.Add(failedItem);
+                    continue;
+                }
 
-            var settings = country.Settings;
-            posts[challenge.Name] = CountryChallengePost.Create(
-                challenge.Name,
-                date,
-                country.Name,
-                country.Code,
-                country.MapId,
-                country.MapName,
-                settings.TimeLimit,
-                settings.ForbidMoving,
-                settings.ForbidRotating,
-                settings.ForbidZooming,
-                challengeId,
-                challenge.ChannelId,
-                now,
-                challenge.Results.Enabled ? date.AddDays(challenge.Results.AfterDays) : null);
+                var item = new AnnouncementItem(challenge, country, CountryChallengeMessages.ChallengeLink(challengeId));
+                var settings = country.Settings;
+                posts[item] = CountryChallengePost.Create(
+                    challenge.Name,
+                    date,
+                    country.Name,
+                    country.Code,
+                    country.MapId,
+                    country.MapName,
+                    settings.TimeLimit,
+                    settings.ForbidMoving,
+                    settings.ForbidRotating,
+                    settings.ForbidZooming,
+                    challengeId,
+                    challenge.ChannelId,
+                    now,
+                    challenge.Results.Enabled ? date.AddDays(challenge.Results.AfterDays) : null);
 
-            items.Add(new AnnouncementItem(challenge, country, CountryChallengeMessages.ChallengeLink(challengeId)));
+                items.Add(item);
+            }
         }
 
         return (items, posts, failed);

@@ -70,7 +70,7 @@ public sealed class EvaluateCountryChallengesHandlerTests
 
         var outcome = await HandleAsync(FridayPlan());
 
-        outcome.Evaluated.Should().Equal("Argentina Friday (2026-10-02)");
+        outcome.Evaluated.Should().Equal("Argentina Friday: Argentina (2026-10-02)");
         _awards.Select(a => (a.Season, a.UserId, a.Points, a.Place))
             .Should().Equal(("Season 2", "anna", 3, 1), ("Season 2", "bert", 2, 2), ("Season 2", "cleo", 1, 3));
         argentina.EvaluatedAt.Should().NotBeNull();
@@ -130,15 +130,15 @@ public sealed class EvaluateCountryChallengesHandlerTests
     [Fact]
     public async Task Handle_LeavesAChallengePending_WhenItsHighscoresCannotBeRead()
     {
-        var argentina = ArrangeDue(Post("Argentina Friday", Friday, challengeId: "arg"), "anna");
-        var indonesia = ArrangeDue(Post("Indonesia Friday", Friday, challengeId: "ind"), "bert");
+        var argentina = ArrangeDue(Post("Argentina Friday", Friday, "Argentina", challengeId: "arg"), "anna");
+        var indonesia = ArrangeDue(Post("Indonesia Friday", Friday, "Indonesia", challengeId: "ind"), "bert");
         _client.ReadHighscoresAsync("arg", Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("GeoGuessr is down"));
 
         var outcome = await HandleAsync(FridayPlan());
 
-        outcome.Failed.Should().Equal("Argentina Friday (2026-10-02)");
-        outcome.Evaluated.Should().Equal("Indonesia Friday (2026-10-02)");
+        outcome.Failed.Should().Equal("Argentina Friday: Argentina (2026-10-02)");
+        outcome.Evaluated.Should().Equal("Indonesia Friday: Indonesia (2026-10-02)");
         argentina.EvaluatedAt.Should().BeNull("the next run tries again");
         indonesia.EvaluatedAt.Should().NotBeNull();
         _awards.Should().OnlyContain(a => a.UserId == "bert");
@@ -189,7 +189,7 @@ public sealed class EvaluateCountryChallengesHandlerTests
     [Fact]
     public async Task Handle_EvaluatesEveryPendingChallenge_WhenAskedNotToWaitForItsDay()
     {
-        var early = Post("Argentina Friday", Saturday, challengeId: "early", resultsDueOn: Saturday.AddDays(7));
+        var early = Post("Argentina Friday", Saturday, "Argentina", challengeId: "early", resultsDueOn: Saturday.AddDays(7));
         _client.ReadHighscoresAsync("early", Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
             .Returns(Highscores("anna"));
         _repository.ReadPendingPostsAsync(Arg.Any<CancellationToken>()).Returns([early]);
@@ -200,7 +200,7 @@ public sealed class EvaluateCountryChallengesHandlerTests
                 NullLogger<EvaluateCountryChallengesHandler>.Instance)
             .Handle(new EvaluateCountryChallengesCommand(FridayPlan(), Saturday, IncludeNotYetDue: true), CancellationToken.None);
 
-        outcome.Evaluated.Should().Equal("Argentina Friday (2026-10-03)");
+        outcome.Evaluated.Should().Equal("Argentina Friday: Argentina (2026-10-03)");
         early.EvaluatedAt.Should().NotBeNull();
         _awards.Should().ContainSingle().Which.UserId.Should().Be("anna");
         await _repository.DidNotReceiveWithAnyArgs().ReadPostsDueForEvaluationAsync(default, default, default);

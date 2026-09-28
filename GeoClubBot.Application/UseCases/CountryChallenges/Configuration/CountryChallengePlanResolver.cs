@@ -144,6 +144,17 @@ public static class CountryChallengePlanResolver
         var settings = MergeSettings(rootSettings, section.Settings, $"{path} › Settings", problems);
         var countries = ResolveCountries(section, path, settings, problems);
 
+        // An empty pool is already reported above; there is nothing to count picks against.
+        var picks = section.Picks ?? 1;
+        if (section.Pool is null && picks != 1)
+        {
+            problems.Add($"{path}: Picks needs a Pool; a challenge with one Country plays exactly that country.");
+        }
+        else if (section.Pool is { Count: > 0 } pool && (picks < 1 || picks > pool.Count))
+        {
+            problems.Add($"{path}: Picks must be between 1 and the number of countries in the pool ({pool.Count}).");
+        }
+
         var channelId = section.ChannelId ?? rootChannelId;
         if (section.ChannelId is not null)
         {
@@ -163,7 +174,7 @@ public static class CountryChallengePlanResolver
             return null;
         }
 
-        return new ChallengePlan(name, days, dates, countries, channelId!.Value, mentionRoleIds, entry, results);
+        return new ChallengePlan(name, days, dates, countries, picks, channelId!.Value, mentionRoleIds, entry, results);
     }
 
     private static List<CountryPlan> ResolveCountries(

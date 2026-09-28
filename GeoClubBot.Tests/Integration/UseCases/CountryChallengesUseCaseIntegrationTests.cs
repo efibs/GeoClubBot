@@ -46,7 +46,7 @@ public sealed class CountryChallengesUseCaseIntegrationTests(PostgresFixture fix
         var first = await host.SendAsync(new RunCountryChallengesCommand(_day));
         var second = await host.SendAsync(new RunCountryChallengesCommand(_day));
 
-        first.Value.Announcement!.Announced.Should().Equal(name);
+        first.Value.Announcement!.Announced.Should().Equal($"{name}: Mongolia");
         second.Value.Announcement!.AlreadyPosted.Should().Equal(name);
         await client.Received(1).CreateChallengeAsync(Arg.Any<PostChallengeRequestDto>(), Arg.Any<CancellationToken>());
 
@@ -62,6 +62,33 @@ public sealed class CountryChallengesUseCaseIntegrationTests(PostgresFixture fix
             ResultsDueOn = (DateOnly?)_day.AddDays(1),
             EvaluatedAt = (DateTimeOffset?)null
         });
+    }
+
+    [Fact]
+    public async Task Run_StoresOneRowPerPick_AndASecondRunCreatesNoMore()
+    {
+        var name = $"Middleweight {_suffix}";
+        var (host, client) = CreateHost(File(Pool(name, _day.DayOfWeek, Country("Peru"), Country("Chile"), Country("Japan")) with
+        {
+            Picks = 2
+        }) with
+        {
+            Leaderboard = new LeaderboardSection { Enabled = false }
+        });
+        using var _ = host;
+
+        await host.SendAsync(new RunCountryChallengesCommand(_day));
+        var second = await host.SendAsync(new RunCountryChallengesCommand(_day));
+
+        second.Value.Announcement!.AlreadyPosted.Should().Equal(name);
+        await client.Received(2).CreateChallengeAsync(Arg.Any<PostChallengeRequestDto>(), Arg.Any<CancellationToken>());
+
+        await using var read = fixture.CreateDbContext();
+        var countries = await read.CountryChallengePosts.AsNoTracking()
+            .Where(p => p.ChallengeName == name && p.Date == _day)
+            .Select(p => p.Country)
+            .ToListAsync();
+        countries.Should().HaveCount(2).And.OnlyHaveUniqueItems();
     }
 
     [Fact]
@@ -82,7 +109,7 @@ public sealed class CountryChallengesUseCaseIntegrationTests(PostgresFixture fix
         await host.SendAsync(new RunCountryChallengesCommand(_day));
         var report = (await host.SendAsync(new RunCountryChallengesCommand(nextDay))).Value;
 
-        report.Evaluation!.Evaluated.Should().Equal($"{name} ({_day:yyyy-MM-dd})");
+        report.Evaluation!.Evaluated.Should().Equal($"{name}: Argentina ({_day:yyyy-MM-dd})");
         report.Leaderboard!.Status.Should().Be(CountryChallengeLeaderboardStatus.Posted);
 
         await using var read = fixture.CreateDbContext();
@@ -129,11 +156,12 @@ public sealed class CountryChallengesUseCaseIntegrationTests(PostgresFixture fix
     }
 
     [Fact]
-    public async Task TheDatabase_RefusesTheSameChallengeTwiceOnOneDay()
+    public async Task TheDatabase_RefusesTheSameCountryOfAChallengeTwiceOnOneDay_ButNotASecondCountry()
     {
         var name = $"Twice {_suffix}";
         await SeedAsync(PostWithoutResults(name));
 
+        await SeedAsync(PostWithoutResults(name, "Chile"));
         var again = () => SeedAsync(PostWithoutResults(name));
 
         await again.Should().ThrowAsync<DbUpdateException>();
@@ -226,8 +254,8 @@ public sealed class CountryChallengesUseCaseIntegrationTests(PostgresFixture fix
     /// <summary>
     /// A post that is never due, so a concurrent test whose day happens to be close cannot evaluate it.
     /// </summary>
-    private CountryChallengePost PostWithoutResults(string name) =>
+    private CountryChallengePost PostWithoutResults(string name, string country = "Mongolia") =>
         CountryChallengePost.Create(
-            name, _day, "Mongolia", "MN", "map", null, 60, false, false, false, "token", ChannelId,
+            name, _day, country, null, "map", null, 60, false, false, false, "token", ChannelId,
             DateTimeOffset.UtcNow, resultsDueOn: null);
 }

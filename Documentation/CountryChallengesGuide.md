@@ -155,6 +155,7 @@ typo such as `"Dayz"` must not silently fall back to a default.
 | `Dates` | — | Specific days, e.g. `[ "2026-12-25" ]`. `Days` and/or `Dates` is required. |
 | `Country` | — | The one country it is always played in. |
 | `Pool` | — | Countries to rotate through. Exactly one of `Country`/`Pool`. |
+| `Picks` | `1` | How many different countries of the `Pool` are played each day, e.g. `2` for two challenges a day from one list. |
 | `ChannelId` | top level | Post this challenge somewhere else. |
 | `MentionRoleIds`, `Entry`, `Settings` | top level | Overrides. |
 | `Results.Enabled` | `true` | Evaluate this challenge at all. |
@@ -214,7 +215,13 @@ looks like a mention. A message that only reports challenges GeoGuessr refused t
 ## Pools
 
 A pool plays every country once, in a random order, before any comes round again. The last country of
-one round never opens the next. A country added mid-round is played before the round ends; a country
+one round never opens the next.
+
+With `"Picks": 2` a challenge plays two different countries of its pool each day, as two GeoGuessr
+challenges announced together (each with its own results). The day's picks follow the same rotation,
+and a country is never played twice on one day — even when a round ends between the two picks. A pool
+of exactly the day's countries (`"Pool": [Mongolia, Brazil], "Picks": 2`) plays both every time, which
+is how a day with two fixed countries is written as one challenge. A country added mid-round is played before the round ends; a country
 removed is simply never picked again. The rotation is worked out from the posted history, so nothing
 else needs storing and nothing breaks when the pool changes.
 
@@ -352,7 +359,7 @@ scores can still be added after a restart.
 | File model, inheritance, validation | `…/CountryChallenges/Configuration/` (`CountryChallengePlanResolver`) |
 | Message rendering (shared by run and preview) | `…/CountryChallenges/Rendering/` |
 | File reading | `GeoClubBot.Infrastructure/OutputAdapters/CountryChallenges/JsonFileCountryChallengeConfigurationSource.cs` |
-| Persistence | `CountryChallengePosts`, `CountryChallengePointAwards`, `CountryChallengeLeaderboardPosts` via `EfCountryChallengeRepository` |
+| Persistence | `CountryChallengePosts` (one row per country played; unique by challenge, date and country), `CountryChallengePointAwards`, `CountryChallengeLeaderboardPosts` via `EfCountryChallengeRepository` |
 | Commands | `GeoClubBot.Discord/InputAdapters/Interactions/CountryChallenges/` |
 
 Every phase commits before it posts: a challenge that was announced must have been stored, and points

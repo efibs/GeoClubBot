@@ -158,7 +158,7 @@ public static class CountryChallengeMessages
         var values = Values(
             ("mentions", Mentions(mentionRoleIds)),
             ("day", Day(date)),
-            ("names", JoinNames(items.Select(i => i.Challenge.Name).ToList())),
+            ("names", JoinNames(DistinctNames(items))),
             ("challenges", string.Join("\n", items.Select(i => AnnouncementEntry(i, date)))));
 
         var content = CountryChallengeTemplate.Render(plan.Announcement.Message, values, date).Trim();
@@ -181,7 +181,7 @@ public static class CountryChallengeMessages
     {
         if (item.Link is null)
         {
-            return $":warning: **{item.Challenge.Name}** could not be created today.";
+            return $":warning: **{item.Challenge.Name}** ({item.Country.Name}) could not be created today.";
         }
 
         var country = item.Country;
@@ -227,7 +227,7 @@ public static class CountryChallengeMessages
     private static string ThreadName(CountryChallengePlan plan, DateOnly date, IReadOnlyList<AnnouncementItem> created)
     {
         var values = Values(
-            ("names", JoinNames(created.Select(i => i.Challenge.Name).ToList())),
+            ("names", JoinNames(DistinctNames(created))),
             ("day", Day(date)));
 
         var name = CountryChallengeTemplate.Render(plan.Announcement.Thread.Name, values, date).Trim();
@@ -261,6 +261,10 @@ public static class CountryChallengeMessages
             ("timeLimit", ChallengeSettingsText.TimeLimit(settings.TimeLimit)),
             ("day", Day(date)));
     }
+
+    /// <summary>A challenge playing several countries is named once, not once per country.</summary>
+    private static List<string> DistinctNames(IEnumerable<AnnouncementItem> items) =>
+        items.Select(i => i.Challenge.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     private static string Mentions(IEnumerable<ulong> roleIds) => string.Join(" ", roleIds.Distinct().Select(id => $"<@&{id}>"));
 

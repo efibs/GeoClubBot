@@ -139,6 +139,9 @@ public sealed record ChallengeSection
     /// <summary>The countries this challenge rotates through. Exclusive with <see cref="Country"/>.</summary>
     public List<CountrySection>? Pool { get; init; }
 
+    /// <summary>How many different countries of the pool are played each day it runs. Defaults to 1.</summary>
+    public int? Picks { get; init; }
+
     public ulong? ChannelId { get; init; }
 
     public List<ulong>? MentionRoleIds { get; init; }

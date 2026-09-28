@@ -43,7 +43,8 @@ public class CountryChallengePostConfiguration : IEntityTypeConfiguration<Countr
         builder.UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Ignore(x => x.DomainEvents);
 
-        // A challenge is posted at most once a day, even when a manual run races the scheduled one.
-        builder.HasIndex(x => new { x.ChallengeName, x.Date }).IsUnique();
+        // A challenge plays each country at most once a day, even when a manual run races the scheduled one.
+        // Country is part of the key because a challenge may play several countries a day (Picks).
+        builder.HasIndex(x => new { x.ChallengeName, x.Date, x.Country }).IsUnique();
     }
 }

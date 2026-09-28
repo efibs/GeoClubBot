@@ -71,11 +71,13 @@ public sealed record LeaderboardPlan(
     public bool IsDueOn(DateOnly date) => Enabled && (Days.Contains(date.DayOfWeek) || Dates.Contains(date));
 }
 
+/// <param name="Picks">How many different countries are played each day the challenge runs.</param>
 public sealed record ChallengePlan(
     string Name,
     IReadOnlySet<DayOfWeek> Days,
     IReadOnlySet<DateOnly> Dates,
     IReadOnlyList<CountryPlan> Countries,
+    int Picks,
     ulong ChannelId,
     IReadOnlyList<ulong> MentionRoleIds,
     string Entry,

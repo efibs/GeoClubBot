@@ -1,4 +1,5 @@
 using FluentAssertions;
+using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.CountryChallenges;
 using UseCases.UseCases.CountryChallenges.Configuration;
 using UseCases.UseCases.CountryChallenges.Rendering;
@@ -59,7 +60,7 @@ public sealed class CountryChallengeMessagesTests
         var content = CountryChallengeMessages.Announcements(plan, Friday, Items(plan, "https://link", null))
             .Single().Message.Content;
 
-        content.Should().Contain(":warning: **Small Country Friday** could not be created today.");
+        content.Should().Contain(":warning: **Small Country Friday** (Malta) could not be created today.");
     }
 
     [Fact]
@@ -81,6 +82,29 @@ public sealed class CountryChallengeMessagesTests
         var announcement = CountryChallengeMessages.Announcements(plan, Friday, Items(plan, "https://a", "https://b")).Single();
 
         announcement.ThreadName.Should().Be("Argentina Friday & Small Country Friday · 2026-10-02");
+    }
+
+    [Fact]
+    public void Announcements_NameAChallengeWithSeveralPicksOnce()
+    {
+        var plan = Plan(Pool("Middleweight Saturday", DayOfWeek.Saturday, Country("Peru", "PE"), Country("Chile", "CL")) with
+        {
+            Picks = 2
+        }) with
+        {
+            Announcement = new AnnouncementPlan("# {{names}}\n{{challenges}}", new ThreadPlan(true, "{{names}}", ThreadAutoArchive.OneDay))
+        };
+        var challenge = plan.Challenges.Single();
+
+        var announcement = CountryChallengeMessages.Announcements(plan, Friday.AddDays(1),
+        [
+            new AnnouncementItem(challenge, challenge.Countries[0], "https://a"),
+            new AnnouncementItem(challenge, challenge.Countries[1], "https://b")
+        ]).Single();
+
+        announcement.Message.Content.Should().StartWith("# Middleweight Saturday\n");
+        announcement.ThreadName.Should().Be("Middleweight Saturday");
+        announcement.Message.Content.Should().Contain("**Peru**").And.Contain("**Chile**");
     }
 
     [Fact]

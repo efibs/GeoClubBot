@@ -40,7 +40,7 @@ public sealed class CountryChallengeQueriesTests
         _mediator.Send(Arg.Any<LoadCountryChallengePlanQuery>(), Arg.Any<CancellationToken>())
             .Returns(_ => Result<CountryChallengePlan>.Success(_plan));
         _factory.CreateClient(MainClubId).Returns(_client);
-        _repository.ReadChallengeNamesPostedOnAsync(Arg.Any<DateOnly>(), Arg.Any<CancellationToken>()).Returns([]);
+        _repository.ReadPostsOnAsync(Arg.Any<DateOnly>(), Arg.Any<CancellationToken>()).Returns([]);
         _repository.ReadCountryHistoryAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns([]);
         _repository.ReadPostsDueForEvaluationAsync(Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>()).Returns([]);
         _repository.ReadAwardsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(

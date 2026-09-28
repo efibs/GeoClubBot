@@ -7,12 +7,11 @@ namespace Infrastructure.OutputAdapters.Repositories;
 
 public class EfCountryChallengeRepository(GeoClubBotDbContext dbContext) : ICountryChallengeRepository
 {
-    public async Task<List<string>> ReadChallengeNamesPostedOnAsync(DateOnly date, CancellationToken cancellationToken = default)
+    public async Task<List<CountryChallengePost>> ReadPostsOnAsync(DateOnly date, CancellationToken cancellationToken = default)
     {
         return await dbContext.CountryChallengePosts
             .AsNoTracking()
             .Where(p => p.Date == date)
-            .Select(p => p.ChallengeName)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

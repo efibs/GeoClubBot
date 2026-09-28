@@ -200,6 +200,38 @@ public sealed class CountryChallengePlanResolverTests
     }
 
     [Fact]
+    public void Resolve_ReadsPicks_DefaultingToOne()
+    {
+        var plan = Plan(
+            Pool("Middleweight Saturday", DayOfWeek.Saturday, Country("Peru"), Country("Chile"), Country("Japan")) with { Picks = 2 },
+            Fixed("Mongolia Monday", DayOfWeek.Monday, Country("Mongolia")));
+
+        plan.Challenges.Select(c => c.Picks).Should().Equal(2, 1);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    public void Resolve_RejectsPicksOutsideThePoolSize(int picks)
+    {
+        var file = File(Pool("Middleweight Saturday", DayOfWeek.Saturday, Country("Peru"), Country("Chile"), Country("Japan")) with
+        {
+            Picks = picks
+        });
+
+        CountryChallengePlanResolver.Resolve(file).Errors.Should().ContainSingle().Which.Should().Be(
+            "Challenges[0] \"Middleweight Saturday\": Picks must be between 1 and the number of countries in the pool (3).");
+    }
+
+    [Fact]
+    public void Resolve_RejectsPicksOnASingleCountry()
+    {
+        var file = File(Fixed("Mongolia Monday", DayOfWeek.Monday, Country("Mongolia")) with { Picks = 2 });
+
+        CountryChallengePlanResolver.Resolve(file).Errors.Should().ContainSingle(e => e.Contains("Picks needs a Pool"));
+    }
+
+    [Fact]
     public void Resolve_RejectsTwoPoolCountriesWithTheSameName()
     {
         var file = File(Pool("Small Country Sunday", DayOfWeek.Sunday, Country("Malta"), Country("MALTA", mapId: "other")));
