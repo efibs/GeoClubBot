@@ -191,6 +191,48 @@ The reverse lookup: give it a GeoGuessr nickname and it tells you which Discord 
 
 ---
 
+## 🗺️ Feature: Country Challenges
+On fixed days the bot posts themed country challenges — like *Mongolia Monday* or *Small Country
+Sunday* — as GeoGuessr challenge links. Play them like any other challenge: finish all five rounds to
+count.
+
+A day or so later the bot posts the results. The top places earn **points** (3 for first, 2 for second,
+1 for third, unless your server set it up differently), and sometimes a role. The points add up to a
+**leaderboard** that the bot posts regularly, usually once a week.
+
+This feature may be switched off on your server.
+
+### `/country-challenges leaderboard`
+Shows the current season's leaderboard and **your own place** on it, even if you are not in the top
+places. Players with the same number of points share a place.
+
+No parameters.
+
+> Your place is only shown if your Discord account is linked to your GeoGuessr account — see
+> `/gg-account link`. Linking is also what lets the bot give you a winner's role.
+
+### Admin commands
+These require the **Administrator** permission:
+
+- `/country-challenges-admin preview` — checks the challenge configuration and shows what the bot
+  would post on a day, **without posting anything or pinging anyone**. Parameter: `day` — a date
+  (`2026-12-24`) or a weekday (`sunday`); default today.
+- `/country-challenges-admin post-now` — runs today's country challenges right away: results that are
+  due, the leaderboard if it's due, and today's challenges. Anything already posted today is skipped,
+  so it's safe to run again, for example after the bot was offline at the scheduled time.
+- `/country-challenges-admin results-now` — evaluates every challenge still waiting for its results
+  right now instead of on its day: posts the results, awards the points and hands out the roles. A
+  challenge nobody has played yet closes with "No one participated", so use it once the players are done.
+- `/country-challenges-admin import-standings` — opens a form to paste the standings kept by hand
+  before the bot tracked them: one player per line, GeoGuessr nickname (or profile link) followed by
+  points, like `Fibs 12`. Nothing is imported unless every line names exactly one player, and importing
+  again replaces the previous import.
+
+How to set the challenges up is described in the
+[Country Challenges Guide](Documentation/CountryChallengesGuide.md).
+
+---
+
 ## 🎭 Feature: Self-Roles
 Pick optional roles for yourself (e.g. notification opt-ins, regional roles) without needing an admin to assign them.
 

@@ -36,7 +36,7 @@ public static class QuartzDependencyInjectionExtensions
             // Add the trigger
             q.AddTrigger(o => o.ForJob(jobKey)
                 .WithIdentity(cronJobType.Name + "-trigger")
-                .WithCronSchedule(cronJobAttribute.CronSchedule, b => b.InTimeZone(TimeZoneInfo.Utc)));
+                .WithCronSchedule(cronJobAttribute.CronSchedule, b => b.InTimeZone(cronJobAttribute.TimeZone)));
         }
     }
 }

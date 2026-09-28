@@ -65,7 +65,13 @@ and per payload index, and the default limit is exhausted part-way through a run
   boundaries (Domain/Application don't depend on outer layers, EF stays behind a port). Use
   fully-qualified namespaces in rules — NetArchTest matches string constants, so a bare
   `GeoClubBot` token false-flags the `"GeoClubBot.Application"` meter-name literals.
-- **Snapshot** (`Discord/*FormatterTests`, fast): `Verify.Xunit` captures whole rendered messages
+- **Discord module loading** (`Discord/InteractionModuleLoadingTests`, fast): loads every interaction
+  module into an `InteractionService` and checks Discord's name/description limits. No other test does
+  this (the E2E host strips the gateway), so a broken module would otherwise only show at bot start-up.
+  Tests that set the static `ConfiguredCronJobAttribute.Config` share the non-parallel
+  `ConfiguredCronJobCollection`.
+- **Snapshot** (`Discord/*FormatterTests`, `Application/UseCases/CountryChallenges/CountryChallengeMessagesTests`,
+  fast): `Verify.Xunit` captures whole rendered messages
   into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
   the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
   is gitignored.
@@ -77,7 +83,8 @@ and per payload index, and the default limit is exhausted part-way through a run
   (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
   chunk keys must stay stable or every re-ingest duplicates instead of updating; the AI citation
   resolver, whose numbers must run 1..k and all lead somewhere; the retrieval fusion, which must never
-  offer the same text twice) over thousands of
+  offer the same text twice; the country pool rotation, where every round must be a permutation of the
+  pool; the leaderboard ranking, where ties share a rank) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
 
@@ -196,6 +203,18 @@ API + Discord (controllers, slash command modules)
   is **copied** into `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep
   never touches — that copy is the only permanently stored conversation. See
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
+- **Country challenges** (optional, `CountryChallenges:Enabled`): themed weekday challenges configured in
+  a hand-edited JSON file (`CountryChallengesConfig.example.json`) that is re-read on every run.
+  `CountryChallengePlanResolver` fills inherited values (built-in → file → challenge → pool entry) and
+  reports every problem with its path; a disabled challenge's problems are only warnings. Unknown JSON
+  properties are errors, never ignored. `CountryChallengeMessages` renders every text for both the run and
+  `/country-challenges-admin preview`, so keep them on one path. Allowed mentions are taken from the raw
+  templates, never the rendered text, so GeoGuessr nicknames cannot ping. Each run phase commits before
+  posting, and each is idempotent per day (unique `(ChallengeName, Date)`, `EvaluatedAt`, one leaderboard
+  post per date), which is what makes `post-now` safe to repeat. `results-now` evaluates every pending challenge ahead of
+  its due day; it and the runs share `CountryChallengeRunLock`. `ConfiguredCronJobAttribute` takes an
+  optional time-zone key for this job; every other job stays on UTC. See
+  [`Documentation/CountryChallengesGuide.md`](Documentation/CountryChallengesGuide.md).
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 
 ### DI Registration
@@ -215,7 +234,7 @@ API + Discord (controllers, slash command modules)
 ### External Integrations
 
 - **GeoGuessr API** (`https://www.geoguessr.com/api`): authenticated via `_ncfa` cookie token
-- **Discord** (Discord.Net 3.18.0): bot token, slash commands, role/channel management
+- **Discord** (Discord.Net 3.20.1): bot token, slash commands, role/channel management
 - **OpenRouter** (optional): chat *and* embeddings for the AI assistant, with the free model chosen
   automatically from whatever is available that day. The only external AI dependency.
 - **Qdrant** (optional): vector store for indexed guide content, using named `text`/`image` vectors

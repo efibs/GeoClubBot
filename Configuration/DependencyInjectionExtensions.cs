@@ -32,6 +32,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<CountryChallengesConfiguration>()
+            .Bind(config.GetSection(CountryChallengesConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<ClubXpConfiguration>()
             .Bind(config.GetSection(ClubXpConfiguration.SectionName))
             .ValidateDataAnnotations()

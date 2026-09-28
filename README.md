@@ -40,6 +40,10 @@ challenges, send mission reminders, and link Discord accounts to GeoGuessr profi
 - **📊 Activity tracking & strikes** — weekly XP checks against a configurable minimum, with grace
   periods, automatic strikes, and time-based strike decay.
 - **🏆 Daily challenges** — scheduled challenges with podium roles for the top three finishers.
+- **🗺️ Optional country challenges** — themed challenges on fixed weekdays (*Mongolia Monday*, *Small
+  Country Sunday* from a rotating pool), with results, points, an optional podium role and a weekly
+  leaderboard. All of it is configured in one JSON file, re-read on every run. Gated behind
+  `CountryChallenges:Enabled`; see the [Country Challenges Guide](Documentation/CountryChallengesGuide.md).
 - **⏰ Daily reminders** — per-user, timezone-aware DM reminders covering both of the day's club-XP
   awards: the GeoGuessr daily mission, and playing the daily challenge or a duel. The DM
   only stops once both are done.
@@ -53,7 +57,7 @@ challenges, send mission reminders, and link Discord accounts to GeoGuessr profi
   [AI Guide](Documentation/AiGuide.md).
 
 Work is driven by a mix of **Discord slash commands** and **Quartz scheduled jobs**
-(`SyncClubsJob`, `ActivityCheckJob`, `CheckClubLevelJob`, `DailyChallengeJob`,
+(`SyncClubsJob`, `ActivityCheckJob`, `CheckClubLevelJob`, `DailyChallengeJob`, `CountryChallengeJob`,
 `DailyMissionReminderJob`, `DailyMissionLoggingJob`).
 
 ## Architecture
@@ -173,6 +177,7 @@ lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
 | `/daily-reminder add\|remove\|clear\|list` | Manage your daily reminders |
 | `/my-activity current-week\|last-days` | See your own XP / mission progress |
 | `/club-stats todays-xp` | See how much XP the club earned today |
+| `/country-challenges leaderboard` | See the country challenge leaderboard and your place on it |
 | `/user-info gg-nickname\|gg-profile\|discord-user` | Look up GeoGuessr ↔ Discord identities |
 | `/self-roles select` | Pick optional roles for yourself |
 

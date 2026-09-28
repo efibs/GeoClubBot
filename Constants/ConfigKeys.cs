@@ -20,6 +20,10 @@ public static class ConfigKeys
 
     public const string DailyChallengesCronScheduleConfigurationKey = "DailyChallenges:Schedule";
 
+    public const string CountryChallengesCronScheduleConfigurationKey = "CountryChallenges:Schedule";
+
+    public const string CountryChallengesTimeZoneConfigurationKey = "CountryChallenges:TimeZone";
+
     public const string DailyMissionReminderCronScheduleConfigurationKey = "DailyMissionReminder:Schedule";
 
     public const string DailyMissionLoggingCronScheduleConfigurationKey = "DailyMissionLogging:Schedule";

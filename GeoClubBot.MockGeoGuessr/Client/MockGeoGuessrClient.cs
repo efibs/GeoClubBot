@@ -48,8 +48,14 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
     {
         var items = new List<ChallengeResultItemDto>();
 
+        // Best first, as GeoGuessr returns them: the bot reads places from the order. The store is a
+        // ConcurrentBag, whose own order is arbitrary.
         if (dataStore.ChallengeHighscores.TryGetValue(challengeId, out var scores))
-            items = scores.Take(@params.Limit).ToList();
+            items = scores
+                .OrderByDescending(s => long.TryParse(s.Game.Player.TotalScore.Amount, out var score) ? score : 0)
+                .ThenBy(s => double.TryParse(s.Game.Player.TotalDistance.Meters.Amount, System.Globalization.CultureInfo.InvariantCulture, out var distance) ? distance : double.MaxValue)
+                .Take(@params.Limit)
+                .ToList();
 
         return Task.FromResult(new ChallengeResultHighscoresDto { Items = items });
     }

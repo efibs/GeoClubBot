@@ -1,0 +1,5 @@
+﻿# :bar_chart: Country challenge leaderboard · Season 1
+:first_place: Anna · 13 pts
+:second_place: Bert · 7 pts
+:second_place: Cleo · 7 pts
+4. Dora · 1 pt

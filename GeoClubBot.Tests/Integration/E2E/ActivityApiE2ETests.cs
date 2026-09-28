@@ -557,6 +557,16 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
             return Task.CompletedTask;
         }
 
+        public Task<ulong> SendMessageAsync(string message, ulong channelId, MessageMentions allowedMentions,
+            CancellationToken cancellationToken = default)
+        {
+            SentMessages.Add((message, channelId));
+            return Task.FromResult((ulong)SentMessages.Count);
+        }
+
+        public Task CreateThreadAsync(ulong channelId, ulong messageId, string name, ThreadAutoArchive autoArchive,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+
         public Task SendSelfRolesMessageAsync(ulong channelId, IEnumerable<Entities.SelfRoleSetting> selfRoleSettings,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
 
