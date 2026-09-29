@@ -9,8 +9,8 @@ namespace GeoClubBot.Tests.Application.OutputPorts;
 
 /// <summary>
 /// The classifier is the one place that knows why a club activity awarded XP. It matters most for
-/// the two 20 XP awards - the daily mission and the daily challenge / duel - which are
-/// indistinguishable by amount and only separable by GeoGuessr's activity type.
+/// the 20 XP awards - the daily challenge / duel and a board mission - which are indistinguishable
+/// by amount and only separable by GeoGuessr's activity type.
 /// </summary>
 public sealed class ClubActivityKindClassifierTests
 {
@@ -21,6 +21,8 @@ public sealed class ClubActivityKindClassifierTests
     [InlineData(2, ClubXpActivityKind.WeeklyMission)]
     [InlineData(3, ClubXpActivityKind.ClubChallengePlayed)]
     [InlineData(4, ClubXpActivityKind.DailyChallengeOrDuel)]
+    [InlineData(5, ClubXpActivityKind.BoardMission)]
+    [InlineData(6, ClubXpActivityKind.BoardClearBonus)]
     public void Classify_MapsTheFeedsActivityType(int type, ClubXpActivityKind expected)
     {
         var activity = new ReadClubActivitiesItemDto
@@ -35,18 +37,27 @@ public sealed class ClubActivityKindClassifierTests
     }
 
     [Fact]
-    public void Classify_SeparatesTheTwoAwardsThatShareTheSameXpAmount()
+    public void Classify_SeparatesTheAwardsThatShareTheSameXpAmount()
     {
-        var mission = ClubActivities.Mission("u1");
+        var mission = ClubActivities.BoardMission("u1");
         var challenge = ClubActivities.Challenge("u1");
 
         mission.XpReward.Should().Be(challenge.XpReward, "the amount alone cannot tell them apart");
 
-        _classifier.IsDailyMission(mission).Should().BeTrue();
+        _classifier.IsBoardMission(mission).Should().BeTrue();
         _classifier.IsDailyChallenge(mission).Should().BeFalse();
 
         _classifier.IsDailyChallenge(challenge).Should().BeTrue();
-        _classifier.IsDailyMission(challenge).Should().BeFalse();
+        _classifier.IsBoardMission(challenge).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Classify_RecognisesTheBoardClearBonus()
+    {
+        var bonus = ClubActivities.BoardBonus("u1");
+
+        _classifier.IsBoardClearBonus(bonus).Should().BeTrue();
+        _classifier.IsBoardMission(bonus).Should().BeFalse();
     }
 
     [Fact]
@@ -61,42 +72,56 @@ public sealed class ClubActivityKindClassifierTests
         };
 
         _classifier.Classify(activity).Should().Be(ClubXpActivityKind.Unknown);
-        _classifier.IsDailyMission(activity).Should().BeFalse();
+        _classifier.IsBoardMission(activity).Should().BeFalse();
         _classifier.IsDailyChallenge(activity).Should().BeFalse();
     }
 
     [Theory]
-    // Without a type the amount is all there is. The daily mission is the older 20 XP source, so
-    // that is what an untyped 20 XP entry is read as - reproducing the bot's historical behaviour.
-    [InlineData(20, ClubXpActivityKind.DailyMission)]
-    [InlineData(1000, ClubXpActivityKind.WeeklyMission)]
-    [InlineData(150, ClubXpActivityKind.Unknown)]
-    public void Classify_FallsBackToTheXpAmount_WhenTheEntryCarriesNoType(int xpReward, ClubXpActivityKind expected)
+    // Without a type and without a configured fallback the amount says nothing: several sources
+    // are worth 20 XP since the board.
+    [InlineData(20)]
+    [InlineData(100)]
+    [InlineData(1000)]
+    public void Classify_ReturnsUnknown_ForUntypedEntries_ByDefault(int xpReward)
     {
-        _classifier.Classify(ClubActivities.Untyped("u1", xpReward)).Should().Be(expected);
+        _classifier.Classify(ClubActivities.Untyped("u1", xpReward)).Should().Be(ClubXpActivityKind.Unknown);
     }
 
     [Fact]
-    public void Classify_UsesTheConfiguredAmounts_ForTheUntypedFallback()
+    public void Classify_UsesTheConfiguredFallback_ForUntypedEntries()
     {
         var classifier = ClubActivities.Classifier(new ClubXpConfiguration
         {
-            DailyMissionXpReward = 25,
-            WeeklyMissionXpReward = 500
+            UntypedXpFallback = new Dictionary<int, string> { [100] = "BoardClearBonus", [20] = "dailychallengeorduel" }
         });
 
-        classifier.Classify(ClubActivities.Untyped("u1", 25)).Should().Be(ClubXpActivityKind.DailyMission);
-        classifier.Classify(ClubActivities.Untyped("u1", 500)).Should().Be(ClubXpActivityKind.WeeklyMission);
-        classifier.Classify(ClubActivities.Untyped("u1", 20)).Should().Be(ClubXpActivityKind.Unknown);
+        classifier.Classify(ClubActivities.Untyped("u1", 100)).Should().Be(ClubXpActivityKind.BoardClearBonus);
+        classifier.Classify(ClubActivities.Untyped("u1", 20)).Should().Be(ClubXpActivityKind.DailyChallengeOrDuel);
+        classifier.Classify(ClubActivities.Untyped("u1", 150)).Should().Be(ClubXpActivityKind.Unknown);
+    }
+
+    [Fact]
+    public void Constructor_Throws_WhenTheFallbackNamesAnUnknownKind()
+    {
+        var act = () => ClubActivities.Classifier(new ClubXpConfiguration
+        {
+            UntypedXpFallback = new Dictionary<int, string> { [20] = "DailyMisson" }
+        });
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*DailyMisson*");
     }
 
     [Fact]
     public void Classify_PrefersTheType_EvenWhenTheAmountSuggestsOtherwise()
     {
         // A typed entry is authoritative: should GeoGuessr retune the rewards, the type still holds.
-        var oddlyPricedMission = ClubActivities.Of("u1", ClubXpActivityKind.DailyMission, xpReward: 1000);
+        var oddlyPricedMission = ClubActivities.Of("u1", ClubXpActivityKind.BoardMission, xpReward: 100);
+        var classifier = ClubActivities.Classifier(new ClubXpConfiguration
+        {
+            UntypedXpFallback = new Dictionary<int, string> { [100] = "BoardClearBonus" }
+        });
 
-        _classifier.Classify(oddlyPricedMission).Should().Be(ClubXpActivityKind.DailyMission);
-        _classifier.IsWeeklyMission(oddlyPricedMission).Should().BeFalse();
+        classifier.Classify(oddlyPricedMission).Should().Be(ClubXpActivityKind.BoardMission);
+        classifier.IsBoardClearBonus(oddlyPricedMission).Should().BeFalse();
     }
 }

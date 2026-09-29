@@ -76,7 +76,8 @@ dotnet run --project Tools/GeoClubBot.ApiProbe -- <command> [options]
 | Command | Request |
 |---|---|
 | `activities` | `GET /v4/clubs/{club}/activities` — the club XP feed |
-| `missions` | `GET /v4/missions` — today's daily missions (for the token's own account) |
+| `board` | `GET /v4/missions/club/board` — the weekly club mission board of the **token's own club** |
+| `board-previous` | `GET /v4/missions/club/board/previous` — last week's board (`null` in the first week) |
 | `members` | `GET /v4/clubs/{club}/members` |
 | `club` | `GET /v4/clubs/{club}` |
 | `user <userId>` | `GET /v3/users/{userId}` |
@@ -90,9 +91,10 @@ dotnet run --project Tools/GeoClubBot.ApiProbe -- <command> [options]
 | `--out <file>` | Also write everything to a file |
 | `--no-census` | Raw JSON only, skip the field summary |
 
-`GEOGUESSR_API_BASE_URL` overrides the host, so the probe can be aimed at a stand-in (the
-solution's `GeoClubBot.MockGeoGuessr`, or a throwaway server while working on the probe itself)
-instead of the live API.
+`GEOGUESSR_API_BASE_URL` overrides the host, so the probe can be aimed at a stand-in (a throwaway
+server while working on the probe itself) instead of the live API. The solution's
+`GeoClubBot.MockGeoGuessr` is not one: it replaces the bot's client in-process and serves no
+`/api/v4/...` routes.
 
 ## Reading the output
 
@@ -144,12 +146,21 @@ from a 35-member club spanning 2026-07-31 to 2026-08-30. Each item is
 
 | `type` | `xpReward` | Cap | Meaning |
 |---|---|---|---|
-| 1 | 20 | once per member per day | Daily mission completed |
-| 2 | 1000 | once per member per day | Weekly mission completed |
+| 1 | 20 | once per member per day | Daily mission completed — **ended 2026-09-23** |
+| 2 | 1000 | once per member per day | Weekly mission completed — **ended 2026-09-23** |
 | 3 | 0 | — | Club challenge played (carries `challengeToken`) |
 | 4 | 20 | once per member per day | Daily challenge **or** duel played |
+| 5 | 20 | once per mission | Club mission board: a mission was completed — credited to the **claimer** only |
+| 6 | 100 | once per board | Club mission board: a board was cleared — credited to whoever completed its last mission |
 
-Notes, all of which the bot now depends on:
+Types 5 and 6 arrived with the weekly club mission board on 2026-09-23, which replaced the daily and
+weekly missions (confirmed with `activities --pages 40` and `board` on 2026-09-26/29). The board
+itself (`board`) has five boards of 9/16/25/25/25 missions; only the current one can be claimed,
+each member may claim one mission per claim day and hold one open mission at a time, and the week
+and the claim day both flip at 12:00 UK time (11:00 UTC in summer). A mission's `helpers[]` are
+just user ids of members who pressed "help out" — no timestamp, and no proof they contributed.
+
+Notes on types 1–4, which the bot depended on before the board:
 
 - **`type` is the only thing separating 1 from 4.** Both are worth 20 XP. Before type 4 existed the
   bot could read "a 20 XP entry" as "the daily mission"; it cannot any more.

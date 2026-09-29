@@ -1,5 +1,5 @@
 using Entities;
-using UseCases.UseCases.DailyMissionStatistics;
+using UseCases.UseCases.DailyActivity;
 
 namespace GeoClubBot.DTOs.Assemblers;
 
@@ -15,7 +15,7 @@ public static class DashboardDtoAssembler
         string? viewerNickname,
         IReadOnlyList<ClubMemberAverageXp> leaderboard,
         IReadOnlyList<ClubChallengeResult> challenges,
-        IReadOnlyList<MemberMissionStreak> streaks)
+        IReadOnlyList<MemberDailyStreak> streaks)
     {
         var leaderboardDtos = leaderboard
             .Select((m, i) => new LeaderboardEntryDto(i + 1, m.Nickname, m.AverageXp))
@@ -30,7 +30,7 @@ public static class DashboardDtoAssembler
             .ToList();
 
         var streakDtos = streaks
-            .Select(s => new MissionStreakDto(s.Nickname, s.CurrentStreak, s.LongestStreak))
+            .Select(s => new DailyStreakDto(s.Nickname, s.CurrentStreak, s.LongestStreak))
             .ToList();
 
         return new DashboardDto(

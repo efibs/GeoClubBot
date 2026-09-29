@@ -1,5 +1,7 @@
 using Configuration;
 using Entities;
+using FluentAssertions;
+using GeoClubBot.Tests.TestBuilders;
 using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -35,13 +37,21 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IActivityStatusMessageSender _messageSender = Substitute.For<IActivityStatusMessageSender>();
     private readonly IActivityReportPublishGate _publishGate = Substitute.For<IActivityReportPublishGate>();
+    private readonly IGeoGuessrActivityReader _activityReader = Substitute.For<IGeoGuessrActivityReader>();
 
     private readonly GeoGuessrClubEntry _clubEntry = new() { ClubId = ClubId, NcfaToken = "x", IsMain = true };
     private readonly ActivityCheckerConfiguration _activityConfig = new()
     {
         Schedule = "0 0 0 * * ?",
         TextChannelId = 1,
-        MinXP = 500,
+        MinXP = 0,
+        Requirements = new Dictionary<string, int> { ["DailyChallengeOrDuel"] = 6, ["BoardMission"] = 2 },
+        RuleXp = new RuleXpConfiguration
+        {
+            ExcludedKinds = ["BoardClearBonus"],
+            MaxCountedPerWeek = new Dictionary<string, int> { ["BoardMission"] = 3 }
+        },
+        MaxFeedLookback = TimeSpan.FromDays(8),
         GracePeriodDays = 0,
         MaxNumStrikes = 3,
         HistoryKeepTimeSpan = TimeSpan.FromDays(60),
@@ -74,6 +84,56 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         _publishGate.AcquireAsync(Arg.Any<CancellationToken>()).Returns(Substitute.For<IAsyncDisposable>());
         _mediator.Send(Arg.Any<CalculateAverageXpQuery>(), Arg.Any<CancellationToken>())
             .Returns([new ClubMemberAverageXp(Nickname, AverageXp: 130, joinedAt)]);
+        _activityReader.ReadActivitiesSinceAsync(ClubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+    }
+
+    [Fact]
+    public async Task Handle_ReadsTheFeed_NoFurtherBackThanTheLookback()
+    {
+        // The last check was 10 days ago (e.g. downtime); the check reads at most 8 days of feed.
+        await CreateHandler().Handle(new CheckGeoGuessrPlayerActivityCommand(ClubId), CancellationToken.None);
+
+        await _activityReader.Received(1).ReadActivitiesSinceAsync(
+            ClubId,
+            Arg.Is<DateTimeOffset>(since => since > DateTimeOffset.UtcNow.AddDays(-8).AddMinutes(-1)
+                                            && since < DateTimeOffset.UtcNow.AddDays(-8).AddMinutes(1)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_JudgesTheRequirements_OnTheWindowsFeedEntriesOnly()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _clubs.ReadForUpdateByIdAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(Entities.Club.Create(ClubId, "club", level: 1, latestActivityCheckTime: now.AddDays(-7)));
+        _activityReader.ReadActivitiesSinceAsync(ClubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(Enumerable.Range(0, 6).Select(i => ClubActivities.Challenge(UserId, now.AddDays(-6 + i)))
+                .Append(ClubActivities.BoardMission(UserId, now.AddDays(-3)))
+                // Before the window: last week's mission must not count for this week.
+                .Append(ClubActivities.BoardMission(UserId, now.AddDays(-7).AddHours(-1)))
+                .ToList());
+
+        var statuses = await CreateHandler().Handle(new CheckGeoGuessrPlayerActivityCommand(ClubId), CancellationToken.None);
+
+        statuses.Should().ContainSingle();
+        statuses[0].TargetAchieved.Should().BeFalse();
+        statuses[0].FailedRequirementsText.Should().Be("missions 1/2");
+        await _messageSender.Received(1).SendActivityStatusUpdateMessageAsync(
+            Arg.Any<List<ClubMemberActivityStatus>>(), "club", "streak 6 · missions 2", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_RecordsTheWeeksRuleXpOnTheNewSnapshot()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _activityReader.ReadActivitiesSinceAsync(ClubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns([ClubActivities.Challenge(UserId, now.AddDays(-1)), ClubActivities.BoardBonus(UserId, now.AddDays(-1))]);
+
+        await CreateHandler().Handle(new CheckGeoGuessrPlayerActivityCommand(ClubId), CancellationToken.None);
+
+        _history.Received(1).CreateHistoryEntries(
+            Arg.Is<ICollection<ClubMemberHistoryEntry>>(entries => entries!.Single().RuleXp == 20));
     }
 
     [Fact]
@@ -133,7 +193,6 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         {
             SyncSchedule = "0 0 0 * * ?",
             ActivityNcfaToken = "x",
-            MissionsNcfaToken = "x",
             UserProfileNcfaToken = "x",
             Clubs = [_clubEntry],
         };
@@ -148,6 +207,8 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             _unitOfWork,
             _messageSender,
             _publishGate,
+            _activityReader,
+            ClubActivities.Classifier(),
             Options.Create(geoGuessrConfig),
             Options.Create(_activityConfig),
             NullLogger<CheckGeoGuessrPlayerActivityHandler>.Instance);

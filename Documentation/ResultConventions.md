@@ -16,8 +16,10 @@ a sync failure with an upstream API. Adopt it whenever you'd otherwise want to:
 
 Use `T?` only when `null` (or an empty list) represents a **legitimately optional read**:
 
-- "No reminder is set for this user" — `GetDailyMissionReminderStatusQuery` returns
-  `DomainDailyMissionReminder?` because absence is the steady-state for most users
+- "No reminders are set for this user" — `ListDailyMissionRemindersQuery` returns an empty
+  list because absence is the steady-state for most users
+- "The mission board can't be read right now" — `IClubMissionBoardReader` returns
+  `ClubMissionBoardWeek?`; every caller simply does without the board
 - "This club's average XP rollup is empty" — `List<T>` with zero items already
   communicates that without needing a wrapper
 - Static-shape queries that just project storage (`ClubStatistics?` where `null`
@@ -47,7 +49,8 @@ Examples in use:
 | `excuse.not_found` | `RemoveExcuseCommand`, `UpdateExcuseCommand` | `NotFound` |
 | `strike.not_found` | `RevokeStrikeCommand`, `UnrevokeStrikeCommand` | `NotFound` |
 | `club_member.not_found` | `CheckGeoGuessrPlayerActivityHandler`, `ReadOrSyncClubMember` | `NotFound` |
-| `daily_mission_reminder.not_found` | `StopDailyMissionReminderCommand` | `NotFound` |
+| `daily_mission_reminder.not_found` | `RemoveDailyMissionReminderCommand`, `ClearDailyMissionRemindersCommand` | `NotFound` |
+| `mission_board.unavailable` | `GetClubMissionBoardQuery` | `NotFound` |
 | `member_private_channel.not_found` | `DeleteMemberPrivateChannelCommand`, `ArchiveMemberPrivateChannelCommand`, `RestoreMemberPrivateChannelCommand` | `NotFound` |
 | `member_private_channel.delete_failed` | `DeleteMemberPrivateChannelCommand` | `Unexpected` |
 | `member_private_channel.archive_failed` | `ArchiveMemberPrivateChannelCommand` | `Unexpected` |

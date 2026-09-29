@@ -5,10 +5,11 @@
 export const queryKeys = {
   session: ['session'] as const,
   dashboard: (historyDepth: number) => ['dashboard', historyDepth] as const,
-  missionStats: ['mission-stats'] as const,
+  missionBoard: ['mission-board'] as const,
   todaysXp: ['todays-xp'] as const,
   profile: ['profile'] as const,
   myActivity: ['my-activity'] as const,
+  myCurrentActivity: ['my-current-activity'] as const,
   reminders: ['reminders'] as const,
   admin: {
     lastCheckTime: ['admin', 'last-check-time'] as const,

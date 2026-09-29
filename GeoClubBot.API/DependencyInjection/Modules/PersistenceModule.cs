@@ -35,8 +35,8 @@ public static class PersistenceModule
         // the source re-reads it on every call.
         services.AddSingleton<ICountryChallengeConfigurationSource, JsonFileCountryChallengeConfigurationSource>();
         services.AddTransient<IDailyMissionReminderRepository, EfDailyMissionReminderRepository>();
-        services.AddTransient<IDailyMissionRepository, EfDailyMissionRepository>();
-        services.AddTransient<IDailyMissionCompletionRepository, EfDailyMissionCompletionRepository>();
+        services.AddTransient<IClubMemberDailyActivityRepository, EfClubMemberDailyActivityRepository>();
+        services.AddTransient<IMissionBoardAlertRepository, EfMissionBoardAlertRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
         services.AddTransient<IAiBudgetRepository, EfAiBudgetRepository>();
         services.AddTransient<IAiConversationRepository, EfAiConversationRepository>();

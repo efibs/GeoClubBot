@@ -5,6 +5,10 @@ using UseCases.OutputPorts.Repositories;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
+/// <summary>
+/// Each current member's average rule XP over their last <see cref="HistoryDepth"/> un-excused weekly
+/// intervals. Members with fewer intervals are left out.
+/// </summary>
 public sealed record CalculateAverageXpQuery(Guid ClubId, int HistoryDepth) : IQuery<List<ClubMemberAverageXp>>;
 
 public sealed class CalculateAverageXpHandler(
@@ -49,7 +53,9 @@ public sealed class CalculateAverageXpHandler(
                 if (wasExcused)
                     continue;
 
-                validDifferences.Add(newer.Xp - older.Xp);
+                // Rule XP is recorded for the interval ending at the newer snapshot. Snapshots from
+                // before it existed only have the raw XP totals, so fall back to their difference.
+                validDifferences.Add(newer.RuleXp ?? newer.Xp - older.Xp);
             }
 
             if (validDifferences.Count < request.HistoryDepth)
@@ -60,7 +66,7 @@ public sealed class CalculateAverageXpHandler(
             var nickname = entries[0].MemberNickname ?? userId;
             var joinedAt = entries[0].MemberJoinedAt ?? DateTimeOffset.MaxValue;
 
-            results.Add(new ClubMemberAverageXp(nickname, average, joinedAt));
+            results.Add(new ClubMemberAverageXp(nickname, average, joinedAt, userId));
         }
 
         return results;

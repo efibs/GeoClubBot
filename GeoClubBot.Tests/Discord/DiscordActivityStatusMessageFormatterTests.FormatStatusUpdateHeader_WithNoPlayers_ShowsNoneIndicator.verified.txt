@@ -1,6 +1,6 @@
 ﻿**======= Activity status update - TestClub =======**
 
-Members that failed to meet the 100XP requirement:
+Members that failed to meet the requirements (streak 6 · missions 2):
 ```ansi
 [2;31m[0m[2;32mNone :)[0m
 ```

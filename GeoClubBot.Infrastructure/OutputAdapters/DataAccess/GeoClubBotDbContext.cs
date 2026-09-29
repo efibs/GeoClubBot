@@ -35,9 +35,9 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<DailyMissionReminder> DailyMissionReminders { get; set; }
 
-    public DbSet<DailyMission> DailyMissions { get; set; }
+    public DbSet<ClubMemberDailyActivity> ClubMemberDailyActivities { get; set; }
 
-    public DbSet<DailyMissionMemberCompletion> DailyMissionMemberCompletions { get; set; }
+    public DbSet<MissionBoardAlert> MissionBoardAlerts { get; set; }
 
     public DbSet<AiDailyBudget> AiDailyBudgets { get; set; }
 

@@ -27,29 +27,23 @@ public record AddMemberRequest(string UserId);
 public record MoveMemberRequest(Guid TargetClubId);
 // Type mirrors GeoGuessr's activity type (see AddActivityRequest); a negative Amount means
 // "use the reward that type carries on the real API".
-public record AddXpRequest(int Amount = -1, int Type = 1);
+public record AddXpRequest(int Amount = -1, int Type = 4);
 public record UpdateMemberRequest(int? Xp = null, int? WeeklyXp = null, int? Role = null);
 public record CreateUserRequest(string Nick, string? UserId = null, string? CountryCode = "us", bool IsProUser = true);
 public record UpdateUserRequest(string? Nick = null, string? CountryCode = null, bool? IsProUser = null, int? Elo = null, int? Rating = null);
 public record CreateChallengeRequest(string? Map = "world", int TimeLimit = 60, bool ForbidMoving = false, bool ForbidRotating = false, bool ForbidZooming = false);
 public record AddScoreRequest(string UserId, int Score = 25000, int Distance = 100);
-// Type mirrors GeoGuessr's activity type: 1 daily mission, 2 weekly mission,
-// 3 club challenge played (0 XP), 4 daily challenge played / duel won.
+// Type mirrors GeoGuessr's activity type: 3 club challenge played (0 XP), 4 daily challenge
+// played / duel, 5 board mission (20 XP), 6 board-clear bonus (100 XP); 1 and 2, the old daily and
+// weekly missions, ended in 2026.
 // A negative XpReward means "use the reward that type carries on the real API"; 0 is a valid
 // explicit value, which is what a club-challenge entry is worth.
-public record AddActivityRequest(string UserId, int XpReward = -1, int Type = 1);
-public record AddMissionRequest(
-    string Type,
-    string GameMode,
-    int TargetProgress,
-    int CurrentProgress = 0,
-    bool Completed = false,
-    DateTimeOffset? EndDate = null,
-    int RewardAmount = 100,
-    string RewardType = "Coins",
-    string? MapSlug = null,
-    string? MapName = null);
-public record UpdateNextMissionDateRequest(DateTimeOffset NextMissionDate);
+public record AddActivityRequest(string UserId, int XpReward = -1, int Type = 4);
+// MissionId null claims the first free mission of the current board.
+public record ClaimMissionRequest(string UserId, Guid? MissionId = null);
+public record HelpMissionRequest(string UserId);
+public record MissionProgressRequest(int Progress);
+public record BackdateMissionRequest(double Hours = 7);
 public record UpdateRankedProgressRequest(
     int? Rating = null,
     int? DivisionNumber = null,

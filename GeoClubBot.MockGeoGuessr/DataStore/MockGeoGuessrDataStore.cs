@@ -37,14 +37,25 @@ public class MockGeoGuessrDataStore
     public ConcurrentDictionary<Guid, ConcurrentBag<ReadClubActivitiesItemDto>> ClubActivities { get; } = new();
 
     /// <summary>
-    /// Current daily missions served by the mock missions endpoint.
+    /// Weekly mission boards indexed by ClubId, created on first use.
     /// </summary>
-    public List<DailyMissionDto> DailyMissions { get; } = new();
+    public ConcurrentDictionary<Guid, MockClubMissionBoard> MissionBoards { get; } = new();
 
-    /// <summary>
-    /// The next mission date returned by the mock missions endpoint.
-    /// </summary>
-    public DateTimeOffset NextMissionDate { get; set; } = DateTimeOffset.UtcNow.Date.AddDays(1);
+    /// <summary>The club's mission board, starting a week at the most recent Wednesday 11:00 UTC if it has none.</summary>
+    public MockClubMissionBoard GetMissionBoard(Guid clubId) =>
+        MissionBoards.GetOrAdd(clubId, _ => new MockClubMissionBoard(CurrentPeriodStart(DateTimeOffset.UtcNow)));
+
+    /// <summary>GeoGuessr's board week starts on Wednesdays at 11:00 UTC (12:00 UK summer time).</summary>
+    public static DateTimeOffset CurrentPeriodStart(DateTimeOffset now)
+    {
+        var start = new DateTimeOffset(now.UtcDateTime.Date.AddHours(11), TimeSpan.Zero);
+        while (start.DayOfWeek != DayOfWeek.Wednesday || start > now)
+        {
+            start = start.AddDays(-1);
+        }
+
+        return start;
+    }
 
     /// <summary>
     /// Ranked system progress indexed by UserId.
@@ -67,9 +78,10 @@ public class MockGeoGuessrDataStore
         "MOCK" + new string(Random.Shared.GetItems(TokenCharacters.AsSpan(), 12));
 
     /// <summary>
-    /// Appends an activity. <paramref name="type"/> is GeoGuessr's activity type - 1 daily mission,
-    /// 2 weekly mission, 4 daily challenge / duel - which is what the bot classifies on now
-    /// that the daily mission and the daily challenge are both worth 20 XP.
+    /// Appends an activity. <paramref name="type"/> is GeoGuessr's activity type - 3 club challenge,
+    /// 4 daily challenge / duel, 5 board mission, 6 board-clear bonus (1 and 2, the old daily and
+    /// weekly missions, ended in 2026) - which is what the bot classifies on, since several sources
+    /// are worth the same 20 XP.
     /// </summary>
     public void AddActivity(Guid clubId, string userId, int xpReward, int type)
     {

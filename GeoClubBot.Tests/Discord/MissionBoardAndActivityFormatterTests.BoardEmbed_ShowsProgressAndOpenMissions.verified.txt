@@ -1,0 +1,11 @@
+﻿Title: 🗺️ Mission Board — Dragon
+Description: Board week ends <t:1790766000:R> · daily claims reset <t:1790506800:R>
+[Boards]
+✅ Board 1 (3×3) cleared <t:1790164800:R>
+▶️ **Board 2 (4×4)** ▰▰▰▰▰▰▱▱▱▱ 9/16 done · 4 free
+🔒 Board 3 (5×5)
+[Open missions]
+• **Alice** — Win 2 Ranked Duels (1/2) · claimed <t:1790334000:R>
+• **Bob** — Do 2 5K's on World (0/2) · claimed <t:1790344800:R> 🆘
+• **unknown-user** — Score 30000 points on a Classic Map (0/2) · claimed <t:1790420400:R>
+Footer: 18 / 50 missions completed this week · 🆘 help requested

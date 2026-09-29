@@ -87,7 +87,8 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
                 e.Xp,
                 e.Timestamp,
                 e.ClubMember == null ? null : e.ClubMember.User!.Nickname,
-                e.ClubMember == null ? (DateTimeOffset?)null : e.ClubMember.JoinedAt))
+                e.ClubMember == null ? (DateTimeOffset?)null : e.ClubMember.JoinedAt,
+                e.RuleXp))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

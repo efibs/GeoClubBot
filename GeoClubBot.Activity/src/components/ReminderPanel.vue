@@ -65,10 +65,12 @@ async function onRemove(id: string): Promise<void> {
   <PanelSection title="⏰ Daily reminders" data-testid="reminder-panel">
     <p class="stat-caption" data-testid="reminder-status">
       <template v-if="list.length">
-        The bot DMs you at each time below — unless your mission is already done.
+        The bot DMs you at each time below — unless you've already kept your streak and claimed a
+        club mission.
       </template>
       <template v-else>
-        No reminders yet. Pick a time and the bot DMs you each day until your mission is done.
+        No reminders yet. Pick a time and the bot DMs you each day you still need to keep your
+        streak or claim a club mission.
       </template>
     </p>
 

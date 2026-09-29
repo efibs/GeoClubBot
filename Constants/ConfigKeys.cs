@@ -16,6 +16,8 @@ public static class ConfigKeys
 
     public const string ActivityCheckerCronScheduleConfigurationKey = "ActivityChecker:Schedule";
 
+    public const string ActivityCheckerTimeZoneConfigurationKey = "ActivityChecker:TimeZone";
+
     public const string ClubLevelCheckerCronScheduleConfigurationKey = "ClubLevelChecker:Schedule";
 
     public const string DailyChallengesCronScheduleConfigurationKey = "DailyChallenges:Schedule";
@@ -26,9 +28,9 @@ public static class ConfigKeys
 
     public const string DailyMissionReminderCronScheduleConfigurationKey = "DailyMissionReminder:Schedule";
 
-    public const string DailyMissionLoggingCronScheduleConfigurationKey = "DailyMissionLogging:Schedule";
+    public const string DailyActivitySnapshotCronScheduleConfigurationKey = "DailyActivitySnapshot:Schedule";
 
-    public const string DailyMissionStatisticsSnapshotCronScheduleConfigurationKey = "DailyMissionStatistics:SnapshotSchedule";
+    public const string MissionBoardAlertsCronScheduleConfigurationKey = "MissionBoardAlerts:Schedule";
 
     public const string MemberPrivateChannelArchiveCleanupCronScheduleConfigurationKey = "MemberPrivateChannels:ArchiveCleanupSchedule";
 

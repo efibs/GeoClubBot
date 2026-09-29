@@ -2,7 +2,8 @@
 
 A .NET 10 **ASP.NET Core Web API + Discord bot** for running [GeoGuessr](https://www.geoguessr.com/) gaming clubs.
 It talks to the GeoGuessr API and Discord to track member activity, manage strikes, run daily
-challenges, send mission reminders, and link Discord accounts to GeoGuessr profiles.
+challenges, remind members of their streak and the club mission board, and link Discord accounts
+to GeoGuessr profiles.
 
 <!-- Status -->
 [![CI](https://github.com/efibs/GeoClubBot/actions/workflows/ci.yml/badge.svg)](https://github.com/efibs/GeoClubBot/actions/workflows/ci.yml)
@@ -37,16 +38,20 @@ challenges, send mission reminders, and link Discord accounts to GeoGuessr profi
 
 - **🔗 Account linking** — members link their Discord account to their GeoGuessr profile through a
   one-time-password handshake performed *inside* GeoGuessr, so ownership is verified.
-- **📊 Activity tracking & strikes** — weekly XP checks against a configurable minimum, with grace
-  periods, automatic strikes, and time-based strike decay.
+- **📊 Activity tracking & strikes** — a weekly check right after GeoGuessr's board reset against
+  configurable requirements (e.g. 6 streak days and 2 board missions, optionally a minimum XP), with
+  grace periods, excuses, automatic strikes, time-based strike decay, and optional swap suggestions
+  between the main and the second club.
+- **🗺️ Club mission board** — `/club-stats board` shows this week's boards and who holds which open
+  mission; optional alerts when a claimed mission stays open too long or needs help.
 - **🏆 Daily challenges** — scheduled challenges with podium roles for the top three finishers.
 - **🗺️ Optional country challenges** — themed challenges on fixed weekdays (*Mongolia Monday*, *Small
   Country Sunday* from a rotating pool), with results, points, an optional podium role and a weekly
   leaderboard. All of it is configured in one JSON file, re-read on every run. Gated behind
   `CountryChallenges:Enabled`; see the [Country Challenges Guide](Documentation/CountryChallengesGuide.md).
-- **⏰ Daily reminders** — per-user, timezone-aware DM reminders covering both of the day's club-XP
-  awards: the GeoGuessr daily mission, and playing the daily challenge or a duel. The DM
-  only stops once both are done.
+- **⏰ Daily reminders** — per-user, timezone-aware DM reminders to keep the streak (daily challenge
+  or a duel) and to claim — or finish — a mission on the club's board. The DM is skipped once
+  nothing is left to do.
 - **📈 Club & member stats** — today's club XP, personal current-week / rolling-window progress,
   level-up announcements, and MVP rewards.
 - **🎭 Self-roles** — members opt into optional roles via a private menu, no admin needed.
@@ -58,7 +63,8 @@ challenges, send mission reminders, and link Discord accounts to GeoGuessr profi
 
 Work is driven by a mix of **Discord slash commands** and **Quartz scheduled jobs**
 (`SyncClubsJob`, `ActivityCheckJob`, `CheckClubLevelJob`, `DailyChallengeJob`, `CountryChallengeJob`,
-`DailyMissionReminderJob`, `DailyMissionLoggingJob`).
+`DailyMissionReminderJob`, `DailyActivitySnapshotJob`, `StuckMissionAlertJob`, and the AI and
+archive-cleanup jobs).
 
 ## Architecture
 
@@ -131,10 +137,14 @@ startup. Key sections:
 |---|---|
 | `ConnectionStrings:PostgreSQL` | PostgreSQL connection string |
 | `Discord` | Bot token, server ID, welcome/leave messages & channels |
-| `GeoGuessr` | `_ncfa` tokens, sync schedule, per-club settings (`UseMock` for local dev) |
-| `ActivityChecker` | Min XP, grace period, max strikes, strike decay window |
-| `DailyChallenges` / `DailyMissionReminder` / `DailyMissionLogging` | Cron schedules, channels, podium roles |
-| `ClubXp` | XP amounts per club-activity kind — only a fallback; the activity feed's own type wins |
+| `GeoGuessr` | `_ncfa` tokens (each club's must belong to one of its members), sync schedule, per-club overrides (`UseMock` for local dev) |
+| `ActivityChecker` | Schedule + time zone, requirements per activity kind, min rule XP, rule-XP exclusions/caps, grace period, max strikes, strike decay |
+| `SwapSuggestions` | Optional post-check swap/promotion report: history depth, buffer XP, club size |
+| `MissionBoard` / `MissionBoardAlerts` | Claim-reset fallback; stuck-mission alerts (thresholds, channel, mentions, DMs) |
+| `DailyMissionReminder` | Reminder schedule, default message, and every outstanding-text part |
+| `ActivityViews` | Longest `last-days` window, whether helps are shown |
+| `DailyChallenges` / `DailyActivitySnapshot` | Cron schedules, channels, podium roles |
+| `ClubXp` | Maps XP amounts to activity kinds for untyped feed entries only; the feed's own type wins |
 | `SelfRoles`, `MemberPrivateChannels`, `ActivityReward`, `GeoGuessrAccountLinking` | Per-feature settings |
 | `AI` | Optional AI assistant — `Active`, OpenRouter key, request budget, conversation and indexing limits ([guide](Documentation/AiGuide.md)) |
 | `SQL:Migrate` | Auto-apply EF Core migrations on startup |
@@ -145,26 +155,24 @@ startup. Key sections:
 
 ## How club XP is earned
 
-Since **2026-08-25** a member can earn **up to 40 club XP per day** from two independent sources,
-each worth 20 XP and each available once per day:
+Since **2026-09-23** GeoGuessr's club XP comes from:
 
-1. completing the **daily mission**, and
-2. playing the **daily challenge** *or* winning a **duel**.
+1. playing the **daily challenge** *or* a **duel** — 20 XP once per day (the **streak**), and
+2. the weekly **club mission board** — five boards (3×3, 4×4 and three 5×5) unlocked one after the
+   other. Each member claims one mission per claim day and holds one open mission at a time; a
+   finished mission gives its **claimer** 20 XP, and clearing a board gives whoever finished its last
+   mission a 100 XP bonus. Others can "help out", but nothing proves they did, so helps never count.
 
-GeoGuessr's club activity feed labels both, so the bot treats them as separate signals throughout:
-reminders nag until both are done, `/activity inactive-members` reports two lists, a completion
-streak only extends on days with both, and the mission statistics count missions only, alongside a
-separate daily-challenge rate. See
-[`Tools/GeoClubBot.ApiProbe/README.md`](Tools/GeoClubBot.ApiProbe/README.md) for the feed's
-activity types and how they were established.
+The board week and the claim day both reset at 12:00 UK time (11:00 UTC in summer). The daily and
+weekly missions (feed types 1 and 2) are gone. The bot's rules are configurable
+(`ActivityChecker:Requirements`, `RuleXp`, `MinXP`) and default to what the club agreed: 6 streak
+days and 2 board missions a week, and averages that leave out the board bonus and count at most 3
+missions a week. See [`Tools/GeoClubBot.ApiProbe/README.md`](Tools/GeoClubBot.ApiProbe/README.md)
+for the feed's activity types and the board's shape.
 
-> **Historical data caveat:** rows snapshotted between 2026-08-25 and the deploy of this change
-> counted challenge/duel XP as mission completions, and the feed is a rolling window so they can't
-> be rebuilt. The `/daily-missions stats` footer names the first day the daily challenge was
-> tracked separately; figures before it blend the two.
-
-Note that `ActivityChecker:MinXP` is a raw XP target and is unchanged by this — the weekly
-requirement is simply easier to reach now that there is more XP available per day.
+> **History:** the daily snapshot table keeps each member's streak across the change (days before
+> 2026-08-30 are judged on the old daily mission); averages over weeks before this change use the raw
+> XP difference, which still includes the old missions.
 
 ## Bot commands
 
@@ -175,8 +183,8 @@ lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
 |---|---|
 | `/gg-account link` | Link your Discord account to your GeoGuessr profile |
 | `/daily-reminder add\|remove\|clear\|list` | Manage your daily reminders |
-| `/my-activity current-week\|last-days` | See your own XP / mission progress |
-| `/club-stats todays-xp` | See how much XP the club earned today |
+| `/my-activity current-week\|last-days` | See your streak, club missions and this week's requirements |
+| `/club-stats todays-xp\|board` | See the club's XP today, or this week's mission boards |
 | `/country-challenges leaderboard` | See the country challenge leaderboard and your place on it |
 | `/user-info gg-nickname\|gg-profile\|discord-user` | Look up GeoGuessr ↔ Discord identities |
 | `/self-roles select` | Pick optional roles for yourself |

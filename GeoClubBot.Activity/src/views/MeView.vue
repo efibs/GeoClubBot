@@ -5,23 +5,15 @@ import FactRow from '../components/FactRow.vue';
 import LinkAccountPanel from '../components/LinkAccountPanel.vue';
 import ErrorBanner from '../components/ErrorBanner.vue';
 import { useSession } from '../queries/session';
-import { useMyActivityQuery, useProfileQuery } from '../queries/profile';
+import { useMyActivityQuery, useMyCurrentActivityQuery, useProfileQuery } from '../queries/profile';
 import { countryFlag, formatXp, weekdayInitial } from '../format';
 import { toErrorMessage } from '../api';
-import type { DayMissionDto } from '../types';
+import type { DayActivityDto } from '../types';
 
-// A day carries two independent 20 XP awards, so the strip is three-state rather than a tick box.
-function dayMark(day: DayMissionDto): string {
-  if (day.missionCompleted && day.challengeCompleted) return '✓';
-  return day.missionCompleted || day.challengeCompleted ? '◐' : '·';
-}
-
-function dayTitle(day: DayMissionDto): string {
-  const parts = [
-    `mission: ${day.missionCompleted ? 'done' : 'not done'}`,
-    `challenge/duel: ${day.challengeCompleted ? 'done' : 'not done'}`,
-  ];
-  return `${day.date} — ${parts.join(', ')}`;
+// The streak is the tick; board missions finished that day are counted beneath it.
+function dayTitle(day: DayActivityDto): string {
+  const streak = `streak: ${day.challengeDone ? 'kept' : 'not kept'}`;
+  return `${day.date} — ${streak}, club missions: ${day.boardMissions}`;
 }
 
 const { isLinked, nickname } = useSession();
@@ -30,12 +22,14 @@ const { isLinked, nickname } = useSession();
 // tab is open (an admin completes the request), `isLinked` flips and they fetch on their own.
 const profileQuery = useProfileQuery(isLinked);
 const activityQuery = useMyActivityQuery(isLinked);
+const currentQuery = useMyCurrentActivityQuery(isLinked);
 const { data: profile } = profileQuery;
 const { data: activity } = activityQuery;
+const { data: current } = currentQuery;
 const loadingProfile = profileQuery.isPending;
 
 const errorMessage = computed(() => {
-  const err = profileQuery.error.value ?? activityQuery.error.value;
+  const err = profileQuery.error.value ?? activityQuery.error.value ?? currentQuery.error.value;
   return err ? toErrorMessage(err, 'Failed to load your profile.') : null;
 });
 </script>
@@ -72,30 +66,55 @@ const errorMessage = computed(() => {
         <p v-else class="empty-state">Profile unavailable right now.</p>
       </PanelSection>
 
+      <PanelSection title="📋 This week" data-testid="my-week-panel">
+        <template v-if="current">
+          <ul class="requirements" data-testid="requirements">
+            <!-- Met/missed is shown by the mark as well as the colour. -->
+            <li
+              v-for="requirement in current.requirements"
+              :key="requirement.label"
+              class="requirement"
+              :class="{ met: requirement.met }"
+            >
+              <span>{{ requirement.met ? '✅' : '⬜' }} {{ requirement.label }}</span>
+              <strong>{{ requirement.actual }} / {{ requirement.target }}</strong>
+            </li>
+          </ul>
+          <FactRow v-if="current.ruleXp != null" label="Rule XP">{{
+            formatXp(current.ruleXp)
+          }}</FactRow>
+          <FactRow v-if="current.helpedThisWeek != null" label="Helped out (unverified)">
+            {{ current.helpedThisWeek }}
+          </FactRow>
+          <p class="stat-caption">since the last weekly check</p>
+        </template>
+        <p v-else class="empty-state">No activity data yet.</p>
+      </PanelSection>
+
       <PanelSection title="📅 My last 7 days" data-testid="my-activity-panel">
         <template v-if="activity">
           <p class="stat-value">{{ formatXp(activity.totalXp) }}</p>
-          <!-- Daily activity only: weekly missions are excluded, as they are club-wide too. -->
           <p class="stat-caption">
-            excluding weekly missions · fully done on {{ activity.numDaysDone }} of
-            {{ activity.days.length }} days · mission {{ activity.numMissionDaysDone }} ·
-            challenge/duel {{ activity.numChallengeDaysDone }}
+            streak kept on {{ activity.numChallengeDaysDone }} of {{ activity.days.length }} days ·
+            {{ activity.boardMissions }} club mission(s)
+            <template v-if="activity.boardClearBonusXp > 0">
+              · {{ formatXp(activity.boardClearBonusXp) }} board bonus
+            </template>
           </p>
           <ul class="day-strip" data-testid="day-strip">
-            <!-- Two independent awards per day, so three states: both, one, neither. -->
             <li
               v-for="day in activity.days"
               :key="day.date"
               class="day-cell"
-              :class="{
-                done: day.missionCompleted && day.challengeCompleted,
-                partial: day.missionCompleted !== day.challengeCompleted,
-              }"
+              :class="{ done: day.challengeDone }"
               :title="dayTitle(day)"
             >
               <span class="day-label">{{ weekdayInitial(day.date) }}</span>
-              <!-- Icon + color together: completion is never conveyed by color alone. -->
-              <span class="day-mark">{{ dayMark(day) }}</span>
+              <!-- Icon + color together: the streak is never conveyed by color alone. -->
+              <span class="day-mark">{{ day.challengeDone ? '✓' : '·' }}</span>
+              <span class="day-missions">{{
+                day.boardMissions > 0 ? `🎯${day.boardMissions}` : ''
+              }}</span>
             </li>
           </ul>
         </template>
@@ -136,9 +155,31 @@ const errorMessage = computed(() => {
   border-color: var(--viewer-border);
 }
 
-/* One of the two awards earned: distinguishable from "both" by the ◐ mark as well as the fill. */
-.day-cell.partial {
+.day-missions {
+  min-height: 1em;
+  font-size: 0.7rem;
+}
+
+.requirements {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.requirement {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 10px;
   background: var(--bg-row);
+  border: 1px solid transparent;
+}
+
+.requirement.met {
+  background: var(--viewer);
   border-color: var(--viewer-border);
 }
 

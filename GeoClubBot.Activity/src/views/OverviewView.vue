@@ -65,8 +65,8 @@ function setDepth(value: number): void {
       <StreaksPanel v-if="hasClub" :streaks="streaks" :viewer-nickname="viewerNickname" />
 
       <p v-if="!hasClub" class="no-club-note" data-testid="no-club">
-        🌍 Club rankings and mission streaks appear here once you've linked your GeoGuessr account
-        and joined a club. The daily challenge above is open to everyone.
+        🌍 Club rankings and daily streaks appear here once you've linked your GeoGuessr account and
+        joined a club. The daily challenge above is open to everyone.
       </p>
     </main>
   </template>

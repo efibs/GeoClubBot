@@ -26,8 +26,11 @@ public class RefitGeoGuessrClient(IGeoGuessrApi api) : IGeoGuessrClient
     public Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default) =>
         api.ReadClubActivitiesAsync(clubId, @params, cancellationToken);
 
-    public Task<DailyMissionsResponseDto> ReadDailyMissionsAsync(CancellationToken cancellationToken = default) =>
-        api.ReadDailyMissionsAsync(cancellationToken);
+    public Task<ClubMissionBoardSnapshotDto> ReadClubMissionBoardAsync(CancellationToken cancellationToken = default) =>
+        api.ReadClubMissionBoardAsync(cancellationToken);
+
+    public Task<ClubMissionBoardSnapshotDto?> ReadPreviousClubMissionBoardAsync(CancellationToken cancellationToken = default) =>
+        api.ReadPreviousClubMissionBoardAsync(cancellationToken);
 
     public Task<RankedProgressResponseDto> ReadRankedProgressOfUserAsync(string userId, CancellationToken cancellationToken = default) =>
         api.ReadRankedProgressOfUserAsync(userId, cancellationToken);

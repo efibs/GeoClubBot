@@ -54,10 +54,19 @@ Starts the linking process for your account.
 ---
 
 ## ⏰ Feature: Daily Reminder
-Reminds you (via DM) every day to earn your club XP, at times you choose. There are **two** ways to
-earn it and each is worth 20 XP, so a reminder only stops once you've done **both**: completing the
-**daily mission**, and playing the **daily challenge** or a **duel**. The message names
-whichever one you still owe, and when the mission is one of them it spells out **today's actual missions** (for example "Play the Daily Challenge" or "Win 5 Team Duels") instead of just saying "your daily mission" — once you've done the mission those are gone from the message and only the daily challenge is named. You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. If the bot happens to be offline right when a reminder is due (for example during an update), it catches up as soon as it's back online: you'll get the missed reminder shortly after the bot starts — at most one catch-up message, even if the bot was down for a long time or you missed several reminder times that day.
+Reminds you (via DM) every day to earn your club XP, at times you choose. It covers the two things
+you can do each day:
+
+- **keep your streak** — play the **daily challenge** or a **duel** (UTC day), and
+- **claim a club mission** — when a mission on the club's board is still free and you haven't used
+  today's claim yet. If you're still holding a mission from an earlier day, it reminds you to
+  **finish it (or request help)** instead, naming the mission and your progress.
+
+The message names only what you still owe, and no DM is sent at all once nothing is left. The claim
+day resets at 12:00 UK time (11:00 UTC in summer) — the reminder tells you when. If your GeoGuessr
+account isn't linked, the bot can't see your activity and reminds you of both in general terms.
+
+You can set up **several reminders** (for example one in the morning and a follow-up in the evening), each with its own time and message. Reminders are sent as direct messages from the bot. If the bot happens to be offline right when a reminder is due (for example during an update), it catches up as soon as it's back online: you'll get the missed reminder shortly after the bot starts — at most one catch-up message, even if the bot was down for a long time or you missed several reminder times that day.
 
 ### `/daily-reminder add`
 Adds a new reminder (or updates the one already set at that time).
@@ -68,30 +77,29 @@ Adds a new reminder (or updates the one already set at that time).
 - `message` *(optional)* — your own reminder message. If you leave it blank, the bot uses its default message, which already names what you still owe.
 
 **Showing what you still owe in your own message**
-If you write your own message, you can choose **where** that goes. Just type `{{outstanding_text}}` (copy it exactly, with the double curly braces) at the spot where it should appear. When the reminder is sent, the bot replaces `{{outstanding_text}}` with what is actually left for you that day — and with today's missions listed underneath, whenever the daily mission is still one of them.
+If you write your own message, you can choose **where** that goes. Just type `{{outstanding_text}}` (copy it exactly, with the double curly braces) at the spot where it should appear. When the reminder is sent, the bot replaces `{{outstanding_text}}` with what is actually left for you that day, starting with a verb ("play the daily challenge …", "claim a club mission …") — so write "Don't forget to {{outstanding_text}}" rather than "Don't forget {{outstanding_text}}".
 
 - ✅ If you include `{{outstanding_text}}`, it appears right there.
 - ⚠️ If you **don't** include `{{outstanding_text}}` in your custom message, only your own text will be sent.
-- 💡 It finishes the sentence and can run over several lines, so it reads best at the **end** of your message.
+- 💡 It finishes the sentence (with "!"), so it reads best at the **end** of your message.
 - ℹ️ `{{mission_text}}` from older reminders still works — it inserts the same text.
 
 **Example** — you set this custom message:
 
 ```
-Time for GeoGuessr! 🌍 Don't forget {{outstanding_text}}
+Time for GeoGuessr! 🌍 Don't forget to {{outstanding_text}}
 ```
 
 The DM you actually receive looks like this:
 
 ```
-Time for GeoGuessr! 🌍 Don't forget your daily mission and the daily challenge (or a duel) today:
-- Play the Daily Challenge
+Time for GeoGuessr! 🌍 Don't forget to play the daily challenge (or a duel) and claim a club mission (5 still free on board 3, the daily claim resets in 4 hours)!
 ```
 
-Once you've completed the mission, the same reminder that evening says:
+Once you've claimed a mission, the same reminder that evening says:
 
 ```
-Time for GeoGuessr! 🌍 Don't forget the daily challenge (or a duel) today!
+Time for GeoGuessr! 🌍 Don't forget to play the daily challenge (or a duel)!
 ```
 
 ### `/daily-reminder remove`
@@ -109,17 +117,21 @@ Lists all of your reminders: their times, timezones, custom messages, and when e
 See how you're doing in the club.
 
 ### `/my-activity current-week`
-Shows your progress for the current week: total XP earned, how many days you earned **both** of the day's awards, a breakdown per award, and a visual progress bar for each day — 🟩 both done, 🟨 one of the two, ⬛ neither.
+Shows your progress since the club's last weekly check — which runs right after GeoGuessr's weekly board reset, so this is the week the next check will judge:
 
-The XP figure covers **daily** activity only — weekly missions are left out, since a single one is worth 1000 XP and would drown out everything else. `/club-stats todays-xp` does the same (its `includeWeeklies` option is off by default).
+- **XP earned** (and your **rule XP**, the figure averages and swaps use: without the board-clear bonus and with at most 3 missions a week),
+- **streak days** and **club missions** finished (missions you claimed; helping doesn't count),
+- the club's **requirements** and where you stand, e.g. `✅ streak 6/6 · ❌ missions 1/2`,
+- how many missions of others you pressed **help out** on, this and last board week (for information only — pressing the button proves nothing),
+- a day-by-day strip: 🟩 streak kept, ⬛ not kept, and a digit for the missions finished that day.
 
 No parameters. Requires your GeoGuessr account to be linked (see `/gg-account link`).
 
 ### `/my-activity last-days`
-Shows the same progress over the last several days — handy if you want to see a rolling window instead of just the current calendar week.
+Shows your streak, club missions and XP over the last several days — handy for a rolling window instead of the current check week. (The requirements only apply to the check week, so they aren't shown here.)
 
 **Parameters:**
-- `days` *(optional)* — how many days back to include, from `1` to `14`. Defaults to `7`.
+- `days` *(optional)* — how many days back to include. Defaults to `7`; the longest window is set by the admins (14 days by default, since GeoGuessr's activity feed only reaches back about two weeks).
 
 Requires your GeoGuessr account to be linked (see `/gg-account link`).
 
@@ -129,30 +141,39 @@ Requires your GeoGuessr account to be linked (see `/gg-account link`).
 Check how the club as a whole is performing.
 
 ### `/club-stats todays-xp`
-Shows how much XP a club has earned today, plus how many members earned each of the two daily awards (the daily mission, and the daily challenge or a duel) — they're counted separately because a member can do one, both, or neither.
+Shows how much XP a club has earned today (UTC), how many members kept their streak, how many board missions were finished, and how many members claimed a mission in the current claim cycle.
 
 **Parameters:**
 - `clubName` *(optional)* — the name of the club. If left blank, the default club is used.
-- `includeWeeklies` *(optional, true/false)* — whether to include XP from weekly challenges. Defaults to `false`.
+
+### `/club-stats board`
+Shows this week's club mission boards: when the week ends and when the daily claims reset, each board (✅ cleared, ▶️ current with its progress and free missions, 🔒 locked), and every **open mission** — who holds it, the mission, the progress, when it was claimed, and 🆘 if they asked for help. Handy to see what's blocking the next board.
+
+**Parameters:**
+- `club` *(optional)* — pick a club from the suggestions. If left blank, the main club is used.
 
 ---
 
-## 📈 Feature: Daily Mission Statistics
-Curious which daily missions show up the most, how big they usually are, or how often the club actually finishes them? This command crunches the bot's daily mission history for you.
+## 🛡️ Feature: Member Activity (admins)
+These require the **Administrator** permission. Replies are only visible to you.
 
-### `/daily-missions stats`
-Shows an overview table with one row per mission kind (for example "Win Duels" or "Score points in Classic"): how often it appeared, on what share of days, the average target count (e.g. how many duels you have to play), the club's average completion rate on the days it appeared, and when it was last seen.
+### `/member-activity current-week by-nickname|by-user` · user command **Current Week XP**
+The same view as `/my-activity current-week`, for any member: streak, club missions, requirements and helps since the last weekly check.
 
-The summary above the table also reports how often the club played the **daily challenge** (or a duel) — the club's other daily XP award. That figure only covers days the bot has tracked it; the footer names the first such day.
+### `/member-activity last-days by-nickname|by-user` · user command **Last 7 Days XP**
+The same view as `/my-activity last-days`, for any member.
 
-**Parameters:**
-- `days` *(optional)* — how many days back to include, from `1` to `365`. Defaults to `30`.
-- `mission` *(optional)* — pick one mission kind from the suggestions to get a detailed view of just that mission instead of the overview table.
-- `club` *(optional)* — pick a club from the suggestions to compute the completion rate for that club only. If left blank, all tracked clubs are combined.
+**Parameters:** `nickname` (with suggestions) or `user`, and `days` *(optional, default 7)*.
 
-The reply is ephemeral — only you can see it, so feel free to experiment.
+### `/member-activity inactive-members`
+Two lists for today: who hasn't played the daily challenge (or a duel) yet, and who could still claim a club mission in the current claim cycle but hasn't. Linked members are shown with their Discord handle, but nobody is pinged.
 
-> ℹ️ Completion rates are computed from a daily snapshot the bot started taking when this feature was released. Days before that show `—` (no data), so the completion column fills up over time.
+**Parameters:** `club` *(optional)* — defaults to the main club.
+
+### Automatic posts
+- **Weekly activity check** — right after GeoGuessr's weekly board reset, the bot lists everyone who missed a requirement (e.g. `missed streak 4/6 · missions 1/2`) and hands out strikes; members who joined during the week or were excused get proportionally lower targets.
+- **Swap suggestions** *(if enabled)* — after the check: which second-club members should replace kicked main-club members, fill free spots, or swap with a main-club member whose average rule XP is lower by at least the buffer. Suggestions only; the bot never moves anyone.
+- **Stuck-mission alerts** *(if enabled)* — when a claimed mission has been open too long, or its claimer asked for help, while it holds up the board. Each mission is alerted about once.
 
 ---
 

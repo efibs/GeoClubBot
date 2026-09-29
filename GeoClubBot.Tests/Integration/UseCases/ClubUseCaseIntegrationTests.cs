@@ -27,7 +27,6 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs =
                 [
@@ -114,7 +113,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task GetClubTodaysXp_ExcludesWeeklyMissions_WhenNotRequested()
+    public async Task GetClubTodaysXp_SumsEveryKindOfXp()
     {
         var clubId = Guid.NewGuid();
         var name = $"xpclub-{Guid.NewGuid():N}";
@@ -130,24 +129,22 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
                 ClubActivities.Untyped("u1", xpReward: 100),
-                ClubActivities.Weekly("u1"),
+                ClubActivities.BoardBonus("u1"),
             ]);
 
-        var excludingWeeklies = await host.SendAsync(new GetClubTodaysXpQuery(name, IncludeWeeklies: false));
-        excludingWeeklies.Xp.Should().Be(100);
-        excludingWeeklies.ClubName.Should().Be(name);
+        var result = await host.SendAsync(new GetClubTodaysXpQuery(name));
 
-        var includingWeeklies = await host.SendAsync(new GetClubTodaysXpQuery(name, IncludeWeeklies: true));
-        includingWeeklies.Xp.Should().Be(1100);
+        result.Xp.Should().Be(200);
+        result.ClubName.Should().Be(name);
     }
 
     [Fact]
-    public async Task GetClubTodaysXp_CountsTheTwoDailyAwardsSeparatelyAndClubSize()
+    public async Task GetClubTodaysXp_CountsStreakMissionsAndClaimsSeparately_AndClubSize()
     {
         var clubId = Guid.NewGuid();
         var name = $"xpclub-{Guid.NewGuid():N}";
 
-        // Three members in the club; only the first two do a mission today.
+        // Three members in the club.
         var userIds = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid().ToString("N")[..24]).ToArray();
         await using (var seed = fixture.CreateDbContext())
         {
@@ -167,18 +164,27 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
             .ReadTodaysActivitiesAsync(clubId, Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
-                // The first member did both awards; each count includes them exactly once.
-                ClubActivities.Mission(userIds[0]),
+                // The first member kept the streak and finished two missions.
+                ClubActivities.BoardMission(userIds[0]),
+                ClubActivities.BoardMission(userIds[0]),
                 ClubActivities.Challenge(userIds[0]),
-                ClubActivities.Mission(userIds[1]),
-                // Zero-XP club challenge: not one of the two daily awards, so it counts for neither.
+                ClubActivities.BoardMission(userIds[1]),
+                // Zero-XP club challenge: neither the streak nor a mission.
                 ClubActivities.ClubChallenge(userIds[2]),
             ]);
+        host.Mock<IClubMissionBoardReader>()
+            .ReadCurrentAsync(clubId, Arg.Any<CancellationToken>())
+            .Returns(MissionBoards.Week(
+                MissionBoards.Board(1,
+                    MissionBoards.Tile(index: 0, claimedBy: userIds[0], claimedAt: DateTimeOffset.UtcNow.AddMinutes(-5)),
+                    MissionBoards.Tile(index: 1, claimedBy: userIds[1], claimedAt: DateTimeOffset.UtcNow.AddDays(-2), completed: true)),
+                nextClaimResetAt: DateTimeOffset.UtcNow.AddHours(1)));
 
-        var result = await host.SendAsync(new GetClubTodaysXpQuery(name, IncludeWeeklies: false));
+        var result = await host.SendAsync(new GetClubTodaysXpQuery(name));
 
-        result.MissionMemberCount.Should().Be(2);
+        result.BoardMissionCount.Should().Be(3);
         result.ChallengeMemberCount.Should().Be(1);
+        result.ClaimMemberCount.Should().Be(1, "only the first member claimed in the current claim cycle");
         result.TotalMemberCount.Should().Be(3);
     }
 
@@ -187,11 +193,12 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
     {
         using var host = CreateHost(Guid.NewGuid());
 
-        var result = await host.SendAsync(new GetClubTodaysXpQuery($"missing-{Guid.NewGuid():N}", IncludeWeeklies: true));
+        var result = await host.SendAsync(new GetClubTodaysXpQuery($"missing-{Guid.NewGuid():N}"));
 
         result.Xp.Should().BeNull();
         result.ClubName.Should().BeNull();
-        result.MissionMemberCount.Should().BeNull();
+        result.BoardMissionCount.Should().BeNull();
+        result.ClaimMemberCount.Should().BeNull();
         result.ChallengeMemberCount.Should().BeNull();
         result.TotalMemberCount.Should().BeNull();
     }

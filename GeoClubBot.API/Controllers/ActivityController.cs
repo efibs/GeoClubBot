@@ -14,10 +14,11 @@ using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
+using UseCases.UseCases.DailyActivity;
 using UseCases.UseCases.DailyChallenge;
 using UseCases.UseCases.DailyMissionReminder;
-using UseCases.UseCases.DailyMissionStatistics;
 using UseCases.UseCases.GeoGuessrAccountLinking;
+using UseCases.UseCases.MissionBoard;
 using UseCases.UseCases.RankedSystem;
 using Utilities;
 
@@ -25,7 +26,7 @@ namespace GeoClubBot.Controllers;
 
 /// <summary>
 /// Backend for the Club Dashboard Discord Activity: the anonymous OAuth2 token exchange plus the
-/// authenticated, aggregate dashboard payload (leaderboard + current challenge standings + mission
+/// authenticated, aggregate dashboard payload (leaderboard + current challenge standings + daily
 /// streaks, personalized to the viewing member).
 /// </summary>
 [ApiController]
@@ -38,22 +39,18 @@ namespace GeoClubBot.Controllers;
 public class ActivityController(
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityConfig,
+    IOptions<ActivityViewsConfiguration> activityViewsConfig,
     IOptions<DiscordActivityConfiguration> discordActivityConfig) : ControllerBase
 {
-    /// <summary>The trailing window used to compute mission streaks (long enough to surface them).</summary>
+    /// <summary>The trailing window used to compute daily streaks (long enough to surface them).</summary>
     private const int StreakWindowDays = 90;
 
     /// <summary>Bounds the leaderboard depth so a caller can't degenerate or abuse the query.</summary>
     private const int MinHistoryDepth = 1;
     private const int MaxHistoryDepth = 60;
 
-    /// <summary>Bounds for the self-activity window (defaults to the last week).</summary>
+    /// <summary>The self-activity window when the caller doesn't pick one (the last week).</summary>
     private const int DefaultActivityDaysBack = 7;
-    private const int MaxActivityDaysBack = 60;
-
-    /// <summary>Bounds for the mission-statistics window (mirrors the query handler's own clamp).</summary>
-    private const int DefaultMissionStatsDaysBack = 30;
-    private const int MaxMissionStatsDaysBack = 365;
 
     private static readonly Error NotLinkedError = Error.NotFound(
         "activity.not_linked",
@@ -107,13 +104,13 @@ public class ActivityController(
 
         // Resolve the viewer's linked GeoGuessr identity (used to highlight their rows wherever they
         // appear, e.g. the challenge standings) and the club they currently belong to. Only the
-        // club-scoped panels — leaderboard and mission streaks — are tied to that club, and they stay
+        // club-scoped panels — leaderboard and daily streaks — are tied to that club, and they stay
         // empty when the viewer isn't a member of any club.
         var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
 
         Entities.Club? club = null;
         IReadOnlyList<Entities.ClubMemberAverageXp> leaderboard = [];
-        IReadOnlyList<MemberMissionStreak> streaks = [];
+        IReadOnlyList<MemberDailyStreak> streaks = [];
 
         if (viewer?.ClubId is { } clubId)
         {
@@ -131,7 +128,7 @@ public class ActivityController(
                 leaderboard = leaderboardResult.Leaderboard ?? [];
 
                 streaks = await mediator
-                    .Send(new GetDailyMissionStreaksQuery(clubId, StreakWindowDays), cancellationToken)
+                    .Send(new GetDailyStreaksQuery(clubId, StreakWindowDays), cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -191,7 +188,7 @@ public class ActivityController(
         return Ok(dto);
     }
 
-    /// <summary>The viewer's own XP + daily-mission activity over the last <paramref name="daysBack"/> days.</summary>
+    /// <summary>The viewer's own XP, streak and club missions over the last <paramref name="daysBack"/> days.</summary>
     [HttpGet("me/activity")]
     public async Task<ActionResult<WeekActivityDto>> GetMyActivity(
         [FromQuery] int? daysBack,
@@ -205,9 +202,32 @@ public class ActivityController(
             return this.ToProblemDetails(NotLinkedError);
         }
 
-        var days = Math.Clamp(daysBack ?? DefaultActivityDaysBack, 1, MaxActivityDaysBack);
+        var days = Math.Clamp(daysBack ?? DefaultActivityDaysBack, 1, activityViewsConfig.Value.MaxDaysBack);
         var activity = await mediator
             .Send(new GetActivityLastDaysQuery(viewer.UserId, days), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(ActivityMemberDtoAssembler.AssembleWeekActivity(activity));
+    }
+
+    /// <summary>
+    /// The viewer's activity since their club's last weekly check, with progress towards the club's
+    /// requirements — what the next check will judge.
+    /// </summary>
+    [HttpGet("me/activity/current")]
+    public async Task<ActionResult<WeekActivityDto>> GetMyCurrentActivity(
+        ActivityViewerResolver viewerResolver,
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
+        if (viewer is null)
+        {
+            return this.ToProblemDetails(NotLinkedError);
+        }
+
+        var activity = await mediator
+            .Send(new GetActivityThisWeekQuery(viewer.UserId), cancellationToken)
             .ConfigureAwait(false);
 
         return Ok(ActivityMemberDtoAssembler.AssembleWeekActivity(activity));
@@ -250,32 +270,29 @@ public class ActivityController(
     }
 
     /// <summary>
-    /// Aggregated daily-mission statistics, scoped to the viewer's club when they belong to one and
-    /// across all clubs otherwise (the same aggregate the public slash command shows).
+    /// The running mission board week of the viewer's club (the main club for a viewer without
+    /// one), with the viewer's own claims and helps marked.
     /// </summary>
-    [HttpGet("missions/stats")]
-    public async Task<ActionResult<MissionStatsDto>> GetMissionStats(
-        [FromQuery] int? daysBack,
+    [HttpGet("club/board")]
+    public async Task<ActionResult<MissionBoardDto>> GetClubBoard(
         ActivityViewerResolver viewerResolver,
         ISender mediator,
         CancellationToken cancellationToken)
     {
         var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
-        var days = Math.Clamp(daysBack ?? DefaultMissionStatsDaysBack, 1, MaxMissionStatsDaysBack);
 
-        var statistics = await mediator
-            .Send(new GetDailyMissionStatisticsQuery(viewer?.ClubId, days), cancellationToken)
+        var board = await mediator
+            .Send(new GetClubMissionBoardQuery(viewer?.ClubId), cancellationToken)
             .ConfigureAwait(false);
 
-        return statistics.IsSuccess
-            ? Ok(ActivityMemberDtoAssembler.AssembleMissionStats(statistics.Value))
-            : this.ToProblemDetails(statistics.Error);
+        return board.IsSuccess
+            ? Ok(ActivityMemberDtoAssembler.AssembleMissionBoard(board.Value, viewer?.UserId))
+            : this.ToProblemDetails(board.Error);
     }
 
     /// <summary>Today's XP of the viewer's club (falls back to the configured default club).</summary>
     [HttpGet("club/todays-xp")]
     public async Task<ActionResult<TodaysXpDto>> GetClubTodaysXp(
-        [FromQuery] bool includeWeeklies,
         ActivityViewerResolver viewerResolver,
         IClubRepository clubRepository,
         ISender mediator,
@@ -289,18 +306,19 @@ public class ActivityController(
         }
 
         var result = await mediator
-            .Send(new GetClubTodaysXpQuery(clubName, includeWeeklies), cancellationToken)
+            .Send(new GetClubTodaysXpQuery(clubName), cancellationToken)
             .ConfigureAwait(false);
 
         return Ok(new TodaysXpDto(
             result.Xp,
             result.ClubName,
-            result.MissionMemberCount,
             result.ChallengeMemberCount,
+            result.BoardMissionCount,
+            result.ClaimMemberCount,
             result.TotalMemberCount));
     }
 
-    /// <summary>The viewer's daily-mission reminders, ordered by time (empty when none are configured).</summary>
+    /// <summary>The viewer's daily reminders, ordered by time (empty when none are configured).</summary>
     [HttpGet("me/reminders")]
     public async Task<ActionResult<IReadOnlyList<ReminderDto>>> GetMyReminders(
         ISender mediator,
@@ -319,7 +337,7 @@ public class ActivityController(
     }
 
     /// <summary>
-    /// Adds a daily-mission reminder for the viewer (or updates the one at the same time). The reminder
+    /// Adds a daily reminder for the viewer (or updates the one at the same time). The reminder
     /// is persisted even when the confirmation DM can't be delivered — the response reports the DM
     /// outcome separately so the frontend can tell the viewer to enable DMs. Returns 409 when the viewer
     /// already has the maximum number of reminders.
@@ -376,7 +394,7 @@ public class ActivityController(
             dmResult.IsSuccess ? null : dmResult.Error.Code));
     }
 
-    /// <summary>Removes one of the viewer's daily-mission reminders.</summary>
+    /// <summary>Removes one of the viewer's daily reminders.</summary>
     [HttpDelete("me/reminders/{id:guid}")]
     public async Task<IActionResult> RemoveMyReminder(
         Guid id,

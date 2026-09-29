@@ -34,7 +34,6 @@ public sealed class ClubOrchestrationUseCaseIntegrationTests(PostgresFixture fix
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs = [new GeoGuessrClubEntry { ClubId = mainClubId, NcfaToken = "x", IsMain = true }],
             })));

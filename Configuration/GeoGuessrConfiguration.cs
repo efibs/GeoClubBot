@@ -13,9 +13,6 @@ public class GeoGuessrConfiguration : IValidatableObject
     public required string ActivityNcfaToken { get; set; }
 
     [Required(AllowEmptyStrings = false)]
-    public required string MissionsNcfaToken { get; set; }
-
-    [Required(AllowEmptyStrings = false)]
     public required string UserProfileNcfaToken { get; set; }
 
     public TimeSpan ActivityCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(5);
@@ -23,6 +20,12 @@ public class GeoGuessrConfiguration : IValidatableObject
     public TimeSpan UserProfileCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(30);
 
     public TimeSpan UserRankedSystemCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// How long a club's mission board is cached. Reminders run every minute and alerts every few,
+    /// so this keeps them to one board read per club per interval.
+    /// </summary>
+    public TimeSpan MissionBoardCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(1);
 
     [Required]
     [MinLength(1)]
@@ -44,6 +47,12 @@ public class GeoGuessrConfiguration : IValidatableObject
         {
             yield return new ValidationResult(
                 $"{nameof(UserProfileCacheTimeToLive)} must be greater than zero.");
+        }
+
+        if (MissionBoardCacheTimeToLive <= TimeSpan.Zero)
+        {
+            yield return new ValidationResult(
+                $"{nameof(MissionBoardCacheTimeToLive)} must be greater than zero.");
         }
 
         var mainClubs = Clubs.Where(c => c.IsMain).ToList();
