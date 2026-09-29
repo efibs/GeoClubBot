@@ -94,63 +94,15 @@ public class MockGeoGuessrDataInitializer(
             dataStore.ChallengeHighscores.TryAdd(post.ChallengeId, []);
         }
 
-        // Seed sample daily missions covering all three mission types
-        SeedSampleMissions();
+        // Every club starts with a fresh board week, so the board features work right away.
+        foreach (var clubId in dataStore.Clubs.Keys)
+        {
+            dataStore.GetMissionBoard(clubId);
+        }
 
         logger.LogInformation(
-            "Mock GeoGuessr data initialized: {ClubCount} clubs, {UserCount} users, {ChallengeCount} challenges, {MissionCount} missions",
-            dataStore.Clubs.Count, dataStore.Users.Count, dataStore.Challenges.Count, dataStore.DailyMissions.Count);
-    }
-
-    private void SeedSampleMissions()
-    {
-        var nextMidnight = DateTimeOffset.UtcNow.Date.AddDays(1);
-        dataStore.NextMissionDate = nextMidnight;
-
-        var samples = new[]
-        {
-            new DailyMissionDto
-            {
-                Id = Guid.NewGuid(),
-                Type = "WinGames",
-                GameMode = "TeamDuels",
-                CurrentProgress = 0,
-                TargetProgress = 3,
-                Completed = false,
-                EndDate = nextMidnight,
-                RewardAmount = 125,
-                RewardType = "Coins"
-            },
-            new DailyMissionDto
-            {
-                Id = Guid.NewGuid(),
-                Type = "Score",
-                GameMode = "Duels",
-                CurrentProgress = 0,
-                TargetProgress = 5000,
-                Completed = false,
-                EndDate = nextMidnight,
-                RewardAmount = 75,
-                RewardType = "Coins"
-            },
-            new DailyMissionDto
-            {
-                Id = Guid.NewGuid(),
-                Type = "PlayGames",
-                GameMode = "AnyBattleRoyale",
-                CurrentProgress = 0,
-                TargetProgress = 5,
-                Completed = false,
-                EndDate = nextMidnight,
-                RewardAmount = 50,
-                RewardType = "Coins"
-            }
-        };
-
-        lock (dataStore.DailyMissions)
-        {
-            dataStore.DailyMissions.AddRange(samples);
-        }
+            "Mock GeoGuessr data initialized: {ClubCount} clubs, {UserCount} users, {ChallengeCount} challenges, {BoardCount} mission boards",
+            dataStore.Clubs.Count, dataStore.Users.Count, dataStore.Challenges.Count, dataStore.MissionBoards.Count);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

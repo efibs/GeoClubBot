@@ -96,10 +96,20 @@ function search(): void {
       >
         <template v-if="lookup.data.activity">
           <p class="stat-value">{{ formatXp(lookup.data.activity.totalXp) }}</p>
-          <!-- Same daily-only figure as the member's own view; weekly missions are excluded. -->
+          <!-- The same figures as the member's own view. -->
           <p class="stat-caption">
-            excluding weekly missions · fully done on {{ lookup.data.activity.numDaysDone }} of
-            {{ lookup.data.activity.days.length }} days
+            streak kept on {{ lookup.data.activity.numChallengeDaysDone }} of
+            {{ lookup.data.activity.days.length }} days ·
+            {{ lookup.data.activity.boardMissions }} club mission(s)
+            <template
+              v-if="
+                lookup.data.activity.helpedLastWeek != null ||
+                lookup.data.activity.helpedThisWeek != null
+              "
+            >
+              · helped out on {{ lookup.data.activity.helpedThisWeek ?? 0 }} this week,
+              {{ lookup.data.activity.helpedLastWeek ?? 0 }} last week (unverified)
+            </template>
           </p>
         </template>
         <p v-else class="empty-state">No activity data for this member.</p>

@@ -47,13 +47,28 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddOptions<DailyMissionLoggingConfiguration>()
-            .Bind(config.GetSection(DailyMissionLoggingConfiguration.SectionName))
+        services.AddOptions<DailyActivitySnapshotConfiguration>()
+            .Bind(config.GetSection(DailyActivitySnapshotConfiguration.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddOptions<DailyMissionStatisticsConfiguration>()
-            .Bind(config.GetSection(DailyMissionStatisticsConfiguration.SectionName))
+        services.AddOptions<MissionBoardConfiguration>()
+            .Bind(config.GetSection(MissionBoardConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<MissionBoardAlertsConfiguration>()
+            .Bind(config.GetSection(MissionBoardAlertsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<SwapSuggestionsConfiguration>()
+            .Bind(config.GetSection(SwapSuggestionsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<ActivityViewsConfiguration>()
+            .Bind(config.GetSection(ActivityViewsConfiguration.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 

@@ -1,0 +1,6 @@
+﻿**======= Swap suggestions - Dragon =======**
+-# Average rule XP over the last 2 week(s); a swap needs at least 10 XP more on average.
+
+* 🔁 **Yara** (Dragon's Den, 188.5 XP) takes the spot of **Kai**, who is out of strikes
+* ⬆️ **Zed** (Dragon's Den, 170.0 XP) is promoted into a free spot
+* 🔄 **Xeno** (Dragon's Den, 155.0 XP) swaps with **Bo** (130.2 XP)

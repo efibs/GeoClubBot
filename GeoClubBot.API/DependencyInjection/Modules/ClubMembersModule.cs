@@ -1,6 +1,9 @@
+using Configuration;
+using Microsoft.Extensions.Options;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
+using UseCases.UseCases.ClubMemberActivity.Rules;
 
 namespace GeoClubBot.DependencyInjection.Modules;
 
@@ -26,6 +29,11 @@ public static class ClubMembersModule
         services.AddTransient<ActivityCheckSyncStep>();
         services.AddTransient<ActivityStatusCalculator>();
         services.AddTransient<ActivityAverageXpRollupStep>();
+
+        // The weekly rules name activity kinds in configuration; a typo fails start-up rather than
+        // the next weekly check.
+        services.AddSingleton<ActivityRulesProvider>();
+        services.AddSingleton<IValidateOptions<ActivityCheckerConfiguration>, ActivityRulesOptionsValidator>();
 
         return services;
     }

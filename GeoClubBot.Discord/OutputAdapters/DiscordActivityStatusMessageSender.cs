@@ -15,19 +15,19 @@ public sealed class DiscordActivityStatusMessageSender(
     private const int MaxNumPlayersPerMessage = 15;
 
     public async Task SendActivityStatusUpdateMessageAsync(
-        List<ClubMemberActivityStatus> statuses, string clubName, int minXP, CancellationToken cancellationToken = default)
+        List<ClubMemberActivityStatus> statuses, string clubName, string requirements, CancellationToken cancellationToken = default)
     {
         var channel = ResolveChannel();
 
         var playersWithFailedRequirement = statuses
             .Where(s => s.TargetAchieved == false)
             .OrderByDescending(s => s.NumStrikes)
-            .ThenBy(s => s.XpSinceLastUpdate)
+            .ThenBy(s => s.RankingXp)
             .ToList();
 
         var firstChunk = playersWithFailedRequirement.Take(MaxNumPlayersPerMessage).ToList();
         await channel
-            .SendMessageAsync(formatter.FormatStatusUpdateHeader(firstChunk, clubName, minXP))
+            .SendMessageAsync(formatter.FormatStatusUpdateHeader(firstChunk, clubName, requirements))
             .ConfigureAwait(false);
 
         var skipCount = MaxNumPlayersPerMessage;

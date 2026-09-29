@@ -1,6 +1,7 @@
 using Entities;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.Repositories;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 using DomainDailyMissionReminder = Entities.DailyMissionReminder;
 
@@ -258,47 +259,80 @@ public sealed class EfRepositoryIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task ReadLatestFetchedMissionsAsync_ReturnsOnlyNewestBatchInInsertionOrder()
+    public async Task MissionBoardAlerts_ReadSentAlerts_ReturnsOnlyThisClubsRequestedMissions()
     {
-        // The table is append-only and not namespaced; use UtcNow-relative timestamps so this
-        // run's newest batch is the global maximum (earlier runs have strictly smaller timestamps).
-        var newest = DateTimeOffset.UtcNow;
-        var older = newest.AddDays(-1);
-
-        var newBatchIds = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        var clubId = Guid.NewGuid();
+        var otherClubId = Guid.NewGuid();
+        var alerted = Guid.NewGuid();
+        var helpOnly = Guid.NewGuid();
+        var notAsked = Guid.NewGuid();
+        var sentAt = DateTimeOffset.UtcNow;
 
         await using (var seed = fixture.CreateDbContext())
         {
-            seed.Add(CreateMission(Guid.NewGuid(), older));
-            seed.Add(CreateMission(Guid.NewGuid(), older));
-
-            foreach (var missionId in newBatchIds)
-            {
-                seed.Add(CreateMission(missionId, newest));
-            }
-
+            var repo = new EfMissionBoardAlertRepository(seed);
+            repo.Add(MissionBoardAlert.Create(clubId, alerted, MissionBoardAlertKind.OpenClaim, sentAt));
+            repo.Add(MissionBoardAlert.Create(clubId, helpOnly, MissionBoardAlertKind.HelpRequest, sentAt));
+            repo.Add(MissionBoardAlert.Create(clubId, notAsked, MissionBoardAlertKind.OpenClaim, sentAt));
+            repo.Add(MissionBoardAlert.Create(otherClubId, alerted, MissionBoardAlertKind.HelpRequest, sentAt));
             await seed.SaveChangesAsync();
         }
 
         await using var read = fixture.CreateDbContext();
-        var repo = new EfDailyMissionRepository(read);
+        var sent = await new EfMissionBoardAlertRepository(read).ReadSentAlertsAsync(clubId, [alerted, helpOnly]);
 
-        var latest = await repo.ReadLatestFetchedMissionsAsync(CancellationToken.None);
-
-        latest.Should().HaveCount(3, "only the newest fetch batch is returned");
-        latest.Select(m => m.MissionId).Should().Equal(newBatchIds, "rows are ordered by ascending Id (insertion order)");
+        sent.Should().BeEquivalentTo(new HashSet<(Guid, MissionBoardAlertKind)>
+        {
+            (alerted, MissionBoardAlertKind.OpenClaim),
+            (helpOnly, MissionBoardAlertKind.HelpRequest)
+        });
     }
 
-    private static DailyMission CreateMission(Guid missionId, DateTimeOffset fetchedAt) =>
-        DailyMission.Create(
-            missionId,
-            type: "PlayGames",
-            gameMode: "Classic",
-            currentProgress: 0,
-            targetProgress: 1,
-            completed: false,
-            endDate: DateTimeOffset.UtcNow.AddDays(1),
-            rewardAmount: 20,
-            rewardType: "Xp",
-            fetchedAtUtc: fetchedAt);
+    [Fact]
+    public async Task MissionBoardAlerts_TheSameMissionAndKindCannotBeRecordedTwice()
+    {
+        var clubId = Guid.NewGuid();
+        var missionId = Guid.NewGuid();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(MissionBoardAlert.Create(clubId, missionId, MissionBoardAlertKind.OpenClaim, DateTimeOffset.UtcNow));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var again = fixture.CreateDbContext();
+        again.Add(MissionBoardAlert.Create(clubId, missionId, MissionBoardAlertKind.OpenClaim, DateTimeOffset.UtcNow));
+
+        var act = () => again.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>("the unique index is what makes the alert idempotent");
+    }
+
+    [Fact]
+    public async Task HistoryEntry_RoundTripsTheRecordedInterval()
+    {
+        var clubId = Guid.NewGuid();
+        var userId = Guid.NewGuid().ToString("N")[..24];
+        var timestamp = DateTimeOffset.UtcNow;
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(clubId, $"club-{clubId:N}", 1));
+            var user = GeoGuessrUser.Create(userId, $"nick-{userId}");
+            seed.Add(user);
+            seed.Add(ClubMember.Create(user, clubId, xp: 0, joinedAt: timestamp.AddMonths(-1)));
+            var entry = ClubMemberHistoryEntry.Create(userId, clubId, 500, timestamp);
+            entry.RecordInterval(ruleXp: 180, streakDays: 6, boardMissionCount: 4);
+            seed.Add(entry);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var projections = await new EfHistoryRepository(read).ReadHistoryEntryProjectionsByClubIdAsync(clubId);
+
+        projections.Should().ContainSingle().Which.RuleXp.Should().Be(180);
+        var stored = await read.ClubMemberHistoryEntries.SingleAsync(e => e.UserId == userId);
+        stored.StreakDays.Should().Be(6);
+        stored.BoardMissionCount.Should().Be(4);
+    }
 }

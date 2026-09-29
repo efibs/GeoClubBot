@@ -1,17 +1,16 @@
 <script setup lang="ts">
-import type { MissionStreakDto } from '../types';
+import type { DailyStreakDto } from '../types';
 import { formatStreak, streakFlames } from '../format';
 
 defineProps<{
-  streaks: MissionStreakDto[];
+  streaks: DailyStreakDto[];
   viewerNickname: string | null;
 }>();
 </script>
 
 <template>
   <section class="panel" data-testid="streaks-panel">
-    <!-- A streak day needs both of the day's club-XP awards: the daily mission AND the daily
-         challenge (or a duel). -->
+    <!-- A streak day is a day on which the member played the daily challenge (or a duel). -->
     <h2 class="panel-title">🔥 Daily Streaks</h2>
     <p v-if="streaks.length === 0" class="empty-state" data-testid="streaks-empty">
       No streaks tracked yet.

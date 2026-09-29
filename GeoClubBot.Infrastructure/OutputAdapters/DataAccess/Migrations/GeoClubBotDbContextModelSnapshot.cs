@@ -299,6 +299,52 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("ClubMembers");
                 });
 
+            modelBuilder.Entity("Entities.ClubMemberDailyActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BoardClearBonusCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("BoardMissionCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("DailyChallengeCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("LegacyDailyMissionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<int?>("Xp")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "Date", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ClubMemberDailyActivities");
+                });
+
             modelBuilder.Entity("Entities.ClubMemberExcuse", b =>
                 {
                     b.Property<Guid>("ExcuseId")
@@ -334,8 +380,17 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .HasMaxLength(24)
                         .HasColumnType("character varying(24)");
 
+                    b.Property<int?>("BoardMissionCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("ClubId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("RuleXp")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("StreakDays")
+                        .HasColumnType("integer");
 
                     b.Property<int>("Xp")
                         .HasColumnType("integer");
@@ -521,100 +576,6 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("CountryChallengePosts");
                 });
 
-            modelBuilder.Entity("Entities.DailyMission", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("Completed")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("CurrentProgress")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("EndDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("FetchedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("GameMode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("MapName")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("MapSlug")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<Guid>("MissionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("RewardAmount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("RewardType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<int>("TargetProgress")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FetchedAtUtc");
-
-                    b.HasIndex("MissionId");
-
-                    b.ToTable("DailyMissions");
-                });
-
-            modelBuilder.Entity("Entities.DailyMissionMemberCompletion", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("ClubId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("CompletedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("DailyChallengeCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateOnly>("Date")
-                        .HasColumnType("date");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("character varying(24)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClubId", "Date", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("DailyMissionMemberCompletions");
-                });
-
             modelBuilder.Entity("Entities.DailyMissionReminder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -784,6 +745,36 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.HasIndex("Status", "LastAttemptedAtUtc");
 
                     b.ToTable("KnowledgeSources");
+                });
+
+            modelBuilder.Entity("Entities.MissionBoardAlert", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("MissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SentAt");
+
+                    b.HasIndex("ClubId", "MissionId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("MissionBoardAlerts");
                 });
 
             modelBuilder.Entity("Entities.AiFeedbackTurn", b =>

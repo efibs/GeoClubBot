@@ -1,6 +1,7 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
+using GeoClubBot.Tests.TestBuilders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -24,7 +25,7 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
     private static string NewUserId() => Guid.NewGuid().ToString("N")[..24];
     private static string NewNickname() => $"nick-{Guid.NewGuid():N}"[..30];
 
-    /// <summary>Host configured with several clubs (the first is the main one) and a per-check XP target of 500.</summary>
+    /// <summary>Host configured with several clubs (the first is the main one) requiring 6 streak days a week.</summary>
     private MediatorTestHost CreateHost(params Guid[] clubIds) =>
         new(fixture.ConnectionString, services =>
         {
@@ -32,7 +33,6 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs = clubIds
                     .Select((id, i) => new GeoGuessrClubEntry { ClubId = id, NcfaToken = "x", IsMain = i == 0 })
@@ -42,7 +42,7 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
             {
                 Schedule = "0 0 0 * * ?",
                 TextChannelId = 1,
-                MinXP = 500,
+                Requirements = new Dictionary<string, int> { ["DailyChallengeOrDuel"] = 6 },
                 GracePeriodDays = 0,
                 MaxNumStrikes = 3,
                 HistoryKeepTimeSpan = TimeSpan.FromDays(60),
@@ -77,6 +77,15 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
         client.ReadClubMembersAsync(clubId, Arg.Any<CancellationToken>()).Returns([.. members]);
         host.Mock<IGeoGuessrClientFactory>().CreateClient(clubId).Returns(client);
     }
+
+    /// <summary>The members named here kept their streak every day of the last week.</summary>
+    private static void ArrangeStreaks(MediatorTestHost host, Guid clubId, params string[] activeUserIds) =>
+        host.Mock<IGeoGuessrActivityReader>()
+            .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(activeUserIds
+                .SelectMany(userId => Enumerable.Range(0, 7)
+                    .Select(day => ClubActivities.Challenge(userId, DateTimeOffset.UtcNow.AddDays(-day).AddMinutes(-5))))
+                .ToList());
 
     private async Task SeedClubAsync(Guid clubId, DateTimeOffset lastCheck)
     {
@@ -122,6 +131,8 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
         ArrangeRoster(host, clubB,
             BuildMemberDto(activeB.userId, activeB.nickname, xp: 1200),
             BuildMemberDto(laggingB.userId, laggingB.nickname, xp: 550));
+        ArrangeStreaks(host, clubA, activeA.userId);
+        ArrangeStreaks(host, clubB, activeB.userId);
 
         // Fan out exactly like ActivityCheckJob: one command per club, concurrently, each its own scope.
         var results = await Task.WhenAll(
@@ -152,7 +163,7 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
         // shared-row contention against deadlocks / errors and confirms the decayed strikes are gone.
         var clubA = Guid.NewGuid();
         var clubB = Guid.NewGuid();
-        var lastCheck = DateTimeOffset.UtcNow.AddDays(-2);
+        var lastCheck = DateTimeOffset.UtcNow.AddDays(-7);
 
         var memberA = (userId: NewUserId(), nickname: NewNickname());
         var memberB = (userId: NewUserId(), nickname: NewNickname());
@@ -176,7 +187,6 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs =
                 [
@@ -188,16 +198,18 @@ public sealed class MultiClubActivityCheckUseCaseIntegrationTests(PostgresFixtur
             {
                 Schedule = "0 0 0 * * ?",
                 TextChannelId = 1,
-                MinXP = 500,
+                Requirements = new Dictionary<string, int> { ["DailyChallengeOrDuel"] = 6 },
                 GracePeriodDays = 0,
                 MaxNumStrikes = 3,
                 HistoryKeepTimeSpan = TimeSpan.FromDays(60),
                 StrikeDecayTimeSpan = TimeSpan.FromDays(1),
             }));
         });
-        // Both members stay active (gain >= 500), so no NEW strike is created during the check.
+        // Both members kept their streak all week, so no NEW strike is created during the check.
         ArrangeRoster(host, clubA, BuildMemberDto(memberA.userId, memberA.nickname, xp: 1200));
         ArrangeRoster(host, clubB, BuildMemberDto(memberB.userId, memberB.nickname, xp: 1200));
+        ArrangeStreaks(host, clubA, memberA.userId);
+        ArrangeStreaks(host, clubB, memberB.userId);
 
         var act = async () => await Task.WhenAll(
             host.SendAsync(new CheckGeoGuessrPlayerActivityCommand(clubA)),

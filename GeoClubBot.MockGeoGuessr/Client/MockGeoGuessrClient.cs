@@ -4,7 +4,11 @@ using UseCases.OutputPorts.GeoGuessr;
 
 namespace GeoClubBot.MockGeoGuessr.Client;
 
-public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrClient
+/// <param name="clubId">
+/// The club whose token the client stands in for. The mission board endpoints answer for the
+/// token's own club, so a client without one has no board.
+/// </param>
+public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore, Guid? clubId = null) : IGeoGuessrClient
 {
     public Task<List<ClubMemberDto>> ReadClubMembersAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
@@ -60,20 +64,16 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore) : IGeoGuessrC
         return Task.FromResult(new ChallengeResultHighscoresDto { Items = items });
     }
 
-    public Task<DailyMissionsResponseDto> ReadDailyMissionsAsync(CancellationToken cancellationToken = default)
-    {
-        List<DailyMissionDto> snapshot;
-        lock (dataStore.DailyMissions)
-        {
-            snapshot = dataStore.DailyMissions.ToList();
-        }
+    public Task<ClubMissionBoardSnapshotDto> ReadClubMissionBoardAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(RequireBoard().Current);
 
-        return Task.FromResult(new DailyMissionsResponseDto
-        {
-            Missions = snapshot,
-            NextMissionDate = dataStore.NextMissionDate
-        });
-    }
+    public Task<ClubMissionBoardSnapshotDto?> ReadPreviousClubMissionBoardAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(RequireBoard().Previous);
+
+    private MockClubMissionBoard RequireBoard() =>
+        clubId is { } id
+            ? dataStore.GetMissionBoard(id)
+            : throw new HttpRequestException("This mock client stands in for no club's token.", null, HttpStatusCode.NotFound);
 
     public Task<RankedProgressResponseDto> ReadRankedProgressOfUserAsync(string userId, CancellationToken cancellationToken = default)
     {

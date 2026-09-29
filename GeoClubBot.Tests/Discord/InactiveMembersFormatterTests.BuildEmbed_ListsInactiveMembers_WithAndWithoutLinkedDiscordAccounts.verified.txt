@@ -1,15 +1,15 @@
 ﻿Title: 😴 Today's Inactive Members — Awesome Club
 Description:
-**🎯 Haven't done the daily mission**
-3 of 5 member(s) (2026-07-10):
-• Alpha (<@111111111111111111>)
-• Bravo
-• Charlie (<@222222222222222222>)
-
 **🌍 Haven't played the daily challenge (or a duel)**
 2 of 5 member(s) (2026-07-10):
 • Bravo
 • Delta (<@333333333333333333>)
+
+**🎯 Haven't claimed a club mission this claim cycle (5 still free)**
+3 of 5 member(s) (2026-07-10):
+• Alpha (<@111111111111111111>)
+• Bravo
+• Charlie (<@222222222222222222>)
 
 
 Footer: 5 member(s) checked · linked members are shown with their Discord handle

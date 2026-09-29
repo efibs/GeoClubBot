@@ -24,7 +24,7 @@ public record DashboardDto(
     ViewerDto? Viewer,
     IReadOnlyList<LeaderboardEntryDto> Leaderboard,
     IReadOnlyList<ChallengeResultDto> Challenges,
-    IReadOnlyList<MissionStreakDto> Streaks);
+    IReadOnlyList<DailyStreakDto> Streaks);
 
 /// <summary>The viewing member, resolved from their linked Discord account (null when unlinked).</summary>
 public record ViewerDto(string Nickname);
@@ -35,4 +35,5 @@ public record ChallengeResultDto(string Difficulty, IReadOnlyList<ChallengePlaye
 
 public record ChallengePlayerDto(int Rank, string Nickname, string TotalScore, string TotalDistance);
 
-public record MissionStreakDto(string Nickname, int CurrentStreak, int LongestStreak);
+/// <summary>Consecutive days on which the member played the daily challenge or a duel.</summary>
+public record DailyStreakDto(string Nickname, int CurrentStreak, int LongestStreak);

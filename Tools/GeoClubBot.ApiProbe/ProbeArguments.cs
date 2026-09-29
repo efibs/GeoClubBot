@@ -95,7 +95,8 @@ public sealed record ProbeArguments(
 
             Commands:
               activities            GET /v4/clubs/{club}/activities   (the club XP feed)
-              missions              GET /v4/missions                  (today's daily missions)
+              board                 GET /v4/missions/club/board       (the token's club's mission board)
+              board-previous        GET /v4/missions/club/board/previous
               members               GET /v4/clubs/{club}/members
               club                  GET /v4/clubs/{club}
               user <userId>         GET /v3/users/{userId}

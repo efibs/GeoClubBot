@@ -28,13 +28,18 @@ public sealed class GeoGuessrConfigurationBuilder
         return this;
     }
 
+    public GeoGuessrConfigurationBuilder WithClubEntry(GeoGuessrClubEntry entry)
+    {
+        _clubs.Add(entry);
+        return this;
+    }
+
     public IOptions<GeoGuessrConfiguration> BuildOptions()
     {
         var config = new GeoGuessrConfiguration
         {
             SyncSchedule = "0 0 * * * ?",
             ActivityNcfaToken = "activity-token",
-            MissionsNcfaToken = "missions-token",
             UserProfileNcfaToken = "userprofile-token",
             Clubs = _clubs
         };
@@ -50,6 +55,25 @@ public sealed class ActivityCheckerConfigurationBuilder
     private int? _averageXpTopN;
     private int? _averageXpBottomN;
     private int _averageXpHistoryDepth = 4;
+    private Dictionary<string, int> _requirements = [];
+    private RuleXpConfiguration _ruleXp = new();
+
+    /// <summary>Minimum entries per kind, e.g. <c>("DailyChallengeOrDuel", 6), ("BoardMission", 2)</c>.</summary>
+    public ActivityCheckerConfigurationBuilder WithRequirements(params (string Kind, int Min)[] requirements)
+    {
+        _requirements = requirements.ToDictionary(r => r.Kind, r => r.Min);
+        return this;
+    }
+
+    public ActivityCheckerConfigurationBuilder WithRuleXp(IEnumerable<string> excludedKinds, params (string Kind, int Cap)[] caps)
+    {
+        _ruleXp = new RuleXpConfiguration
+        {
+            ExcludedKinds = excludedKinds.ToList(),
+            MaxCountedPerWeek = caps.ToDictionary(c => c.Kind, c => c.Cap)
+        };
+        return this;
+    }
 
     public ActivityCheckerConfigurationBuilder WithMinXp(int minXp)
     {
@@ -96,7 +120,9 @@ public sealed class ActivityCheckerConfigurationBuilder
             StrikeDecayTimeSpan = TimeSpan.FromDays(60),
             AverageXpTopN = _averageXpTopN,
             AverageXpBottomN = _averageXpBottomN,
-            AverageXpHistoryDepth = _averageXpHistoryDepth
+            AverageXpHistoryDepth = _averageXpHistoryDepth,
+            Requirements = _requirements,
+            RuleXp = _ruleXp
         };
         return Options.Create(config);
     }

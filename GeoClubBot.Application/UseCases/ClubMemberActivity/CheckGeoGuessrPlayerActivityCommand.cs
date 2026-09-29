@@ -4,9 +4,12 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
+using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
+using UseCases.UseCases.ClubMemberActivity.Rules;
+using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
@@ -23,6 +26,8 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     IUnitOfWork unitOfWork,
     IActivityStatusMessageSender activityStatusMessageSender,
     IActivityReportPublishGate publishGate,
+    IGeoGuessrActivityReader activityReader,
+    ClubActivityKindClassifier activityKinds,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
     ILogger<CheckGeoGuessrPlayerActivityHandler> logger)
@@ -33,7 +38,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         var clubId = request.ClubId;
         var clubEntry = geoGuessrConfig.Value.GetClub(clubId);
         var defaults = activityCheckerConfig.Value;
-        var xpRequirement = clubEntry.GetMinXP(defaults);
+        var rules = ActivityRules.Resolve(defaults, clubEntry);
         var gracePeriod = TimeSpan.FromDays(clubEntry.GetGracePeriodDays(defaults));
         var maxNumStrikes = clubEntry.GetMaxNumStrikes(defaults);
 
@@ -68,6 +73,14 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
 
         var now = DateTimeOffset.UtcNow;
 
+        // The requirements count feed entries, so the window must be read from the feed. It is
+        // bounded by MaxFeedLookback: on the very first check there is no previous check time, and
+        // after downtime the feed may not reach back that far anyway.
+        var windowStart = Max(lastActivityCheckTime, now - defaults.MaxFeedLookback);
+        var checkTimeRange = new TimeRange(windowStart, now);
+        var activitiesByUser = await ReadWindowActivitiesAsync(clubId, checkTimeRange, cancellationToken)
+            .ConfigureAwait(false);
+
         var newLatestHistoryEntries = members.ToDictionary(
             m => m.User.UserId,
             m => ClubMemberHistoryEntry.Create(m.User.UserId, clubId, m.Xp, now));
@@ -77,8 +90,8 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         club.RecordActivityCheck(now);
 
         var newStatuses = await statusCalculator.ExecuteAsync(
-                members, latestHistoryEntries, allExcuses, lastActivityCheckTime, now,
-                xpRequirement, gracePeriod, maxNumStrikes, cancellationToken)
+                members, latestHistoryEntries, newLatestHistoryEntries, allExcuses, activitiesByUser,
+                checkTimeRange, rules, gracePeriod, maxNumStrikes, cancellationToken)
             .ConfigureAwait(false);
 
         var clubName = club.Name;
@@ -101,7 +114,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
         await using (await publishGate.AcquireAsync(cancellationToken).ConfigureAwait(false))
         {
             await activityStatusMessageSender
-                .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, xpRequirement, cancellationToken)
+                .SendActivityStatusUpdateMessageAsync(newStatuses, clubName, rules.Describe(), cancellationToken)
                 .ConfigureAwait(false);
 
             if (averageXpTopN.HasValue || averageXpBottomN.HasValue)
@@ -117,6 +130,35 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
 
         return newStatuses;
     }
+
+    private async Task<Dictionary<string, List<ClubActivityEntry>>> ReadWindowActivitiesAsync(
+        Guid clubId, TimeRange window, CancellationToken cancellationToken)
+    {
+        var activities = await activityReader
+            .ReadActivitiesSinceAsync(clubId, window.From, cancellationToken)
+            .ConfigureAwait(false);
+
+        var inWindow = activities.Where(a => a.RecordedAt >= window.From && a.RecordedAt < window.To).ToList();
+
+        // An active club always has feed entries within a day of the window start. None that early
+        // means the feed ended before reaching back that far, and members would be judged on part
+        // of the week — worth an operator's attention.
+        if (inWindow.Count > 0 && inWindow.Min(a => a.RecordedAt) - window.From > TimeSpan.FromDays(1))
+        {
+            LogFeedMayNotCoverWindow(logger, clubId, window.From, inWindow.Min(a => a.RecordedAt));
+        }
+
+        return inWindow
+            .GroupBy(a => a.UserId)
+            .ToDictionary(g => g.Key, g => ClubActivityEntries.From(g, activityKinds));
+    }
+
+    private static DateTimeOffset Max(DateTimeOffset a, DateTimeOffset b) => a > b ? a : b;
+
+    [LoggerMessage(LogLevel.Warning,
+        "The activity feed of club {ClubId} starts at {OldestEntry:u}, more than a day after the check window's start {WindowStart:u}. " +
+        "The requirements may have been judged on part of the week.")]
+    static partial void LogFeedMayNotCoverWindow(ILogger<CheckGeoGuessrPlayerActivityHandler> logger, Guid clubId, DateTimeOffset windowStart, DateTimeOffset oldestEntry);
 
     [LoggerMessage(LogLevel.Debug, "Checking player activity for club {ClubId}...")]
     static partial void LogCheckingPlayerActivity(ILogger<CheckGeoGuessrPlayerActivityHandler> logger, Guid clubId);

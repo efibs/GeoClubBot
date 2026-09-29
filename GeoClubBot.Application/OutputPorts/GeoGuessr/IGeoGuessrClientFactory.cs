@@ -6,7 +6,5 @@ public interface IGeoGuessrClientFactory
 
     IGeoGuessrClient CreateActivityClient();
 
-    IGeoGuessrClient CreateMissionsClient();
-
     IGeoGuessrClient CreateUserProfileClient();
 }

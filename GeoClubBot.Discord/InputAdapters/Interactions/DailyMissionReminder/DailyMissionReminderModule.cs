@@ -11,12 +11,12 @@ using Utilities;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.DailyMissionReminder;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("daily-reminder", "Commands for managing daily mission reminders")]
+[Group("daily-reminder", "Commands for managing your daily streak and club mission reminders")]
 public class DailyMissionReminderModule(
     ISender mediator,
     ILogger<DailyMissionReminderModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("add", "Add a daily reminder to complete your GeoGuessr daily mission")]
+    [SlashCommand("add", "Add a daily reminder to keep your streak and claim a club mission")]
     public Task AddReminderAsync(
         [Summary(description: "Time in HH:mm format (e.g. 09:00)")] string time,
         [Autocomplete(typeof(TimezoneAutocompleteHandler))][Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
@@ -89,7 +89,7 @@ public class DailyMissionReminderModule(
             ephemeral: true,
             failureMessage: "Failed to add the daily reminder. Please try again later.");
 
-    [SlashCommand("remove", "Remove one of your daily mission reminders")]
+    [SlashCommand("remove", "Remove one of your daily reminders")]
     public Task RemoveReminderAsync(
         [Autocomplete(typeof(ReminderAutocompleteHandler))][Summary(description: "The reminder to remove")] string reminder) =>
         ExecuteAsync(
@@ -107,15 +107,15 @@ public class DailyMissionReminderModule(
 
                 await FollowupAsync(
                         result.IsSuccess
-                            ? "That daily mission reminder has been removed."
-                            : "That daily mission reminder could not be found.",
+                            ? "That daily reminder has been removed."
+                            : "That daily reminder could not be found.",
                         ephemeral: true)
                     .ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to remove the daily reminder. Please try again later.");
 
-    [SlashCommand("clear", "Remove all of your daily mission reminders")]
+    [SlashCommand("clear", "Remove all of your daily reminders")]
     public Task ClearRemindersAsync() =>
         ExecuteAsync(
             async ct =>
@@ -126,15 +126,15 @@ public class DailyMissionReminderModule(
 
                 await FollowupAsync(
                         result.IsSuccess
-                            ? "All of your daily mission reminders have been removed."
-                            : "You don't have any daily mission reminders.",
+                            ? "All of your daily reminders have been removed."
+                            : "You don't have any daily reminders.",
                         ephemeral: true)
                     .ConfigureAwait(false);
             },
             ephemeral: true,
             failureMessage: "Failed to clear the daily reminders. Please try again later.");
 
-    [SlashCommand("list", "List your daily mission reminders")]
+    [SlashCommand("list", "List your daily reminders")]
     public Task ListAsync() =>
         ExecuteAsync(
             async ct =>
@@ -145,13 +145,13 @@ public class DailyMissionReminderModule(
 
                 if (reminders.Count == 0)
                 {
-                    await FollowupAsync("You don't have any daily mission reminders.", ephemeral: true)
+                    await FollowupAsync("You don't have any daily reminders.", ephemeral: true)
                         .ConfigureAwait(false);
                     return;
                 }
 
                 var builder = new StringBuilder();
-                builder.AppendLine($"**Your Daily Mission Reminders** ({reminders.Count})");
+                builder.AppendLine($"**Your Daily Reminders** ({reminders.Count})");
 
                 foreach (var reminder in reminders)
                 {

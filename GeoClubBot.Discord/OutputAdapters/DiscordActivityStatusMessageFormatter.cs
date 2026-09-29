@@ -10,13 +10,13 @@ namespace GeoClubBot.Discord.OutputAdapters;
 /// </summary>
 public sealed class DiscordActivityStatusMessageFormatter : IActivityStatusMessageFormatter
 {
-    public string FormatStatusUpdateHeader(IReadOnlyList<ClubMemberActivityStatus> firstChunk, string clubName, int minXP)
+    public string FormatStatusUpdateHeader(IReadOnlyList<ClubMemberActivityStatus> firstChunk, string clubName, string requirements)
     {
         var builder = new StringBuilder($"**======= Activity status update - {clubName} =======**\n\n");
 
-        builder.Append("Members that failed to meet the ");
-        builder.Append(minXP);
-        builder.Append("XP requirement:");
+        builder.Append("Members that failed to meet the requirements (");
+        builder.Append(requirements);
+        builder.Append("):");
 
         if (firstChunk.Count == 0)
         {
@@ -45,8 +45,8 @@ public sealed class DiscordActivityStatusMessageFormatter : IActivityStatusMessa
             builder.Append("* ");
             builder.Append(player.Nickname);
             builder.Append(" - individual target: ");
-            builder.Append(player.IndividualTarget);
-            builder.Append("XP; Reason(s): ");
+            builder.Append(DescribeTargets(player));
+            builder.Append("; Reason(s): ");
             builder.Append(player.IndividualTargetReason);
         }
 
@@ -62,7 +62,7 @@ public sealed class DiscordActivityStatusMessageFormatter : IActivityStatusMessa
 
         if (topMembers.Count > 0)
         {
-            builder.Append($"​\nTop {topMembers.Count} members by average XP (last {historyDepth} intervals):");
+            builder.Append($"​\nTop {topMembers.Count} members by average rule XP (last {historyDepth} intervals):");
             for (var i = 0; i < topMembers.Count; i++)
             {
                 builder.AppendLine();
@@ -75,7 +75,7 @@ public sealed class DiscordActivityStatusMessageFormatter : IActivityStatusMessa
             if (builder.Length > 0)
                 builder.AppendLine();
 
-            builder.Append($"​\nBottom {bottomMembers.Count} members by average XP (last {historyDepth} intervals):");
+            builder.Append($"​\nBottom {bottomMembers.Count} members by average rule XP (last {historyDepth} intervals):");
             for (var i = 0; i < bottomMembers.Count; i++)
             {
                 builder.AppendLine();
@@ -96,17 +96,8 @@ public sealed class DiscordActivityStatusMessageFormatter : IActivityStatusMessa
             {
                 builder.Append("```ansi\n\e[2;31m");
                 builder.Append(player.Nickname);
-                builder.Append("\e[0m got only ");
-                builder.Append(player.XpSinceLastUpdate);
-                builder.Append("XP");
-                if (player.IndividualTargetReason != null)
-                {
-                    builder.Append(" (individual target: ");
-                    builder.Append(player.IndividualTarget);
-                    builder.Append("XP - ");
-                    builder.Append(player.IndividualTargetReason);
-                    builder.Append(")");
-                }
+                builder.Append("\e[0m ");
+                AppendShortfall(builder, player);
                 builder.Append(" and already had ");
                 builder.Append(player.NumStrikes - 1);
                 builder.Append(" strikes and therefore \e[2;31mneeds to be kicked\e[0m.\n```");
@@ -115,21 +106,39 @@ public sealed class DiscordActivityStatusMessageFormatter : IActivityStatusMessa
             {
                 builder.Append("* ");
                 builder.Append(player.Nickname);
-                builder.Append(" got only ");
-                builder.Append(player.XpSinceLastUpdate);
-                builder.Append("XP");
-                if (player.IndividualTargetReason != null)
-                {
-                    builder.Append(" (individual target: ");
-                    builder.Append(player.IndividualTarget);
-                    builder.Append("XP - ");
-                    builder.Append(player.IndividualTargetReason);
-                    builder.Append(")");
-                }
+                builder.Append(' ');
+                AppendShortfall(builder, player);
                 builder.Append(" and therefore is now on ");
                 builder.Append(player.NumStrikes);
                 builder.Append(" strikes.");
             }
         }
     }
+
+    private static void AppendShortfall(StringBuilder builder, ClubMemberActivityStatus player)
+    {
+        if (player.FailedRequirementsText is { } failed)
+        {
+            builder.Append("missed ");
+            builder.Append(failed);
+        }
+        else
+        {
+            builder.Append("got only ");
+            builder.Append(player.RankingXp);
+            builder.Append("XP");
+        }
+
+        if (player.IndividualTargetReason != null)
+        {
+            builder.Append(" (individual target - ");
+            builder.Append(player.IndividualTargetReason);
+            builder.Append(')');
+        }
+    }
+
+    private static string DescribeTargets(ClubMemberActivityStatus player) =>
+        player.RequirementResults.Count > 0
+            ? string.Join(" · ", player.RequirementResults.Select(r => $"{r.Label} {r.Target}"))
+            : $"{player.IndividualTarget}XP";
 }

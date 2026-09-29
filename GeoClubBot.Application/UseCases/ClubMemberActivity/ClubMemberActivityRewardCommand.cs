@@ -23,9 +23,15 @@ public sealed partial class ClubMemberActivityRewardHandler(
     {
         LogStartingRewardMemberActivity(logger);
 
+        // Rule XP by default: the 100 XP board-clear bonus goes to whoever happens to finish a
+        // board's last mission, which would otherwise decide the MVPs more than activity does.
+        Func<ClubMemberActivityStatus, int> xpOf = config.Value.UseRuleXp
+            ? s => s.RankingXp
+            : s => s.XpSinceLastUpdate;
+
         var leaderboard = request.Statuses
-            .Where(s => s.XpSinceLastUpdate > 0)
-            .GroupBy(s => s.XpSinceLastUpdate)
+            .Where(s => xpOf(s) > 0)
+            .GroupBy(xpOf)
             .OrderByDescending(g => g.Key)
             .Take(3)
             .ToList();

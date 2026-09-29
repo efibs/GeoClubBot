@@ -2,14 +2,16 @@ using Entities;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts.Projections;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.ClubMemberActivity.Rules;
 using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 
 /// <summary>
 /// Second phase of <see cref="CheckGeoGuessrPlayerActivityHandler"/>: turn pre-fetched
-/// API members + history + excuses into a list of <see cref="ClubMemberActivityStatus"/>,
-/// creating new strikes for members below their individual XP target.
+/// API members + history + excuses + the window's activity feed into a list of
+/// <see cref="ClubMemberActivityStatus"/>, creating new strikes for members who missed one of the
+/// club's requirements and recording what each member did on their new history snapshot.
 /// </summary>
 public sealed partial class ActivityStatusCalculator(
     IStrikesRepository strikes,
@@ -19,10 +21,11 @@ public sealed partial class ActivityStatusCalculator(
     public async Task<List<ClubMemberActivityStatus>> ExecuteAsync(
         List<ClubMember> members,
         IEnumerable<LatestHistoryEntryProjection> latestHistoryEntries,
+        IReadOnlyDictionary<string, ClubMemberHistoryEntry> newHistoryEntries,
         IEnumerable<ExcuseProjection> excusesList,
-        DateTimeOffset lastActivityCheckTime,
-        DateTimeOffset now,
-        int xpRequirement,
+        IReadOnlyDictionary<string, List<ClubActivityEntry>> activitiesByUser,
+        TimeRange checkTimeRange,
+        ActivityRules rules,
         TimeSpan gracePeriod,
         int maxNumStrikes,
         CancellationToken cancellationToken)
@@ -34,8 +37,6 @@ public sealed partial class ActivityStatusCalculator(
         var excusesDict = excusesList
             .GroupBy(e => e.UserId)
             .ToDictionary(g => g.Key, g => g.ToList());
-
-        var checkTimeRange = new TimeRange(lastActivityCheckTime, now);
 
         // SaveClubMembersCommand has just persisted every API member, so a single batched
         // read returns each ClubMember + active strike count. The hot loop below is pure
@@ -56,8 +57,8 @@ public sealed partial class ActivityStatusCalculator(
         foreach (var member in members)
         {
             var newStatus = CalculateStatus(
-                member, latestHistoryEntriesDict, excusesDict, persistedMembers, activeStrikeCounts,
-                checkTimeRange, xpRequirement, gracePeriod, maxNumStrikes);
+                member, latestHistoryEntriesDict, newHistoryEntries, excusesDict, activitiesByUser,
+                persistedMembers, activeStrikeCounts, checkTimeRange, rules, gracePeriod, maxNumStrikes);
 
             if (newStatus is not null)
             {
@@ -71,11 +72,13 @@ public sealed partial class ActivityStatusCalculator(
     private ClubMemberActivityStatus? CalculateStatus(
         ClubMember member,
         Dictionary<string, LatestHistoryEntryProjection> latestActivities,
+        IReadOnlyDictionary<string, ClubMemberHistoryEntry> newHistoryEntries,
         Dictionary<string, List<ExcuseProjection>> excusesDict,
+        IReadOnlyDictionary<string, List<ClubActivityEntry>> activitiesByUser,
         Dictionary<string, ClubMember> persistedMembers,
         Dictionary<string, int> activeStrikeCounts,
         TimeRange checkTimeRange,
-        int xpRequirement,
+        ActivityRules rules,
         TimeSpan gracePeriod,
         int maxNumStrikes)
     {
@@ -88,10 +91,18 @@ public sealed partial class ActivityStatusCalculator(
         var latestActivity = latestActivities.GetValueOrDefault(clubMember.UserId);
         var xpSinceLastUpdate = member.Xp - (latestActivity?.Xp ?? 0);
 
-        var (target, individualTargetReason) = CalculateIndividualTarget(
-            member, checkTimeRange, excusesDict, xpRequirement, gracePeriod);
+        var (targetFactor, individualTargetReason) = CalculateTargetFactor(
+            member, checkTimeRange, excusesDict, gracePeriod);
 
-        var targetAchieved = xpSinceLastUpdate >= target;
+        var evaluation = ActivityRuleEvaluator.Evaluate(
+            activitiesByUser.GetValueOrDefault(clubMember.UserId) ?? [], rules, targetFactor);
+
+        newHistoryEntries.GetValueOrDefault(clubMember.UserId)?.RecordInterval(
+            evaluation.RuleXp,
+            evaluation.CountOf(ClubXpActivityKind.DailyChallengeOrDuel),
+            evaluation.CountOf(ClubXpActivityKind.BoardMission));
+
+        var targetAchieved = evaluation.AllMet;
 
         var numStrikes = activeStrikeCounts.GetValueOrDefault(clubMember.UserId, 0);
 
@@ -109,15 +120,20 @@ public sealed partial class ActivityStatusCalculator(
             xpSinceLastUpdate,
             numStrikes,
             numStrikes > maxNumStrikes,
-            target,
-            individualTargetReason);
+            ActivityRuleEvaluator.ScaleTarget(rules.MinRuleXp, targetFactor),
+            individualTargetReason,
+            evaluation.RuleXp,
+            evaluation.Requirements);
     }
 
-    private static (int IndividualTarget, string? IndividualTargetReason) CalculateIndividualTarget(
+    /// <summary>
+    /// The share of the window the member was expected to be active in: the time before they joined
+    /// and any excused time is taken out, and a member inside the grace period owes nothing.
+    /// </summary>
+    private static (double TargetFactor, string? IndividualTargetReason) CalculateTargetFactor(
         ClubMember member,
         TimeRange checkTimeRange,
         Dictionary<string, List<ExcuseProjection>> excuses,
-        int xpRequirement,
         TimeSpan gracePeriod)
     {
         var isNew = false;
@@ -158,9 +174,7 @@ public sealed partial class ActivityStatusCalculator(
 
         var individualTargetReason = BuildTargetReasons(isNew, isExcused, joinedInGracePeriod);
 
-        var individualTarget = joinedInGracePeriod ? 0 : (int)Math.Floor(freePercent * xpRequirement);
-
-        return (individualTarget, individualTargetReason);
+        return (joinedInGracePeriod ? 0 : freePercent, individualTargetReason);
     }
 
     private static string? BuildTargetReasons(bool isNew, bool isExcused, bool joinedInGracePeriod)

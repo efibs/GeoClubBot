@@ -29,7 +29,7 @@ table th{font-size:.9em;white-space:nowrap}
   <a href="#" onclick="showView('dashboard')">Dashboard</a>
   <a href="#" onclick="showView('users')">Users</a>
   <a href="#" onclick="showView('challenges')">Challenges</a>
-  <a href="#" onclick="showView('missions')">Missions</a>
+  <a href="#" onclick="showView('board')">Mission Board</a>
   <a href="#" onclick="showView('ranked')">Ranked</a>
   <a href="#" onclick="showView('jobs')">Jobs</a>
   <hr/><div id="nav-clubs"><small class="text-secondary">Clubs</small></div>
@@ -39,7 +39,7 @@ table th{font-size:.9em;white-space:nowrap}
   <div id="v-club" style="display:none"></div>
   <div id="v-users" style="display:none"></div>
   <div id="v-challenges" style="display:none"></div>
-  <div id="v-missions" style="display:none"></div>
+  <div id="v-board" style="display:none"></div>
   <div id="v-ranked" style="display:none"></div>
   <div id="v-jobs" style="display:none"></div>
 </div>
@@ -131,9 +131,9 @@ async function loadClub(id){
     html+=`<tr><td>${h(m.nick)}</td><td><code>${m.userId.substring(0,8)}...</code> ${userCopyBtns(m.userId)}</td><td>${m.xp}</td><td>${m.weeklyXp}</td><td>${m.role}</td><td>${m.joinedAt}</td>
     <td><div class="btn-group btn-group-sm">
       <div class="btn-group btn-group-sm"><button class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">Award XP</button><ul class="dropdown-menu">
-        <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',1)">Daily mission (+20)</a></li>
         <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',4)">Daily challenge / duel (+20)</a></li>
-        <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',2)">Weekly mission (+1000)</a></li>
+        <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',5)">Board mission (+20)</a></li>
+        <li><a class="dropdown-item" href="#" onclick="addXp('${c.clubId}','${m.userId}',6)">Board-clear bonus (+100)</a></li>
       </ul></div>
       <div class="btn-group btn-group-sm"><button class="btn btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown">Move</button><ul class="dropdown-menu">${moveHtml}</ul></div>
       <button class="btn btn-outline-danger" onclick="removeMember('${c.clubId}','${m.userId}')">Remove</button>
@@ -149,8 +149,9 @@ async function loadClub(id){
     <div class="col-md-2"><a href="#" class="btn btn-outline-secondary btn-sm" onclick="showView('users')">Create New User</a></div>
   </div></div></div>`;
 
-  // Activities. The kind matters: the daily mission and the daily challenge / duel are both
-  // worth 20 XP, so only the activity type tells the bot which of the two a member actually did.
+  // Activities. The kind matters: the daily challenge / duel and a board mission are both worth
+  // 20 XP, so only the activity type tells the bot which of the two a member actually did. Board
+  // missions are best driven from the Mission Board view, which also moves the board along.
   let memberOptHtml=d.members.map(m=>`<option value="${m.userId}">${h(m.nick)}</option>`).join('');
   html+=`<div class="card"><div class="card-header">Recent Activities</div><div class="card-body">
     <div class="row g-2 align-items-end mb-3">
@@ -158,10 +159,12 @@ async function loadClub(id){
         <select class="form-select form-select-sm" id="act-user"><option value="">-- Select member --</option>${memberOptHtml}</select></div>
       <div class="col-md-4"><label class="form-label">Kind</label>
         <select class="form-select form-select-sm" id="act-type" onchange="syncActivityXp()">
-          <option value="1">Daily mission (20 XP)</option>
           <option value="4">Daily challenge / duel (20 XP)</option>
-          <option value="2">Weekly mission (1000 XP)</option>
+          <option value="5">Board mission (20 XP)</option>
+          <option value="6">Board-clear bonus (100 XP)</option>
           <option value="3">Club challenge played (0 XP)</option>
+          <option value="1">Legacy daily mission (20 XP)</option>
+          <option value="2">Legacy weekly mission (1000 XP)</option>
         </select></div>
       <div class="col-md-2"><label class="form-label">XP</label>
         <input class="form-control form-control-sm" id="act-xp" type="number" value="20"/></div>
@@ -191,7 +194,7 @@ async function saveClub(id){
 }
 async function incrLevel(id){await post('/clubs/'+id+'/level');loadClub(id)}
 // GeoGuessr's activity types, as observed on the live feed - see Tools/GeoClubBot.ApiProbe/README.md.
-const ACTIVITY_KINDS={1:{label:'Daily mission',xp:20},2:{label:'Weekly mission',xp:1000},3:{label:'Club challenge',xp:0},4:{label:'Daily challenge / duel',xp:20}};
+const ACTIVITY_KINDS={1:{label:'Legacy daily mission',xp:20},2:{label:'Legacy weekly mission',xp:1000},3:{label:'Club challenge',xp:0},4:{label:'Daily challenge / duel',xp:20},5:{label:'Board mission',xp:20},6:{label:'Board-clear bonus',xp:100}};
 function activityKindLabel(t){return t==null?'(untyped)':(ACTIVITY_KINDS[t]?.label ?? `Type ${t}`)}
 
 // Awards the member XP and logs a matching activity of that kind.
@@ -335,99 +338,72 @@ async function addScore(token){
   toggleCh(token);toggleCh(token);// refresh
 }
 
-// ── Missions ──
-const MISSION_TYPES=['PlayGames','Score','WinGames'];
-const GAME_MODES=['Duels','TeamDuels','RankedDuels','RankedTeamDuels','UnrankedDuels','UnrankedTeamDuels','DailyChallenge','SinglePlayerQuiz','ReplayableQuiz','AnyBattleRoyale','Classic','CommunityStreak','CountryStreak'];
+// ── Mission Board ──
+// Each club has a weekly board, like GeoGuessr's: five boards unlocked in turn. Completing a
+// mission logs a board-mission activity for its claimer; clearing a board logs the bonus too.
+let boardClubId=null;
 
-async function load_missions(){
-  const data=await api('/missions');
-  const nextDate=(data.nextMissionDate||'').substring(0,16);
-  const typeOpts=MISSION_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('');
-  const modeOpts=GAME_MODES.map(m=>`<option value="${m}">${m}</option>`).join('');
-  const tomorrow=new Date(Date.now()+86400000).toISOString().substring(0,10);
+async function load_board(){
+  const state=await api('/state');
+  if(!boardClubId||!state.clubs.some(c=>c.clubId===boardClubId))boardClubId=state.clubs[0]?.clubId??null;
+  let html=`<h3>Mission Board</h3><p class="text-muted">What the bot reads from <code>/v4/missions/club/board</code> with the club's token.</p>`;
+  if(!boardClubId){document.getElementById('v-board').innerHTML=html+'<div class="alert alert-info">No clubs.</div>';return}
 
-  let html=`<h3>Daily Missions</h3><p class="text-muted">Configure the missions returned by the mock <code>/v4/missions</code> endpoint.</p>
+  const clubOpts=state.clubs.map(c=>`<option value="${c.clubId}" ${c.clubId===boardClubId?'selected':''}>${h(c.name)}</option>`).join('');
+  const [{current,previous},club]=await Promise.all([api(`/clubs/${boardClubId}/board`),api('/clubs/'+boardClubId)]);
+  const nick=Object.fromEntries(club.members.map(m=>[m.userId,m.nick]));
+  const memberOpts=club.members.map(m=>`<option value="${m.userId}">${h(m.nick)}</option>`).join('');
 
-  <div class="card"><div class="card-header">Next Mission Date</div><div class="card-body"><div class="row g-2 align-items-end">
-    <div class="col-md-4"><label class="form-label">Next Mission Date (UTC)</label><input class="form-control form-control-sm" type="datetime-local" id="nm-next" value="${nextDate}"/></div>
-    <div class="col-md-2"><button class="btn btn-primary btn-sm" onclick="saveNextMissionDate()">Save</button></div>
-  </div></div></div>
+  html+=`<div class="row g-2 align-items-end mb-3">
+    <div class="col-md-4"><label class="form-label">Club</label><select class="form-select form-select-sm" onchange="boardClubId=this.value;load_board()">${clubOpts}</select></div>
+    <div class="col-md-4"><label class="form-label">Acting member</label><select class="form-select form-select-sm" id="board-member">${memberOpts}</select></div>
+    <div class="col-md-4"><button class="btn btn-outline-danger btn-sm" onclick="resetBoard()">Start a new board week</button></div>
+  </div>
+  <p><strong>Week:</strong> ${current.periodStart} → ${current.periodEnd} · <strong>Board</strong> ${current.allBoardsCleared?'all cleared 🎉':current.currentBoardNumber+' / '+current.boards.length}
+    · next claim reset ${current.you?.nextDayAt??'?'} · previous week ${previous?'kept':'none'}</p>`;
 
-  <div class="card"><div class="card-header">Create New Mission</div><div class="card-body"><div class="row g-2 align-items-end">
-    <div class="col-md-2"><label class="form-label">Type</label><select class="form-select form-select-sm" id="nm-type">${typeOpts}</select></div>
-    <div class="col-md-2"><label class="form-label">Game Mode</label><select class="form-select form-select-sm" id="nm-mode">${modeOpts}</select></div>
-    <div class="col-md-1"><label class="form-label">Current</label><input class="form-control form-control-sm" type="number" id="nm-cur" value="0"/></div>
-    <div class="col-md-1"><label class="form-label">Target</label><input class="form-control form-control-sm" type="number" id="nm-tgt" value="3"/></div>
-    <div class="col-md-1"><label class="form-label">Reward</label><input class="form-control form-control-sm" type="number" id="nm-rwd" value="100"/></div>
-    <div class="col-md-1"><label class="form-label">Reward Type</label><input class="form-control form-control-sm" id="nm-rwdt" value="Coins"/></div>
-    <div class="col-md-1"><div class="form-check mt-4"><input class="form-check-input" type="checkbox" id="nm-done"/><label class="form-check-label" for="nm-done">Done</label></div></div>
-    <div class="col-md-2"><label class="form-label">End Date (UTC)</label><input class="form-control form-control-sm" type="date" id="nm-end" value="${tomorrow}"/></div>
-    <div class="col-md-2"><label class="form-label">Map Slug <span class="text-muted">(optional)</span></label><input class="form-control form-control-sm" id="nm-mapslug" placeholder="e.g. world"/></div>
-    <div class="col-md-2"><label class="form-label">Map Name <span class="text-muted">(optional)</span></label><input class="form-control form-control-sm" id="nm-mapname" placeholder="e.g. A Community Map"/></div>
-    <div class="col-md-12 mt-2"><button class="btn btn-success btn-sm" onclick="addMission()">Add Mission</button></div>
-  </div></div></div>`;
-
-  const missions=data.missions||[];
-  if(missions.length===0){
-    html+=`<div class="alert alert-info">No missions configured. The mock will return an empty list.</div>`;
-  }else{
-    html+=`<div class="card"><div class="card-header d-flex justify-content-between align-items-center">
-      <span>Current Missions (${missions.length})</span>
-      <button class="btn btn-sm btn-outline-danger" onclick="clearMissions()">Clear all</button></div>
-      <div class="card-body p-0"><table class="table table-sm mb-0">
-      <thead><tr><th>Id</th><th>Type</th><th>Game Mode</th><th>Progress</th><th>Reward</th><th>Completed</th><th>End Date</th><th>Map</th><th></th></tr></thead><tbody>`;
-    missions.forEach(m=>{
-      const id=m.id;
-      const mapCell=m.mapSlug?`<span title="${h(m.mapName||m.mapSlug)}">${h(m.mapSlug)}</span>`:`<span class="text-muted">—</span>`;
-      html+=`<tr><td><code>${id.substring(0,8)}</code></td><td>${h(m.type)}</td><td>${h(m.gameMode)}</td>
-      <td>${m.currentProgress} / ${m.targetProgress}</td>
-      <td>${m.rewardAmount} ${h(m.rewardType)}</td>
-      <td>${m.completed?'✓':''}</td>
-      <td>${(m.endDate||'').substring(0,10)}</td>
-      <td>${mapCell}</td>
-      <td><button class="btn btn-sm btn-outline-danger" onclick="deleteMission('${id}')">Delete</button></td></tr>`;
+  current.boards.forEach(b=>{
+    const isCurrent=!current.allBoardsCleared&&b.number===current.currentBoardNumber;
+    const done=b.tiles.filter(t=>t.completed).length;
+    html+=`<div class="card"><div class="card-header">Board ${b.number} (${b.size}×${b.size}) — ${h(b.status??'')} · ${done}/${b.tiles.length} done${b.clearedAt?' · cleared '+b.clearedAt:''}</div>`;
+    if(!isCurrent){html+=`</div>`;return}
+    html+=`<div class="card-body p-0"><table class="table table-sm mb-0"><thead><tr><th>#</th><th>Mission</th><th>Progress</th><th>Claimed by</th><th>Helpers</th><th></th></tr></thead><tbody>`;
+    b.tiles.forEach(t=>{
+      const tmpl=current.templates[t.templateId];
+      const title=tmpl?(t.targetProgress===1?tmpl.title:(tmpl.titlePlural??tmpl.title)).replace('{0}',t.targetProgress).replace('{1}',tmpl.mapName??''):t.templateId;
+      const who=t.claimedBy?`${h(nick[t.claimedBy]??t.claimedBy)} <small class="text-muted">${t.claimedAt??''}</small>`:'<span class="text-muted">free</span>';
+      const helpers=t.helpers.map(u=>h(nick[u]??u)).join(', ')+(t.helpRequestedAt?' 🆘':'');
+      let actions='';
+      if(t.completed)actions='✓';
+      else if(!t.claimedBy)actions=`<button class="btn btn-sm btn-outline-primary" onclick="boardAction('claim',null,'${t.missionId}')">Claim</button>`;
+      else actions=`<div class="btn-group btn-group-sm">
+        <button class="btn btn-outline-success" onclick="boardAction('complete','${t.missionId}')">Complete</button>
+        <button class="btn btn-outline-warning" onclick="boardAction('request-help','${t.missionId}')">Request help</button>
+        <button class="btn btn-outline-secondary" onclick="boardAction('help','${t.missionId}')">Help out</button>
+        <button class="btn btn-outline-secondary" onclick="boardAction('backdate','${t.missionId}')" title="Move the claim 7 hours back, to make it look stuck">-7h</button></div>`;
+      html+=`<tr><td>${t.index}</td><td>${h(title)}</td><td>${t.currentProgress}/${t.targetProgress}</td><td>${who}</td><td>${helpers}</td><td>${actions}</td></tr>`;
     });
     html+=`</tbody></table></div></div>`;
-  }
-  document.getElementById('v-missions').innerHTML=html;
-}
-
-async function saveNextMissionDate(){
-  const v=document.getElementById('nm-next').value;
-  if(!v){alert('Pick a date');return}
-  await post('/missions/next-date',{nextMissionDate:new Date(v+'Z').toISOString()});
-  load_missions();
-}
-
-async function addMission(){
-  const endDateStr=document.getElementById('nm-end').value;
-  const mapSlug=document.getElementById('nm-mapslug').value.trim()||null;
-  const mapName=document.getElementById('nm-mapname').value.trim()||null;
-  await post('/missions',{
-    type:document.getElementById('nm-type').value,
-    gameMode:document.getElementById('nm-mode').value,
-    currentProgress:+document.getElementById('nm-cur').value,
-    targetProgress:+document.getElementById('nm-tgt').value,
-    rewardAmount:+document.getElementById('nm-rwd').value,
-    rewardType:document.getElementById('nm-rwdt').value,
-    completed:document.getElementById('nm-done').checked,
-    endDate:endDateStr?new Date(endDateStr+'T00:00:00Z').toISOString():null,
-    mapSlug,
-    mapName
   });
-  load_missions();
+  document.getElementById('v-board').innerHTML=html;
 }
 
-async function deleteMission(id){
-  if(!confirm('Delete this mission?'))return;
-  await del('/missions/'+id);
-  load_missions();
+// Claims act as the selected member; everything else acts on a mission.
+async function boardAction(action,missionId,claimMissionId){
+  const member=document.getElementById('board-member').value;
+  try{
+    if(action==='claim')await post(`/clubs/${boardClubId}/board/claim`,{userId:member,missionId:claimMissionId});
+    else if(action==='help')await post(`/clubs/${boardClubId}/board/${missionId}/help`,{userId:member});
+    else if(action==='backdate')await post(`/clubs/${boardClubId}/board/${missionId}/backdate`,{hours:7});
+    else await post(`/clubs/${boardClubId}/board/${missionId}/${action}`,{});
+  }catch(e){alert(e.message)}
+  load_board();
 }
 
-async function clearMissions(){
-  if(!confirm('Clear ALL missions?'))return;
-  await del('/missions');
-  load_missions();
+async function resetBoard(){
+  if(!confirm('Start a new board week? The current one becomes the previous week.'))return;
+  await post(`/clubs/${boardClubId}/board/reset`,{});
+  load_board();
 }
 
 // ── Ranked ──

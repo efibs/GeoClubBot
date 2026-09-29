@@ -31,11 +31,11 @@ namespace GeoClubBot.Controllers;
     Policy = ActivityAdminRequirement.PolicyName)]
 public partial class ActivityAdminController(
     IOptions<ActivityCheckerConfiguration> activityConfig,
+    IOptions<ActivityViewsConfiguration> activityViewsConfig,
     ILogger<ActivityAdminController> logger) : ControllerBase
 {
-    /// <summary>Bounds for the per-member activity window (mirrors the member self-view).</summary>
+    /// <summary>The per-member activity window when the caller doesn't pick one (mirrors the member self-view).</summary>
     private const int DefaultActivityDaysBack = 7;
-    private const int MaxActivityDaysBack = 60;
 
     private TimeSpan StrikeDecay => activityConfig.Value.StrikeDecayTimeSpan;
 
@@ -121,7 +121,7 @@ public partial class ActivityAdminController(
         return Ok(excuses.Select(ActivityAdminDtoAssembler.AssembleExcuse).ToList());
     }
 
-    /// <summary>A member's XP + daily-mission activity, looked up by nickname (admin view).</summary>
+    /// <summary>A member's XP, streak and club missions, looked up by nickname (admin view).</summary>
     [HttpGet("members/{nickname}/activity")]
     public async Task<ActionResult<WeekActivityDto>> GetMemberActivity(
         string nickname,
@@ -137,7 +137,7 @@ public partial class ActivityAdminController(
             return this.ToProblemDetails(member.Error);
         }
 
-        var days = Math.Clamp(daysBack ?? DefaultActivityDaysBack, 1, MaxActivityDaysBack);
+        var days = Math.Clamp(daysBack ?? DefaultActivityDaysBack, 1, activityViewsConfig.Value.MaxDaysBack);
         var activity = await mediator
             .Send(new GetActivityLastDaysQuery(member.Value.UserId, days), cancellationToken)
             .ConfigureAwait(false);

@@ -1,6 +1,6 @@
 import { type Ref } from 'vue';
 import { useQuery } from '@tanstack/vue-query';
-import { ApiError, fetchMyActivity, fetchMyProfile } from '../api';
+import { ApiError, fetchMyActivity, fetchMyCurrentActivity, fetchMyProfile } from '../api';
 import { refreshIntervalMs } from '../config';
 import { queryKeys } from './keys';
 
@@ -33,6 +33,16 @@ export function useMyActivityQuery(enabled: Ref<boolean>) {
   return useQuery({
     queryKey: queryKeys.myActivity,
     queryFn: () => orNullOn404(() => fetchMyActivity()),
+    enabled,
+    refetchInterval: refreshIntervalMs,
+  });
+}
+
+/** The viewer's progress towards this week's requirements (since the last weekly check). */
+export function useMyCurrentActivityQuery(enabled: Ref<boolean>) {
+  return useQuery({
+    queryKey: queryKeys.myCurrentActivity,
+    queryFn: () => orNullOn404(fetchMyCurrentActivity),
     enabled,
     refetchInterval: refreshIntervalMs,
   });

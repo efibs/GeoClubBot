@@ -16,21 +16,29 @@ public sealed class DiscordActivityStatusMessageFormatterTests
 {
     private readonly DiscordActivityStatusMessageFormatter _formatter = new();
 
+    private static ActivityRequirementResult Streak(int actual, int target = 6) =>
+        new(ClubXpActivityKind.DailyChallengeOrDuel, actual, target, 6);
+
+    private static ActivityRequirementResult Missions(int actual, int target = 2) =>
+        new(ClubXpActivityKind.BoardMission, actual, target, 2);
+
     [Fact]
     public Task FormatStatusUpdateHeader_WithNoPlayers_ShowsNoneIndicator() =>
-        Verify(_formatter.FormatStatusUpdateHeader([], "TestClub", minXP: 100));
+        Verify(_formatter.FormatStatusUpdateHeader([], "TestClub", requirements: "streak 6 · missions 2"));
 
     [Fact]
     public Task FormatPlayerChunk_RegularStrikeAndOutOfStrikesPlayers()
     {
         var players = new List<ClubMemberActivityStatus>
         {
-            // Regular strike — bullet line.
-            new("Alice", "user-1", TargetAchieved: false, XpSinceLastUpdate: 40,
-                NumStrikes: 2, IsOutOfStrikes: false, IndividualTarget: 100, IndividualTargetReason: null),
+            // Regular strike — bullet line naming what was missed.
+            new("Alice", "user-1", TargetAchieved: false, XpSinceLastUpdate: 140,
+                NumStrikes: 2, IsOutOfStrikes: false, IndividualTarget: 0, IndividualTargetReason: null,
+                RuleXp: 120, Requirements: [Streak(5), Missions(1)]),
             // Out-of-strikes — red ANSI code block, marked for kick.
-            new("Bob", "user-2", TargetAchieved: false, XpSinceLastUpdate: 10,
-                NumStrikes: 4, IsOutOfStrikes: true, IndividualTarget: 100, IndividualTargetReason: null),
+            new("Bob", "user-2", TargetAchieved: false, XpSinceLastUpdate: 20,
+                NumStrikes: 4, IsOutOfStrikes: true, IndividualTarget: 0, IndividualTargetReason: null,
+                RuleXp: 20, Requirements: [Streak(1), Missions(0)]),
         };
 
         return Verify(_formatter.FormatPlayerChunk(players));
@@ -41,9 +49,21 @@ public sealed class DiscordActivityStatusMessageFormatterTests
     {
         var players = new List<ClubMemberActivityStatus>
         {
-            new("Carol", "user-3", TargetAchieved: false, XpSinceLastUpdate: 20,
-                NumStrikes: 1, IsOutOfStrikes: false, IndividualTarget: 50,
-                IndividualTargetReason: "Excused"),
+            new("Carol", "user-3", TargetAchieved: false, XpSinceLastUpdate: 40,
+                NumStrikes: 1, IsOutOfStrikes: false, IndividualTarget: 0,
+                IndividualTargetReason: "Excused", RuleXp: 40, Requirements: [Streak(2, target: 3), Missions(1, target: 1)]),
+        };
+
+        return Verify(_formatter.FormatPlayerChunk(players));
+    }
+
+    [Fact]
+    public Task FormatPlayerChunk_FallsBackToXp_WhenNoRequirementsWereEvaluated()
+    {
+        var players = new List<ClubMemberActivityStatus>
+        {
+            new("Erin", "user-5", TargetAchieved: false, XpSinceLastUpdate: 30,
+                NumStrikes: 1, IsOutOfStrikes: false, IndividualTarget: 100, IndividualTargetReason: null),
         };
 
         return Verify(_formatter.FormatPlayerChunk(players));
@@ -55,8 +75,8 @@ public sealed class DiscordActivityStatusMessageFormatterTests
         var players = new List<ClubMemberActivityStatus>
         {
             new("Dave", "user-4", TargetAchieved: true, XpSinceLastUpdate: 90,
-                NumStrikes: 0, IsOutOfStrikes: false, IndividualTarget: 75,
-                IndividualTargetReason: "New member"),
+                NumStrikes: 0, IsOutOfStrikes: false, IndividualTarget: 0,
+                IndividualTargetReason: "New member", RuleXp: 90, Requirements: [Streak(4, target: 4), Missions(1, target: 1)]),
         };
 
         return Verify(_formatter.FormatIndividualTargets(players));

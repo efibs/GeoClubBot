@@ -33,7 +33,6 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs = [new GeoGuessrClubEntry { ClubId = mainClubId, NcfaToken = "x", IsMain = true }],
             })));
@@ -316,14 +315,15 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
             .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
-                ClubActivities.Mission(userId),
+                ClubActivities.BoardMission(userId),
             ]);
 
         var activity = await host.SendAsync(new GetActivityThisWeekQuery(userId));
 
         activity.TotalXp.Should().Be(20);
+        activity.BoardMissions.Should().Be(1);
         // Member joined 3 months ago, so it did NOT join during the current week.
-        activity.JoinedThisWeek.Should().BeFalse();
+        activity.JoinedInPeriod.Should().BeFalse();
     }
 
     [Fact]
@@ -348,7 +348,7 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
 
         var activity = await host.SendAsync(new GetActivityThisWeekQuery(userId));
 
-        activity.JoinedThisWeek.Should().BeTrue();
+        activity.JoinedInPeriod.Should().BeTrue();
     }
 
     [Fact]
@@ -359,7 +359,7 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
         var activity = await host.SendAsync(new GetActivityLastDaysQuery(NewUserId(), DaysBack: 14));
 
         activity.TotalXp.Should().Be(0);
-        activity.DailyMissions.Should().HaveCount(14);
+        activity.Days.Should().HaveCount(14);
     }
 
     [Fact]
@@ -377,28 +377,27 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
         }
 
         using var host = CreateHost(Guid.NewGuid());
-        // Today has both of the day's awards, so it is the only fully done day. Three days ago
-        // has the mission alone, and a partial-XP entry sums into the total without marking
-        // anything as done.
+        // Today has the streak and a board mission; three days ago a mission alone; a partial-XP
+        // entry sums into the total without marking anything.
         host.Mock<IGeoGuessrActivityReader>()
             .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns((IReadOnlyList<ReadClubActivitiesItemDto>)
             [
-                ClubActivities.Mission(userId),
+                ClubActivities.BoardMission(userId),
                 ClubActivities.Challenge(userId),
-                ClubActivities.Mission(userId, DateTimeOffset.UtcNow.AddDays(-3)),
+                ClubActivities.BoardMission(userId, DateTimeOffset.UtcNow.AddDays(-3)),
                 ClubActivities.Untyped(userId, xpReward: 5, recordedAt: DateTimeOffset.UtcNow.AddDays(-1)),
-                // A weekly mission: 1000 XP that must stay out of this daily view entirely.
-                ClubActivities.Weekly(userId, DateTimeOffset.UtcNow.AddDays(-2)),
+                ClubActivities.BoardBonus(userId, DateTimeOffset.UtcNow.AddDays(-2)),
             ]);
 
         var activity = await host.SendAsync(new GetActivityLastDaysQuery(userId, DaysBack: 7));
 
-        activity.TotalXp.Should().Be(65);
-        activity.DailyMissions.Should().HaveCount(7);
-        activity.NumDaysDone.Should().Be(1);
-        activity.NumMissionDaysDone.Should().Be(2);
+        activity.TotalXp.Should().Be(165);
+        activity.Days.Should().HaveCount(7);
         activity.NumChallengeDaysDone.Should().Be(1);
+        activity.BoardMissions.Should().Be(2);
+        activity.BoardClearBonusXp.Should().Be(100);
+        activity.Days.Count(d => d.BoardMissions > 0).Should().Be(2);
     }
 
     [Fact]
@@ -422,7 +421,7 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
 
         var activity = await host.SendAsync(new GetActivityLastDaysQuery(userId, DaysBack: 14));
 
-        activity.DailyMissions.Should().HaveCount(14);
+        activity.Days.Should().HaveCount(14);
     }
 
     [Fact]

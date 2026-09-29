@@ -18,7 +18,6 @@ public static class DiscordAdaptersModule
         services.AddHostedService<UserJoinedService>();
         services.AddHostedService<UserLeftService>();
 
-        services.AddTransient<IDailyMissionRenderer, DiscordDailyMissionRenderer>();
         services.AddTransient<IActivityStatusMessageFormatter, DiscordActivityStatusMessageFormatter>();
         services.AddTransient<IActivityStatusMessageSender, DiscordActivityStatusMessageSender>();
         services.AddTransient<IDiscordStatusUpdater, DiscordDiscordStatusUpdater>();

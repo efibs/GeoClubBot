@@ -35,7 +35,6 @@ public sealed class AccountLinkingUseCaseIntegrationTests(PostgresFixture fixtur
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs = [],
             })));

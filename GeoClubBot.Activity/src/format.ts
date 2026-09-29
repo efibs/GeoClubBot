@@ -66,6 +66,22 @@ export function weekdayInitial(isoDate: string): string {
   });
 }
 
+/**
+ * A short relative time like "in 3h", "5m ago" or "in 2d" from an ISO timestamp. `now` is injectable
+ * so tests stay deterministic.
+ */
+export function formatRelative(iso: string, now: Date = new Date()): string {
+  const diffMs = new Date(iso).getTime() - now.getTime();
+  const minutes = Math.round(Math.abs(diffMs) / 60_000);
+  const text =
+    minutes < 60
+      ? `${minutes}m`
+      : minutes < 48 * 60
+        ? `${Math.round(minutes / 60)}h`
+        : `${Math.round(minutes / (24 * 60))}d`;
+  return diffMs >= 0 ? `in ${text}` : `${text} ago`;
+}
+
 /** A compact date like "Jul 4, 2026" from an ISO timestamp. */
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {

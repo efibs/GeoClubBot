@@ -21,21 +21,32 @@ internal static class InactiveMembersFormatter
         var title = $"😴 Today's Inactive Members — {report.ClubName}";
         var footer = $"{report.TotalMembers.ToString(Invariant)} member(s) checked";
 
-        if (report.MissionInactive.Count == 0 && report.ChallengeInactive.Count == 0)
+        if (report.ChallengeInactive.Count == 0 && report.ClaimInactive is { Count: 0 })
         {
             return new EmbedBuilder()
                 .WithTitle(title)
                 .WithColor(AllActiveColor)
-                .WithDescription($"🎉 Everyone earned both of today's club XP awards ({day}).")
+                .WithDescription($"🎉 Everyone kept their streak and nobody has a claim left to use ({day}).")
                 .WithFooter(footer);
         }
 
-        // Two independent awards, so two independent lists: a member missing from one may well
-        // appear in the other, and someone who did neither is on both.
+        // Two independent things to do, so two independent lists: a member missing from one may
+        // well appear in the other, and someone who did neither is on both.
         var description = new StringBuilder()
-            .Append(BuildSection("🎯 Haven't done the daily mission", report.MissionInactive, report.TotalMembers, day))
-            .AppendLine()
             .Append(BuildSection("🌍 Haven't played the daily challenge (or a duel)", report.ChallengeInactive, report.TotalMembers, day));
+
+        description.AppendLine();
+        if (report.ClaimInactive is { } claimInactive)
+        {
+            var free = report.FreeMissions?.ToString(Invariant) ?? "?";
+            description.Append(BuildSection(
+                $"🎯 Haven't claimed a club mission this claim cycle ({free} still free)",
+                claimInactive, report.TotalMembers, day));
+        }
+        else
+        {
+            description.AppendLine("**🎯 Club missions**").AppendLine("The mission board couldn't be read right now.");
+        }
 
         return new EmbedBuilder()
             .WithTitle(title)

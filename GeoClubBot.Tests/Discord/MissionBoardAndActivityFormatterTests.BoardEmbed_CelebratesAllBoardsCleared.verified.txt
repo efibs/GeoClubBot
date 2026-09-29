@@ -1,0 +1,9 @@
+﻿Title: 🗺️ Mission Board — Dragon
+Description: Board week ends <t:1790766000:R> · daily claims reset <t:1790506800:R>
+[Boards]
+✅ Board 1 (2×2) cleared <t:1790164800:R>
+✅ Board 2 (2×2) cleared <t:1790168400:R>
+✅ Board 3 (2×2) cleared <t:1790172000:R>
+✅ Board 4 (2×2) cleared <t:1790175600:R>
+✅ Board 5 (2×2) cleared <t:1790179200:R>
+Footer: 20 / 20 missions completed this week

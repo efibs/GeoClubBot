@@ -197,6 +197,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     {
         2 => 1000,
         3 => 0,
+        6 => 100,
         _ => 20
     };
 
@@ -478,79 +479,89 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         return Ok();
     }
 
-    [HttpGet("missions")]
-    public IActionResult ListMissions()
+    [HttpGet("clubs/{clubId:guid}/board")]
+    public IActionResult GetBoard(Guid clubId)
     {
-        List<DailyMissionDto> snapshot;
-        lock (store.DailyMissions)
-        {
-            snapshot = store.DailyMissions.ToList();
-        }
+        var board = store.GetMissionBoard(clubId);
+        return Ok(new { current = board.Current, previous = board.Previous });
+    }
 
-        return Ok(new
+    /// <summary>Starts a new board week now; the running one becomes the previous week.</summary>
+    [HttpPost("clubs/{clubId:guid}/board/reset")]
+    public IActionResult ResetBoard(Guid clubId)
+    {
+        store.GetMissionBoard(clubId).Reset(DateTimeOffset.UtcNow);
+        return Ok();
+    }
+
+    [HttpPost("clubs/{clubId:guid}/board/claim")]
+    public IActionResult ClaimMission(Guid clubId, [FromBody] ClaimMissionRequest req) =>
+        BoardAction(() => Ok(store.GetMissionBoard(clubId).Claim(req.UserId, req.MissionId)));
+
+    [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/request-help")]
+    public IActionResult RequestHelp(Guid clubId, Guid missionId) =>
+        BoardAction(() =>
         {
-            nextMissionDate = store.NextMissionDate,
-            missions = snapshot
+            store.GetMissionBoard(clubId).RequestHelp(missionId);
+            return Ok();
         });
-    }
 
-    [HttpPost("missions")]
-    public IActionResult AddMission([FromBody] AddMissionRequest req)
-    {
-        var mission = new DailyMissionDto
+    [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/help")]
+    public IActionResult HelpMission(Guid clubId, Guid missionId, [FromBody] HelpMissionRequest req) =>
+        BoardAction(() =>
         {
-            Id = Guid.NewGuid(),
-            Type = req.Type,
-            GameMode = req.GameMode,
-            CurrentProgress = req.CurrentProgress,
-            TargetProgress = req.TargetProgress,
-            Completed = req.Completed,
-            EndDate = req.EndDate ?? DateTimeOffset.UtcNow.Date.AddDays(1),
-            RewardAmount = req.RewardAmount,
-            RewardType = req.RewardType,
-            MapSlug = req.MapSlug,
-            MapName = req.MapName,
-        };
-        lock (store.DailyMissions)
-        {
-            store.DailyMissions.Add(mission);
-        }
+            store.GetMissionBoard(clubId).AddHelper(missionId, req.UserId);
+            return Ok();
+        });
 
-        return Ok(new { id = mission.Id });
-    }
-
-    [HttpDelete("missions/{id:guid}")]
-    public IActionResult RemoveMission(Guid id)
-    {
-        lock (store.DailyMissions)
+    [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/progress")]
+    public IActionResult SetMissionProgress(Guid clubId, Guid missionId, [FromBody] MissionProgressRequest req) =>
+        BoardAction(() =>
         {
-            var index = store.DailyMissions.FindIndex(m => m.Id == id);
-            if (index < 0)
+            store.GetMissionBoard(clubId).SetProgress(missionId, req.Progress);
+            return Ok();
+        });
+
+    /// <summary>Moves a mission's claim (and help request) back in time, to make it look stuck.</summary>
+    [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/backdate")]
+    public IActionResult BackdateMission(Guid clubId, Guid missionId, [FromBody] BackdateMissionRequest req) =>
+        BoardAction(() =>
+        {
+            store.GetMissionBoard(clubId).Backdate(missionId, TimeSpan.FromHours(req.Hours));
+            return Ok();
+        });
+
+    /// <summary>
+    /// Completes a claimed mission and records the feed entries GeoGuessr would: 20 XP (type 5) for
+    /// the claimer, plus the 100 XP board bonus (type 6) when that cleared the board.
+    /// </summary>
+    [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/complete")]
+    public IActionResult CompleteMission(Guid clubId, Guid missionId) =>
+        BoardAction(() =>
+        {
+            var entries = store.GetMissionBoard(clubId).Complete(missionId);
+            foreach (var (userId, xp, type) in entries)
             {
-                return NotFound();
+                if (store.ClubMembers.TryGetValue(clubId, out var members) && members.TryGetValue(userId, out var member))
+                {
+                    member.Xp += xp;
+                }
+
+                store.AddActivity(clubId, userId, xp, type);
             }
 
-            store.DailyMissions.RemoveAt(index);
-        }
+            return Ok(entries.Select(e => new { e.UserId, e.Xp, e.Type }));
+        });
 
-        return Ok();
-    }
-
-    [HttpDelete("missions")]
-    public IActionResult ClearMissions()
+    private IActionResult BoardAction(Func<IActionResult> action)
     {
-        lock (store.DailyMissions)
+        try
         {
-            store.DailyMissions.Clear();
+            return action();
         }
-
-        return Ok();
-    }
-
-    [HttpPost("missions/next-date")]
-    public IActionResult UpdateNextMissionDate([FromBody] UpdateNextMissionDateRequest req)
-    {
-        store.NextMissionDate = req.NextMissionDate;
-        return Ok();
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 }

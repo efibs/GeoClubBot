@@ -1,7 +1,7 @@
 using System.Globalization;
 using Entities;
 using UseCases.OutputPorts.GeoGuessr;
-using UseCases.UseCases.DailyMissionStatistics;
+using UseCases.UseCases.MissionBoard;
 
 namespace GeoClubBot.DTOs.Assemblers;
 
@@ -41,16 +41,71 @@ public static class ActivityMemberDtoAssembler
         }
     }
 
-    public static WeekActivityDto AssembleWeekActivity(ClubMemberWeekActivity activity) => new(
+    public static WeekActivityDto AssembleWeekActivity(ClubMemberActivitySummary activity) => new(
         activity.TotalXp,
-        activity.NumDaysDone,
-        activity.NumMissionDaysDone,
+        activity.RuleXp,
         activity.NumChallengeDaysDone,
-        activity.JoinedThisWeek,
+        activity.BoardMissions,
+        activity.BoardClearBonusXp,
+        activity.JoinedInPeriod,
         activity.JoinedDateTime,
-        activity.DailyMissions
-            .Select(day => new DayMissionDto(day.Date, day.MissionCompleted, day.ChallengeCompleted))
-            .ToList());
+        activity.PeriodStart,
+        activity.Days
+            .Select(day => new DayActivityDto(day.Date, day.ChallengeDone, day.BoardMissions, day.Xp))
+            .ToList(),
+        activity.RequirementResults
+            .Select(r => new RequirementDto(r.Label, r.Actual, r.Target, r.Met))
+            .ToList(),
+        activity.HelpedThisWeek,
+        activity.HelpedLastWeek);
+
+    public static MissionBoardDto AssembleMissionBoard(ClubMissionBoardView view, string? viewerUserId)
+    {
+        var board = view.Board;
+
+        var boards = board.Boards
+            .Select(b => new BoardDto(
+                b.Number,
+                b.Size,
+                b.CompletedCount,
+                b.ClearedAt,
+                b.Tiles
+                    .Select(t => new BoardTileDto(
+                        t.MissionId.ToString(),
+                        t.Title,
+                        t.CurrentProgress,
+                        t.TargetProgress,
+                        t.Completed ? "completed" : t.ClaimedBy is null ? "free" : "claimed",
+                        t.ClaimedBy is null ? null : view.NicknameOf(t.ClaimedBy),
+                        t.ClaimedAt,
+                        t.HelpRequested,
+                        t.Helpers.Count,
+                        viewerUserId is not null && t.ClaimedBy == viewerUserId,
+                        viewerUserId is not null && t.Helpers.Contains(viewerUserId)))
+                    .ToList()))
+            .ToList();
+
+        BoardViewerDto? viewer = null;
+        if (viewerUserId is not null)
+        {
+            var claims = board.ClaimsBy(viewerUserId);
+            viewer = new BoardViewerDto(
+                board.ClaimStateOf(viewerUserId, view.ClaimCycleStart).ToString(),
+                claims.Count,
+                claims.Count(t => t.Completed),
+                board.HelpedBy(viewerUserId).Count);
+        }
+
+        return new MissionBoardDto(
+            view.ClubName,
+            board.PeriodStart,
+            board.PeriodEnd,
+            board.CurrentBoardNumber,
+            board.AllBoardsCleared,
+            view.ClaimCycleStart.AddDays(1),
+            boards,
+            viewer);
+    }
 
     public static ProfileDto AssembleProfile(
         UserDto profile,
@@ -75,25 +130,4 @@ public static class ActivityMemberDtoAssembler
             profile.Url,
             ranked);
     }
-
-    public static MissionStatsDto AssembleMissionStats(DailyMissionStatistics statistics) => new(
-        statistics.ClubName,
-        statistics.FromDay,
-        statistics.ToDay,
-        statistics.DaysWithMissionData,
-        statistics.TotalMissionAppearances,
-        statistics.AverageDayCompletionRate,
-        statistics.Kinds
-            .Select(kind => new MissionKindStatsDto(
-                kind.Type,
-                kind.GameMode,
-                kind.AppearanceCount,
-                kind.AppearanceDayShare,
-                kind.AverageTargetProgress,
-                kind.LastAppearance,
-                kind.AverageDayCompletionRateWhenPresent))
-            .ToList(),
-        statistics.AverageDayChallengeRate,
-        statistics.DaysWithChallengeData,
-        statistics.ChallengeTrackedFrom);
 }

@@ -4,11 +4,13 @@ using System.Net.Http.Json;
 using Entities;
 using FluentAssertions;
 using GeoClubBot.DTOs;
+using GeoClubBot.Tests.TestBuilders;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using NSubstitute;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using Utilities;
@@ -44,6 +46,7 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
     private readonly HttpClient _client;
     private readonly StubDirectMessageAccess _directMessages = new();
     private readonly StubChannelMessageAccess _channelMessages = new();
+    private readonly IClubMissionBoardReader _boardReader = Substitute.For<IClubMissionBoardReader>();
 
     public ActivityApiE2ETests(PostgresFixture fixture)
     {
@@ -66,6 +69,10 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
                 // serve an empty feed instead of letting the test host call geoguessr.com.
                 services.RemoveAll<IGeoGuessrActivityReader>();
                 services.AddSingleton<IGeoGuessrActivityReader>(new StubGeoGuessrActivityReader());
+
+                // The board is read with a club's token; no board unless a test arranges one.
+                services.RemoveAll<IClubMissionBoardReader>();
+                services.AddSingleton(_boardReader);
 
                 // Setting a reminder sends a confirmation DM and starting a link request posts an
                 // admin heads-up; both would hit the (never-connected) gateway in the test host.
@@ -253,27 +260,43 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GET_missions_stats_scopes_to_the_viewers_club()
+    public async Task GET_club_board_returns_the_viewers_clubs_board_with_their_own_claims_marked()
     {
         await SeedClubAsync(_mainClubId, "Main Club");
         await SeedMemberAsync(_viewerUserId, "ViewerNick", _viewerDiscordId, _mainClubId);
 
-        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/missions/stats?daysBack=14", ValidToken));
+        var board = MissionBoards.Week(MissionBoards.Board(1,
+            MissionBoards.Tile(index: 0, claimedBy: _viewerUserId, claimedAt: DateTimeOffset.UtcNow.AddHours(-1)),
+            MissionBoards.Tile(index: 1),
+            MissionBoards.Tile(index: 2, claimedBy: "someone-else", completed: true, helpers: [_viewerUserId]),
+            MissionBoards.Tile(index: 3)));
+        _boardReader.ReadCurrentAsync(_mainClubId, Arg.Any<CancellationToken>()).Returns(board);
+
+        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/club/board", ValidToken));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var dto = await response.Content.ReadFromJsonAsync<MissionStatsDto>();
+        var dto = await response.Content.ReadFromJsonAsync<MissionBoardDto>();
         dto!.ClubName.Should().Be("Main Club");
-        dto.DaysWithMissionData.Should().Be(0);
+        dto.Boards.Should().ContainSingle();
+        var tiles = dto.Boards[0].Tiles;
+        tiles.Select(t => t.State).Should().Equal("claimed", "free", "completed", "free");
+        tiles[0].ClaimedByViewer.Should().BeTrue();
+        tiles[0].ClaimerNickname.Should().Be("ViewerNick");
+        tiles[2].HelpedByViewer.Should().BeTrue();
+        dto.Viewer!.ClaimState.Should().Be("HoldingOpenMission");
+        dto.Viewer.HelpedThisWeek.Should().Be(1);
     }
 
     [Fact]
-    public async Task GET_missions_stats_falls_back_to_all_clubs_for_an_unlinked_viewer()
+    public async Task GET_club_board_is_not_found_when_the_board_cannot_be_read()
     {
-        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/missions/stats", ValidToken));
+        await SeedClubAsync(_mainClubId, "Main Club");
+        await SeedMemberAsync(_viewerUserId, "ViewerNick", _viewerDiscordId, _mainClubId);
+        _boardReader.ReadCurrentAsync(_mainClubId, Arg.Any<CancellationToken>()).Returns((ClubMissionBoardWeek?)null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var dto = await response.Content.ReadFromJsonAsync<MissionStatsDto>();
-        dto!.ClubName.Should().BeNull();
+        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/club/board", ValidToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
