@@ -224,3 +224,30 @@ signature, then `dotnet build`. See the script's `--help` for details.
 C# style is enforced by `.editorconfig`: file-scoped namespaces, `using`s **outside**
 the namespace (System first), `_camelCase` private fields, Allman braces, `var` when
 the type is apparent, 4-space indent.
+
+---
+
+## Branches and releases
+
+Every pull request targets **`dev`** — features, fixes, hotfixes and Dependabot alike. `master`
+only ever receives `dev` (a release), merged with **Create a merge commit**; the release itself
+is cut by pushing a SemVer tag (`.github/workflows/release.yml`).
+
+Why so strict: `dev` requires linear history, so it can never contain one of `master`'s merge
+commits. Releases only merge cleanly while `master`'s tree equals a `dev` commit that `master`
+already contains. Anything that reaches `master` another way — a hotfix PR into `master`, a
+squashed release, a release branch carrying extra changes — conflicts with every later release
+that touches the same lines, and a squash back-merge into `dev` does not fix that.
+
+This is enforced, not just a convention: the **Release guard** check
+(`.github/workflows/release-guard.yml`) is required by the `master` ruleset and fails any pull
+request that would leave `master` different from `dev`, and the ruleset allows only merge
+commits into `master`.
+
+**If the guard reports that `master` has diverged** (only possible if the ruleset was bypassed):
+
+1. Make sure every change `master` has is also on `dev` (open a PR into `dev` if not).
+2. Branch `release/<version>` off `origin/dev`, `git merge origin/master`, and resolve every
+   conflict to `dev`'s version — `git diff --quiet origin/dev` must then succeed.
+3. Open that branch as the release PR into `master` and merge it with a merge commit. No
+   back-merge is needed; `master` now equals `dev` again.
