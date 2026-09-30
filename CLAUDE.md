@@ -261,6 +261,15 @@ API + Discord (controllers, slash command modules)
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md), which also explains the free-tier request
   allowance that shapes most of the design.
 
+## Branches and releases
+
+- Every pull request targets `dev` (`gh pr create --base dev`), hotfixes included. `master` only
+  receives `dev` through a release PR merged with a merge commit; releases are cut by pushing a
+  SemVer tag. The required **Release guard** check (`.github/workflows/release-guard.yml`) fails any
+  PR into `master` that would leave it different from `dev`, because `dev`'s linear history means
+  anything that reaches `master` another way conflicts every later release. Recovery steps:
+  *Branches and releases* in [`Documentation/DeveloperGuide.md`](Documentation/DeveloperGuide.md).
+
 ## C# Conventions
 
 - .NET 10.0, C# 14, nullable reference types enabled, implicit usings enabled
