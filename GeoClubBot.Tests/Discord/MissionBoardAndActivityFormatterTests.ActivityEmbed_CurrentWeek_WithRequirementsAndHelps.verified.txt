@@ -1,0 +1,17 @@
+﻿Title: 📅 Your Activity This Week
+Description: ✅ All requirements met — keep it up!
+[🏆 XP Earned] (inline)
+**280 XP** (160 rule XP)
+[🔥 Streak] (inline)
+**6 / 8** days
+[🎯 Club Missions] (inline)
+**2** (+100 XP board bonus)
+[📋 Requirements]
+✅ streak **6/6** · ✅ missions **2/2**
+[🤝 Helped out (unverified)]
+this board week **3** · last board week **1**
+[Progress]
+`We Th Fr Sa Su Mo Tu We`
+🟩 🟩 ⬛ 🟩 🟩 🟩 🟩 ⬛
+1️⃣ ➖ ➖ 1️⃣ ➖ ➖ ➖ ➖
+Footer: 🟩 streak kept · ⬛ not kept · digits: club missions finished that day

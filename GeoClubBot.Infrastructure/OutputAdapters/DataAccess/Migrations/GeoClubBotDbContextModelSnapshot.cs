@@ -299,6 +299,52 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("ClubMembers");
                 });
 
+            modelBuilder.Entity("Entities.ClubMemberDailyActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BoardClearBonusCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("BoardMissionCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("DailyChallengeCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("LegacyDailyMissionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<int?>("Xp")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "Date", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ClubMemberDailyActivities");
+                });
+
             modelBuilder.Entity("Entities.ClubMemberExcuse", b =>
                 {
                     b.Property<Guid>("ExcuseId")
@@ -334,8 +380,17 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .HasMaxLength(24)
                         .HasColumnType("character varying(24)");
 
+                    b.Property<int?>("BoardMissionCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("ClubId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("RuleXp")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("StreakDays")
+                        .HasColumnType("integer");
 
                     b.Property<int>("Xp")
                         .HasColumnType("integer");
@@ -374,86 +429,67 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("ClubMemberStrikes");
                 });
 
-            modelBuilder.Entity("Entities.DailyMission", b =>
+            modelBuilder.Entity("Entities.CountryChallengeLeaderboardPost", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("Completed")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("CurrentProgress")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTimeOffset>("EndDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("FetchedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("GameMode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("MapName")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("MapSlug")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<Guid>("MissionId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("RewardAmount")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("RewardType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<int>("TargetProgress")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FetchedAtUtc");
-
-                    b.HasIndex("MissionId");
-
-                    b.ToTable("DailyMissions");
-                });
-
-            modelBuilder.Entity("Entities.DailyMissionMemberCompletion", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<Guid>("ClubId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("CompletedCount")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("DailyChallengeCount")
-                        .HasColumnType("integer");
 
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("PostedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Season")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date")
+                        .IsUnique();
+
+                    b.ToTable("CountryChallengeLeaderboardPosts");
+                });
+
+            modelBuilder.Entity("Entities.CountryChallengePointAward", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("AwardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Nickname")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int?>("Place")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PostId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Season")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("UserId")
                         .IsRequired()
@@ -462,10 +498,82 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClubId", "Date", "UserId")
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("Season");
+
+                    b.ToTable("CountryChallengePointAwards");
+                });
+
+            modelBuilder.Entity("Entities.CountryChallengePost", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ChallengeId")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ChallengeName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset?>("EvaluatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ForbidMoving")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ForbidRotating")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ForbidZooming")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MapId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("MapName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("PostedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("ResultsDueOn")
+                        .HasColumnType("date");
+
+                    b.Property<int>("TimeLimit")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChallengeName", "Date", "Country")
                         .IsUnique();
 
-                    b.ToTable("DailyMissionMemberCompletions");
+                    b.ToTable("CountryChallengePosts");
                 });
 
             modelBuilder.Entity("Entities.DailyMissionReminder", b =>
@@ -639,6 +747,36 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("KnowledgeSources");
                 });
 
+            modelBuilder.Entity("Entities.MissionBoardAlert", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("MissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SentAt");
+
+                    b.HasIndex("ClubId", "MissionId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("MissionBoardAlerts");
+                });
+
             modelBuilder.Entity("Entities.AiFeedbackTurn", b =>
                 {
                     b.HasOne("Entities.AiAnswerFeedback", null)
@@ -703,6 +841,14 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("ClubMember");
+                });
+
+            modelBuilder.Entity("Entities.CountryChallengePointAward", b =>
+                {
+                    b.HasOne("Entities.CountryChallengePost", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Entities.AiAnswerFeedback", b =>

@@ -27,6 +27,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | **GeoClubBot.MockGeoGuessr** | In-process fake GeoGuessr API for local dev (`GeoGuessr:UseMock=true`) |
 | **GeoClubBot.Tests** | xUnit unit + Testcontainers integration tests |
 | **Tools/GeoClubBot.ApiProbe** | Read-only console tool that dumps raw GeoGuessr API responses ([README](../Tools/GeoClubBot.ApiProbe/README.md)) |
+| **Tools/GeoClubBot.RetrievalProbe** | Read-only console tool that replays rated questions through the bot's own retrieval against the real index ([README](../Tools/GeoClubBot.RetrievalProbe/README.md)) |
 
 ### "I want to change X → go here"
 
@@ -41,8 +42,11 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | Change **error → user message** mapping | see [`ResultConventions.md`](ResultConventions.md) |
 | Add a **guide source** the AI can read | `GeoClubBot.Infrastructure/OutputAdapters/AI/Extractors/` — see recipe 6 |
 | Change **how the AI answers** | `GeoClubBot.Application/UseCases/AI/Conversations/` (prompt, context, orchestration) |
-| Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` |
-| Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily mission and the daily challenge / duel are both 20 XP |
+| Change **what the AI retrieves** | `GeoClubBot.Infrastructure/OutputAdapters/AI/QdrantKnowledgeIndex.cs` — measure first with `Tools/GeoClubBot.RetrievalProbe` (`replay`, `compare`) ([README](../Tools/GeoClubBot.RetrievalProbe/README.md)) |
+| Change **how club XP activity is classified** | `GeoClubBot.Domain/ClubXpActivityKind.cs` + `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs` — never compare `XpReward` at a call site: the daily challenge / duel and a board mission are both 20 XP |
+| Change **the weekly activity rules** (requirements, rule XP) | `GeoClubBot.Application/UseCases/ClubMemberActivity/Rules/` (`ActivityRules` resolves config + club overrides, `ActivityRuleEvaluator` judges a member's feed entries); the check itself is `CheckGeoGuessrPlayerActivityCommand` + `ActivityCheckPhases/ActivityStatusCalculator.cs` |
+| Change **anything about the club mission board** | Domain model `GeoClubBot.Domain/ClubMissionBoardWeek.cs` (claim cycle, free/open missions), read through `IClubMissionBoardReader` (`GeoClubBot.API/DependencyInjection/CachingClubMissionBoardReader.cs`, per-club token). Use cases in `GeoClubBot.Application/UseCases/MissionBoard/` (board query, stuck-mission alerts) |
+| Change **the country challenges** (what the file allows, how runs behave) | `GeoClubBot.Application/UseCases/CountryChallenges/` — the file's rules live in `Configuration/CountryChallengePlanResolver.cs`, every posted text in `Rendering/CountryChallengeMessages.cs`, which the admin preview shares. See [`CountryChallengesGuide.md`](CountryChallengesGuide.md) |
 | Find out **what the GeoGuessr API actually returns** | `dotnet run --project Tools/GeoClubBot.ApiProbe -- activities` ([README](../Tools/GeoClubBot.ApiProbe/README.md)) — the typed DTOs drop undeclared fields, so don't read them for this |
 
 > The AI feature has its own document: [`AiGuide.md`](AiGuide.md) covers how it works, what it costs
@@ -220,3 +224,30 @@ signature, then `dotnet build`. See the script's `--help` for details.
 C# style is enforced by `.editorconfig`: file-scoped namespaces, `using`s **outside**
 the namespace (System first), `_camelCase` private fields, Allman braces, `var` when
 the type is apparent, 4-space indent.
+
+---
+
+## Branches and releases
+
+Every pull request targets **`dev`** — features, fixes, hotfixes and Dependabot alike. `master`
+only ever receives `dev` (a release), merged with **Create a merge commit**; the release itself
+is cut by pushing a SemVer tag (`.github/workflows/release.yml`).
+
+Why so strict: `dev` requires linear history, so it can never contain one of `master`'s merge
+commits. Releases only merge cleanly while `master`'s tree equals a `dev` commit that `master`
+already contains. Anything that reaches `master` another way — a hotfix PR into `master`, a
+squashed release, a release branch carrying extra changes — conflicts with every later release
+that touches the same lines, and a squash back-merge into `dev` does not fix that.
+
+This is enforced, not just a convention: the **Release guard** check
+(`.github/workflows/release-guard.yml`) is required by the `master` ruleset and fails any pull
+request that would leave `master` different from `dev`, and the ruleset allows only merge
+commits into `master`.
+
+**If the guard reports that `master` has diverged** (only possible if the ruleset was bypassed):
+
+1. Make sure every change `master` has is also on `dev` (open a PR into `dev` if not).
+2. Branch `release/<version>` off `origin/dev`, `git merge origin/master`, and resolve every
+   conflict to `dev`'s version — `git diff --quiet origin/dev` must then succeed.
+3. Open that branch as the release PR into `master` and merge it with a merge commit. No
+   back-merge is needed; `master` now equals `dev` again.

@@ -38,8 +38,13 @@ try
             await ProbeActivitiesAsync().ConfigureAwait(false);
             break;
 
-        case "missions":
-            await ProbeSingleAsync("/v4/missions", itemsProperty: "missions").ConfigureAwait(false);
+        // The board belongs to the club of the token's account; there is no club id in the path.
+        case "board":
+            await ProbeSingleAsync("/v4/missions/club/board", itemsProperty: "boards").ConfigureAwait(false);
+            break;
+
+        case "board-previous":
+            await ProbeSingleAsync("/v4/missions/club/board/previous", itemsProperty: "boards").ConfigureAwait(false);
             break;
 
         case "members":

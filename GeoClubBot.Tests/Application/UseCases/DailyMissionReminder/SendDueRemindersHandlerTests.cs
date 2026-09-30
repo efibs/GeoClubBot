@@ -8,12 +8,12 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
-using UseCases.OutputPorts.Rendering;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.DailyMissionReminder;
 using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;
 using Xunit;
+using static GeoClubBot.Tests.TestBuilders.MissionBoards;
 using DailyMissionReminderEntity = Entities.DailyMissionReminder;
 
 namespace GeoClubBot.Tests.Application.UseCases.DailyMissionReminderTests;
@@ -21,31 +21,32 @@ namespace GeoClubBot.Tests.Application.UseCases.DailyMissionReminderTests;
 public sealed class SendDueRemindersHandlerTests
 {
     private static readonly Guid ClubId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    private const string UserId = "user-1";
 
     private readonly IDailyMissionReminderRepository _reminders = Substitute.For<IDailyMissionReminderRepository>();
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
     private readonly IDiscordDirectMessageAccess _dm = Substitute.For<IDiscordDirectMessageAccess>();
     private readonly ISender _mediator = Substitute.For<ISender>();
     private readonly IGeoGuessrActivityReader _activityReader = Substitute.For<IGeoGuessrActivityReader>();
-    private readonly IDailyMissionRepository _dailyMissions = Substitute.For<IDailyMissionRepository>();
-    private readonly IDailyMissionRenderer _renderer = Substitute.For<IDailyMissionRenderer>();
+    private readonly IClubMissionBoardReader _boardReader = Substitute.For<IClubMissionBoardReader>();
     private readonly ILogger<SendDueRemindersHandler> _logger = Substitute.For<ILogger<SendDueRemindersHandler>>();
 
-    public SendDueRemindersHandlerTests()
-    {
-        // By default there are no stored missions, so the rendered mission text is empty.
-        _dailyMissions.ReadLatestFetchedMissionsAsync(Arg.Any<CancellationToken>())
-            .Returns(new List<DailyMission>());
-    }
+    // The claim cycle started 22 hours ago and resets in two.
+    private readonly DateTimeOffset _nextReset = DateTimeOffset.UtcNow.AddHours(2);
+
+    private bool _remindMissions = true;
 
     private SendDueRemindersHandler CreateHandler() => new(
-        _reminders, _members, _dm, _mediator, _activityReader, ClubActivities.Classifier(),
-        _dailyMissions, _renderer,
+        _reminders, _members, _dm, _mediator, _activityReader, ClubActivities.Classifier(), _boardReader,
         Options.Create(new DailyMissionReminderConfiguration
         {
             Schedule = "0 * * * * ?",
-            DefaultMessage = "Don't forget to complete {{outstanding_text}}"
+            DefaultMessage = "Don't forget to {{outstanding_text}}"
         }),
+        Options.Create(new MissionBoardConfiguration()),
+        new GeoGuessrConfigurationBuilder()
+            .WithClubEntry(new GeoGuessrClubEntry { ClubId = ClubId, NcfaToken = "x", IsMain = true, RemindMissions = _remindMissions })
+            .BuildOptions(),
         _logger);
 
     [Fact]
@@ -62,27 +63,11 @@ public sealed class SendDueRemindersHandlerTests
     }
 
     [Fact]
-    public async Task Handle_SkipsReminder_WhenBothDailyAwardsAreAlreadyEarned()
+    public async Task Handle_SkipsReminder_WhenTheStreakIsKeptAndAMissionWasClaimedThisCycle()
     {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-            Arg.Any<CancellationToken>()).Returns(linkedUser);
-
-        var member = new ClubMemberBuilder()
-            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
-        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
-
-        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ReadClubActivitiesItemDto>
-            {
-                ClubActivities.Mission("user-1"),
-                ClubActivities.Challenge("user-1")
-            });
+        var reminder = ArrangeLinkedReminder(null);
+        ArrangeToday(ClubActivities.Challenge(UserId));
+        ArrangeBoard(Tile(claimedBy: UserId, claimedAt: DateTimeOffset.UtcNow.AddHours(-1), completed: true));
 
         await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
 
@@ -91,116 +76,142 @@ public sealed class SendDueRemindersHandlerTests
         reminder.LastSentDateUtc.Should().NotBeNull();
     }
 
-    [Theory]
-    // Only one of the two daily awards earned - the reminder must still go out.
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(false, false)]
-    public async Task Handle_StillSendsReminder_WhenOnlyOneOfTheTwoDailyAwardsIsEarned(
-        bool missionDone, bool challengeDone)
-    {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Custom!");
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-            Arg.Any<CancellationToken>()).Returns(linkedUser);
-
-        var member = new ClubMemberBuilder()
-            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
-        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
-
-        var activities = new List<ReadClubActivitiesItemDto>();
-        if (missionDone) activities.Add(ClubActivities.Mission("user-1"));
-        if (challengeDone) activities.Add(ClubActivities.Challenge("user-1"));
-
-        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>()).Returns(activities);
-
-        _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Result.Success());
-
-        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
-
-        await _dm.Received(1).SendDirectMessageAsync(123UL, "Custom!", Arg.Any<CancellationToken>());
-    }
-
     [Fact]
-    public async Task Handle_NamesWhatIsStillOutstanding_ViaThePlaceholder()
+    public async Task Handle_SkipsReminder_WhenTheStreakIsKeptAndNoMissionIsFree()
     {
-        var reminder = DailyMissionReminderEntity.Create(
-            123UL, new TimeOnly(8, 0), null, "Still to do: {{outstanding_text}}");
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-            Arg.Any<CancellationToken>()).Returns(linkedUser);
-
-        var member = new ClubMemberBuilder()
-            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
-        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
-
-        // The mission is done, so only the challenge is named.
-        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ReadClubActivitiesItemDto> { ClubActivities.Mission("user-1") });
-
-        _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Result.Success());
+        var reminder = ArrangeLinkedReminder(null);
+        ArrangeToday(ClubActivities.Challenge(UserId));
+        ArrangeBoard(Enumerable.Range(0, 9).Select(i => Tile(index: i, claimedBy: $"other{i}")).ToArray());
 
         await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
 
-        await _dm.Received(1).SendDirectMessageAsync(
-            123UL,
-            Arg.Is<string>(m => m.Contains("daily challenge") && !m.Contains("daily mission")),
-            Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Handle_SendsDirectMessage_WhenNothingIsDoneYet()
-    {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Custom!");
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-            Arg.Any<CancellationToken>()).Returns(linkedUser);
-
-        var member = new ClubMemberBuilder()
-            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
-        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
-
-        // XP that is neither of the two daily awards → both are still outstanding.
-        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ReadClubActivitiesItemDto>
-            {
-                ClubActivities.Untyped("user-1", xpReward: 99)
-            });
-
-        _dm.SendDirectMessageAsync(123UL, "Custom!", Arg.Any<CancellationToken>())
-            .Returns(Result.Success());
-
-        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
-
-        await _dm.Received(1).SendDirectMessageAsync(123UL, "Custom!", Arg.Any<CancellationToken>());
+        await _dm.DidNotReceive().SendDirectMessageAsync(
+            Arg.Any<ulong>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         reminder.LastSentDateUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Handle_RemindsToClaim_WhenTheStreakIsKeptButAMissionIsStillFree()
+    {
+        ArrangeLinkedReminder(null);
+        ArrangeToday(ClubActivities.Challenge(UserId));
+        // Claimed in the previous cycle, so today's claim is still unused.
+        var tiles = FreeTiles(9);
+        tiles[0] = Tile(claimedBy: UserId, claimedAt: DateTimeOffset.UtcNow.AddHours(-30), completed: true);
+        ArrangeBoard(tiles);
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().Be(
+            $"Don't forget to claim a club mission (8 still free on board 1, the daily claim resets <t:{_nextReset.ToUnixTimeSeconds()}:R>)!");
+    }
+
+    [Fact]
+    public async Task Handle_RemindsOfBoth_WhenNothingIsDoneYet()
+    {
+        ArrangeLinkedReminder(null);
+        ArrangeToday();
+        ArrangeBoard(FreeTiles(9));
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().StartWith("Don't forget to play the daily challenge (or a duel) and claim a club mission (9 still free");
+    }
+
+    [Fact]
+    public async Task Handle_RemindsOnlyOfTheStreak_WhenAMissionWasClaimedThisCycle()
+    {
+        ArrangeLinkedReminder(null);
+        ArrangeToday();
+        var tiles = FreeTiles(9);
+        tiles[0] = Tile(claimedBy: UserId, claimedAt: DateTimeOffset.UtcNow.AddHours(-1), completed: true);
+        ArrangeBoard(tiles);
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().Be("Don't forget to play the daily challenge (or a duel)!");
+    }
+
+    [Fact]
+    public async Task Handle_RemindsToFinish_TheMissionTheMemberHolds()
+    {
+        ArrangeLinkedReminder(null);
+        ArrangeToday(ClubActivities.Challenge(UserId));
+        var tiles = FreeTiles(9);
+        tiles[0] = Tile(claimedBy: UserId, claimedAt: DateTimeOffset.UtcNow.AddDays(-2), title: "Win 2 Ranked Duels", currentProgress: 1);
+        ArrangeBoard(tiles);
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().Be("Don't forget to finish your club mission **Win 2 Ranked Duels** (1/2) or request help!");
+    }
+
+    [Fact]
+    public async Task Handle_LeavesMissionsOut_WhenTheBoardCannotBeRead()
+    {
+        var reminder = ArrangeLinkedReminder(null);
+        ArrangeToday(ClubActivities.Challenge(UserId));
+        _boardReader.ReadCurrentAsync(ClubId, Arg.Any<CancellationToken>()).Returns((ClubMissionBoardWeek?)null);
+
+        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
+
+        await _dm.DidNotReceive().SendDirectMessageAsync(
+            Arg.Any<ulong>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        reminder.LastSentDateUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Handle_LeavesMissionsOut_WhenTheClubOptedOut()
+    {
+        _remindMissions = false;
+        ArrangeLinkedReminder(null);
+        ArrangeToday();
+        ArrangeBoard(FreeTiles(9));
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().Be("Don't forget to play the daily challenge (or a duel)!");
+        await _boardReader.DidNotReceive().ReadCurrentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_RemindsGenerically_WhenTheAccountIsNotLinked()
+    {
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
+        ArrangeUnlinkedReminder(reminder);
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().Be("Don't forget to play the daily challenge (or a duel) and claim a club mission if one is free!");
+    }
+
+    [Fact]
+    public async Task Handle_UsesTheCustomMessage_WithThePlaceholderSubstituted()
+    {
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Still to do: {{outstanding_text}}");
+        ArrangeUnlinkedReminder(reminder);
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().Be("Still to do: play the daily challenge (or a duel) and claim a club mission if one is free!");
+    }
+
+    [Fact]
+    public async Task Handle_SubstitutesTheLegacyMissionTextPlaceholder_InRemindersStoredBeforeTheBoard()
+    {
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Today you owe {{mission_text}}");
+        ArrangeUnlinkedReminder(reminder);
+
+        var message = await CaptureSentMessageAsync();
+
+        message.Should().NotContain("{{mission_text}}").And.Contain("claim a club mission");
     }
 
     [Fact]
     public async Task Handle_DoesNotMarkSent_WhenDirectMessageFailsTransiently()
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-                Arg.Any<CancellationToken>())
-            .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
+        ArrangeUnlinkedReminder(reminder);
 
         _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Result.Failure(Error.Unexpected("discord.dm.failed", "Transient failure.")));
@@ -214,13 +225,7 @@ public sealed class SendDueRemindersHandlerTests
     public async Task Handle_MarksSent_WhenUserHasDmsDisabled_SoItIsNotRetried()
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-                Arg.Any<CancellationToken>())
-            .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
+        ArrangeUnlinkedReminder(reminder);
 
         _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Result.Failure(Error.Forbidden("discord.dm.disabled", "DMs disabled.")));
@@ -235,13 +240,7 @@ public sealed class SendDueRemindersHandlerTests
     public async Task Handle_DeletesReminder_WhenUserHasLeftTheServer()
     {
         var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-                Arg.Any<CancellationToken>())
-            .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
+        ArrangeUnlinkedReminder(reminder);
 
         // Discord reports no mutual guild → the user has left the server and can never be DMed again.
         _dm.SendDirectMessageAsync(123UL, Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -253,128 +252,25 @@ public sealed class SendDueRemindersHandlerTests
         reminder.LastSentDateUtc.Should().BeNull("a reminder for a departed user is removed, not marked sent");
     }
 
-    [Fact]
-    public async Task Handle_NamesTodaysMissions_InACustomMessage()
+    private DailyMissionReminderEntity ArrangeLinkedReminder(string? customMessage)
     {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Today you owe {{outstanding_text}}");
-        ArrangeReminderThatWillBeSent(reminder);
-
-        ArrangeMissions(
-            ("PlayGames", "Play the Daily Challenge"),
-            ("WinGames", "Win 5 Team Duels"));
-
-        var captured = await CaptureSentMessageAsync();
-
-        captured.Should().Be(
-            "Today you owe your daily missions and the daily challenge (or a duel) today:\n"
-            + "- Play the Daily Challenge\n- Win 5 Team Duels");
-    }
-
-    [Fact]
-    public async Task Handle_NamesTodaysMissions_InTheDefaultMessage()
-    {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
-        ArrangeReminderThatWillBeSent(reminder);
-
-        ArrangeMissions(("PlayGames", "Play the Daily Challenge"));
-
-        var captured = await CaptureSentMessageAsync();
-
-        captured.Should().Be(
-            "Don't forget to complete your daily mission and the daily challenge (or a duel) "
-            + "today:\n- Play the Daily Challenge");
-    }
-
-    [Fact]
-    public async Task Handle_SubstitutesTheLegacyMissionTextPlaceholder_InReminderStoredBeforeTheCollapse()
-    {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, "Today you owe {{mission_text}}");
-        ArrangeReminderThatWillBeSent(reminder);
-
-        ArrangeMissions(("PlayGames", "Play the Daily Challenge"));
-
-        var captured = await CaptureSentMessageAsync();
-
-        captured.Should().Be(
-            "Today you owe your daily mission and the daily challenge (or a duel) today:\n"
-            + "- Play the Daily Challenge");
-    }
-
-    [Fact]
-    public async Task Handle_DropsTodaysMissions_WhenTheDailyMissionIsAlreadyDone()
-    {
-        // There is one daily mission a day even when the API lists several, so the daily-mission XP
-        // means it is behind them: only the challenge is named, and no mission is listed.
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
+        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, customMessage);
         _reminders.ReadDueRemindersForUpdateAsync(
                 Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
             .Returns([reminder]);
 
-        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
         _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-            Arg.Any<CancellationToken>()).Returns(linkedUser);
+            Arg.Any<CancellationToken>()).Returns(GeoGuessrUser.Create(UserId, "Player1", 123UL));
 
         var member = new ClubMemberBuilder()
-            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
-        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
+            .WithUserId(UserId).WithDiscordUserId(123UL).InClub(ClubId).Build();
+        _members.ReadClubMemberByUserIdAsync(UserId, Arg.Any<CancellationToken>()).Returns(member);
 
-        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ReadClubActivitiesItemDto> { ClubActivities.Mission("user-1") });
-
-        ArrangeMissions(
-            ("PlayGames", "Play the Daily Challenge"),
-            ("WinGames", "Win 5 Team Duels"));
-
-        var captured = await CaptureSentMessageAsync();
-
-        captured.Should().Be("Don't forget to complete the daily challenge (or a duel) today!");
-        await _dailyMissions.DidNotReceive().ReadLatestFetchedMissionsAsync(Arg.Any<CancellationToken>());
+        return reminder;
     }
 
-    [Fact]
-    public async Task Handle_StaysGeneric_WhenNoMissionsStored()
-    {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
-        ArrangeReminderThatWillBeSent(reminder);
-
-        // Repository default already returns no missions, so there is nothing concrete to name and
-        // the reminder falls back to the plain phrase rather than an empty bullet list.
-        var captured = await CaptureSentMessageAsync();
-
-        captured.Should().Be(
-            "Don't forget to complete your daily mission and the daily challenge (or a duel) today!");
-    }
-
-    [Fact]
-    public async Task Handle_DoesNotQueryMissions_WhenAllRemindersAlreadyDone()
-    {
-        var reminder = DailyMissionReminderEntity.Create(123UL, new TimeOnly(8, 0), null, null);
-        _reminders.ReadDueRemindersForUpdateAsync(
-                Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-            .Returns([reminder]);
-
-        var linkedUser = GeoGuessrUser.Create("user-1", "Player1", 123UL);
-        _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == 123UL),
-            Arg.Any<CancellationToken>()).Returns(linkedUser);
-
-        var member = new ClubMemberBuilder()
-            .WithUserId("user-1").WithDiscordUserId(123UL).InClub(ClubId).Build();
-        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
-
-        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ReadClubActivitiesItemDto>
-            {
-                ClubActivities.Mission("user-1"), ClubActivities.Challenge("user-1")
-            });
-
-        await CreateHandler().Handle(new SendDueRemindersCommand(), CancellationToken.None);
-
-        await _dailyMissions.DidNotReceive().ReadLatestFetchedMissionsAsync(Arg.Any<CancellationToken>());
-    }
-
-    // Arranges a due reminder whose owner is treated as "not yet completed today" (the account
-    // lookup fails), so the handler proceeds to build and send the message.
-    private void ArrangeReminderThatWillBeSent(DailyMissionReminderEntity reminder)
+    // The account lookup fails, so the handler can't see the member's activity and reminds of everything.
+    private void ArrangeUnlinkedReminder(DailyMissionReminderEntity reminder)
     {
         _reminders.ReadDueRemindersForUpdateAsync(
                 Arg.Any<TimeOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
@@ -385,21 +281,13 @@ public sealed class SendDueRemindersHandlerTests
             .Returns(Result<GeoGuessrUser>.Failure(Error.NotFound("account_linking.not_linked", "missing")));
     }
 
-    private void ArrangeMissions(params (string Type, string Rendered)[] missions)
-    {
-        var entities = missions
-            .Select(m => DailyMission.Create(
-                Guid.NewGuid(), m.Type, "Classic", 0, 1, false,
-                DateTimeOffset.UtcNow, 20, "Xp", DateTimeOffset.UtcNow))
-            .ToList();
+    private void ArrangeToday(params ReadClubActivitiesItemDto[] activities) =>
+        _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(activities.ToList());
 
-        _dailyMissions.ReadLatestFetchedMissionsAsync(Arg.Any<CancellationToken>()).Returns(entities);
-
-        foreach (var (type, rendered) in missions)
-        {
-            _renderer.RenderMission(Arg.Is<DailyMissionDto>(d => d!.Type == type)).Returns(rendered);
-        }
-    }
+    private void ArrangeBoard(params ClubMissionTile[] tiles) =>
+        _boardReader.ReadCurrentAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, tiles), nextClaimResetAt: _nextReset));
 
     private async Task<string?> CaptureSentMessageAsync()
     {

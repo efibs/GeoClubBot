@@ -30,7 +30,6 @@ public static class ClubBotServices
         {
             SyncSchedule = null!,
             ActivityNcfaToken = null!,
-            MissionsNcfaToken = null!,
             UserProfileNcfaToken = null!,
             Clubs = null!
         };
@@ -53,14 +52,6 @@ public static class ClubBotServices
                 client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.ActivityNcfaToken}");
             })
             .AddResilienceHandler("GeoGuessrApiResiliencePipeline_Activity",
-                ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
-
-        services.AddHttpClient(GeoGuessrClientFactory.MissionsHttpClientName, client =>
-            {
-                client.BaseAddress = new Uri("https://www.geoguessr.com/api");
-                client.DefaultRequestHeaders.Add("Cookie", $"_ncfa={geoGuessrConfig.MissionsNcfaToken}");
-            })
-            .AddResilienceHandler("GeoGuessrApiResiliencePipeline_Missions",
                 ResiliencePipelines.AddGeoGuessrApiResiliencePipeline);
 
         services.AddHttpClient(GeoGuessrClientFactory.UserProfileHttpClientName, client =>

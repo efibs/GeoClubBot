@@ -13,18 +13,23 @@ test('switches between the member tabs', async ({ page }) => {
   await page.getByTestId('tab-missions').click();
   await expect(page.getByTestId('missions-view')).toBeVisible();
   await expect(page.getByTestId('todays-xp-tile')).toContainText('51,230 XP');
-  await expect(page.getByTestId('mission-stats-panel')).toContainText('62%');
+  await expect(page.getByTestId('todays-xp-tile')).toContainText('21 / 30');
+  const board = page.getByTestId('board-panel');
+  await expect(board.getByTestId('tile-grid').locator('.tile')).toHaveCount(4);
+  await expect(board.getByTestId('board-viewer-state')).toContainText('Finish your open mission');
+  await expect(board.getByTestId('open-claims')).toContainText('You — Win 2 Ranked Duels');
 
   await page.getByTestId('tab-me').click();
   await expect(page.getByTestId('me-view')).toBeVisible();
   await expect(page.getByTestId('profile-panel')).toContainText('Gold II');
+  await expect(page.getByTestId('my-week-panel')).toContainText('missions');
+  await expect(page.getByTestId('my-week-panel').locator('.requirement.met')).toHaveCount(1);
   await expect(page.getByTestId('my-activity-panel')).toContainText('4,200 XP');
-  // The seven days of baseWeekActivity: both awards on 2, exactly one on 4, neither on 1.
+  // The seven days of baseWeekActivity: the streak kept on 5, missions on 2.
   const dayStrip = page.getByTestId('day-strip');
   await expect(dayStrip.locator('.day-cell')).toHaveCount(7);
-  await expect(dayStrip.locator('.day-cell.done')).toHaveCount(2);
-  await expect(dayStrip.locator('.day-cell.partial')).toHaveCount(4);
-  await expect(dayStrip.locator('.day-cell:not(.done):not(.partial)')).toHaveCount(1);
+  await expect(dayStrip.locator('.day-cell.done')).toHaveCount(5);
+  await expect(dayStrip.locator('.day-missions', { hasText: '🎯' })).toHaveCount(2);
 
   await page.getByTestId('tab-overview').click();
   await expect(page.getByTestId('club-name')).toBeVisible();

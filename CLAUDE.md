@@ -65,7 +65,13 @@ and per payload index, and the default limit is exhausted part-way through a run
   boundaries (Domain/Application don't depend on outer layers, EF stays behind a port). Use
   fully-qualified namespaces in rules — NetArchTest matches string constants, so a bare
   `GeoClubBot` token false-flags the `"GeoClubBot.Application"` meter-name literals.
-- **Snapshot** (`Discord/*FormatterTests`, fast): `Verify.Xunit` captures whole rendered messages
+- **Discord module loading** (`Discord/InteractionModuleLoadingTests`, fast): loads every interaction
+  module into an `InteractionService` and checks Discord's name/description limits. No other test does
+  this (the E2E host strips the gateway), so a broken module would otherwise only show at bot start-up.
+  Tests that set the static `ConfiguredCronJobAttribute.Config` share the non-parallel
+  `ConfiguredCronJobCollection`.
+- **Snapshot** (`Discord/*FormatterTests`, `Application/UseCases/CountryChallenges/CountryChallengeMessagesTests`,
+  fast): `Verify.Xunit` captures whole rendered messages
   into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
   the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
   is gitignored.
@@ -75,7 +81,10 @@ and per payload index, and the default limit is exhausted part-way through a run
   `dotnet tool restore && dotnet stryker`.
 - **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
   (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
-  chunk keys must stay stable or every re-ingest duplicates instead of updating) over thousands of
+  chunk keys must stay stable or every re-ingest duplicates instead of updating; the AI citation
+  resolver, whose numbers must run 1..k and all lead somewhere; the retrieval fusion, which must never
+  offer the same text twice; the country pool rotation, where every round must be a permutation of the
+  pool; the leaderboard ranking, where ties share a rank) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
 
@@ -84,8 +93,12 @@ and per payload index, and the default limit is exhausted part-way through a run
 Set `GeoGuessr:UseMock=true` (default in `appsettings.Development.json`) to run against the
 in-process **GeoClubBot.MockGeoGuessr** instead of the real GeoGuessr API. It serves a mock API
 plus a UI (URL logged at startup) for seeding/driving fake club data. The club view's *Add
-Activity* form picks the activity kind (daily mission / daily challenge or duel / weekly /
-club challenge), which is how you exercise the two same-priced daily XP awards locally.
+Activity* form picks the activity kind (daily challenge or duel / board mission / board bonus /
+club challenge, plus the legacy daily and weekly missions), which is how you exercise the
+same-priced 20 XP awards locally. The *Mission Board* view drives each club's weekly board —
+claim, request help, help out, complete, backdate a claim to make it look stuck, start a new week —
+and completing a mission logs the type-5 (and board-clear type-6) feed entries GeoGuessr would.
+The mock client only has a board when created per club (`CreateClient(clubId)`), like a club token.
 
 > The whole mock UI is one embedded file, `GeoClubBot.MockGeoGuessr/wwwroot/mock.html` (plain HTML
 > + fetch against `/mock/api`). A duplicate Blazor version of it once existed but was never routed;
@@ -103,6 +116,21 @@ dotnet run --project Tools/GeoClubBot.ApiProbe -- activities --pages 3
 It prints raw JSON plus a field census (every property, its distinct values, and a cross-tab
 against `xpReward`). It only ever issues GETs, and it needs an `_ncfa` token —
 see [`Tools/GeoClubBot.ApiProbe/README.md`](Tools/GeoClubBot.ApiProbe/README.md).
+
+### Measuring the AI's retrieval
+
+When a feedback export (`/ai feedback-export`) shows bad answers, or before changing retrieval, replay
+the rated questions through the bot's own search against the real index instead of guessing:
+
+```bash
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- replay ai_feedback/<export>.jsonl --out ai_feedback/replay.md
+```
+
+`replay` shows what each question is offered and where every excerpt came from. `compare` counts
+alternative fusion weights; `grep` answers "is it in the index at all?"; `similarity` tries a re-worded
+chunk. It reaches production Qdrant over an SSH tunnel to the gRPC port, only ever reads (a gRPC
+allow-list, tested against a real Qdrant), and caches the question embeddings it pays for — see
+[`Tools/GeoClubBot.RetrievalProbe/README.md`](Tools/GeoClubBot.RetrievalProbe/README.md).
 
 ## Architecture
 
@@ -127,7 +155,7 @@ API + Discord (controllers, slash command modules)
 | **GeoClubBot.Application** | Use cases as MediatR handlers; input ports (use case interfaces) and output ports (repository/service interfaces) |
 | **GeoClubBot.Infrastructure** | EF Core DbContext + repositories, Quartz scheduled jobs, SignalR hub, AI adapters (`OutputAdapters/AI/`) |
 | **GeoClubBot.Discord** | Discord.Net interaction modules (slash commands), Discord output adapters |
-| **Configuration** | Strongly-typed config classes validated with `.ValidateDataAnnotations().ValidateOnStart()` (there is no `IValidateOptions` implementation in the solution) |
+| **Configuration** | Strongly-typed config classes validated with `.ValidateDataAnnotations().ValidateOnStart()` (the one `IValidateOptions` implementation, `ActivityRulesOptionsValidator`, lives in Application because it needs the activity-kind enum) |
 | **Constants** | Config keys, string constants, component IDs |
 | **Extensions** | Helper extension methods |
 | **Utilities** | General utilities |
@@ -150,11 +178,26 @@ API + Discord (controllers, slash command modules)
 - **Quartz Jobs**: Jobs use `[ConfiguredCronJob("ConfigKey:Schedule")]` attribute for auto-discovery. Located in `Infrastructure/InputAdapters/Jobs/`.
 - **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/<Feature>/` (feature subfolders mirroring `Application/UseCases/`), auto-discovered via `InteractionsAssemblyMarker` — no manual registration. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
 - **Club XP activity kinds**: GeoGuessr's club activity feed labels each entry with a numeric
-  `type`. Since 2026-08-25 there are **two** 20 XP daily awards — the daily mission (type 1) and
-  playing the daily challenge / a duel (type 4) — so an XP amount no longer identifies
-  anything. `ClubActivityKindClassifier` (`Application/OutputPorts/GeoGuessr/`) is the only place
-  that decides; call `IsDailyMission` / `IsDailyChallenge` rather than comparing `XpReward`.
-  Amounts in the `ClubXp` config section are just the fallback for untyped entries.
+  `type`: 4 = daily challenge / duel (the streak, 20 XP), 5 = board mission (20 XP, credited to the
+  **claimer** only), 6 = board-clear bonus (100 XP, to whoever finished the board's last mission),
+  3 = club challenge (0 XP). Types 1/2 (daily/weekly mission) ended on 2026-09-23. Several sources
+  share an XP amount, so `ClubActivityKindClassifier` (`Application/OutputPorts/GeoGuessr/`) is the
+  only place that decides; call `IsDailyChallenge` / `IsBoardMission` / `IsBoardClearBonus` rather
+  than comparing `XpReward`. `ClubXp:UntypedXpFallback` only maps untyped entries (empty by default).
+- **Club mission board**: `GET /v4/missions/club/board` (and `/previous`) has no club id — it answers
+  for the club of the token's account, so it is always read through `CreateClient(clubId)` with that
+  club's own `NcfaToken`, via the cached `IClubMissionBoardReader` (it warns when no claimer belongs to
+  the club). Helpers on a mission are only user ids of whoever pressed "help out" — nothing proves they
+  contributed, so helps never count towards anything and are shown as unverified. The claim day comes
+  from the board's `you.nextDayAt` (`MissionBoard:ClaimResetTime*` is only the fallback).
+- **Weekly activity rules**: the check reads the activity feed for its window (last check → now,
+  capped by `ActivityChecker:MaxFeedLookback`) and judges it with `ActivityRules`/`ActivityRuleEvaluator`
+  (`Application/UseCases/ClubMemberActivity/Rules/`): per-kind minimum counts (`Requirements`, e.g.
+  6 streak days + 2 board missions) plus an optional minimum **rule XP** (`RuleXp`: excluded kinds and
+  per-week caps, so the board bonus and missions beyond 3 don't count). Targets scale down for members
+  who joined mid-week or were excused. Each new history snapshot records the interval's rule XP, and
+  averages (report, dashboard leaderboard, swap suggestions, MVP) use it, falling back to the raw XP
+  difference for older snapshots. Kind names in config are validated at start-up.
 - **Result type**: Use cases return `Result<T>` / `Error` (`Utilities/Result.cs`) instead of throwing for expected failures. `Error.Type` (`ErrorType.NotFound`, `Validation`, `Conflict`, `Forbidden`, `Unauthorized`, `Unexpected`) is mapped to HTTP status codes by the `ResultExtensions` middleware in `GeoClubBot.API/Middleware/`.
 - **AI assistant** (optional, `AI:Active`): retrieval-then-generation rather than tool-calling, because
   requiring tool support would exclude most free models. Ports live in `Application/OutputPorts/AI/`
@@ -167,11 +210,30 @@ API + Discord (controllers, slash command modules)
   `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy — but are sent
   to the embedder **inline**, so indexing never depends on the provider reaching this host. In the
   OpenRouter resilience pipeline, retry must stay *outside* the rate limiter (every attempt takes a
-  token); `OpenRouterResiliencePipelineTests` pins this. Answers can be rated (👍/👎 reaction, or a
-  message context menu for a written comment); a rated conversation is **copied** into
-  `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep never touches — that
-  copy is the only permanently stored conversation. See
+  token); `OpenRouterResiliencePipelineTests` pins this. The fallback router `openrouter/free` picks a
+  **random** free model (safety classifiers and 2B models included) and cannot exclude any, so chains
+  reach it only when too few vetted models qualify; every answer is screened
+  (`GuardrailVerdictDetector`, `IChatModelCatalog.IsUnfitToAnswer`) and a failed or unusable first
+  chain is retried once against untried models. Model citations are rewritten by `CitationResolver`
+  into one `[n]` numbering, pictures included. Retrieval fuses its per-vector searches client-side
+  (`KnowledgeHitFusion`: weighted RRF plus collapsing of identical texts) because Qdrant 1.15 cannot
+  weight RRF; the weights were measured on production — see the guide before changing them. Answers
+  can be rated (👍/👎 reaction, or a message context menu for a written comment); a rated conversation
+  is **copied** into `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep
+  never touches — that copy is the only permanently stored conversation. See
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
+- **Country challenges** (optional, `CountryChallenges:Enabled`): themed weekday challenges configured in
+  a hand-edited JSON file (`CountryChallengesConfig.example.json`) that is re-read on every run.
+  `CountryChallengePlanResolver` fills inherited values (built-in → file → challenge → pool entry) and
+  reports every problem with its path; a disabled challenge's problems are only warnings. Unknown JSON
+  properties are errors, never ignored. `CountryChallengeMessages` renders every text for both the run and
+  `/country-challenges-admin preview`, so keep them on one path. Allowed mentions are taken from the raw
+  templates, never the rendered text, so GeoGuessr nicknames cannot ping. Each run phase commits before
+  posting, and each is idempotent per day (unique `(ChallengeName, Date, Country)`, since `Picks` lets a challenge play several countries a day; `EvaluatedAt`; one leaderboard
+  post per date), which is what makes `post-now` safe to repeat. `results-now` evaluates every pending challenge ahead of
+  its due day; it and the runs share `CountryChallengeRunLock`. `ConfiguredCronJobAttribute` takes an
+  optional time-zone key for this job; every other job stays on UTC. See
+  [`Documentation/CountryChallengesGuide.md`](Documentation/CountryChallengesGuide.md).
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 
 ### DI Registration
@@ -191,13 +253,22 @@ API + Discord (controllers, slash command modules)
 ### External Integrations
 
 - **GeoGuessr API** (`https://www.geoguessr.com/api`): authenticated via `_ncfa` cookie token
-- **Discord** (Discord.Net 3.18.0): bot token, slash commands, role/channel management
+- **Discord** (Discord.Net 3.20.1): bot token, slash commands, role/channel management
 - **OpenRouter** (optional): chat *and* embeddings for the AI assistant, with the free model chosen
   automatically from whatever is available that day. The only external AI dependency.
 - **Qdrant** (optional): vector store for indexed guide content, using named `text`/`image` vectors
   merged with reciprocal-rank fusion. Both are gated behind the `AI:Active` flag — see
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md), which also explains the free-tier request
   allowance that shapes most of the design.
+
+## Branches and releases
+
+- Every pull request targets `dev` (`gh pr create --base dev`), hotfixes included. `master` only
+  receives `dev` through a release PR merged with a merge commit; releases are cut by pushing a
+  SemVer tag. The required **Release guard** check (`.github/workflows/release-guard.yml`) fails any
+  PR into `master` that would leave it different from `dev`, because `dev`'s linear history means
+  anything that reaches `master` another way conflicts every later release. Recovery steps:
+  *Branches and releases* in [`Documentation/DeveloperGuide.md`](Documentation/DeveloperGuide.md).
 
 ## C# Conventions
 

@@ -20,8 +20,8 @@ public partial class ActivityModule
         public Task LastDaysByNicknameAsync(
             [Autocomplete(typeof(MemberNicknameAutocompleteHandler))]
             [Summary(description: "The GeoGuessr nickname of the member")] string nickname,
-            [Summary(description: "How many days back to include (1-14, default 7)")]
-            [MinValue(1)] [MaxValue(14)] int days = 7) =>
+            [Summary(description: "How many days back to include (default 7)")]
+            [MinValue(1)] [MaxValue(60)] int days = 7) =>
             ExecuteAsync(
                 async ct =>
                 {
@@ -52,8 +52,8 @@ public partial class ActivityModule
         [SlashCommand("by-user", "Show a Discord user's activity over the last N days")]
         public Task LastDaysByUserAsync(
             IGuildUser user,
-            [Summary(description: "How many days back to include (1-14, default 7)")]
-            [MinValue(1)] [MaxValue(14)] int days = 7) =>
+            [Summary(description: "How many days back to include (default 7)")]
+            [MinValue(1)] [MaxValue(60)] int days = 7) =>
             ShowLastDaysForUserAsync(user, days);
 
         [UserCommand("Last 7 Days XP")]
@@ -86,17 +86,11 @@ public partial class ActivityModule
                 ephemeral: true,
                 failureMessage: "Failed to retrieve the activity (internal error). Please try again later. If the issue persists, please contact an admin.");
 
-        private static EmbedBuilder BuildLastDaysActivityEmbed(Entities.ClubMemberWeekActivity activity, string nickname, int days)
-        {
-            var embed = ActivityProgressFormatter.BuildActivityEmbed(activity, $"📅 {nickname}'s Activity — Last {days} Days");
-
-            if (activity.AllDaysCompleted)
-                embed.WithDescription($"🔥 Perfect — all {days} days completed!");
-
-            if (activity.JoinedThisWeek)
-                embed.WithFooter($"⭐ {nickname} joined the club on {activity.JoinedDateTime:MMM d}");
-
-            return embed;
-        }
+        private static EmbedBuilder BuildLastDaysActivityEmbed(Entities.ClubMemberActivitySummary activity, string nickname, int days) =>
+            ActivityProgressFormatter.BuildActivityEmbed(
+                activity,
+                $"📅 {nickname}'s Activity — Last {days} Days",
+                $"🔥 Perfect — streak kept on all {days} days!",
+                activity.JoinedInPeriod ? $"⭐ {nickname} joined the club on {activity.JoinedDateTime:MMM d}" : null);
     }
 }

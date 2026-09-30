@@ -8,7 +8,7 @@ using DomainReminder = Entities.DailyMissionReminder;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 
 /// <summary>
-/// Suggests the caller's own daily mission reminders so they pick one instead of pasting a raw GUID.
+/// Suggests the caller's own daily reminders so they pick one instead of pasting a raw GUID.
 /// The label is the local <c>"HH:mm (zone)"</c> (plus a message snippet when set); the option value
 /// is the reminder id.
 /// </summary>

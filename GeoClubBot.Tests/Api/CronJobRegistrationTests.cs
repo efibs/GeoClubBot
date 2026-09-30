@@ -19,6 +19,7 @@ namespace GeoClubBot.Tests.Api;
 /// job simply never fires, which is invisible until someone notices a missing daily message. That
 /// registration is also exactly what a Quartz major upgrade rewrites.
 /// </summary>
+[Collection(ConfiguredCronJobCollection.Name)]
 public sealed class CronJobRegistrationTests
 {
     [Fact]
@@ -46,10 +47,33 @@ public sealed class CronJobRegistrationTests
             (await scheduler.Exists(jobKey)).Should().BeTrue($"{type.Name} should be registered");
 
             var triggers = await scheduler.GetTriggersOfJob(jobKey);
-            triggers.Should().ContainSingle($"{type.Name} should have exactly one trigger")
-                .Which.Should().BeAssignableTo<ICronTrigger>()
-                .Which.CronExpressionString.Should().Be(attribute!.CronSchedule);
+            var trigger = triggers.Should().ContainSingle($"{type.Name} should have exactly one trigger")
+                .Which.Should().BeAssignableTo<ICronTrigger>().Subject;
+            trigger.CronExpressionString.Should().Be(attribute!.CronSchedule);
+            trigger.TimeZone.Should().Be(attribute.TimeZone, $"{type.Name} should run in its configured time zone");
         }
+    }
+
+    [Fact]
+    public async Task The_country_challenge_job_runs_in_the_configured_time_zone()
+    {
+        ConfiguredCronJobAttribute.Config = new ConfigurationBuilder()
+            .AddConfiguration(LoadApiSettings())
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["CountryChallenges:TimeZone"] = "Europe/Berlin" })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddQuartzModule();
+
+        await using var provider = services.BuildServiceProvider();
+        var scheduler = await provider.GetRequiredService<ISchedulerFactory>().GetScheduler();
+
+        var countryTrigger = (await scheduler.GetTriggersOfJob(new JobKey(nameof(CountryChallengeJob)))).Single();
+        var dailyTrigger = (await scheduler.GetTriggersOfJob(new JobKey(nameof(DailyChallengeJob)))).Single();
+
+        countryTrigger.Should().BeAssignableTo<ICronTrigger>().Which.TimeZone.Id.Should().Be("Europe/Berlin");
+        dailyTrigger.Should().BeAssignableTo<ICronTrigger>().Which.TimeZone.Should().Be(TimeZoneInfo.Utc,
+            "jobs that do not ask for a zone stay on UTC");
     }
 
     /// <summary>

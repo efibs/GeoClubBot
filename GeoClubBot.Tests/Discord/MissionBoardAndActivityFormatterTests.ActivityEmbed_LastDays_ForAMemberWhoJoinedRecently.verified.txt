@@ -1,0 +1,14 @@
+﻿Title: 📅 Alice's Activity — Last 14 Days
+Description: 
+[🏆 XP Earned] (inline)
+**120 XP**
+[🔥 Streak] (inline)
+**4 / 14** days
+[🎯 Club Missions] (inline)
+**2**
+[Progress]
+`16 17 18 19 20 21 22 23 24 25 26 27 28 29`
+⬛ ⬛ ⬛ ⬛ ⬛ ⬛ ⬛ ⬛ ⬛ ⬛ 🟩 🟩 🟩 🟩
+➖ ➖ ➖ ➖ ➖ ➖ ➖ ➖ ➖ ➖ ➖ ➖ 2️⃣ ➖
+Footer: ⭐ Alice joined the club on Sep 26
+🟩 streak kept · ⬛ not kept · digits: club missions finished that day

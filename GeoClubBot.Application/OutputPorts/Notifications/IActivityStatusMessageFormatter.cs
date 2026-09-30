@@ -11,10 +11,10 @@ public interface IActivityStatusMessageFormatter
 {
     /// <summary>
     /// Renders the first message of an activity-status update: a header with the club
-    /// name + XP threshold, followed by the first chunk of failed-requirement players.
+    /// name + requirements, followed by the first chunk of failed-requirement players.
     /// When <paramref name="firstChunk"/> is empty, the body shows a "None" indicator.
     /// </summary>
-    string FormatStatusUpdateHeader(IReadOnlyList<ClubMemberActivityStatus> firstChunk, string clubName, int minXP);
+    string FormatStatusUpdateHeader(IReadOnlyList<ClubMemberActivityStatus> firstChunk, string clubName, string requirements);
 
     /// <summary>
     /// Renders an additional chunk of failed-requirement players (i.e. the continuation

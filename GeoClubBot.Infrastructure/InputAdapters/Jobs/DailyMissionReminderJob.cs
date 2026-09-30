@@ -23,6 +23,6 @@ public partial class DailyMissionReminderJob(ISender mediator, ILogger<DailyMiss
         }
     }
 
-    [LoggerMessage(LogLevel.Error, "Failed to send daily mission reminders.")]
+    [LoggerMessage(LogLevel.Error, "Failed to send daily reminders.")]
     static partial void LogFailed(ILogger<DailyMissionReminderJob> logger, Exception ex);
 }

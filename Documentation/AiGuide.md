@@ -53,8 +53,9 @@ This is the single biggest operational constraint, so it is worth being blunt ab
 | under $10 | **50** |
 | $10 or more | **1000** |
 
-A question costs **two** requests (embedding the query, then generating the answer). Indexing a source
-costs one or two. At 50/day the bot answers roughly 10 questions and indexes a dozen sources — enough
+A question costs **two** requests (embedding the query, then generating the answer), and a third when
+the first models fail or answer with something that is not an answer and the question is retried
+(see [Model selection](#model-selection)). Indexing a source costs one or two. At 50/day the bot answers roughly 10 questions and indexes a dozen sources — enough
 to evaluate, not enough to run. **A one-time $10 purchase is effectively a prerequisite for real use.**
 
 Check which tier you are on:
@@ -86,7 +87,7 @@ worth knowing:
 |---|---|---|
 | `AI:OpenRouter:DailyRequestBudget` | 45 | Raise to ~950 after the $10 top-up |
 | `AI:OpenRouter:PreferredModelPrefixes` | `[]` | Pin a model family you trust, e.g. `["google/"]` |
-| `AI:OpenRouter:BlockedModelIds` | `[]` | Exclude a model that answers badly |
+| `AI:OpenRouter:BlockedModelIds` | `[]` | Exclude a model that answers badly, or one `/ai status` lists as excluded until restart |
 | `AI:Ingestion:MaxDailyBudgetPercent` | 60 | Share of the allowance indexing may spend |
 | `AI:Ingestion:MaxSourcesPerRun` | 25 | Raise after the $10 top-up — a run stops here whatever the allowance |
 | `AI:Ingestion:MetaLibrarySheetId` | empty | Google Sheets id of a community library to sync |
@@ -122,15 +123,54 @@ Free models on OpenRouter appear and are retired continuously — many carry an 
 so no model id is pinned. A background job reads the roster every six hours and ranks the free models
 by context size, distance from any announced retirement, capability headroom and release age.
 
-Each request names `AI:OpenRouter:ChainLength` models — three by default — and OpenRouter fails over
-between them server-side within a single call. That number counts the **whole** chain, because it is
-what the provider validates: OpenRouter rejects a request naming more than three with a plain
-`400`, and the adapter trims to three regardless of configuration. The chain always ends at
-`openrouter/free`, a router that picks a free model itself — so even an empty or unreachable roster
-still produces an answer, and the router is the entry that survives any trim.
+Each request names `AI:OpenRouter:ChainLength` vetted models — three by default — and OpenRouter
+fails over between them server-side within a single call. OpenRouter rejects a request naming more
+than three with a plain `400`, so the catalog clamps the chain to three whatever the configuration
+says. The models a request names are then exactly the ones it sends, which matters below.
 
 A model that fails is demoted temporarily rather than blocked, so a transient outage does not
-blacklist the best model.
+blacklist the best model. OpenRouter reports only the model that finally answered, so every entry
+ahead of it in the chain must have failed. Those entries are demoted too, and the next question starts
+with a model that is working. Nothing is inferred from an answering id that cannot be matched to the
+chain or the roster: a model reported under a slightly different name must never cost the model that
+actually answered its rank.
+
+#### The fallback router, and why it is a last resort
+
+`openrouter/free` is a router: it picks a free model **at random** from everything that supports the
+request's features, and there is no parameter to exclude any. It used to end every chain. In the
+first beta-test feedback, every answer from a model that should never have been asked came through
+it, after the ranked models ahead of it had failed upstream:
+- a safety classifier answering "User Safety: safe", three times;
+- a 2.6B model calling a Douglas fir a pine;
+- a small reasoning model inventing script features in a screenshot.
+
+The router now appears only when too few vetted models qualify to fill the chain, for example a
+roster that is empty because it could not be read. It is used at most once per question.
+
+#### Screening and the one retry
+
+Every completion is screened before it is used. An answer is discarded when:
+- its text is a safety classifier's verdict and nothing else, such as `User Safety: safe` (NVIDIA),
+  `Safety: Safe` / `Categories: None` (Qwen3Guard), `safe` / `unsafe` + `S1` (Llama Guard), or
+  WildGuard's `Harmful request: no`. A real answer that merely mentions road safety is never caught;
+  or
+- the model that gave it is one the roster says is not a chat model, or one that is blocked.
+
+A classifier caught by its answer rather than its description is then excluded **until restart**.
+`/ai status` lists it, and the log names it at Warning, as a candidate for `BlockedModelIds`.
+
+When the first chain fails, or its answer is discarded, the question is retried once against models
+it has not tried yet. A chain whose first model gave a verdict still has two untried models, so they
+stay in play. The retry claims its own request from the daily allowance. It is skipped when:
+- the provider could not be reached, or rate-limited every model: all models sit behind the same
+  provider and the same key;
+- the provider refused the request as sent (a 4xx other than 408 or 429, such as a replayed
+  screenshot whose Discord link has expired): it would fail the same way against any model. For the
+  same reason the models are not demoted for it;
+- the first attempt was slow: a struggling provider would only double the wait;
+- no untried model remains: this costs nothing, because the retry chain is read before its request is
+  claimed.
 
 **Not every free entry is a chat model.** OpenRouter lists music and image generators on the same
 roster as chat models. They are billed per second of audio or per picture rather than per token, so
@@ -149,41 +189,77 @@ request succeeds and the completion is valid. The only signal the provider gives
 a model whose description says **guardrail**, **content safety** or **safeguard** is skipped. Measured
 against the full 446-model roster those three terms catch all four classifiers and nothing else; the
 rule is kept narrow on purpose, since a missed guardrail costs one odd answer somebody can thumbs-down
-while a wrongly excluded model is silently never used again. `AI:OpenRouter:BlockedModelIds` is the
-manual override for anything that slips through.
+while a wrongly excluded model is silently never used again. A classifier the description misses is
+caught by its answer instead (see screening above), and `AI:OpenRouter:BlockedModelIds` keeps it out
+for good.
 
 ### Citations
 
-Excerpts are numbered in the prompt, and the model cites them inline as `[1]`. A bare number is
-useless to a reader, so every marker the answer actually uses is resolved back to its excerpt and
+Excerpts are numbered in the prompt, and the model cites them inline as `[2]`. An excerpt that comes
+with a picture is marked `(picture)` and cited the same way; citing it attaches the picture. A bare
+number is useless to a reader, so every citation in the answer is resolved back to its excerpt and
 listed under the reply as a named, clickable link:
 
 ```
-Roads starting with MR are exclusive to Eswatini [1].
+Roads starting with MR are exclusive to Eswatini [1], and the MR9 is lined with pine [2].
 
 -# [1] [Eswatini > Identifying](https://www.plonkit.net/eswatini#m1jr)
+-# [2] 🖼️ [Eswatini > Regional clues](https://www.plonkit.net/eswatini#1chu)
 ```
 
 Masked links work here because Discord honours them in what a **bot** posts through the API; it
 blocks them in messages people type, to stop a friendly label hiding a hostile URL. The number stays
 outside the link so it still anchors the `[1]` in the prose.
 
-Image citations work differently. `[image 2]` is stripped from the text entirely and the picture is
-attached as an embed linked to its guide, so the image itself is the citation.
+**Numbers are the reader's, not the retriever's.** The model cites excerpts by retrieval rank, which
+reads as `[6] [1] [4]`. So citations are renumbered in order of first mention, and the list under the
+answer always runs 1, 2, 3. A cited picture takes its place in that sequence: it is listed with 🖼️,
+attached as an embed titled with the same number, and linked to its guide. Up to
+`AI:MaxImagesInReply` pictures are attached; any beyond that are still listed. Two chunks of one
+document are one link and share a number. Two pictures from one album are two attachments with two
+numbers.
+
+**Models cite in every style going, and all of them are understood**: `[2]`, `[image 2]`,
+`**[image 2]**`, `【image 2】` and `【2】`, `[1, 3, 5]`, `[7-8]`, `[^2]`, `【4:0†source】`, and a citation
+put in backticks. Each is rewritten as plain `[n]`.
+- Parentheses or emphasis holding only citations go with them.
+- A line holding only citations is dropped, since the list already says it.
+- A number that was never offered is removed along with the space before it.
+- Markdown links, `[2019]` and code are left alone.
+
+The previous handling knew two styles, and deleted image markers outright. Beta testers were shown
+what that left: "see the plate in ****", "(, )", and a literal "image 1" with no picture.
+
+Answers replayed as conversation history lose their citations. Their numbers pointed at an earlier
+turn's excerpts, and the new turn numbers its own from one again.
 
 **Attribution does not depend on the model complying.** Free models cite inconsistently — the same
-question cites on one run and not the next — so when an answer credits nothing at all, neither a
-marker nor an image, the guides it was given are credited on its behalf:
+question cites on one run and not the next — so when an answer cites nothing at all, the guides it
+was given are credited on its behalf:
 
 ```
--# Related guides:
+-# This answer cites no guide. Closest matches:
 -# [Eswatini > Identifying](https://www.plonkit.net/eswatini#m1jr)
 ```
 
-These carry no numbers, because there is no marker in the prose for one to anchor, and they are
-labelled *related* rather than *used*: what the model did with the excerpts is unknown, and claiming
-it drew on them would be inventing a citation rather than supplying a missing one. When retrieval
-found nothing, nothing is credited.
+These carry no numbers, because there is no marker in the prose for one to anchor. The heading says
+outright that they are not backing for the answer. What the model did with the excerpts is unknown,
+and a reader otherwise takes the list for sources ("I can't confirm if it is actually correct since
+there is no source"). When retrieval found nothing, nothing is credited.
+
+#### What the model is told
+
+The system prompt (`AiPromptBuilder.SystemPrompt`) carries one instruction per failure beta testers
+reported:
+- **One citation style**, and no source list of its own.
+- **It cannot see the guide pictures.** It knows only their text, so it may say what a picture is for
+  but not describe it. "Describe what it shows" had it inventing their contents.
+- **It must describe only what is visible in a user's screenshot**, and say when a clue can't be made
+  out.
+- **A guide's region is not the user's.** A cactus found in a California guide turned into an answer
+  about California.
+- **Answer the whole question.** Fill the gaps the guides leave from general knowledge, and say which
+  part that is. Answers had stopped at one guide's scope ("Khasi pines are also found outside India").
 
 ### The knowledge index
 
@@ -208,6 +284,42 @@ relevance — fusion compares *positions*, not scores, which is what lets an ima
 
 The practical upshot: **an image is found through its caption**, so extractors keep images attached to
 the prose that describes them.
+
+#### How the lists are weighted, and why (measured on production)
+
+A written question runs two searches: against chunk text, and against image pixels. A screenshot adds
+a third, against image pixels. The lists are fused here (`KnowledgeHitFusion`) rather than by Qdrant,
+because they must count differently and Qdrant 1.15 cannot weight them. The weights came from
+replaying the beta testers' 18 written questions read-only against the production index. That's
+144 top-8 slots. A slot counts as on-target when its text is about what the question asks:
+
+| Retrieval | On-target | Picture found only by its pixels | Same text twice |
+|---|---|---|---|
+| Before: both lists at full weight | 73 | 53 | 21 |
+| Question-against-pixels at **0.25**, copies collapsed | **88** | 13 | 0 |
+| Question-against-pixels left out | 97 | 0 | 0 |
+
+- **Pixel-only pictures are weighted to a quarter.** A picture found only by its pixels has a caption
+  unrelated to the question, or it would have ranked by text, so the model can say nothing about it.
+  At full weight such pictures took over a third of the slots. On "where can I find Khasi pines?"
+  three pictures of Ugandan forest pushed out the two Vietnam guides that answer the rest of the
+  question, which is exactly what the tester reported as missing.
+- **Not zero, because agreement still counts.** "White car long antenna" ranks only 39th by its text
+  but first by its picture, and together that makes it the answer. Dropping the list would lose it.
+  A screenshot's own search keeps full weight: for "where is this?" it is the signal.
+- **The same text is offered once.** Two authors' copies of one guide, or one paragraph captioning
+  several pictures, took up to three of eight slots. When one copy carries a picture, that copy is
+  the one kept, so the model can still attach it.
+- **Searches are exact, not approximate.** The approximate index missed the chunk that answers "is
+  pampa's grass a real meta?". It scored 0.372 against a tenth place of 0.359, yet was not among the
+  first 300 returned. A full scan of the 35k points costs 22 ms for both lists on the production
+  server, against 9 ms, which a question that then spends seconds with the model does not notice.
+  Exact search alone changed little in the top 8 overall; it removes misses like that one.
+
+To measure a change to any of this, re-run the replay rather than reasoning about it:
+`Tools/GeoClubBot.RetrievalProbe`'s `compare` counts these same columns for any feedback export, and
+`replay` shows what every rated question is offered today
+([README](../Tools/GeoClubBot.RetrievalProbe/README.md)).
 
 ### What goes into a vector
 
@@ -237,6 +349,17 @@ of chunks would be thousands of requests from an allowance of a few dozen a day.
 `EmbeddingTextBuilder.RecipeVersion` is folded into each source's content hash, so changing how the
 header is composed re-indexes everything on its next scheduled run instead of silently leaving old
 vectors in place.
+
+**Link targets are dropped.** A quarter of PlonkIt's tips link example locations and species pages.
+In those tips the URLs are a fifth of the characters, and random strings like
+`maps.app.goo.gl/szUNXBWMYPjJ6jMA6` say nothing a question would. The extractor keeps only the link
+text. Measured against the embedding model, that raised each linked tip's similarity to the question
+it answers by 0.04–0.06, which is enough to lift "white car long antenna" from 39th to about 8th. It
+also shortens the excerpts the model reads, and nothing downstream needed the URLs.
+
+Only PlonkIt carries such links, so only PlonkIt pages re-index. Their chunk text changed, so each
+page is re-embedded when its 14-day re-check comes due: about 170 text requests and 170–250 image
+requests in all. `/ai ingest source-type: plonkit force: true` does it sooner.
 
 ### Conversations
 
@@ -481,10 +604,13 @@ runs re-embed them.
   around 2 KB; the zip export carrying its images is around 1.5 MB, and a slide deck about 7 MB. The
   heavier export is only fetched when images can actually be served, and the nightly job is paced for
   it — but a full re-index moves hundreds of megabytes rather than a few.
-- **A strange answer may be the model, not the bot.** Free models vary wildly, and one that answers
-  a greeting with something that reads like a system message is usually a classifier or a
-  mis-tuned model rather than a bug. The footer names it, and 👎 records it — check
-  `/ai feedback` for a model with a lopsided split before assuming the pipeline is at fault.
+- **A strange answer may be the model, not the bot.** Free models vary wildly. Screening catches a
+  safety classifier's verdict, not a weak model's weak answer. The footer names the model and 👎
+  records it — check `/ai feedback` for a model with a lopsided split before assuming the pipeline is
+  at fault.
+- **The model cannot see the guide pictures it attaches.** It is given only their text, so it says what
+  a picture is for rather than what is in it. Sending the pictures themselves would cost roughly 1800
+  tokens each, against context windows free models keep small.
 - **Answer quality varies with whatever is free today.** Auto-selection optimises for availability,
   not quality. Use `PreferredModelPrefixes` to steer it, and the model named in each answer's footer
   to work out what to steer towards.
@@ -507,9 +633,13 @@ runs re-embed them.
 | Bot is entirely offline after enabling AI | Same, but the intent *was* requested — gateway close code 4014 |
 | "I'm out of free AI requests for today" | Daily allowance spent; resets 00:00 UTC |
 | `/ai status` shows 0 indexed chunks | Nothing indexed yet — run `/ai sync-sources` then `/ai ingest` |
-| Answers ignore the guides | Check `/ai search` first: it costs one request and shows what retrieval returns |
+| Answers ignore the guides | Check `/ai search` first: it costs one request and shows what retrieval returns. For a whole feedback export, `Tools/GeoClubBot.RetrievalProbe replay` does the same for every rated answer |
 | Guide images show as broken in Discord | `AI:ImageRelay:PublicBaseUrl` unset, wrong, or not reachable from the public internet |
-| Catalog source is `None` | The model roster could not be read; the fallback router is in use |
+| Catalog source is `None` | The model roster could not be read; the fallback router is in use, and its answers are screened |
+| An answer reads `User Safety: safe` | A safety classifier answered and screening did not recognise the format — add the model named in the footer to `AI:OpenRouter:BlockedModelIds` |
+| Log: "… is excluded until restart" | A model answered with a classifier's verdict and was caught by its answer; `/ai status` lists it. Add it to `AI:OpenRouter:BlockedModelIds` to keep it out after a restart |
+| "The AI model I reached couldn't give a real answer" | Both attempts came back as something that is not an answer; the log names the models |
+| Text or a source label shows `&##128128;` where an emoji belongs | Indexed before emoji were decoded correctly (HtmlAgilityPack's `DeEntitize` cannot decode them; `HtmlText.Decode` replaced it). The guide's text changed, so it re-embeds at its next re-check; `/ai ingest force: true` does it sooner |
 | `/ai ingest` stopped early, "kept rate-limiting" | Something else is using the same API key — check for a dev instance with the production key |
 | Indexing is slow even after the $10 top-up | `MaxSourcesPerRun` caps each run at 25 sources; raise it |
 | Image search misses pictures that should be indexed | Run `/ai backfill-images` once; images lost before failed batches were retried are re-queued |

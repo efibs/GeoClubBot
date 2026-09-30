@@ -1,6 +1,7 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
+using GeoClubBot.Tests.TestBuilders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -30,8 +31,9 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
     private static ulong NewDiscordId() => (ulong)Random.Shared.NextInt64(1_000_000_000_000_000L, long.MaxValue);
 
     /// <summary>
-    /// Host whose main club is <paramref name="mainClubId"/> and whose default per-check XP target is 500.
-    /// Passing <paramref name="averageXpTopN"/> also switches on the average-XP rollup phase.
+    /// Host whose main club is <paramref name="mainClubId"/> and whose weekly requirements are the
+    /// club's: 6 streak days and 2 board missions. Passing <paramref name="averageXpTopN"/> also
+    /// switches on the average-XP rollup phase.
     /// </summary>
     private MediatorTestHost CreateActivityHost(
         Guid mainClubId,
@@ -43,7 +45,6 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs = [new GeoGuessrClubEntry { ClubId = mainClubId, NcfaToken = "x", IsMain = true }],
             }));
@@ -51,7 +52,13 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
             {
                 Schedule = "0 0 0 * * ?",
                 TextChannelId = 1,
-                MinXP = 500,
+                MinXP = 0,
+                Requirements = new Dictionary<string, int> { ["DailyChallengeOrDuel"] = 6, ["BoardMission"] = 2 },
+                RuleXp = new RuleXpConfiguration
+                {
+                    ExcludedKinds = ["BoardClearBonus"],
+                    MaxCountedPerWeek = new Dictionary<string, int> { ["BoardMission"] = 3 }
+                },
                 GracePeriodDays = 0,
                 MaxNumStrikes = 3,
                 HistoryKeepTimeSpan = TimeSpan.FromDays(60),
@@ -90,8 +97,21 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
         host.Mock<IGeoGuessrClientFactory>().CreateClient(clubId).Returns(client);
     }
 
+    private static void ArrangeFeed(MediatorTestHost host, Guid clubId, params ReadClubActivitiesItemDto[] activities) =>
+        host.Mock<IGeoGuessrActivityReader>()
+            .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(activities);
+
+    /// <summary>A week of the streak kept on <paramref name="streakDays"/> days plus <paramref name="missions"/> board missions.</summary>
+    private static IEnumerable<ReadClubActivitiesItemDto> Week(string userId, int streakDays, int missions)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return Enumerable.Range(0, streakDays).Select(i => ClubActivities.Challenge(userId, now.AddDays(-6).AddHours(i * 20)))
+            .Concat(Enumerable.Range(0, missions).Select(i => ClubActivities.BoardMission(userId, now.AddDays(-5).AddHours(i))));
+    }
+
     [Fact]
-    public async Task CheckGeoGuessrPlayerActivity_StrikesTheMemberBelowTarget_AndSpareTheActiveOne()
+    public async Task CheckGeoGuessrPlayerActivity_StrikesTheMemberWhoMissedARequirement_AndSparesTheActiveOne()
     {
         var clubId = Guid.NewGuid();
         var active = (userId: NewUserId(), nickname: NewNickname());
@@ -113,10 +133,16 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
         }
 
         using var host = CreateActivityHost(clubId);
-        // Active gained 700 XP (>= 500 target); inactive only 100 XP (< 500 target → strike).
         ArrangeRoster(host, clubId,
-            BuildMemberDto(active.userId, active.nickname, xp: 1200),
-            BuildMemberDto(inactive.userId, inactive.nickname, xp: 600));
+            BuildMemberDto(active.userId, active.nickname, xp: 700),
+            BuildMemberDto(inactive.userId, inactive.nickname, xp: 780));
+        // Active kept the streak and did two missions; inactive has more raw XP (board bonuses)
+        // but only one mission of their own → strike.
+        ArrangeFeed(host, clubId, [
+            .. Week(active.userId, streakDays: 6, missions: 2),
+            .. Week(inactive.userId, streakDays: 7, missions: 1),
+            ClubActivities.BoardBonus(inactive.userId, DateTimeOffset.UtcNow.AddDays(-2)),
+        ]);
 
         var statuses = await host.SendAsync(new CheckGeoGuessrPlayerActivityCommand(clubId));
 
@@ -125,6 +151,7 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
         var inactiveStatus = statuses.Single(s => s.UserId == inactive.userId);
         inactiveStatus.TargetAchieved.Should().BeFalse();
         inactiveStatus.NumStrikes.Should().Be(1);
+        inactiveStatus.FailedRequirementsText.Should().Be("missions 1/2");
 
         await using var read = fixture.CreateDbContext();
         var inactiveStrikes = await read.ClubMemberStrikes.AsNoTracking()
@@ -139,6 +166,15 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
             .CountAsync(h => h.UserId == inactive.userId);
         inactiveHistoryCount.Should().Be(2);
 
+        // ...and carries what the member did in the week, so later averages use rule XP.
+        var newest = await read.ClubMemberHistoryEntries.AsNoTracking()
+            .Where(h => h.UserId == inactive.userId)
+            .OrderByDescending(h => h.Timestamp)
+            .FirstAsync();
+        newest.StreakDays.Should().Be(7);
+        newest.BoardMissionCount.Should().Be(1);
+        newest.RuleXp.Should().Be(160, "7 streak days and 1 mission; the board bonus is not rule XP");
+
         // The check must advance the club's recorded check time to ~now.
         var club = await read.Clubs.AsNoTracking().SingleAsync(c => c.ClubId == clubId);
         club.LatestActivityCheckTime.Should().NotBeNull();
@@ -147,7 +183,7 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
         await host.Mock<IActivityStatusMessageSender>()
             .Received()
             .SendActivityStatusUpdateMessageAsync(
-                Arg.Any<List<ClubMemberActivityStatus>>(), Arg.Any<string>(), 500, Arg.Any<CancellationToken>());
+                Arg.Any<List<ClubMemberActivityStatus>>(), Arg.Any<string>(), "streak 6 · missions 2", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -267,12 +303,18 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
         }
 
         using var host = CreateActivityHost(clubId, averageXpTopN: 1, averageXpHistoryDepth: 2);
-        // Roster XP 320 → the interval closing with this check (T-0) is worth 120 XP.
-        ArrangeRoster(host, clubId, BuildMemberDto(member.userId, member.nickname, xp: 320));
+        // Roster XP 420 (+220 raw), but the feed shows 6 streak days = 120 rule XP plus a 100 XP board
+        // bonus, which rule XP leaves out → the interval closing with this check (T-0) is worth 120.
+        ArrangeRoster(host, clubId, BuildMemberDto(member.userId, member.nickname, xp: 420));
+        ArrangeFeed(host, clubId, [
+            .. Week(member.userId, streakDays: 6, missions: 0),
+            ClubActivities.BoardBonus(member.userId, DateTimeOffset.UtcNow.AddDays(-1)),
+        ]);
 
         await host.SendAsync(new CheckGeoGuessrPlayerActivityCommand(clubId));
 
-        // Average over the last 2 intervals = (120 + 140) / 2 = 130 — NOT (140 + 60) / 2 = 100.
+        // Average over the last 2 intervals = (120 + 140) / 2 = 130 — NOT (140 + 60) / 2 = 100, and
+        // not (220 + 140) / 2 with the bonus. Older snapshots without rule XP use the raw difference.
         await host.Mock<IActivityStatusMessageSender>()
             .Received()
             .SendAverageXpMessageAsync(

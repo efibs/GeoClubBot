@@ -23,8 +23,11 @@ public interface IGeoGuessrApi
     [Get("/v4/clubs/{clubId}/activities")]
     Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, [Query] ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default);
 
-    [Get("/v4/missions")]
-    Task<DailyMissionsResponseDto> ReadDailyMissionsAsync(CancellationToken cancellationToken = default);
+    [Get("/v4/missions/club/board")]
+    Task<ClubMissionBoardSnapshotDto> ReadClubMissionBoardAsync(CancellationToken cancellationToken = default);
+
+    [Get("/v4/missions/club/board/previous")]
+    Task<ClubMissionBoardSnapshotDto?> ReadPreviousClubMissionBoardAsync(CancellationToken cancellationToken = default);
 
     [Get("/v4/ranked-system/progress/{userId}")]
     Task<RankedProgressResponseDto> ReadRankedProgressOfUserAsync(string userId, CancellationToken cancellationToken = default);

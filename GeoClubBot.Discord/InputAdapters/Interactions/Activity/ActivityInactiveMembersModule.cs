@@ -1,7 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
-using GeoClubBot.Discord.InputAdapters.Interactions.DailyMissionStatistics;
+using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using UseCases.UseCases.InactiveMembers;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -10,7 +10,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 // so this subcommand is admin-only without any extra attribute.
 public partial class ActivityModule
 {
-    [SlashCommand("inactive-members", "List today's club members who are missing a daily mission or daily challenge")]
+    [SlashCommand("inactive-members", "List members who haven't kept their streak today or claimed a club mission")]
     public Task InactiveMembersAsync(
         [Summary(description: "Restrict to one club (default: the main club)")]
         [Autocomplete(typeof(ClubAutocompleteHandler))] string? club = null) =>

@@ -19,48 +19,63 @@ public sealed class InactiveMembersFormatterTests
 
     private static TodaysInactiveMembers BuildReport(
         int totalMembers,
-        IReadOnlyList<InactiveMember>? missionInactive = null,
-        IReadOnlyList<InactiveMember>? challengeInactive = null) =>
+        IReadOnlyList<InactiveMember>? challengeInactive = null,
+        IReadOnlyList<InactiveMember>? claimInactive = null,
+        int? freeMissions = 5) =>
         new(
             ClubId: Guid.Parse("11111111-1111-1111-1111-111111111111"),
             ClubName: "Awesome Club",
             Day: Day,
             TotalMembers: totalMembers,
-            MissionInactive: missionInactive ?? [],
-            ChallengeInactive: challengeInactive ?? []);
+            ChallengeInactive: challengeInactive ?? [],
+            ClaimInactive: claimInactive,
+            FreeMissions: freeMissions);
 
     [Fact]
     public Task BuildEmbed_ListsInactiveMembers_WithAndWithoutLinkedDiscordAccounts()
     {
         var report = BuildReport(
             totalMembers: 5,
-            missionInactive:
-            [
-                new InactiveMember("Alpha", DiscordUserId: 111111111111111111UL),
-                new InactiveMember("Bravo", DiscordUserId: null),
-                new InactiveMember("Charlie", DiscordUserId: 222222222222222222UL)
-            ],
             challengeInactive:
             [
                 new InactiveMember("Bravo", DiscordUserId: null),
                 new InactiveMember("Delta", DiscordUserId: 333333333333333333UL)
+            ],
+            claimInactive:
+            [
+                new InactiveMember("Alpha", DiscordUserId: 111111111111111111UL),
+                new InactiveMember("Bravo", DiscordUserId: null),
+                new InactiveMember("Charlie", DiscordUserId: 222222222222222222UL)
             ]);
 
         return Verify(RenderEmbed(InactiveMembersFormatter.BuildEmbed(report).Build()));
     }
 
     [Fact]
-    public Task BuildEmbed_WithOnlyOneAwardOutstanding_StillShowsBothSections()
+    public Task BuildEmbed_WithOnlyTheStreakOutstanding_StillShowsBothSections()
     {
-        // Everyone did the daily mission but two members skipped the daily challenge - the whole
-        // point of splitting the report in two.
+        // Everyone claimed a mission but two members haven't played yet - the whole point of
+        // splitting the report in two.
         var report = BuildReport(
             totalMembers: 4,
             challengeInactive:
             [
                 new InactiveMember("Alpha", DiscordUserId: 111111111111111111UL),
                 new InactiveMember("Bravo", DiscordUserId: null)
-            ]);
+            ],
+            claimInactive: []);
+
+        return Verify(RenderEmbed(InactiveMembersFormatter.BuildEmbed(report).Build()));
+    }
+
+    [Fact]
+    public Task BuildEmbed_WhenTheBoardCannotBeRead_SaysSo()
+    {
+        var report = BuildReport(
+            totalMembers: 2,
+            challengeInactive: [new InactiveMember("Alpha", DiscordUserId: null)],
+            claimInactive: null,
+            freeMissions: null);
 
         return Verify(RenderEmbed(InactiveMembersFormatter.BuildEmbed(report).Build()));
     }
@@ -68,7 +83,7 @@ public sealed class InactiveMembersFormatterTests
     [Fact]
     public Task BuildEmbed_WithNoInactiveMembers_CelebratesFullCompletion()
     {
-        var report = BuildReport(totalMembers: 3);
+        var report = BuildReport(totalMembers: 3, claimInactive: []);
 
         return Verify(RenderEmbed(InactiveMembersFormatter.BuildEmbed(report).Build()));
     }

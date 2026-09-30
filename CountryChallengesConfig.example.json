@@ -1,0 +1,87 @@
+/*
+  Example country challenge file. Copy it to CountryChallengesConfig.json (or wherever
+  CountryChallenges:ConfigurationFilePath points), replace the ids and map ids, and check it with
+  /country-challenges-admin preview. The bot re-reads the file on every run, so no restart is needed.
+
+  Everything except ChannelId and the challenges is optional; a value set on a challenge overrides the
+  one at the top of the file. Documentation/CountryChallengesGuide.md describes every setting.
+*/
+{
+  // Default channel for the announcements, the results and the leaderboard.
+  "ChannelId": 123456789,
+
+  // GeoGuessr settings of every challenge. TimeLimit is in seconds per round; 0 means no limit.
+  "Settings": {
+    "TimeLimit": 120,
+    "ForbidMoving": false,
+    "ForbidRotating": false,
+    "ForbidZooming": false
+  },
+
+  "Announcement": {
+    // The day's message. {{challenges}} is replaced by one Entry per challenge of the day.
+    "Message": "{{mentions}}\n# :earth_africa: {{day}}'s country challenges\n{{challenges}}",
+    "Entry": "### {{flag}} {{name}}\n**{{country}}** · {{settings}}\n{{link}}",
+    // Pinged by {{mentions}}. A role only pings if it is mentionable (or the bot may mention all roles).
+    "MentionRoleIds": [ 123456789 ],
+    "Thread": {
+      "Enabled": true,
+      "Name": "{{names}} · {{date:dd.MM.}}",
+      // OneHour, OneDay, ThreeDays or OneWeek
+      "AutoArchive": "OneDay"
+    }
+  },
+
+  "Results": {
+    // Evaluated this many days after the challenge was posted.
+    "AfterDays": 1,
+    "Top": 10,
+    "Message": "# :trophy: Country challenge results\n{{results}}",
+    "Entry": "### {{flag}} {{name}} · {{country}}\n{{ranking}}",
+    // Leaderboard points for 1st, 2nd, 3rd, ...
+    "Points": [ 3, 2, 1 ],
+    // Roles for 1st, 2nd, 3rd, ... taken from the previous holders. Empty: no roles.
+    "RoleIds": []
+  },
+
+  "Leaderboard": {
+    // Changing the season starts a fresh leaderboard; the old points stay stored.
+    "Season": "Season 1",
+    "Days": [ "Monday" ],
+    "Top": 15,
+    "Message": "# :bar_chart: Country challenge leaderboard · {{season}}\n{{leaderboard}}"
+  },
+
+  "Challenges": [
+    {
+      "Name": "Mongolia Monday",
+      "Days": [ "Monday" ],
+      "Country": { "Name": "Mongolia", "Code": "MN", "MapId": "replace-with-map-id", "MapName": "Mongolia" }
+    },
+    {
+      "Name": "Argentina Friday",
+      "Days": [ "Friday" ],
+      "Country": { "Name": "Argentina", "Code": "AR", "MapId": "replace-with-map-id" },
+      // NMPZ for this one only.
+      "Settings": { "ForbidMoving": true, "ForbidRotating": true, "ForbidZooming": true }
+    },
+    {
+      "Name": "Indonesia Friday",
+      "Days": [ "Friday" ],
+      "Country": { "Name": "Indonesia", "Code": "ID", "MapId": "replace-with-map-id" }
+    },
+    {
+      "Name": "Small Country Sunday",
+      "Days": [ "Sunday" ],
+      "Entry": "### {{flag}} Small Country Sunday\nThis week's country: **{{country}}** · {{settings}}\n{{link}}",
+      // Every country is played once, in random order, before any comes round again.
+      "Pool": [
+        { "Name": "Andorra", "Code": "AD", "MapId": "replace-with-map-id" },
+        { "Name": "Luxembourg", "Code": "LU", "MapId": "replace-with-map-id" },
+        { "Name": "Malta", "Code": "MT", "MapId": "replace-with-map-id", "Settings": { "TimeLimit": 90 } },
+        { "Name": "Monaco", "Code": "MC", "MapId": "replace-with-map-id" },
+        { "Name": "San Marino", "Code": "SM", "MapId": "replace-with-map-id" }
+      ]
+    }
+  ]
+}

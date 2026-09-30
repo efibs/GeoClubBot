@@ -36,9 +36,15 @@ public static class ChatModelSelector
     private static readonly TimeSpan ExpiryComfortHorizon = TimeSpan.FromDays(60);
 
     /// <summary>
-    /// Builds the model chain for one request: the best candidates in priority order, always ending
-    /// with <see cref="ChatModelSelectionOptions.FallbackModelId"/>. The caller sends the first entry
-    /// as <c>model</c> and the whole list as <c>models</c>, letting the provider fail over server-side.
+    /// Builds the model chain for one request: the best vetted candidates in priority order. The caller
+    /// sends the first entry as <c>model</c> and the whole list as <c>models</c>, letting the provider
+    /// fail over server-side.
+    ///
+    /// <see cref="ChatModelSelectionOptions.FallbackModelId"/> only fills slots no vetted model can.
+    /// It used to end every chain, and every answer from a safety classifier or a 2B model in the
+    /// beta-test feedback came through it after the ranked models had failed upstream: it picks at
+    /// random and cannot be told to avoid anything. So it is appended only when the roster runs short,
+    /// and never once it has been tried — which means a retry's chain can come back empty.
     /// </summary>
     /// <param name="failurePenalties">
     /// Per-model penalty in [0, 1] from recent upstream failures, so a model that just errored is
@@ -57,20 +63,102 @@ public static class ChatModelSelector
 
         var ranked = Rank(roster, requirements, options, failurePenalties, nowUtc);
 
-        // ChainLength counts the whole chain, fallback included. Providers cap how many models a
-        // single request may name — OpenRouter rejects more than three outright — so the number that
-        // reaches the wire is the one that has to be configurable, not the number before the router
-        // is appended.
+        // ChainLength counts the whole chain, because providers cap how many models a single request
+        // may name — OpenRouter rejects more than three outright — so the number that reaches the wire
+        // is the one that has to be configurable.
+        var slots = Math.Max(1, options.ChainLength);
+
         var chain = ranked
-            .Take(Math.Max(0, options.ChainLength - 1))
+            .Take(slots)
             .Select(candidate => candidate.Id)
             .ToList();
 
-        // The fallback router is always reachable, and must never appear twice.
-        chain.RemoveAll(id => string.Equals(id, options.FallbackModelId, StringComparison.OrdinalIgnoreCase));
-        chain.Add(options.FallbackModelId);
+        if (chain.Count < slots && !IsExcluded(options.FallbackModelId, BuildExclusions(requirements)))
+        {
+            chain.Add(options.FallbackModelId);
+        }
 
         return chain;
+    }
+
+    /// <summary>
+    /// Whether a model must never be trusted with an answer, however it came to be asked. Eligibility
+    /// applies the same rules before asking; this exists for the router's picks, which bypass
+    /// eligibility entirely, so its answers can be screened after the fact.
+    /// </summary>
+    /// <param name="model">The roster's entry for <paramref name="modelId"/>, or null when it has none.</param>
+    public static bool IsUnfitToAnswer(string modelId, ChatModelDescriptor? model, ChatModelSelectionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.BlockedModelIds.Contains(modelId))
+        {
+            return true;
+        }
+
+        // A model the roster does not know is taken at face value: refusing every unfamiliar id would
+        // throw away good answers whenever the roster is stale.
+        if (model is null)
+        {
+            return false;
+        }
+
+        // A model that emits anything besides text is a generator, not a chat model. Providers list
+        // music and image generators on the same roster; they are billed per second or per picture
+        // rather than per token, so both token prices read "0", they rank well on context, and they
+        // then reject a chat completion outright. Every genuine chat model emits text and nothing else.
+        //
+        // A safety classifier answers with a verdict on the message rather than a reply to it, so a
+        // question routed to one comes back as "User Safety: safe". It is a valid completion, the
+        // request succeeds, no failure is recorded, and the model keeps its rank — which is why this
+        // has to be a rule rather than something the failure tracker could learn.
+        return !model.ProducesTextOnly || model.IsGuardrail;
+    }
+
+    /// <summary>
+    /// Works out which models of a chain failed upstream, from the one that finally answered.
+    ///
+    /// The provider tries the chain in order and reports only the model that answered, so every entry
+    /// before it was skipped for failing — rate-limited, down, or refusing. Demoting those is what lets
+    /// the next question start with a model that is working instead of failing over the same way again.
+    /// Blame is withheld whenever the answering id cannot be placed: a provider that reports a model
+    /// under a slightly different name must never cost the model that actually answered its rank.
+    /// </summary>
+    /// <param name="answeredBy">The model that answered, or null when the whole chain failed.</param>
+    public static IReadOnlyList<string> InferFailedModels(
+        IReadOnlyList<string> chain,
+        string? answeredBy,
+        string fallbackModelId,
+        IEnumerable<ChatModelDescriptor> roster)
+    {
+        ArgumentNullException.ThrowIfNull(chain);
+        ArgumentNullException.ThrowIfNull(roster);
+
+        // The router is never blamed: it is not ranked, so a penalty on it would change nothing.
+        var ranked = chain
+            .Where(id => !string.Equals(id, fallbackModelId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (answeredBy is null)
+        {
+            return ranked;
+        }
+
+        for (var index = 0; index < chain.Count; index++)
+        {
+            if (string.Equals(chain[index], answeredBy, StringComparison.OrdinalIgnoreCase))
+            {
+                return [.. chain.Take(index)
+                    .Where(id => !string.Equals(id, fallbackModelId, StringComparison.OrdinalIgnoreCase))];
+            }
+        }
+
+        // An answer from outside the chain can only be the router's pick, and only a model the roster
+        // knows is certainly a different model rather than one of ours reported under another name.
+        var routerPicked = ranked.Count < chain.Count
+                           && roster.Any(model => string.Equals(model.Id, answeredBy, StringComparison.OrdinalIgnoreCase));
+
+        return routerPicked ? ranked : [];
     }
 
     /// <summary>
@@ -88,8 +176,10 @@ public static class ChatModelSelector
         ArgumentNullException.ThrowIfNull(requirements);
         ArgumentNullException.ThrowIfNull(options);
 
+        var excluded = BuildExclusions(requirements);
+
         return roster
-            .Where(model => IsEligible(model, requirements, options, nowUtc))
+            .Where(model => IsEligible(model, requirements, excluded, options, nowUtc))
             .Select(model => Score(model, options, failurePenalties, nowUtc))
             // Ties broken by id so the ordering is stable across runs and across test invocations.
             .OrderByDescending(candidate => candidate.Score)
@@ -97,38 +187,40 @@ public static class ChatModelSelector
             .ToList();
     }
 
+    /// <summary>
+    /// Rebuilt with a known comparer rather than trusted as passed: a retry that excluded "A/Model"
+    /// must not be offered "a/model" again because the caller built its set case-sensitively.
+    /// </summary>
+    private static HashSet<string>? BuildExclusions(ChatModelRequirements requirements) =>
+        requirements.ExcludedModelIds is { Count: > 0 } ids
+            ? new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+    private static bool IsExcluded(string modelId, HashSet<string>? excluded) =>
+        excluded?.Contains(modelId) == true;
+
     private static bool IsEligible(
         ChatModelDescriptor model,
         ChatModelRequirements requirements,
+        HashSet<string>? excluded,
         ChatModelSelectionOptions options,
         DateTimeOffset nowUtc)
     {
-        if (options.BlockedModelIds.Contains(model.Id))
+        // Blocked, generators and safety classifiers — the same rules the router's picks are screened by.
+        if (IsUnfitToAnswer(model.Id, model, options))
         {
             return false;
         }
 
-        // The fallback router is appended unconditionally; ranking it too would let it win a slot
-        // it is already guaranteed, pushing out a real candidate.
+        // The fallback router is appended when the ranking runs short; ranking it too would let it
+        // take a slot a real candidate should have.
         if (string.Equals(model.Id, options.FallbackModelId, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        // A model that emits anything besides text is a generator, not a chat model. Providers list
-        // music and image generators on the same roster; they are billed per second or per picture
-        // rather than per token, so both token prices read "0", they rank well on context, and they
-        // then reject a chat completion outright. Every genuine chat model emits text and nothing else.
-        if (!model.ProducesTextOnly)
-        {
-            return false;
-        }
-
-        // A safety classifier answers with a verdict on the message rather than a reply to it, so a
-        // question routed to one comes back as "User Safety: safe". It is a valid completion, the
-        // request succeeds, no failure is recorded, and the model keeps its rank — which is why this
-        // has to be an eligibility rule rather than something the failure tracker could learn.
-        if (model.IsGuardrail)
+        // Already tried for this question: a retry exists to ask someone else.
+        if (IsExcluded(model.Id, excluded))
         {
             return false;
         }

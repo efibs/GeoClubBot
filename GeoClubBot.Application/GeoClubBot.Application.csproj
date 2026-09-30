@@ -12,6 +12,7 @@
     <ItemGroup>
         <ProjectReference Include="..\Configuration\Configuration.csproj" />
         <ProjectReference Include="..\Constants\Constants.csproj"/>
+        <ProjectReference Include="..\Extensions\Extensions.csproj" />
         <ProjectReference Include="..\GeoClubBot.Domain\GeoClubBot.Domain.csproj" />
         <ProjectReference Include="..\Utilities\Utilities.csproj" />
     </ItemGroup>

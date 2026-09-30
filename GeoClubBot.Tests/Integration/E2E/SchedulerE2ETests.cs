@@ -54,7 +54,7 @@ public sealed class SchedulerE2ETests : IAsyncLifetime
                 services.RemoveAll<IGeoGuessrActivityReader>();
                 services.AddSingleton<IGeoGuessrActivityReader>(new StubGeoGuessrActivityReader(
                 [
-                    Activity(_missionUserId, ClubXpActivityKind.DailyMission),
+                    Activity(_missionUserId, ClubXpActivityKind.BoardMission),
                     Activity(_challengeUserId, ClubXpActivityKind.DailyChallengeOrDuel)
                 ]));
             }));
@@ -72,7 +72,8 @@ public sealed class SchedulerE2ETests : IAsyncLifetime
             "the Quartz hosted service should have started the scheduler, not left it in standby");
 
         var jobKeys = await scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup());
-        jobKeys.Should().Contain(new JobKey(nameof(DailyMissionCompletionSnapshotJob)));
+        jobKeys.Should().Contain(new JobKey(nameof(DailyActivitySnapshotJob)));
+        jobKeys.Should().Contain(new JobKey(nameof(StuckMissionAlertJob)));
     }
 
     [Fact]
@@ -81,22 +82,22 @@ public sealed class SchedulerE2ETests : IAsyncLifetime
         await SeedClubAndMembersAsync();
 
         var scheduler = await GetSchedulerAsync();
-        var jobKey = new JobKey(nameof(DailyMissionCompletionSnapshotJob));
+        var jobKey = new JobKey(nameof(DailyActivitySnapshotJob));
 
         var executed = await RunToCompletionAsync(scheduler, jobKey);
         executed.Should().BeTrue("the scheduler should have run the triggered job within the timeout");
 
         await using var db = _fixture.CreateDbContext();
-        var rows = await db.Set<DailyMissionMemberCompletion>()
+        var rows = await db.Set<ClubMemberDailyActivity>()
             .Where(c => c.ClubId == _clubId && c.Date == _yesterday)
             .ToListAsync();
 
         // One row per member, including the member who did nothing — that zero is the denominator
         // the statistics read, so its absence would be a silent hole rather than a missing row.
         rows.Should().HaveCount(3);
-        rows.Single(r => r.UserId == _missionUserId).CompletedCount.Should().Be(1);
+        rows.Single(r => r.UserId == _missionUserId).BoardMissionCount.Should().Be(1);
         rows.Single(r => r.UserId == _challengeUserId).DailyChallengeCount.Should().Be(1);
-        rows.Single(r => r.UserId == _idleUserId).CompletedCount.Should().Be(0);
+        rows.Single(r => r.UserId == _idleUserId).BoardMissionCount.Should().Be(0);
     }
 
     [Fact]
@@ -108,7 +109,7 @@ public sealed class SchedulerE2ETests : IAsyncLifetime
         using var meterListener = ListenForJobDurations(durations);
 
         var scheduler = await GetSchedulerAsync();
-        var executed = await RunToCompletionAsync(scheduler, new JobKey(nameof(DailyMissionCompletionSnapshotJob)));
+        var executed = await RunToCompletionAsync(scheduler, new JobKey(nameof(DailyActivitySnapshotJob)));
         executed.Should().BeTrue();
 
         // QuartzJobMetricsListener is attached by the scheduler, not called by the job, and every

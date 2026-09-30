@@ -9,6 +9,7 @@ using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.InactiveMembers;
 using Utilities;
 using Xunit;
+using static GeoClubBot.Tests.TestBuilders.MissionBoards;
 
 namespace GeoClubBot.Tests.Application.UseCases.InactiveMembersTests;
 
@@ -20,12 +21,14 @@ public sealed class GetTodaysInactiveMembersHandlerTests
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
     private readonly IClubRepository _clubs = Substitute.For<IClubRepository>();
     private readonly IGeoGuessrActivityReader _activityReader = Substitute.For<IGeoGuessrActivityReader>();
+    private readonly IClubMissionBoardReader _boardReader = Substitute.For<IClubMissionBoardReader>();
 
     public GetTodaysInactiveMembersHandlerTests()
     {
         _members.ReadClubMembersByClubIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns([]);
         _activityReader.ReadTodaysActivitiesAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns([]);
         _clubs.ReadClubByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((Entities.Club?)null);
+        _boardReader.ReadCurrentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((ClubMissionBoardWeek?)null);
     }
 
     // The first club id is flagged IsMain, matching how GeoGuessrConfiguration resolves the main club.
@@ -33,59 +36,87 @@ public sealed class GetTodaysInactiveMembersHandlerTests
         _members,
         _clubs,
         _activityReader,
+        _boardReader,
         ClubActivities.Classifier(),
         Options.Create(new GeoGuessrConfiguration
         {
             SyncSchedule = "0 0 0 * * ?",
             ActivityNcfaToken = "x",
-            MissionsNcfaToken = "x",
             UserProfileNcfaToken = "x",
             Clubs = clubIds
                 .Select((id, i) => new GeoGuessrClubEntry { ClubId = id, NcfaToken = "x", IsMain = i == 0 })
                 .ToList(),
-        }));
+        }),
+        Options.Create(new MissionBoardConfiguration()));
 
     [Fact]
-    public async Task Handle_ReportsMissionAndChallengeInactivitySeparately()
+    public async Task Handle_ReportsStreakAndClaimInactivitySeparately()
     {
-        var missionOnly = new ClubMemberBuilder().WithUserId("u-mission").WithNickname("Zeta").InClub(MainClub).Build();
+        var claimed = new ClubMemberBuilder().WithUserId("u-claimed").WithNickname("Zeta").InClub(MainClub).Build();
         var idle = new ClubMemberBuilder().WithUserId("u-idle").WithNickname("Alpha").InClub(MainClub).Build();
-        var challengeOnly = new ClubMemberBuilder().WithUserId("u-challenge").WithNickname("Mike").InClub(MainClub).Build();
+        var played = new ClubMemberBuilder().WithUserId("u-played").WithNickname("Mike").InClub(MainClub).Build();
 
         _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>())
-            .Returns([missionOnly, idle, challengeOnly]);
+            .Returns([claimed, idle, played]);
 
         _activityReader.ReadTodaysActivitiesAsync(MainClub, Arg.Any<CancellationToken>())
-            .Returns([
-                ClubActivities.Mission(missionOnly.UserId),
-                ClubActivities.Challenge(challengeOnly.UserId),
-            ]);
+            .Returns([ClubActivities.Challenge(played.UserId)]);
+
+        var tiles = FreeTiles(9);
+        tiles[0] = Tile(claimedBy: claimed.UserId, claimedAt: DateTimeOffset.UtcNow.AddMinutes(-10));
+        _boardReader.ReadCurrentAsync(MainClub, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, tiles), nextClaimResetAt: DateTimeOffset.UtcNow.AddHours(5)));
 
         var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalMembers.Should().Be(3);
-        // Each list is scoped to its own award, so a member appears in one, both, or neither.
-        result.Value.MissionInactive.Select(m => m.Nickname).Should().Equal("Alpha", "Mike");
+        // Each list is scoped to its own activity, so a member appears in one, both, or neither.
         result.Value.ChallengeInactive.Select(m => m.Nickname).Should().Equal("Alpha", "Zeta");
+        result.Value.ClaimInactive!.Select(m => m.Nickname).Should().Equal("Alpha", "Mike");
+        result.Value.FreeMissions.Should().Be(8);
     }
 
     [Fact]
-    public async Task Handle_IgnoresActivityThatIsNotOneOfTheTwoDailyAwards()
+    public async Task Handle_ListsNobodyForClaims_WhenNoMissionIsFree()
+    {
+        var member = new ClubMemberBuilder().WithUserId("u-a").WithNickname("Alpha").InClub(MainClub).Build();
+        _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>()).Returns([member]);
+        _boardReader.ReadCurrentAsync(MainClub, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, Tile(claimedBy: "someone-else"))));
+
+        var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
+
+        result.Value.ClaimInactive.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Handle_LeavesTheClaimListUnknown_WhenTheBoardCannotBeRead()
+    {
+        var member = new ClubMemberBuilder().WithUserId("u-a").InClub(MainClub).Build();
+        _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>()).Returns([member]);
+
+        var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
+
+        result.Value.ClaimInactive.Should().BeNull();
+        result.Value.FreeMissions.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_IgnoresActivityThatDoesNotKeepTheStreak()
     {
         var member = new ClubMemberBuilder().WithUserId("u-a").WithNickname("Alpha").InClub(MainClub).Build();
         _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>()).Returns([member]);
 
         _activityReader.ReadTodaysActivitiesAsync(MainClub, Arg.Any<CancellationToken>())
             .Returns([
-                // A weekly mission and a zero-XP club challenge say nothing about today's two awards.
-                ClubActivities.Weekly(member.UserId),
+                // A board mission and a zero-XP club challenge say nothing about the streak.
+                ClubActivities.BoardMission(member.UserId),
                 ClubActivities.ClubChallenge(member.UserId),
             ]);
 
         var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
 
-        result.Value.MissionInactive.Should().ContainSingle();
         result.Value.ChallengeInactive.Should().ContainSingle();
     }
 
@@ -96,6 +127,7 @@ public sealed class GetTodaysInactiveMembersHandlerTests
 
         await _activityReader.Received(1).ReadTodaysActivitiesAsync(MainClub, Arg.Any<CancellationToken>());
         await _activityReader.DidNotReceive().ReadTodaysActivitiesAsync(SecondClub, Arg.Any<CancellationToken>());
+        await _boardReader.Received(1).ReadCurrentAsync(MainClub, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -119,20 +151,6 @@ public sealed class GetTodaysInactiveMembersHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ReturnsNoInactiveMembers_WhenEveryoneEarnedBothAwards()
-    {
-        var a = new ClubMemberBuilder().WithUserId("u-a").InClub(MainClub).Build();
-        _members.ReadClubMembersByClubIdAsync(MainClub, Arg.Any<CancellationToken>()).Returns([a]);
-        _activityReader.ReadTodaysActivitiesAsync(MainClub, Arg.Any<CancellationToken>())
-            .Returns([ClubActivities.Mission(a.UserId), ClubActivities.Challenge(a.UserId)]);
-
-        var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
-
-        result.Value.MissionInactive.Should().BeEmpty();
-        result.Value.ChallengeInactive.Should().BeEmpty();
-    }
-
-    [Fact]
     public async Task Handle_CarriesTheDiscordUserId_ForLinkedMembers()
     {
         var linked = new ClubMemberBuilder().WithUserId("u-linked").WithNickname("Linked").WithDiscordUserId(4242UL).InClub(MainClub).Build();
@@ -141,8 +159,8 @@ public sealed class GetTodaysInactiveMembersHandlerTests
 
         var result = await CreateHandler(MainClub).Handle(new GetTodaysInactiveMembersQuery(null), CancellationToken.None);
 
-        result.Value.MissionInactive.Single(m => m.Nickname == "Linked").DiscordUserId.Should().Be(4242UL);
-        result.Value.MissionInactive.Single(m => m.Nickname == "Unlinked").DiscordUserId.Should().BeNull();
+        result.Value.ChallengeInactive.Single(m => m.Nickname == "Linked").DiscordUserId.Should().Be(4242UL);
+        result.Value.ChallengeInactive.Single(m => m.Nickname == "Unlinked").DiscordUserId.Should().BeNull();
     }
 
     [Fact]

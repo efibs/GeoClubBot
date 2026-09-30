@@ -16,5 +16,7 @@ public interface IStrikesRepository
 
     Task<ClubMemberStrike?> ReadForUpdateByIdAsync(Guid strikeId, CancellationToken cancellationToken = default);
 
+    Task<List<ClubMemberStrike>> ReadAllActiveForUpdateAsync(CancellationToken cancellationToken = default);
+
     Task<int> DeleteStrikesBeforeAsync(DateTimeOffset threshold, CancellationToken cancellationToken = default);
 }

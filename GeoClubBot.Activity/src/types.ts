@@ -27,7 +27,8 @@ export interface ChallengeResultDto {
   players: ChallengePlayerDto[];
 }
 
-export interface MissionStreakDto {
+// Consecutive days on which the member played the daily challenge or a duel.
+export interface DailyStreakDto {
   nickname: string;
   currentStreak: number;
   longestStreak: number;
@@ -39,7 +40,7 @@ export interface DashboardDto {
   viewer: ViewerDto | null;
   leaderboard: LeaderboardEntryDto[];
   challenges: ChallengeResultDto[];
-  streaks: MissionStreakDto[];
+  streaks: DailyStreakDto[];
 }
 
 // --- Session (/me) — mirrors GeoClubBot.API/DTOs/ActivityMemberDtos.cs ---
@@ -67,22 +68,39 @@ export interface MeDto {
 
 // --- Member tabs — mirror GeoClubBot.API/DTOs/ActivityMemberDtos.cs ---
 
-export interface DayMissionDto {
+export interface DayActivityDto {
   date: string; // ISO date (yyyy-MM-dd)
-  missionCompleted: boolean;
-  // Playing the daily challenge or a duel — the second 20 XP award of the day.
-  challengeCompleted: boolean;
+  // The daily challenge or a duel was played — the day extends the streak.
+  challengeDone: boolean;
+  // Board missions credited to the member that day.
+  boardMissions: number;
+  xp: number;
+}
+
+// One weekly requirement, e.g. "streak 4/6".
+export interface RequirementDto {
+  label: string;
+  actual: number;
+  target: number;
+  met: boolean;
 }
 
 export interface WeekActivityDto {
   totalXp: number;
-  // Days on which both of the day's awards were earned.
-  numDaysDone: number;
-  numMissionDaysDone: number;
+  // XP that counts for the club's rules; only set for the current check period.
+  ruleXp: number | null;
   numChallengeDaysDone: number;
-  joinedThisWeek: boolean;
+  boardMissions: number;
+  boardClearBonusXp: number;
+  joinedInPeriod: boolean;
   joinedAt: string;
-  days: DayMissionDto[];
+  periodStart: string | null;
+  days: DayActivityDto[];
+  // Empty unless this is the current check period.
+  requirements: RequirementDto[];
+  // Missions of others the member pressed "help out" on — unverified, informational only.
+  helpedThisWeek: number | null;
+  helpedLastWeek: number | null;
 }
 
 export interface RankedDto {
@@ -102,35 +120,60 @@ export interface ProfileDto {
   ranked: RankedDto | null;
 }
 
-export interface MissionKindStatsDto {
-  type: string;
-  gameMode: string;
-  appearanceCount: number;
-  appearanceDayShare: number;
-  averageTargetProgress: number;
-  lastAppearance: string;
-  averageDayCompletionRateWhenPresent: number | null;
+export type BoardTileState = 'free' | 'claimed' | 'completed';
+
+export interface BoardTileDto {
+  missionId: string;
+  title: string;
+  currentProgress: number;
+  targetProgress: number;
+  state: BoardTileState;
+  claimerNickname: string | null;
+  claimedAt: string | null;
+  helpRequested: boolean;
+  helperCount: number;
+  claimedByViewer: boolean;
+  helpedByViewer: boolean;
 }
 
-export interface MissionStatsDto {
-  clubName: string | null;
-  fromDay: string;
-  toDay: string;
-  daysWithMissionData: number;
-  totalMissionAppearances: number;
-  averageDayCompletionRate: number | null;
-  kinds: MissionKindStatsDto[];
-  // Share of members playing the daily challenge / a duel. Null before the bot tracked it.
-  averageDayChallengeRate: number | null;
-  daysWithChallengeData: number;
-  challengeTrackedFrom: string | null;
+export interface BoardDto {
+  number: number;
+  size: number;
+  completedCount: number;
+  clearedAt: string | null;
+  tiles: BoardTileDto[];
+}
+
+export type ClaimState = 'ClaimAvailable' | 'HoldingOpenMission' | 'ClaimedThisCycle' | 'NoneFree';
+
+export interface BoardViewerDto {
+  claimState: ClaimState;
+  claimsThisWeek: number;
+  completedThisWeek: number;
+  helpedThisWeek: number;
+}
+
+// The running weekly club mission board of the viewer's club.
+export interface MissionBoardDto {
+  clubName: string;
+  periodStart: string;
+  periodEnd: string;
+  currentBoardNumber: number;
+  allBoardsCleared: boolean;
+  // When the daily claim allowance resets next.
+  claimCycleEnd: string;
+  boards: BoardDto[];
+  viewer: BoardViewerDto | null;
 }
 
 export interface TodaysXpDto {
   xp: number | null;
   clubName: string | null;
-  missionMemberCount: number | null;
+  // Members who played the daily challenge or a duel today (UTC).
   challengeMemberCount: number | null;
+  boardMissionCount: number | null;
+  // Members who claimed a board mission this claim cycle; null when the board can't be read.
+  claimMemberCount: number | null;
   totalMemberCount: number | null;
 }
 

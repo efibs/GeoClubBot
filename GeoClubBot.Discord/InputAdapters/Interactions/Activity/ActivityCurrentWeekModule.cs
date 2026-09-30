@@ -72,17 +72,11 @@ public partial class ActivityModule
                 ephemeral: true,
                 failureMessage: "Failed to retrieve the current week activity (internal error). Please try again later. If the issue persists, please contact an admin.");
 
-        private static EmbedBuilder BuildWeekActivityEmbed(Entities.ClubMemberWeekActivity activity, string nickname)
-        {
-            var embed = ActivityProgressFormatter.BuildActivityEmbed(activity, $"📅 {nickname}'s Activity This Week");
-
-            if (activity.AllDaysCompleted)
-                embed.WithDescription("🔥 Perfect week so far");
-
-            if (activity.JoinedThisWeek)
-                embed.WithFooter($"⭐ {nickname} joined the club on {activity.JoinedDateTime:MMM d}");
-
-            return embed;
-        }
+        private static EmbedBuilder BuildWeekActivityEmbed(Entities.ClubMemberActivitySummary activity, string nickname) =>
+            ActivityProgressFormatter.BuildActivityEmbed(
+                activity,
+                $"📅 {nickname}'s Activity This Week",
+                "✅ All requirements met so far",
+                activity.JoinedInPeriod ? $"⭐ {nickname} joined the club on {activity.JoinedDateTime:MMM d}" : null);
     }
 }

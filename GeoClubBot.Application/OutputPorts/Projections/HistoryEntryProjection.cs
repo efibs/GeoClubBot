@@ -5,4 +5,5 @@ public sealed record HistoryEntryProjection(
     int Xp,
     DateTimeOffset Timestamp,
     string? MemberNickname,
-    DateTimeOffset? MemberJoinedAt);
+    DateTimeOffset? MemberJoinedAt,
+    int? RuleXp = null);

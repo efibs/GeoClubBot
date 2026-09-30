@@ -68,4 +68,15 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public async Task<List<GeoGuessrUser>> ReadUsersByNicknameAsync(string nickname, CancellationToken cancellationToken = default)
+    {
+        var lowered = nickname.ToLowerInvariant();
+
+        return await dbContext.GeoGuessrUsers
+            .AsNoTracking()
+            .Where(u => u.Nickname.ToLower() == lowered)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 }

@@ -8,7 +8,6 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
-using UseCases.OutputPorts.Rendering;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.DailyMissionReminder;
 using UseCases.UseCases.GeoGuessrAccountLinking;
@@ -31,28 +30,24 @@ public sealed class CatchUpMissedRemindersHandlerTests
     private readonly IDiscordDirectMessageAccess _dm = Substitute.For<IDiscordDirectMessageAccess>();
     private readonly ISender _mediator = Substitute.For<ISender>();
     private readonly IGeoGuessrActivityReader _activityReader = Substitute.For<IGeoGuessrActivityReader>();
-    private readonly IDailyMissionRepository _dailyMissions = Substitute.For<IDailyMissionRepository>();
-    private readonly IDailyMissionRenderer _renderer = Substitute.For<IDailyMissionRenderer>();
+    private readonly IClubMissionBoardReader _boardReader = Substitute.For<IClubMissionBoardReader>();
     private readonly ILogger<SendDueRemindersHandler> _logger = Substitute.For<ILogger<SendDueRemindersHandler>>();
 
     public CatchUpMissedRemindersHandlerTests()
     {
-        // By default there are no stored missions, so the rendered mission text is empty.
-        _dailyMissions.ReadLatestFetchedMissionsAsync(Arg.Any<CancellationToken>())
-            .Returns(new List<DailyMission>());
-
         _dm.SendDirectMessageAsync(Arg.Any<ulong>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Result.Success());
     }
 
     private SendDueRemindersHandler CreateHandler() => new(
-        _reminders, _members, _dm, _mediator, _activityReader, ClubActivities.Classifier(),
-        _dailyMissions, _renderer,
+        _reminders, _members, _dm, _mediator, _activityReader, ClubActivities.Classifier(), _boardReader,
         Options.Create(new DailyMissionReminderConfiguration
         {
             Schedule = "0 * * * * ?",
-            DefaultMessage = "Don't forget to complete {{outstanding_text}}"
+            DefaultMessage = "Don't forget to {{outstanding_text}}"
         }),
+        Options.Create(new MissionBoardConfiguration()),
+        new GeoGuessrConfigurationBuilder().WithClub(ClubId).BuildOptions(),
         _logger);
 
     private void ArrangeMissedReminders(params DailyMissionReminderEntity[] missed)
@@ -62,8 +57,7 @@ public sealed class CatchUpMissedRemindersHandlerTests
             .Returns(missed.ToList());
     }
 
-    // The owner's account lookup fails, so the handler treats the mission as not yet completed
-    // and proceeds to send.
+    // The owner's account lookup fails, so the handler can't see their activity and proceeds to send.
     private void ArrangeUserNotCompleted(ulong discordUserId)
     {
         _mediator.Send(Arg.Is<GetLinkedGeoGuessrUserQuery>(q => q!.DiscordUserId == discordUserId),
@@ -136,7 +130,7 @@ public sealed class CatchUpMissedRemindersHandlerTests
     }
 
     [Fact]
-    public async Task Handle_MarksAllMissedRemindersSent_WhenMissionAlreadyCompletedToday()
+    public async Task Handle_MarksAllMissedRemindersSent_WhenNothingIsOutstanding()
     {
         var morning = DailyMissionReminderEntity.Create(123UL, new TimeOnly(9, 0), null, null);
         var noon = DailyMissionReminderEntity.Create(123UL, new TimeOnly(12, 0), null, null);
@@ -151,10 +145,13 @@ public sealed class CatchUpMissedRemindersHandlerTests
         _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(member);
 
         _activityReader.ReadTodaysActivitiesAsync(ClubId, Arg.Any<CancellationToken>())
-            .Returns(new List<ReadClubActivitiesItemDto>
-            {
-                ClubActivities.Mission("user-1"), ClubActivities.Challenge("user-1")
-            });
+            .Returns(new List<ReadClubActivitiesItemDto> { ClubActivities.Challenge("user-1") });
+
+        // The streak is kept and today's mission is already claimed.
+        _boardReader.ReadCurrentAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(MissionBoards.Week(
+                MissionBoards.Board(1, MissionBoards.Tile(claimedBy: "user-1", claimedAt: DateTimeOffset.UtcNow.AddMinutes(-5), completed: true)),
+                nextClaimResetAt: DateTimeOffset.UtcNow.AddHours(3)));
 
         await CreateHandler().Handle(new CatchUpMissedRemindersCommand(), CancellationToken.None);
 

@@ -103,6 +103,23 @@ public class ArchitectureTests
     }
 
     [Fact]
+    public void Infrastructure_should_not_decode_entities_with_HtmlAgilityPack()
+    {
+        // HtmlEntity.DeEntitize cannot decode a character outside the Basic Multilingual Plane, so the
+        // emoji guide authors write — &#128128; — came out as "&##128128;": 88 chunks across 17 guides
+        // on production, in the text the model reads, the vectors retrieval compares and the source
+        // labels under an answer. HtmlText.Decode is the replacement.
+        var result = Types.InAssembly(typeof(GeoClubBotDbContext).Assembly)
+            .ShouldNot()
+            .HaveDependencyOn("HtmlAgilityPack.HtmlEntity")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            "HtmlEntity.DeEntitize mangles emoji; decode with HtmlText.Decode instead. These types use it: {0}",
+            FailingTypes(result));
+    }
+
+    [Fact]
     public void Discord_adapters_should_not_depend_on_infrastructure()
     {
         var result = Types.InAssembly(DiscordAssembly)

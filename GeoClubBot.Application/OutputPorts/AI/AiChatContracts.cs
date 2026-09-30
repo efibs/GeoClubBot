@@ -60,3 +60,44 @@ public sealed record AiTokenUsage(int PromptTokens, int CompletionTokens);
 /// chain. Recording it is what makes "the bot got worse today" diagnosable.
 /// </summary>
 public sealed record AiChatResponse(string Text, string ModelUsed, AiTokenUsage Usage);
+
+/// <summary>
+/// Codes a chat completion fails with. The caller acts on them differently: some say the models it
+/// named failed, and are worth retrying against others; some say the provider was never reached or is
+/// throttling us, where a retry only adds to the wait and no model deserves the blame.
+/// </summary>
+public static class ChatErrorCodes
+{
+    /// <summary>Every model in the chain was rate-limited, after the pipeline had already waited once.</summary>
+    public const string RateLimited = "ai.rate_limited";
+
+    /// <summary>
+    /// The models failed: the provider answered with a server error, or with one reported in-band
+    /// after failing over through the chain.
+    /// </summary>
+    public const string RequestFailed = "ai.chat_request_failed";
+
+    /// <summary>
+    /// The provider refused the request as sent — typically a replayed screenshot whose link has
+    /// expired, or a body too large. The same request fails the same way whichever models it names.
+    /// </summary>
+    public const string Rejected = "ai.chat_request_rejected";
+
+    /// <summary>
+    /// No response at all: a network failure, a timeout, or the resilience pipeline refusing to send
+    /// (an open circuit, a full limiter queue). Says nothing about the models named.
+    /// </summary>
+    public const string Unreachable = "ai.provider_unreachable";
+
+    /// <summary>The model answered with nothing.</summary>
+    public const string EmptyResponse = "ai.empty_response";
+
+    /// <summary>There was no model to ask.</summary>
+    public const string NoModelAvailable = "ai.no_model_available";
+
+    /// <summary>
+    /// A completion arrived but is not an answer — a safety classifier's verdict, or a reply from a
+    /// model that should never have been asked. Raised by the use case, not by the client.
+    /// </summary>
+    public const string UnusableAnswer = "ai.unusable_answer";
+}

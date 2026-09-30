@@ -36,7 +36,6 @@ public sealed class ClubSwitchUseCaseIntegrationTests(PostgresFixture fixture)
             {
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
-                MissionsNcfaToken = "x",
                 UserProfileNcfaToken = "x",
                 Clubs =
                 [

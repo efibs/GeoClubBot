@@ -260,6 +260,25 @@ public sealed class SourceExtractorTests
     }
 
     [Fact]
+    public async Task GoogleDoc_DecodesEmoji_InHeadingsAndText()
+    {
+        // The export writes an emoji as a numeric entity, and the previous decoder turned &#128016;
+        // into "&##128016;" — which production showed under answers as "Research by Yaron&##128016;".
+        var archive = BuildDocArchive(
+            "<html><body>"
+            + "<p>Research by Yaron &#128016;</p>"
+            + "<p>Astrakhan can look like Mars &#128128; &amp; its caf&#233;s are rare.</p>"
+            + "</body></html>");
+
+        var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), Relay(enabled: true))
+            .ExtractAsync(GoogleDoc());
+
+        var chunk = result.Value.Chunks.Should().ContainSingle().Subject;
+        chunk.SectionPath.Should().EndWith("Research by Yaron 🐐");
+        chunk.Text.Should().Be("Astrakhan can look like Mars 💀 & its cafés are rare.");
+    }
+
+    [Fact]
     public async Task GoogleDoc_KeepsTheTextWhenAnImageCannotBeStored()
     {
         // A relay refusal costs a picture, never the document it belongs to.

@@ -40,6 +40,9 @@ public sealed class QdrantFixture : IAsyncLifetime
         await _container.DisposeAsync().ConfigureAwait(false);
     }
 
+    /// <summary>The container's gRPC address, for tests that build their own client over it.</summary>
+    public Uri GrpcAddress => new(_container.GetGrpcConnectionString());
+
     public static string NewCollectionName() => $"knowledge-{Guid.NewGuid():N}";
 
     public QdrantKnowledgeIndex CreateKnowledgeIndex(string collectionName, int vectorSize) =>

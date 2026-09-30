@@ -1,3 +1,3 @@
 namespace Entities;
 
-public record ClubMemberAverageXp(string Nickname, double AverageXp, DateTimeOffset JoinedAt);
+public record ClubMemberAverageXp(string Nickname, double AverageXp, DateTimeOffset JoinedAt, string? UserId = null);

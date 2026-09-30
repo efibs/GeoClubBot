@@ -27,16 +27,22 @@ public class OpenRouterConfiguration
     /// <summary>Model id prefixes that outrank everything else, e.g. "google/". Lets an operator pin a family without chasing version suffixes.</summary>
     public List<string> PreferredModelPrefixes { get; set; } = [];
 
+    /// <summary>
+    /// Models never to ask. Models that answer with something that is not an answer are also excluded
+    /// at runtime, until restart — <c>/ai status</c> lists them as candidates for this list.
+    /// </summary>
     public List<string> BlockedModelIds { get; set; } = [];
 
-    /// <summary>Router model appended to every chain as the last resort; it self-filters for the features a request needs.</summary>
+    /// <summary>
+    /// Router used only when too few vetted models qualify — an empty or exhausted roster. It picks a
+    /// free model at random, safety classifiers and 2B models included, and cannot be told to avoid
+    /// any, so its answers are screened like every other.
+    /// </summary>
     public string FallbackModelId { get; set; } = "openrouter/free";
 
     /// <summary>
-    /// Models named in one request, for server-side failover — the fallback router included, since
-    /// that is the number the provider validates. OpenRouter rejects a request naming more than three
-    /// outright, so raising this beyond 3 only works against a provider that allows more; the adapter
-    /// trims to what OpenRouter accepts either way.
+    /// Vetted models named in one request, for server-side failover. OpenRouter rejects a request
+    /// naming more than three outright, so values above 3 are clamped to 3.
     /// </summary>
     public int ChainLength { get; set; } = 3;
 

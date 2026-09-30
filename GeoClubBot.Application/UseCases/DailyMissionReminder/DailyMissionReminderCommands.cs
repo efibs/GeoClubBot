@@ -115,11 +115,11 @@ public sealed partial class DailyMissionReminderHandlers(
             : request.CustomMessage;
 
         return
-            "✅ Your daily mission reminder is now set up!\n" +
+            "✅ Your daily reminder is now set up!\n" +
             $"Time: **{request.LocalTime:HH\\:mm}** ({tzDisplay})\n" +
             $"Message: {messageDisplay}\n\n" +
             "This is a confirmation message — you'll receive your reminder here each day at the scheduled "
-            + "time, unless you've already completed your daily mission.";
+            + "time, unless you've already kept your streak and claimed a club mission.";
     }
 
     public async Task<Result> Handle(RemoveDailyMissionReminderCommand request, CancellationToken cancellationToken)
@@ -133,7 +133,7 @@ public sealed partial class DailyMissionReminderHandlers(
             LogNoReminderFound(request.DiscordUserId);
             return Error.NotFound(
                 "daily_mission_reminder.not_found",
-                "That daily mission reminder does not exist.");
+                "That daily reminder does not exist.");
         }
 
         reminders.DeleteReminder(existing);
@@ -150,7 +150,7 @@ public sealed partial class DailyMissionReminderHandlers(
             LogNoReminderFound(request.DiscordUserId);
             return Error.NotFound(
                 "daily_mission_reminder.not_found",
-                "No daily mission reminders are configured for this Discord user.");
+                "No daily reminders are configured for this Discord user.");
         }
 
         foreach (var reminder in existing)

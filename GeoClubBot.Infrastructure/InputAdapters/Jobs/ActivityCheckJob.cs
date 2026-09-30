@@ -8,12 +8,13 @@ using Microsoft.Extensions.Options;
 using Quartz;
 using QuartzExtensions;
 using UseCases.UseCases.ClubMemberActivity;
+using UseCases.UseCases.ClubMemberActivity.ClubSwaps;
 using UseCases.UseCases.Organization;
 
 namespace Infrastructure.InputAdapters.Jobs;
 
 [DisallowConcurrentExecution]
-[ConfiguredCronJob(ConfigKeys.ActivityCheckerCronScheduleConfigurationKey)]
+[ConfiguredCronJob(ConfigKeys.ActivityCheckerCronScheduleConfigurationKey, ConfigKeys.ActivityCheckerTimeZoneConfigurationKey)]
 public partial class ActivityCheckJob(
     ISender mediator,
     IServiceScopeFactory scopeFactory,
@@ -53,6 +54,18 @@ public partial class ActivityCheckJob(
             LogActivityRewardFailed(logger, ex);
         }
 
+        // After every club's snapshots are committed, so the averages include this week.
+        try
+        {
+            await mediator
+                .Send(new SuggestClubSwapsCommand(newStatuses), ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogSwapSuggestionsFailed(logger, ex);
+        }
+
         // Cleanup runs last so deletions don't strand members without history entries.
         try
         {
@@ -69,6 +82,9 @@ public partial class ActivityCheckJob(
 
     [LoggerMessage(LogLevel.Error, "Error rewarding member activity.")]
     static partial void LogActivityRewardFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(LogLevel.Error, "Error suggesting club swaps.")]
+    static partial void LogSwapSuggestionsFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(LogLevel.Error, "Error running cleanup.")]
     static partial void LogCleanupFailed(ILogger logger, Exception ex);

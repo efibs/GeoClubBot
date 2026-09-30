@@ -1,5 +1,5 @@
 /* The shared list-row primitive: a ranked/labelled row used by the leaderboard, challenge, streaks,
-   mission-kind and admin list panels. Kept global because it's one design primitive populated with
+   open-missions and admin list panels. Kept global because it's one design primitive populated with
    different cell slots by many views; each cell (`.rank`/`.name`/`.value`/`.sub`) is a plain span. */
 
 .rows {

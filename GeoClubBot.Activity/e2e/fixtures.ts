@@ -28,27 +28,52 @@ export const baseDashboard = {
   streaks: [{ nickname: 'You', currentStreak: 9, longestStreak: 30 }],
 };
 
-export const baseMissionStats = {
+function tile(state: 'free' | 'claimed' | 'completed', index: number, extra: object = {}) {
+  return {
+    missionId: `00000000-0000-0000-0000-00000000000${index}`,
+    title: 'Win 2 Ranked Duels',
+    currentProgress: state === 'completed' ? 2 : 0,
+    targetProgress: 2,
+    state,
+    claimerNickname: state === 'free' ? null : 'Ada',
+    claimedAt: state === 'free' ? null : '2026-07-03T12:00:00Z',
+    helpRequested: false,
+    helperCount: 0,
+    claimedByViewer: false,
+    helpedByViewer: false,
+    ...extra,
+  };
+}
+
+/** Board 1 of 2 in progress: one mission done, the viewer's open claim with help requested, two free. */
+export const baseMissionBoard = {
   clubName: 'Globetrotters',
-  fromDay: '2026-06-05',
-  toDay: '2026-07-04',
-  daysWithMissionData: 12,
-  totalMissionAppearances: 36,
-  averageDayCompletionRate: 0.62,
-  averageDayChallengeRate: 0.5,
-  daysWithChallengeData: 6,
-  challengeTrackedFrom: '2026-06-29',
-  kinds: [
+  periodStart: '2026-07-01T11:00:00Z',
+  periodEnd: '2026-07-08T11:00:00Z',
+  currentBoardNumber: 1,
+  allBoardsCleared: false,
+  claimCycleEnd: '2026-07-05T11:00:00Z',
+  boards: [
     {
-      type: 'DailyChallenge',
-      gameMode: 'Standard',
-      appearanceCount: 12,
-      appearanceDayShare: 1,
-      averageTargetProgress: 3,
-      lastAppearance: '2026-07-04',
-      averageDayCompletionRateWhenPresent: 0.62,
+      number: 1,
+      size: 2,
+      completedCount: 1,
+      clearedAt: null,
+      tiles: [
+        tile('completed', 1),
+        tile('claimed', 2, { claimerNickname: 'You', claimedByViewer: true, helpRequested: true }),
+        tile('free', 3),
+        tile('free', 4),
+      ],
     },
+    { number: 2, size: 1, completedCount: 0, clearedAt: null, tiles: [tile('free', 5)] },
   ],
+  viewer: {
+    claimState: 'HoldingOpenMission',
+    claimsThisWeek: 2,
+    completedThisWeek: 1,
+    helpedThisWeek: 3,
+  },
 };
 
 export const baseProfile = {
@@ -63,20 +88,35 @@ export const baseProfile = {
 
 export const baseWeekActivity = {
   totalXp: 4200,
-  // A "done" day needs both awards; 28th/1st/4th have only the mission, so 2 full days.
-  numDaysDone: 2,
-  numMissionDaysDone: 5,
-  numChallengeDaysDone: 3,
-  joinedThisWeek: false,
+  ruleXp: null,
+  // The streak was kept on 5 of the 7 days; missions on the 29th (2) and the 2nd (1).
+  numChallengeDaysDone: 5,
+  boardMissions: 3,
+  boardClearBonusXp: 100,
+  joinedInPeriod: false,
   joinedAt: '2024-01-01T00:00:00Z',
+  periodStart: '2026-06-28T00:00:00Z',
   days: [
-    { date: '2026-06-28', missionCompleted: true, challengeCompleted: false },
-    { date: '2026-06-29', missionCompleted: true, challengeCompleted: true },
-    { date: '2026-06-30', missionCompleted: false, challengeCompleted: false },
-    { date: '2026-07-01', missionCompleted: true, challengeCompleted: false },
-    { date: '2026-07-02', missionCompleted: true, challengeCompleted: true },
-    { date: '2026-07-03', missionCompleted: false, challengeCompleted: true },
-    { date: '2026-07-04', missionCompleted: true, challengeCompleted: false },
+    { date: '2026-06-28', challengeDone: true, boardMissions: 0, xp: 20 },
+    { date: '2026-06-29', challengeDone: true, boardMissions: 2, xp: 60 },
+    { date: '2026-06-30', challengeDone: false, boardMissions: 0, xp: 0 },
+    { date: '2026-07-01', challengeDone: true, boardMissions: 0, xp: 20 },
+    { date: '2026-07-02', challengeDone: true, boardMissions: 1, xp: 140 },
+    { date: '2026-07-03', challengeDone: false, boardMissions: 0, xp: 0 },
+    { date: '2026-07-04', challengeDone: true, boardMissions: 0, xp: 20 },
+  ],
+  requirements: [],
+  helpedThisWeek: 3,
+  helpedLastWeek: 1,
+};
+
+/** The current check period: the streak requirement met, one of two missions still missing. */
+export const baseCurrentActivity = {
+  ...baseWeekActivity,
+  ruleXp: 120,
+  requirements: [
+    { label: 'streak', actual: 6, target: 6, met: true },
+    { label: 'missions', actual: 1, target: 2, met: false },
   ],
 };
 
@@ -133,16 +173,29 @@ export async function mockAdminArea(page: Page): Promise<void> {
 
 /** Mocks everything the missions + profile tabs fetch. */
 export async function mockMemberTabs(page: Page): Promise<void> {
-  await page.route('**/api/v1/activity/missions/stats**', (route) =>
-    route.fulfill({ json: baseMissionStats }),
+  await page.route('**/api/v1/activity/club/board', (route) =>
+    route.fulfill({ json: baseMissionBoard }),
   );
   await page.route('**/api/v1/activity/club/todays-xp**', (route) =>
-    route.fulfill({ json: { xp: 51230, clubName: 'Globetrotters' } }),
+    route.fulfill({
+      json: {
+        xp: 51230,
+        clubName: 'Globetrotters',
+        challengeMemberCount: 24,
+        boardMissionCount: 17,
+        claimMemberCount: 21,
+        totalMemberCount: 30,
+      },
+    }),
   );
   await page.route('**/api/v1/activity/me/profile', (route) =>
     route.fulfill({ json: baseProfile }),
   );
   await page.route('**/api/v1/activity/me/activity**', (route) =>
     route.fulfill({ json: baseWeekActivity }),
+  );
+  // Registered last so it wins over the broader glob above (Playwright tries the newest route first).
+  await page.route('**/api/v1/activity/me/activity/current', (route) =>
+    route.fulfill({ json: baseCurrentActivity }),
   );
 }

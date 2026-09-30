@@ -28,6 +28,12 @@ GeoClubBot.API/wwwroot/
 # Misc files
 OldHistory.json
 ChallengesConfig.json
+# The real country challenge file carries server ids; CountryChallengesConfig.example.json is committed.
+CountryChallengesConfig.json
+
+# AI feedback exports from `/ai feedback-export`. They carry Discord user ids and the rated
+# conversations themselves, so they are analysed locally and never committed.
+ai_feedback/
 .VSCodeCounter
 .idea/
 

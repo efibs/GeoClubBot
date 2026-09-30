@@ -23,15 +23,21 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<ClubChallengeLink> LatestClubChallengeLinks { get; set; }
 
+    public DbSet<CountryChallengePost> CountryChallengePosts { get; set; }
+
+    public DbSet<CountryChallengePointAward> CountryChallengePointAwards { get; set; }
+
+    public DbSet<CountryChallengeLeaderboardPost> CountryChallengeLeaderboardPosts { get; set; }
+
     public DbSet<GeoGuessrUser> GeoGuessrUsers { get; set; }
 
     public DbSet<GeoGuessrAccountLinkingRequest> GeoGuessrAccountLinkingRequests { get; set; }
 
     public DbSet<DailyMissionReminder> DailyMissionReminders { get; set; }
 
-    public DbSet<DailyMission> DailyMissions { get; set; }
+    public DbSet<ClubMemberDailyActivity> ClubMemberDailyActivities { get; set; }
 
-    public DbSet<DailyMissionMemberCompletion> DailyMissionMemberCompletions { get; set; }
+    public DbSet<MissionBoardAlert> MissionBoardAlerts { get; set; }
 
     public DbSet<AiDailyBudget> AiDailyBudgets { get; set; }
 

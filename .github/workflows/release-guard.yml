@@ -1,0 +1,27 @@
+name: Release guard
+
+# Only dev reaches master. A pull request into master fails unless merging it leaves
+# master equal to a dev commit — see .github/scripts/release-guard.sh for why. The
+# "Release guard" check is required by the master ruleset, which also allows only
+# merge commits there (a squashed release would re-create the divergence).
+on:
+  pull_request:
+    branches: [ master ]
+    # "edited" catches a pull request retargeted from dev to master.
+    types: [ opened, synchronize, reopened, edited ]
+
+permissions:
+  contents: read
+
+jobs:
+  release-guard:
+    name: Release guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Check that master will equal dev
+        run: bash .github/scripts/release-guard.sh "${{ github.event.pull_request.head.sha }}" origin/dev origin/master

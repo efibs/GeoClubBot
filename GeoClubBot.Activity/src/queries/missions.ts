@@ -1,16 +1,16 @@
 import { useQuery } from '@tanstack/vue-query';
-import { fetchMissionStats, fetchTodaysXp } from '../api';
+import { fetchMissionBoard, fetchTodaysXp } from '../api';
 import { refreshIntervalMs } from '../config';
 import { queryKeys } from './keys';
 
 /**
- * Mission stats and today's XP are two independent queries (they were a `Promise.allSettled` pair
- * before): either can succeed or fail on its own, so a failure in one never blanks the other.
+ * The mission board and today's XP are two independent queries: either can succeed or fail on its
+ * own, so a failure in one never blanks the other.
  */
-export function useMissionStatsQuery() {
+export function useMissionBoardQuery() {
   return useQuery({
-    queryKey: queryKeys.missionStats,
-    queryFn: () => fetchMissionStats(),
+    queryKey: queryKeys.missionBoard,
+    queryFn: fetchMissionBoard,
     refetchInterval: refreshIntervalMs,
   });
 }

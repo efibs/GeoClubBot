@@ -1,5 +1,7 @@
 using Configuration;
+using Constants;
 using Discord.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
@@ -183,6 +185,51 @@ public partial class ActivityModule
                 .ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// Opens the confirmation modal. Not routed through <see cref="ClubBotInteractionModule.ExecuteAsync"/>,
+        /// which defers first — a modal has to be the interaction's immediate response.
+        /// </summary>
+        [SlashCommand("revoke-all", "Revoke every strike that is currently not revoked")]
+        public async Task RevokeAllStrikesAsync()
+        {
+            try
+            {
+                await Context.Interaction
+                    .RespondWithModalAsync<RevokeAllStrikesModal>(ComponentIds.RevokeAllStrikesModalId)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                LogRevokeAllModalOpenFailed(Logger, ex);
+                await RespondAsync("Failed to open the confirmation form.", ephemeral: true).ConfigureAwait(false);
+            }
+        }
+
+        [ModalInteraction(ComponentIds.RevokeAllStrikesModalId, true)]
+        public async Task RevokeAllStrikesSubmittedAsync(RevokeAllStrikesModal modal)
+        {
+            // Rejected before ExecuteAsync: its public defer would make this reply public too.
+            if (!string.Equals(modal.ConfirmText.Trim(), "confirm", StringComparison.OrdinalIgnoreCase))
+            {
+                await RespondAsync("No strikes were revoked. To revoke all strikes please enter 'confirm' into the text box.",
+                    ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
+            await ExecuteAsync(
+                async ct =>
+                {
+                    var numRevoked = await Mediator.Send(new RevokeAllStrikesCommand(), ct).ConfigureAwait(false);
+
+                    await FollowupAsync(numRevoked == 0
+                            ? "There were no active strikes to revoke."
+                            : $"Revoked **{numRevoked}** strike(s). Use `/member-activity strike unrevoke` to restore individual ones.")
+                        .ConfigureAwait(false);
+                },
+                failureMessage: "Revoking all strikes failed: Internal error. Try again later. If the problem persists, please contact an admin.")
+                .ConfigureAwait(false);
+        }
+
         [SlashCommand("unrevoke", "Remove a revocation of a strike")]
         public async Task UnrevokeStrikeAsync(
             [Autocomplete(typeof(StrikeIdAutocompleteHandler))] string strikeId)
@@ -208,5 +255,8 @@ public partial class ActivityModule
                 $"Revocation of strike for player **{nickname}** from {strike.Timestamp:d} (expires: {(strike.Timestamp + expirationTimeSpan):d}, id: {strikeId}) was successfully removed.")
                 .ConfigureAwait(false);
         }
+
+        [LoggerMessage(LogLevel.Error, "Failed to open the revoke-all-strikes modal.")]
+        static partial void LogRevokeAllModalOpenFailed(ILogger logger, Exception ex);
     }
 }

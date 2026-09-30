@@ -4,7 +4,8 @@ namespace UseCases.OutputPorts.Notifications;
 
 public interface IActivityStatusMessageSender
 {
-    Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName, int minXP, CancellationToken cancellationToken = default);
+    /// <param name="requirements">The club's requirements for the header, e.g. "streak 6 · missions 2".</param>
+    Task SendActivityStatusUpdateMessageAsync(List<ClubMemberActivityStatus> statuses, string clubName, string requirements, CancellationToken cancellationToken = default);
 
     Task SendAverageXpMessageAsync(
         List<ClubMemberAverageXp> topMembers,

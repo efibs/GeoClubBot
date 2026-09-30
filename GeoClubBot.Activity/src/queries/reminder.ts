@@ -3,7 +3,7 @@ import { addReminder, deleteReminder, fetchReminders } from '../api';
 import { queryKeys } from './keys';
 import type { ReminderDto } from '../types';
 
-/** The viewer's daily-mission reminders (empty array when none are set). */
+/** The viewer's daily reminders (empty array when none are set). */
 export function useRemindersQuery() {
   return useQuery({
     queryKey: queryKeys.reminders,
