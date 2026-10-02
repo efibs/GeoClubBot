@@ -48,19 +48,20 @@ public class MissionBoardAlertsConfiguration : IValidatableObject
     /// <summary>
     /// Channel alert for a mission claimed too long ago. Placeholders: <c>{{claimer}}</c>,
     /// <c>{{mission}}</c>, <c>{{progress}}</c>, <c>{{claimed_at}}</c>, <c>{{board}}</c>,
-    /// <c>{{remaining}}</c>, <c>{{club}}</c>.
+    /// <c>{{remaining}}</c>, <c>{{club}}</c>. Every club's alerts can share one channel, and
+    /// GeoGuessr gives each club the same missions, so the defaults lead with the club.
     /// </summary>
     public string OpenClaimMessage { get; set; } =
-        "⏳ {{claimer}} claimed **{{mission}}** ({{progress}}) {{claimed_at}} and it's still open. " +
-        "{{remaining}} mission(s) left on board {{board}} of {{club}} — finish it or request help!";
+        "⏳ **[{{club}}]** {{claimer}} claimed **{{mission}}** ({{progress}}) {{claimed_at}} and it's still open. " +
+        "{{remaining}} mission(s) left on board {{board}} — finish it or request help!";
 
     /// <summary>Channel alert for a mission whose claimer asked for help. Same placeholders.</summary>
     public string HelpRequestMessage { get; set; } =
-        "🆘 {{claimer}} needs help with **{{mission}}** ({{progress}}) on board {{board}} of {{club}}. Can anyone help out?";
+        "🆘 **[{{club}}]** {{claimer}} needs help with **{{mission}}** ({{progress}}) on board {{board}}. Can anyone help out?";
 
     /// <summary>DM to the claimer for a mission claimed too long ago. Same placeholders.</summary>
     public string OpenClaimDirectMessage { get; set; } =
-        "⏳ Your club mission **{{mission}}** ({{progress}}) has been open since {{claimed_at}}. " +
+        "⏳ Your **{{club}}** club mission **{{mission}}** ({{progress}}) has been open since {{claimed_at}}. " +
         "Please finish it or request help, so the club can move on to the next board.";
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

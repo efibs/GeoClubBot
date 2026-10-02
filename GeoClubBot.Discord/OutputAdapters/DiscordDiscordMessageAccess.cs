@@ -60,7 +60,7 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
                       ?? throw new InvalidOperationException($"No message found for id {messageId} in channel {channelId}");
 
         await channel
-            .CreateThreadAsync(name, ThreadType.PublicThread, ToArchiveDuration(autoArchive), message)
+            .CreateThreadAsync(name, ThreadTypeFor(channel), ToArchiveDuration(autoArchive), message)
             .ConfigureAwait(false);
     }
 
@@ -151,6 +151,10 @@ public class DiscordDiscordMessageAccess(DiscordSocketClient client, IOptions<Di
         ThreadAutoArchive.OneWeek => ThreadArchiveDuration.OneWeek,
         _ => ThreadArchiveDuration.OneDay
     };
+
+    // Discord rejects a public thread in an announcement channel; there it must be a news thread
+    public static ThreadType ThreadTypeFor(ITextChannel channel) =>
+        channel is INewsChannel ? ThreadType.NewsThread : ThreadType.PublicThread;
 
     private (SocketGuild Server, SocketTextChannel Channel) GetTextChannel(ulong channelId)
     {

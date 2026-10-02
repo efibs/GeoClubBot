@@ -73,4 +73,20 @@ public sealed class StuckMissionDetectorTests
 
         text.Should().Be($"**Alice**|Win 2 Ranked Duels|1/2|<t:{Now.AddHours(-7).ToUnixTimeSeconds()}:R>|3|4|Dragon");
     }
+
+    [Theory]
+    [InlineData(MissionBoardAlertKind.OpenClaim)]
+    [InlineData(MissionBoardAlertKind.HelpRequest)]
+    public void Render_DefaultChannelAlerts_LeadWithTheClub(MissionBoardAlertKind kind)
+    {
+        // Every club's alerts share one channel and every club has the same missions, so an alert
+        // that names its club only in passing is easily read as the other club's.
+        var options = Options();
+        var tile = Tile(claimedBy: "a", claimedAt: Now.AddHours(-7));
+        var template = kind == MissionBoardAlertKind.HelpRequest ? options.HelpRequestMessage : options.OpenClaimMessage;
+
+        var text = CheckStuckMissionsHandler.Render(template, tile, Week(Board(1, tile)), "**Alice**", "Dragon's Den");
+
+        text.Should().MatchRegex(@"^\S+ \*\*\[Dragon's Den\]\*\* \*\*Alice\*\* ");
+    }
 }
