@@ -2,6 +2,7 @@ using Discord;
 using FluentAssertions;
 using GeoClubBot.Discord.InputAdapters.Interactions.CountryChallenges;
 using GeoClubBot.Discord.OutputAdapters;
+using NSubstitute;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.CountryChallenges;
 using Xunit;
@@ -49,6 +50,21 @@ public sealed class CountryChallengesDiscordTests
     public void ToArchiveDuration_MapsEveryDuration(ThreadAutoArchive autoArchive, ThreadArchiveDuration expected)
     {
         DiscordDiscordMessageAccess.ToArchiveDuration(autoArchive).Should().Be(expected);
+    }
+
+    [Fact]
+    public void ThreadTypeFor_AnnouncementChannel_IsANewsThread()
+    {
+        // Discord.Net throws "type must be a NewsThread in News channels" for anything else (#363)
+        DiscordDiscordMessageAccess.ThreadTypeFor(Substitute.For<INewsChannel>())
+            .Should().Be(ThreadType.NewsThread);
+    }
+
+    [Fact]
+    public void ThreadTypeFor_TextChannel_IsAPublicThread()
+    {
+        DiscordDiscordMessageAccess.ThreadTypeFor(Substitute.For<ITextChannel>())
+            .Should().Be(ThreadType.PublicThread);
     }
 
     // ---- Parsing the preview day ------------------------------------------
