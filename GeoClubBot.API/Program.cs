@@ -12,7 +12,6 @@ using GeoClubBot.Middleware;
 using GeoClubBot.MockGeoGuessr.DependencyInjection;
 using GeoClubBot.MockGeoGuessr.Endpoints;
 using Infrastructure.OutputAdapters.DataAccess;
-using Infrastructure.OutputAdapters.Hubs;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -37,39 +36,13 @@ ConfiguredCronJobAttribute.Config = builder.Configuration;
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddHealthChecks();
-builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
-const string ConfiguredCorsPolicy = "ConfiguredCors";
-var allowedOrigins = builder.Configuration
-    .GetSection(CorsConfiguration.SectionName)
-    .Get<CorsConfiguration>()?.AllowedOrigins ?? [];
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy(ConfiguredCorsPolicy, policy =>
-    {
-        if (allowedOrigins.Length == 0)
-        {
-            // No origins configured — keep cross-origin requests disabled.
-            policy.DisallowCredentials();
-        }
-        else
-        {
-            // Credentials are required for the SignalR hub: the JS client negotiates with
-            // withCredentials=true, and credentialed CORS forbids the "*" origin — hence the
-            // explicit origin list above. Browsers also reject AllowCredentials together with
-            // AllowAnyOrigin, so this branch only runs when concrete origins are configured.
-            policy.WithOrigins(allowedOrigins)
-                .AllowAnyMethod()
-                .AllowAnyHeader()
-                .AllowCredentials();
-        }
-    });
-});
+// No CORS middleware: the activity is served from this origin, and the one endpoint browsers call
+// cross-origin (the website's stats) sets its fixed "Access-Control-Allow-Origin: *" itself.
 
 // Authenticate the Club Dashboard Activity's data endpoints by validating the Discord OAuth2
 // access token carried as a bearer token. There is no default scheme — only endpoints that opt in
@@ -90,10 +63,10 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddScoped<IAuthorizationHandler, ActivityAdminAuthorizationHandler>();
 
-// The anonymous token exchange is the one endpoint an unauthenticated caller can use to make this
-// server talk to Discord, so it gets a per-client-IP throttle (the forwarded-headers middleware
-// below restores the real client IP behind the TLS-terminating proxy). Everything else is either
-// authenticated or served from local data.
+// The anonymous token exchange and the website's stats are the endpoints an unauthenticated caller
+// can use to make this server talk to Discord or GeoGuessr, so they get a per-client-IP throttle
+// (the forwarded-headers middleware below restores the real client IP behind the TLS-terminating
+// proxy). Everything else is either authenticated or served from local data.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -117,12 +90,24 @@ builder.Services.AddRateLimiter(options =>
                 PermitLimit = 120,
                 Window = TimeSpan.FromMinutes(1)
             }));
+
+    // The website's stats are public, and a cache miss (failed reads are not cached) makes this server
+    // call GeoGuessr and Discord. A page needs one request per visit and may be cached for 30 s, so
+    // the limit is far above any real visitor.
+    options.AddPolicy(RateLimitPolicies.WebsiteStats, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1)
+            }));
 });
 
-// The Data Protection key ring (used by SignalR's negotiated connection tokens, and by anything
-// else that protects data under the hood) defaults to an ephemeral path inside the container's
-// writable layer — keys are lost, and everything protected with them silently invalidated, on
-// every redeploy. Persist it to a volume-backed directory instead. On top of that, encrypt the key
+// The Data Protection key ring (what ASP.NET Core protects cookies, antiforgery tokens and the like
+// with; nothing here uses it today, but anything added later would) defaults to an ephemeral path
+// inside the container's writable layer — keys are lost, and everything protected with them
+// silently invalidated, on every redeploy. Persist it to a volume-backed directory instead. On top of that, encrypt the key
 // ring at rest with a certificate: unlike Windows (which can fall back to DPAPI), Linux has no
 // OS-level encryption for the key files, so without this they'd sit on the volume as plain XML.
 // The certificate's password is supplied separately (env var/secret), never alongside the pfx on
@@ -245,11 +230,11 @@ var app = builder.Build();
 
 // Behind a TLS-terminating proxy or tunnel (Tailscale Funnel, Cloudflare Tunnel, nginx, Caddy, …)
 // Kestrel only ever sees plain HTTP from the local proxy. Honour the X-Forwarded-Proto/-For headers
-// it sets so HTTPS redirection, CORS, OAuth redirect URLs and client IP logging all reflect the
-// original public request instead of the loopback hop. KnownProxies/KnownNetworks are cleared
-// because the app is never exposed to the internet directly — only the local proxy can reach it —
-// so there is no untrusted peer that could spoof these headers. Must run before any middleware that
-// inspects the scheme/host (HTTPS redirect, HSTS, CORS, auth).
+// it sets so HTTPS redirection, per-IP rate limits, OAuth redirect URLs and client IP logging all
+// reflect the original public request instead of the loopback hop. KnownProxies/KnownNetworks are
+// cleared because the app is never exposed to the internet directly — only the local proxy can reach
+// it — so there is no untrusted peer that could spoof these headers. Must run before any middleware
+// that inspects the scheme/host or client IP (HTTPS redirect, HSTS, auth, rate limiting).
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
@@ -314,7 +299,6 @@ app.Use(async (context, next) =>
 // No app.UseHttpsRedirection(): Kestrel only ever serves plain HTTP here (see the forwarded-headers
 // comment above) and is never reachable directly, so there is no insecure request to redirect —
 // the middleware could only ever warn that it has no HTTPS port to redirect to.
-app.UseCors(ConfiguredCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
@@ -332,11 +316,10 @@ if (useMockGeoGuessr)
 
 app.MapControllers();
 app.MapHealthChecks("/health");
-app.MapHub<ClubNotificationHub>("/api/clubNotificationHub");
 
 if (serveActivity)
 {
-    // SPA fallback: any route not matched by the API, health check, SignalR hub, or a static
+    // SPA fallback: any route not matched by the API, health check, or a static
     // asset returns the activity's index.html so the Vue app can boot and route client-side.
     app.MapFallbackToFile("index.html");
 }

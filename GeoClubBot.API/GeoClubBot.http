@@ -1,6 +1,6 @@
 @GeoClubBot_HostAddress = http://localhost:5194
 
-GET {{GeoClubBot_HostAddress}}/weatherforecast/
+GET {{GeoClubBot_HostAddress}}/api/v1/stats
 Accept: application/json
 
 ###

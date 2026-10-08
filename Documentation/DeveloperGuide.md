@@ -19,7 +19,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | **GeoClubBot.Discord** | Discord.Net slash-command modules (`InputAdapters/Interactions/`) + Discord output adapters (`OutputAdapters/`) |
 | **GeoClubBot.Application** | Use cases (`UseCases/<Feature>/`) and port interfaces (`OutputPorts/`). The heart of the app |
 | **GeoClubBot.Domain** | Entities + domain events. No framework dependencies |
-| **GeoClubBot.Infrastructure** | EF Core repositories (`OutputAdapters/Repositories/`), Quartz jobs (`InputAdapters/Jobs/`), DbContext, SignalR, AI adapters (`OutputAdapters/AI/`) |
+| **GeoClubBot.Infrastructure** | EF Core repositories (`OutputAdapters/Repositories/`), Quartz jobs (`InputAdapters/Jobs/`), DbContext, AI adapters (`OutputAdapters/AI/`) |
 | **Configuration** | Strongly-typed `*Configuration` option classes |
 | **Constants** | `ConfigKeys`, component IDs, string constants |
 | **QuartzExtensions** | `[ConfiguredCronJob]` attribute + assembly scanning for jobs |
@@ -47,6 +47,7 @@ This is the **"where does X go?"** guide for the GeoClubBot solution. It complem
 | Change **the weekly activity rules** (requirements, rule XP) | `GeoClubBot.Application/UseCases/ClubMemberActivity/Rules/` (`ActivityRules` resolves config + club overrides, `ActivityRuleEvaluator` judges a member's feed entries); the check itself is `CheckGeoGuessrPlayerActivityCommand` + `ActivityCheckPhases/ActivityStatusCalculator.cs` |
 | Change **anything about the club mission board** | Domain model `GeoClubBot.Domain/ClubMissionBoardWeek.cs` (claim cycle, free/open missions), read through `IClubMissionBoardReader` (`GeoClubBot.API/DependencyInjection/CachingClubMissionBoardReader.cs`, per-club token). Use cases in `GeoClubBot.Application/UseCases/MissionBoard/` (board query, stuck-mission alerts) |
 | Change **the country challenges** (what the file allows, how runs behave) | `GeoClubBot.Application/UseCases/CountryChallenges/` — the file's rules live in `Configuration/CountryChallengePlanResolver.cs`, every posted text in `Rendering/CountryChallengeMessages.cs`, which the admin preview shares. See [`CountryChallengesGuide.md`](CountryChallengesGuide.md) |
+| Change **what the club website gets** (`GET /api/v1/stats`) | `GeoClubBot.Application/UseCases/Website/GetWebsiteStatsQuery.cs`, wire format in `GeoClubBot.API/DTOs/WebsiteStatsDtos.cs` — the website checks it against a JSON schema, so no extra or renamed keys. Reads go through `CachingGeoGuessrClubReader` / `CachingDiscordOnlineCountReader` (`GeoClubBot.API/DependencyInjection/`) |
 | Find out **what the GeoGuessr API actually returns** | `dotnet run --project Tools/GeoClubBot.ApiProbe -- activities` ([README](../Tools/GeoClubBot.ApiProbe/README.md)) — the typed DTOs drop undeclared fields, so don't read them for this |
 
 > The AI feature has its own document: [`AiGuide.md`](AiGuide.md) covers how it works, what it costs

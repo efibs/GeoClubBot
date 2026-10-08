@@ -22,7 +22,10 @@ public static class MockGeoGuessrEndpoints
 }
 
 // Request DTOs used by MockManagementController
-public record UpdateClubRequest(string? Name = null, int? Level = null, int? Xp = null, int? MaxMemberCount = null, string? Tag = null, string? Description = null);
+// GlobalXpRank, TotalClubs and TotalXp are the club's stats: the website reads its rank, the size
+// of the leaderboard and its total XP from them.
+public record UpdateClubRequest(string? Name = null, int? Level = null, int? Xp = null, int? MaxMemberCount = null, string? Tag = null, string? Description = null,
+    int? GlobalXpRank = null, int? TotalClubs = null, int? TotalXp = null);
 public record AddMemberRequest(string UserId);
 public record MoveMemberRequest(Guid TargetClubId);
 // Type mirrors GeoGuessr's activity type (see AddActivityRequest); a negative Amount means
