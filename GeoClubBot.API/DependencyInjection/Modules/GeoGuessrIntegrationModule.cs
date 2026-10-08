@@ -13,6 +13,7 @@ public static class GeoGuessrIntegrationModule
         services.AddTransient<IGeoGuessrUserProfileReader, CachingGeoGuessrUserProfileReader>();
         services.AddTransient<IGeoGuessrUserRankedSystemReader, CachingGeoGuessrUserRankedSystemReader>();
         services.AddTransient<IClubMissionBoardReader, CachingClubMissionBoardReader>();
+        services.AddTransient<IGeoGuessrClubReader, CachingGeoGuessrClubReader>();
 
         return services;
     }

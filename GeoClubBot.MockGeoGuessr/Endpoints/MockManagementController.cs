@@ -75,7 +75,10 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
                 club.Tag,
                 club.Description,
                 club.Language,
-                club.JoinRule
+                club.JoinRule,
+                club.Stats.GlobalXpRank,
+                club.Stats.TotalClubs,
+                TotalXp = club.Stats.TotalXp
             },
             members,
             activities
@@ -93,6 +96,9 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (req.MaxMemberCount.HasValue) club.MaxMemberCount = req.MaxMemberCount.Value;
         if (req.Tag is not null) club.Tag = req.Tag;
         if (req.Description is not null) club.Description = req.Description;
+        if (req.GlobalXpRank.HasValue) club.Stats.GlobalXpRank = req.GlobalXpRank.Value;
+        if (req.TotalClubs.HasValue) club.Stats.TotalClubs = req.TotalClubs.Value;
+        if (req.TotalXp.HasValue) club.Stats.TotalXp = req.TotalXp.Value;
         return Ok();
     }
 

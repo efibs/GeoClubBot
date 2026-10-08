@@ -99,6 +99,8 @@ same-priced 20 XP awards locally. The *Mission Board* view drives each club's we
 claim, request help, help out, complete, backdate a claim to make it look stuck, start a new week —
 and completing a mission logs the type-5 (and board-clear type-6) feed entries GeoGuessr would.
 The mock client only has a board when created per club (`CreateClient(clubId)`), like a club token.
+The club view's *Edit* form also sets the leaderboard rank, total clubs and stats XP the website
+endpoint reads.
 
 > The whole mock UI is one embedded file, `GeoClubBot.MockGeoGuessr/wwwroot/mock.html` (plain HTML
 > + fetch against `/mock/api`). A duplicate Blazor version of it once existed but was never routed;
@@ -153,9 +155,9 @@ API + Discord (controllers, slash command modules)
 | **GeoClubBot.API** | ASP.NET Core host, DI setup, controllers, Program.cs entry point |
 | **GeoClubBot.Domain** | Entities (Club, ClubMember, GeoGuessrUser, etc.) with domain events via MediatR |
 | **GeoClubBot.Application** | Use cases as MediatR handlers; input ports (use case interfaces) and output ports (repository/service interfaces) |
-| **GeoClubBot.Infrastructure** | EF Core DbContext + repositories, Quartz scheduled jobs, SignalR hub, AI adapters (`OutputAdapters/AI/`) |
+| **GeoClubBot.Infrastructure** | EF Core DbContext + repositories, Quartz scheduled jobs, AI adapters (`OutputAdapters/AI/`) |
 | **GeoClubBot.Discord** | Discord.Net interaction modules (slash commands), Discord output adapters |
-| **Configuration** | Strongly-typed config classes validated with `.ValidateDataAnnotations().ValidateOnStart()` (the one `IValidateOptions` implementation, `ActivityRulesOptionsValidator`, lives in Application because it needs the activity-kind enum) |
+| **Configuration** | Strongly-typed config classes validated with `.ValidateDataAnnotations().ValidateOnStart()` (cross-section checks use `IValidateOptions`: `WebsiteConfigurationValidator` lives here, `ActivityRulesOptionsValidator` in Application because it needs the activity-kind enum) |
 | **Constants** | Config keys, string constants, component IDs |
 | **Extensions** | Helper extension methods |
 | **Utilities** | General utilities |
@@ -234,6 +236,17 @@ API + Discord (controllers, slash command modules)
   its due day; it and the runs share `CountryChallengeRunLock`. `ConfiguredCronJobAttribute` takes an
   optional time-zone key for this job; every other job stays on UTC. See
   [`Documentation/CountryChallengesGuide.md`](Documentation/CountryChallengesGuide.md).
+- **Website stats** (optional, `Website:Enabled`, else 404): `GET /api/v1/stats` (`StatsController` →
+  `GetWebsiteStatsQuery`) is the club website's only endpoint — anonymous, per-IP rate-limited
+  (`website-stats`). It reads the main club and `Website:SecondClubId` live through
+  `IGeoGuessrClubReader` (club's own client and Polly pipeline, `GeoGuessr:ClubCacheTimeToLive`; rank,
+  total clubs and XP come from the club's `stats`) and the online count through
+  `IDiscordOnlineCountReader` (REST `approximate_presence_count`, so no presence intent;
+  `Discord:OnlineCountCacheTimeToLive`). Failed reads are **not** cached; a source that cannot be read
+  makes its section `null`, but keys are never omitted. The body is checked by the website against a
+  JSON schema (no extra keys, times ending in `Z`), so the DTOs pin every name and `updatedAt` is a UTC
+  `DateTime`. There is no CORS middleware: the action sets `Access-Control-Allow-Origin: *` itself,
+  because the middleware only answers requests carrying `Origin` and a CDN copy would lack it.
 - **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
 
 ### DI Registration

@@ -76,7 +76,7 @@ flowchart TD
     subgraph Adapters["Input / Output Adapters"]
         API["GeoClubBot.API<br/>(controllers, host, DI)"]
         Discord["GeoClubBot.Discord<br/>(slash commands)"]
-        Infra["GeoClubBot.Infrastructure<br/>(EF repos, Quartz jobs, SignalR)"]
+        Infra["GeoClubBot.Infrastructure<br/>(EF repos, Quartz jobs, AI adapters)"]
     end
     App["GeoClubBot.Application<br/>(use cases, input/output ports)"]
     Domain["GeoClubBot.Domain<br/>(entities, domain events)"]
@@ -147,6 +147,7 @@ startup. Key sections:
 | `ClubXp` | Maps XP amounts to activity kinds for untyped feed entries only; the feed's own type wins |
 | `SelfRoles`, `MemberPrivateChannels`, `ActivityReward`, `GeoGuessrAccountLinking` | Per-feature settings |
 | `AI` | Optional AI assistant — `Active`, OpenRouter key, request budget, conversation and indexing limits ([guide](Documentation/AiGuide.md)) |
+| `Website` | Optional public `GET /api/v1/stats` for the club website — `Enabled`, `SecondClubId` (one of `GeoGuessr:Clubs`, not the main club); caching via `GeoGuessr:ClubCacheTimeToLive` and `Discord:OnlineCountCacheTimeToLive` |
 | `SQL:Migrate` | Auto-apply EF Core migrations on startup |
 | `OpenTelemetry:Endpoint` | Opt-in OTLP exporter (e.g. the Aspire dashboard from `compose.yaml`) |
 

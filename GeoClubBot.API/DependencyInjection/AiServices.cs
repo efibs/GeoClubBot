@@ -82,8 +82,8 @@ public static class AiServices
                     openRouter.PerMinuteRequestBudget,
                     TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds)));
 
-        // TimeProvider is not otherwise used in this solution; registering the system implementation
-        // keeps the catalog's failure-decay logic swappable in tests without a new dependency.
+        // The system clock keeps the catalog's failure-decay logic swappable in tests without a new
+        // dependency. AddClubBotServices registers it too; whichever runs first wins.
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddSingleton<IChatModelClient, RefitChatModelClient>();
