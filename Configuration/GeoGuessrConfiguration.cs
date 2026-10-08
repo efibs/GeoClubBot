@@ -27,6 +27,12 @@ public class GeoGuessrConfiguration : IValidatableObject
     /// </summary>
     public TimeSpan MissionBoardCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>
+    /// How long a club as GeoGuessr's club endpoint returns it (level, members, leaderboard rank)
+    /// is cached. A failed read is not cached.
+    /// </summary>
+    public TimeSpan ClubCacheTimeToLive { get; set; } = TimeSpan.FromMinutes(30);
+
     [Required]
     [MinLength(1)]
     public required List<GeoGuessrClubEntry> Clubs { get; set; }
@@ -53,6 +59,12 @@ public class GeoGuessrConfiguration : IValidatableObject
         {
             yield return new ValidationResult(
                 $"{nameof(MissionBoardCacheTimeToLive)} must be greater than zero.");
+        }
+
+        if (ClubCacheTimeToLive <= TimeSpan.Zero)
+        {
+            yield return new ValidationResult(
+                $"{nameof(ClubCacheTimeToLive)} must be greater than zero.");
         }
 
         var mainClubs = Clubs.Where(c => c.IsMain).ToList();

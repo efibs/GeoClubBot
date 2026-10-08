@@ -15,4 +15,10 @@ public static class RateLimitPolicies
     /// anybody who learns the public URL.
     /// </summary>
     public const string AiImageRelay = "ai-image-relay";
+
+    /// <summary>
+    /// Per-client-IP throttle on the website's public stats. A cache miss makes the server call
+    /// GeoGuessr and Discord, and failed reads are not cached.
+    /// </summary>
+    public const string WebsiteStats = "website-stats";
 }

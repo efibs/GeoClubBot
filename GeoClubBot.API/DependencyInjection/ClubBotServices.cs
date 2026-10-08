@@ -1,5 +1,6 @@
 using Configuration;
 using GeoClubBot.DependencyInjection.Modules;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using UseCases.OutputPorts.GeoGuessr;
 
 namespace GeoClubBot.DependencyInjection;
@@ -13,6 +14,9 @@ public static class ClubBotServices
     {
         // Applies to every resilience pipeline in the app, wherever it is registered.
         services.AddResilienceTelemetryDefaults();
+
+        // Lets tests control the time the caching readers stamp on what they read.
+        services.TryAddSingleton(TimeProvider.System);
 
         services.AddPersistenceModule(configuration);
         services.AddDiscordAdaptersModule();

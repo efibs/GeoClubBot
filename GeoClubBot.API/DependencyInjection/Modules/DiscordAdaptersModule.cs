@@ -27,9 +27,10 @@ public static class DiscordAdaptersModule
         services.AddTransient<IDiscordTextChannelAccess, DiscordDiscordTextChannelAccess>();
         services.AddTransient<IDiscordSelfUserAccess, DiscordDiscordSelfUserAccess>();
         services.AddTransient<IDiscordDirectMessageAccess, DiscordDirectMessageAccess>();
+        services.AddTransient<IDiscordServerStatsAccess, DiscordDiscordServerStatsAccess>();
+        services.AddTransient<IDiscordOnlineCountReader, CachingDiscordOnlineCountReader>();
 
         // Fan-out: every IClubEventNotifier consumer must inject IEnumerable<IClubEventNotifier>
-        services.AddTransient<IClubEventNotifier, SignalRClubEventNotifier>();
         services.AddTransient<IClubEventNotifier, DiscordMessageClubEventNotifier>();
 
         return services;

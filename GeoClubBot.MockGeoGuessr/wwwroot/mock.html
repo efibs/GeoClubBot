@@ -111,6 +111,8 @@ async function loadClub(id){
         <div class="col-md-2"><strong>Level:</strong> ${c.level}</div><div class="col-md-2"><strong>XP:</strong> ${c.xp}</div>
         <div class="col-md-2"><strong>Tag:</strong> ${h(c.tag)}</div><div class="col-md-2"><strong>Members:</strong> ${d.members.length}/${c.maxMemberCount}</div>
         <div class="col-md-4"><strong>Desc:</strong> ${h(c.description||'')}</div></div>
+        <div class="row"><div class="col-md-4"><strong>Leaderboard:</strong> rank ${c.globalXpRank} of ${c.totalClubs}</div>
+        <div class="col-md-4"><strong>Total XP (stats):</strong> ${c.totalXp}</div></div>
         <button class="btn btn-success btn-sm mt-2" onclick="incrLevel('${c.clubId}')">Increment Level</button>
       </div>
       <div id="club-edit" style="display:none"><div class="row g-2">
@@ -120,6 +122,9 @@ async function loadClub(id){
         <div class="col-md-2"><label class="form-label">Max Members</label><input class="form-control form-control-sm" id="ce-max" type="number" value="${c.maxMemberCount}"/></div>
         <div class="col-md-2"><label class="form-label">Tag</label><input class="form-control form-control-sm" id="ce-tag" value="${h(c.tag)}"/></div>
         <div class="col-md-4"><label class="form-label">Description</label><input class="form-control form-control-sm" id="ce-desc" value="${h(c.description||'')}"/></div>
+        <div class="col-md-2"><label class="form-label">Leaderboard rank</label><input class="form-control form-control-sm" id="ce-rank" type="number" min="1" value="${c.globalXpRank}"/></div>
+        <div class="col-md-2"><label class="form-label">Total clubs</label><input class="form-control form-control-sm" id="ce-total-clubs" type="number" min="1" value="${c.totalClubs}"/></div>
+        <div class="col-md-2"><label class="form-label">Total XP (stats)</label><input class="form-control form-control-sm" id="ce-total-xp" type="number" value="${c.totalXp}"/></div>
       </div><button class="btn btn-primary btn-sm mt-2" onclick="saveClub('${c.clubId}')">Save</button></div>
     </div></div>`;
 
@@ -189,7 +194,9 @@ function toggleClubEdit(){
 async function saveClub(id){
   await post('/clubs/'+id,{name:document.getElementById('ce-name').value,level:+document.getElementById('ce-level').value,
     xp:+document.getElementById('ce-xp').value,maxMemberCount:+document.getElementById('ce-max').value,
-    tag:document.getElementById('ce-tag').value,description:document.getElementById('ce-desc').value});
+    tag:document.getElementById('ce-tag').value,description:document.getElementById('ce-desc').value,
+    globalXpRank:+document.getElementById('ce-rank').value,totalClubs:+document.getElementById('ce-total-clubs').value,
+    totalXp:+document.getElementById('ce-total-xp').value});
   loadClub(id);
 }
 async function incrLevel(id){await post('/clubs/'+id+'/level');loadClub(id)}

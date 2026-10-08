@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Configuration;
 
@@ -77,10 +78,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddOptions<CorsConfiguration>()
-            .Bind(config.GetSection(CorsConfiguration.SectionName))
-            .ValidateDataAnnotations()
+        // Validated against GeoGuessr:Clubs, which data annotations cannot see.
+        services.AddOptions<WebsiteConfiguration>()
+            .Bind(config.GetSection(WebsiteConfiguration.SectionName))
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<WebsiteConfiguration>, WebsiteConfigurationValidator>();
 
         services.AddOptions<GeoGuessrAccountLinkingConfiguration>()
             .Bind(config.GetSection(GeoGuessrAccountLinkingConfiguration.SectionName))
