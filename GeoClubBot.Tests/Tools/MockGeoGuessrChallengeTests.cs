@@ -58,7 +58,7 @@ public sealed class MockGeoGuessrChallengeTests
             {
                 Id = player,
                 Nick = player,
-                TotalScore = new ChallengeResultPlayerScoreDto { Amount = score.ToString(), Unit = "points" },
+                TotalScoreInPoints = score,
                 TotalDistance = new ChallengeResultPlayerDistanceDto
                 {
                     Meters = new ChallengeResultPlayerDistanceMetersDto { Amount = "100", Unit = "km" }

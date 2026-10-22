@@ -294,7 +294,7 @@ public sealed class DailyChallengeHandlerTests : IDisposable
                 {
                     Id = id,
                     Nick = $"nick-{id}",
-                    TotalScore = new ChallengeResultPlayerScoreDto { Amount = "5000", Unit = "points" },
+                    TotalScoreInPoints = 5000,
                     TotalDistance = new ChallengeResultPlayerDistanceDto
                     {
                         Meters = new ChallengeResultPlayerDistanceMetersDto { Amount = "1000", Unit = "km" },
