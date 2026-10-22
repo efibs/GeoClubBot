@@ -135,15 +135,17 @@ public class GeoGuessrAccountLinkPublicModule(
 
         var completeButtonId = $"{ComponentIds.GeoGuessrAccountLinkingCompleteButtonId}:{executingUser.Id},{geoGuessrUserId}";
         var cancelButtonId = $"{ComponentIds.GeoGuessrAccountLinkingCancelButtonId}:{executingUser.Id},{geoGuessrUserId}";
+        var profileUrl = $"https://www.geoguessr.com/user/{geoGuessrUserId}";
 
         var completeButton = new ComponentBuilder()
             .WithButton("Complete", completeButtonId)
             .WithButton("Cancel", cancelButtonId, style: ButtonStyle.Danger)
+            .WithButton("Open profile", style: ButtonStyle.Link, url: profileUrl)
             .Build();
 
         await adminTextChannel
             .SendMessageAsync($"User {executingUser.DisplayName} (id: {executingUser.Id}) " +
-                              $"started the linking process for GeoGuessr account {geoGuessrUserId}. " +
+                              $"started the linking process for GeoGuessr account [{geoGuessrUserId}](<{profileUrl}>). " +
                               $"Click the button below to complete the linking process.\n\n" +
                               $"**Only accept the password if it was sent to you by the correct user inside GeoGuessr!**",
                 components: completeButton).ConfigureAwait(false);
