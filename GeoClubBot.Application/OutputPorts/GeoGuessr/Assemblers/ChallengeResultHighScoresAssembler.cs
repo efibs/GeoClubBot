@@ -14,7 +14,7 @@ internal static class ChallengeResultHighScoresAssembler
         return new ClubChallengeResultPlayer(
             dto.Game.Player.Id,
             dto.Game.Player.Nick,
-            $"{dto.Game.Player.TotalScore.Amount} {dto.Game.Player.TotalScore.Unit}",
+            $"{dto.Game.Player.TotalScoreInPoints} points",
             $"{dto.Game.Player.TotalDistance.Meters.Amount}{dto.Game.Player.TotalDistance.Meters.Unit}");
     }
 }

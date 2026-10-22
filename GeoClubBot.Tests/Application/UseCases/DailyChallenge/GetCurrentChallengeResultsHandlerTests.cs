@@ -26,7 +26,7 @@ public sealed class GetCurrentChallengeResultsHandlerTests
     private GetCurrentChallengeResultsHandler CreateHandler() =>
         new(_factory, _challenges, new GeoGuessrConfigurationBuilder().WithClub(MainClubId).BuildOptions());
 
-    private static ChallengeResultHighscoresDto Highscores(params (string Id, string Nick, string Score, string Distance)[] players) =>
+    private static ChallengeResultHighscoresDto Highscores(params (string Id, string Nick, int Score, string Distance)[] players) =>
         new()
         {
             Items = players.Select(p => new ChallengeResultItemDto
@@ -37,7 +37,7 @@ public sealed class GetCurrentChallengeResultsHandlerTests
                     {
                         Id = p.Id,
                         Nick = p.Nick,
-                        TotalScore = new ChallengeResultPlayerScoreDto { Amount = p.Score, Unit = "points" },
+                        TotalScoreInPoints = p.Score,
                         TotalDistance = new ChallengeResultPlayerDistanceDto
                         {
                             Meters = new ChallengeResultPlayerDistanceMetersDto { Amount = p.Distance, Unit = "km" }
@@ -65,9 +65,9 @@ public sealed class GetCurrentChallengeResultsHandlerTests
             ClubChallengeLink.Create("Easy", rolePriority: 1, "challenge-easy")
         ]);
         _client.ReadHighscoresAsync("challenge-easy", Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
-            .Returns(Highscores(("p1", "Alice", "5000", "1000")));
+            .Returns(Highscores(("p1", "Alice", 5000, "1000")));
         _client.ReadHighscoresAsync("challenge-hard", Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
-            .Returns(Highscores(("p2", "Bob", "4000", "2000")));
+            .Returns(Highscores(("p2", "Bob", 4000, "2000")));
 
         var result = await CreateHandler().Handle(new GetCurrentChallengeResultsQuery(), CancellationToken.None);
 

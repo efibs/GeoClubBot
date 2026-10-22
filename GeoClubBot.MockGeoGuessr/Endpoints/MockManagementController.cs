@@ -328,7 +328,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         {
             s.Game.Player.Id,
             s.Game.Player.Nick,
-            Score = s.Game.Player.TotalScore.Amount,
+            Score = s.Game.Player.TotalScoreInPoints,
             Distance = s.Game.Player.TotalDistance.Meters.Amount
         }));
     }
@@ -347,7 +347,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
                 {
                     Id = req.UserId,
                     Nick = nick,
-                    TotalScore = new ChallengeResultPlayerScoreDto { Amount = req.Score.ToString(), Unit = "points" },
+                    TotalScoreInPoints = req.Score,
                     TotalDistance = new ChallengeResultPlayerDistanceDto
                     {
                         Meters = new ChallengeResultPlayerDistanceMetersDto

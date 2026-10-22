@@ -87,7 +87,7 @@ public static class CountryChallengeFiles
                 {
                     Id = id,
                     Nick = $"nick-{id}",
-                    TotalScore = new ChallengeResultPlayerScoreDto { Amount = "24000", Unit = "points" },
+                    TotalScoreInPoints = 24000,
                     TotalDistance = new ChallengeResultPlayerDistanceDto
                     {
                         Meters = new ChallengeResultPlayerDistanceMetersDto { Amount = "120", Unit = "km" }
