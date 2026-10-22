@@ -6,7 +6,7 @@ public class ChallengeResultPlayerDto
 
     public required string Nick { get; set; }
 
-    public required ChallengeResultPlayerScoreDto TotalScore { get; set; }
+    public required int TotalScoreInPoints { get; set; }
 
     public required ChallengeResultPlayerDistanceDto TotalDistance { get; set; }
 }

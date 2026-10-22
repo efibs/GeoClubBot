@@ -56,7 +56,7 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore, Guid? clubId 
         // ConcurrentBag, whose own order is arbitrary.
         if (dataStore.ChallengeHighscores.TryGetValue(challengeId, out var scores))
             items = scores
-                .OrderByDescending(s => long.TryParse(s.Game.Player.TotalScore.Amount, out var score) ? score : 0)
+                .OrderByDescending(s => s.Game.Player.TotalScoreInPoints)
                 .ThenBy(s => double.TryParse(s.Game.Player.TotalDistance.Meters.Amount, System.Globalization.CultureInfo.InvariantCulture, out var distance) ? distance : double.MaxValue)
                 .Take(@params.Limit)
                 .ToList();
