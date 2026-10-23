@@ -309,6 +309,97 @@ public sealed class EfRepositoryIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task MissionClaims_RangeReads_StayWithinTheUserOrClubAndTheClaimWindow()
+    {
+        var clubId = Guid.NewGuid();
+        var otherClubId = Guid.NewGuid();
+        var user = Guid.NewGuid().ToString("N")[..24];
+        var periodStart = new DateTimeOffset(2026, 10, 14, 11, 0, 0, TimeSpan.Zero);
+        var periodEnd = periodStart.AddDays(7);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            var repo = new EfMissionClaimRepository(seed);
+            repo.Add(MissionClaim.Create(clubId, periodStart, periodEnd, Guid.NewGuid(), user, periodStart.AddDays(1), periodStart.AddDays(2)));
+            repo.Add(MissionClaim.Create(clubId, periodStart, periodEnd, Guid.NewGuid(), user, periodStart.AddDays(5), null));
+            repo.Add(MissionClaim.Create(clubId, periodStart, periodEnd, Guid.NewGuid(), "someone-else", periodStart.AddDays(1), null));
+            repo.Add(MissionClaim.Create(otherClubId, periodStart, periodEnd, Guid.NewGuid(), user, periodStart.AddDays(1), null));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var readRepo = new EfMissionClaimRepository(read);
+
+        var ofUser = await readRepo.ReadClaimsOfUserAsync(user, periodStart, periodStart.AddDays(3));
+        ofUser.Should().HaveCount(2, "both clubs' claims of the user in the window, not the later one");
+        ofUser.Should().OnlyContain(c => c.UserId == user && c.ClaimedAt <= periodStart.AddDays(3));
+
+        var ofClub = await readRepo.ReadClaimsOfClubAsync(clubId, periodStart, periodEnd);
+        ofClub.Should().HaveCount(3);
+        ofClub.Single(c => c.CompletedAt is not null).CompletionTime.Should().Be(TimeSpan.FromDays(1));
+    }
+
+    [Fact]
+    public async Task MissionClaims_AreUpdatedInPlace_AndUniquePerClubWeekAndMission()
+    {
+        var clubId = Guid.NewGuid();
+        var missionId = Guid.NewGuid();
+        var periodStart = new DateTimeOffset(2026, 10, 14, 11, 0, 0, TimeSpan.Zero);
+        var claimedAt = periodStart.AddHours(3);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(MissionClaim.Create(clubId, periodStart, periodStart.AddDays(7), missionId, "alice", claimedAt, null));
+            // The same mission id in another club is a different mission (GeoGuessr shares the ids).
+            seed.Add(MissionClaim.Create(Guid.NewGuid(), periodStart, periodStart.AddDays(7), missionId, "bob", claimedAt, null));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var update = fixture.CreateDbContext())
+        {
+            var claim = (await new EfMissionClaimRepository(update).ReadForUpdateByPeriodAsync(clubId, periodStart)).Single();
+            claim.Update("alice", claimedAt, claimedAt.AddHours(5)).Should().BeTrue();
+            await update.SaveChangesAsync();
+        }
+
+        await using (var read = fixture.CreateDbContext())
+        {
+            var claim = (await new EfMissionClaimRepository(read).ReadForUpdateByPeriodAsync(clubId, periodStart)).Single();
+            claim.CompletionTime.Should().Be(TimeSpan.FromHours(5));
+        }
+
+        await using var again = fixture.CreateDbContext();
+        again.Add(MissionClaim.Create(clubId, periodStart, periodStart.AddDays(7), missionId, "alice", claimedAt, null));
+
+        var act = () => again.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>("a mission is recorded once per club and board week");
+    }
+
+    [Fact]
+    public async Task MissionClaims_DeleteClaimedBefore_KeepsNewerClaims()
+    {
+        var clubId = Guid.NewGuid();
+        // Far in the past, so the shared container's other rows are untouched.
+        var old = new DateTimeOffset(2001, 1, 3, 0, 0, 0, TimeSpan.Zero);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            var repo = new EfMissionClaimRepository(seed);
+            repo.Add(MissionClaim.Create(clubId, old, old.AddDays(7), Guid.NewGuid(), "alice", old, null));
+            repo.Add(MissionClaim.Create(clubId, old, old.AddDays(7), Guid.NewGuid(), "alice", old.AddDays(2), null));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var delete = fixture.CreateDbContext();
+        var deleted = await new EfMissionClaimRepository(delete).DeleteClaimedBeforeAsync(old.AddDays(1));
+
+        deleted.Should().BeGreaterThanOrEqualTo(1);
+        var left = await new EfMissionClaimRepository(delete).ReadClaimsOfClubAsync(clubId, old.AddDays(-1), old.AddDays(7));
+        left.Should().ContainSingle().Which.ClaimedAt.Should().Be(old.AddDays(2));
+    }
+
+    [Fact]
     public async Task ClubApplicationNotifications_ReadAndDelete_StayWithinTheClub()
     {
         var clubId = Guid.NewGuid();

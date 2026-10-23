@@ -63,6 +63,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<MissionClaimTrackingConfiguration>()
+            .Bind(config.GetSection(MissionClaimTrackingConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<ClubApplicationNotificationsConfiguration>()
             .Bind(config.GetSection(ClubApplicationNotificationsConfiguration.SectionName))
             .ValidateDataAnnotations()

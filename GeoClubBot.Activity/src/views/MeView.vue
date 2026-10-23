@@ -6,7 +6,7 @@ import LinkAccountPanel from '../components/LinkAccountPanel.vue';
 import ErrorBanner from '../components/ErrorBanner.vue';
 import { useSession } from '../queries/session';
 import { useMyActivityQuery, useMyCurrentActivityQuery, useProfileQuery } from '../queries/profile';
-import { countryFlag, formatXp, weekdayInitial } from '../format';
+import { countryFlag, formatMissionCompletion, formatXp, weekdayInitial } from '../format';
 import { toErrorMessage } from '../api';
 import type { DayActivityDto } from '../types';
 
@@ -86,6 +86,9 @@ const errorMessage = computed(() => {
           <FactRow v-if="current.helpedThisWeek != null" label="Helped out (unverified)">
             {{ current.helpedThisWeek }}
           </FactRow>
+          <FactRow v-if="current.missionCompletion" label="Mission completion">
+            {{ formatMissionCompletion(current.missionCompletion) }}
+          </FactRow>
           <p class="stat-caption">since the last weekly check</p>
         </template>
         <p v-else class="empty-state">No activity data yet.</p>
@@ -101,6 +104,9 @@ const errorMessage = computed(() => {
               · {{ formatXp(activity.boardClearBonusXp) }} board bonus
             </template>
           </p>
+          <FactRow v-if="activity.missionCompletion" label="Mission completion">
+            {{ formatMissionCompletion(activity.missionCompletion) }}
+          </FactRow>
           <ul class="day-strip" data-testid="day-strip">
             <li
               v-for="day in activity.days"

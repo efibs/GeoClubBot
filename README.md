@@ -63,7 +63,7 @@ to GeoGuessr profiles.
 
 Work is driven by a mix of **Discord slash commands** and **Quartz scheduled jobs**
 (`SyncClubsJob`, `ActivityCheckJob`, `CheckClubLevelJob`, `DailyChallengeJob`, `CountryChallengeJob`,
-`DailyMissionReminderJob`, `DailyActivitySnapshotJob`, `StuckMissionAlertJob`, and the AI and
+`DailyMissionReminderJob`, `DailyActivitySnapshotJob`, `StuckMissionAlertJob`, `MissionClaimRecorderJob`, and the AI and
 archive-cleanup jobs).
 
 ## Architecture
@@ -138,9 +138,10 @@ startup. Key sections:
 | `ConnectionStrings:PostgreSQL` | PostgreSQL connection string |
 | `Discord` | Bot token, server ID, welcome/leave messages & channels |
 | `GeoGuessr` | `_ncfa` tokens (each club's must belong to one of its members), sync schedule, per-club overrides (`UseMock` for local dev) |
-| `ActivityChecker` | Schedule + time zone, requirements per activity kind, min rule XP, rule-XP exclusions/caps, grace period, max strikes, strike decay |
+| `ActivityChecker` | Schedule + time zone, requirements per activity kind, min rule XP, rule-XP exclusions/caps, grace period, max strikes, strike decay, optional mission-completion report (`MissionCompletionSlowestN`) |
 | `SwapSuggestions` | Optional post-check swap/promotion report: history depth, buffer XP, club size |
 | `MissionBoard` / `MissionBoardAlerts` | Claim-reset fallback; stuck-mission alerts (thresholds, channel, mentions, DMs) |
+| `MissionClaimTracking` | Records every board claim (schedule, retention) and the window the weekly report's claim-to-completion averages cover (`AverageWindow`, default 14 days) |
 | `DailyMissionReminder` | Reminder schedule, default message, and every outstanding-text part |
 | `ActivityViews` | Longest `last-days` window, whether helps are shown |
 | `DailyChallenges` / `DailyActivitySnapshot` | Cron schedules, channels, podium roles |

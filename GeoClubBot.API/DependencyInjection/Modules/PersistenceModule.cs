@@ -37,6 +37,7 @@ public static class PersistenceModule
         services.AddTransient<IDailyMissionReminderRepository, EfDailyMissionReminderRepository>();
         services.AddTransient<IClubMemberDailyActivityRepository, EfClubMemberDailyActivityRepository>();
         services.AddTransient<IMissionBoardAlertRepository, EfMissionBoardAlertRepository>();
+        services.AddTransient<IMissionClaimRepository, EfMissionClaimRepository>();
         services.AddTransient<IClubApplicationNotificationRepository, EfClubApplicationNotificationRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
         services.AddTransient<IAiBudgetRepository, EfAiBudgetRepository>();

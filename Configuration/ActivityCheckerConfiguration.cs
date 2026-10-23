@@ -59,6 +59,15 @@ public class ActivityCheckerConfiguration : IValidatableObject
 
     public int AverageXpHistoryDepth { get; set; } = 4;
 
+    /// <summary>
+    /// Optional mission-completion report: how many of the members slowest to finish their claimed
+    /// board missions (average claim-to-completion time over <c>MissionClaimTracking:AverageWindow</c>) to list. Members who
+    /// left a claim unfinished are listed with it whatever this is. Null omits the report. Needs
+    /// <see cref="MissionClaimTrackingConfiguration"/>.
+    /// </summary>
+    [Range(0, 100)]
+    public int? MissionCompletionSlowestN { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (!string.IsNullOrWhiteSpace(TimeZone) && !TimeZoneInfo.TryFindSystemTimeZoneById(TimeZone, out _))

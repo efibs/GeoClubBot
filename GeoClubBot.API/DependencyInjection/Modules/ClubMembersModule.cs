@@ -29,6 +29,7 @@ public static class ClubMembersModule
         services.AddTransient<ActivityCheckSyncStep>();
         services.AddTransient<ActivityStatusCalculator>();
         services.AddTransient<ActivityAverageXpRollupStep>();
+        services.AddTransient<MissionCompletionReportStep>();
 
         // The weekly rules name activity kinds in configuration; a typo fails start-up rather than
         // the next weekly check.

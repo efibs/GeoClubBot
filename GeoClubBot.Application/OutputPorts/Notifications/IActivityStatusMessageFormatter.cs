@@ -36,4 +36,14 @@ public interface IActivityStatusMessageFormatter
         IReadOnlyList<ClubMemberAverageXp> topMembers,
         IReadOnlyList<ClubMemberAverageXp> bottomMembers,
         int historyDepth);
+
+    /// <summary>
+    /// Renders the mission-completion report: the members slowest to finish their claimed board
+    /// missions within <paramref name="averageWindow"/>, and those who left claims unfinished.
+    /// Returns <c>null</c> if both slices are empty.
+    /// </summary>
+    string? FormatMissionCompletionSummary(
+        IReadOnlyList<ClubMemberMissionCompletion> slowestMembers,
+        IReadOnlyList<ClubMemberMissionCompletion> unfinishedMembers,
+        TimeSpan averageWindow);
 }

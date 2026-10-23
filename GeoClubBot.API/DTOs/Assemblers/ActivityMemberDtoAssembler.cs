@@ -57,7 +57,14 @@ public static class ActivityMemberDtoAssembler
             .Select(r => new RequirementDto(r.Label, r.Actual, r.Target, r.Met))
             .ToList(),
         activity.HelpedThisWeek,
-        activity.HelpedLastWeek);
+        activity.HelpedLastWeek,
+        activity.MissionCompletion is { } completion
+            ? new MissionCompletionDto(
+                completion.CompletedCount,
+                completion.AverageCompletionTime?.TotalHours,
+                completion.AbandonedCount,
+                completion.OpenClaimAge?.TotalHours)
+            : null);
 
     public static MissionBoardDto AssembleMissionBoard(ClubMissionBoardView view, string? viewerUserId)
     {

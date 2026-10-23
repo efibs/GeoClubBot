@@ -70,7 +70,8 @@ public sealed class MissionBoardAndActivityFormatterTests
                 new ActivityRequirementResult(ClubXpActivityKind.DailyChallengeOrDuel, 6, 6, 6),
                 new ActivityRequirementResult(ClubXpActivityKind.BoardMission, 2, 2, 2)
             ],
-            HelpedThisWeek: 3, HelpedLastWeek: 1, PeriodStart: T);
+            HelpedThisWeek: 3, HelpedLastWeek: 1, PeriodStart: T,
+            MissionCompletion: new MissionCompletionTimes(5, TimeSpan.FromHours(28), 1, TimeSpan.FromHours(51)));
 
         return Verify(Render(ActivityProgressFormatter.BuildActivityEmbed(
             summary, "📅 Your Activity This Week", "✅ All requirements met — keep it up!").Build()));

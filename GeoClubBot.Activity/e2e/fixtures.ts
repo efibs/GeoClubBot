@@ -108,6 +108,12 @@ export const baseWeekActivity = {
   requirements: [],
   helpedThisWeek: 3,
   helpedLastWeek: 1,
+  missionCompletion: {
+    completedCount: 3,
+    averageCompletionHours: 28.5,
+    abandonedCount: 1,
+    openClaimHours: null,
+  },
 };
 
 /** The current check period: the streak requirement met, one of two missions still missing. */

@@ -7,7 +7,7 @@ import ActionButton from '../../components/ActionButton.vue';
 import ErrorBanner from '../../components/ErrorBanner.vue';
 import LoadingSpinner from '../../components/LoadingSpinner.vue';
 import { useAdminMemberLookup, useClubStatsQuery } from '../../queries/admin';
-import { formatDate, formatXp } from '../../format';
+import { formatDate, formatMissionCompletion, formatXp } from '../../format';
 
 const lookup = useAdminMemberLookup();
 const { data: clubStats } = useClubStatsQuery();
@@ -111,6 +111,9 @@ function search(): void {
               {{ lookup.data.activity.helpedLastWeek ?? 0 }} last week (unverified)
             </template>
           </p>
+          <FactRow v-if="lookup.data.activity.missionCompletion" label="Mission completion">
+            {{ formatMissionCompletion(lookup.data.activity.missionCompletion) }}
+          </FactRow>
         </template>
         <p v-else class="empty-state">No activity data for this member.</p>
       </PanelSection>

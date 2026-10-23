@@ -803,6 +803,48 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("MissionBoardAlerts");
                 });
 
+            modelBuilder.Entity("Entities.MissionClaim", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("PeriodEnd")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("PeriodStart")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClubId", "ClaimedAt");
+
+                    b.HasIndex("UserId", "ClaimedAt");
+
+                    b.HasIndex("ClubId", "PeriodStart", "MissionId")
+                        .IsUnique();
+
+                    b.ToTable("MissionClaims");
+                });
+
             modelBuilder.Entity("Entities.AiFeedbackTurn", b =>
                 {
                     b.HasOne("Entities.AiAnswerFeedback", null)
