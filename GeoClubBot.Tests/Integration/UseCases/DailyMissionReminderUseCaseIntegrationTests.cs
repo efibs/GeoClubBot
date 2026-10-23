@@ -21,6 +21,26 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
 
     private MediatorTestHost CreateHost() => new(fixture.ConnectionString);
 
+    /// <summary>
+    /// A host that can run the send-due sweep. The sweep reads every due reminder in the shared
+    /// container, not just the test's own — other tests leave unsent reminders at fixed times (e.g.
+    /// 20:00) — so it needs a message to render and a DM result for whoever else it reaches.
+    /// </summary>
+    private MediatorTestHost CreateSendingHost()
+    {
+        var host = new MediatorTestHost(
+            fixture.ConnectionString,
+            configurationValues: new Dictionary<string, string?>
+            {
+                ["DailyMissionReminder:Schedule"] = "0 * * ? * * *",
+                ["DailyMissionReminder:DefaultMessage"] = "Don't forget to complete {{outstanding_text}}"
+            });
+        host.Mock<IDiscordDirectMessageAccess>()
+            .SendDirectMessageAsync(Arg.Any<ulong>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Result.Success());
+        return host;
+    }
+
     [Fact]
     public async Task AddReminder_CreatesANewReminder()
     {
@@ -194,14 +214,7 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
             await seed.SaveChangesAsync();
         }
 
-        // DefaultMessage is [Required] in production; supply it so the handler can build the DM text.
-        using var host = new MediatorTestHost(
-            fixture.ConnectionString,
-            configurationValues: new Dictionary<string, string?>
-            {
-                ["DailyMissionReminder:Schedule"] = "0 * * ? * * *",
-                ["DailyMissionReminder:DefaultMessage"] = "Don't forget to complete {{outstanding_text}}"
-            });
+        using var host = CreateSendingHost();
         // Discord reports "no mutual guild" → the user has left the server.
         host.Mock<IDiscordDirectMessageAccess>()
             .SendDirectMessageAsync(discordId, Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -256,7 +269,7 @@ public sealed class DailyMissionReminderUseCaseIntegrationTests(PostgresFixture 
             await seed.SaveChangesAsync();
         }
 
-        using var host = CreateHost();
+        using var host = CreateSendingHost();
         await host.SendAsync(new SendDueRemindersCommand());
 
         await host.Mock<IDiscordDirectMessageAccess>()
