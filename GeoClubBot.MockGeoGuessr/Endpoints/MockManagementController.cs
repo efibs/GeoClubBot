@@ -63,6 +63,9 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
                 RecordedAt = x.RecordedAt.ToString("yyyy-MM-dd HH:mm:ss")
             })
             : [];
+        var applications = store.ClubApplications.TryGetValue(clubId, out var ap)
+            ? ap.Values.Select(x => new { x.UserId, x.Nick })
+            : [];
         return Ok(new
         {
             club = new
@@ -81,7 +84,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
                 TotalXp = club.Stats.TotalXp
             },
             members,
-            activities
+            activities,
+            applications
         });
     }
 
@@ -119,19 +123,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         var members = store.ClubMembers.GetOrAdd(clubId, _ => new ConcurrentDictionary<string, ClubMemberDto>());
         members[user.Id] = new ClubMemberDto
         {
-            User = new ClubMemberUserDto
-            {
-                UserId = user.Id,
-                Nick = user.Nick,
-                Avatar = "",
-                FullBodyAvatar = "",
-                BorderUrl = "",
-                IsVerified = false,
-                Flair = 0,
-                CountryCode = user.CountryCode,
-                TierId = 0,
-                ClubUserType = 0
-            },
+            User = ToClubUser(user),
             Role = 0,
             JoinedAt = DateTimeOffset.UtcNow,
             IsOnline = false,
@@ -141,6 +133,39 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         };
         return Ok();
     }
+
+    [HttpPost("clubs/{clubId:guid}/applications")]
+    public IActionResult AddApplication(Guid clubId, [FromBody] AddMemberRequest req)
+    {
+        if (!store.Users.TryGetValue(req.UserId, out var user))
+            return NotFound("User not found");
+        var applications = store.ClubApplications.GetOrAdd(clubId, _ => new ConcurrentDictionary<string, ClubMemberUserDto>());
+        applications[user.Id] = ToClubUser(user);
+        return Ok();
+    }
+
+    /// <summary>Takes the application off the pending list, as accepting, rejecting or withdrawing it would.</summary>
+    [HttpDelete("clubs/{clubId:guid}/applications/{userId}")]
+    public IActionResult RemoveApplication(Guid clubId, string userId)
+    {
+        if (store.ClubApplications.TryGetValue(clubId, out var applications))
+            applications.TryRemove(userId, out _);
+        return Ok();
+    }
+
+    private static ClubMemberUserDto ToClubUser(UserDto user) => new()
+    {
+        UserId = user.Id,
+        Nick = user.Nick,
+        Avatar = "",
+        FullBodyAvatar = "",
+        BorderUrl = "",
+        IsVerified = false,
+        Flair = 0,
+        CountryCode = user.CountryCode,
+        TierId = 0,
+        ClubUserType = 0
+    };
 
     [HttpDelete("clubs/{clubId:guid}/members/{userId}")]
     public IActionResult RemoveMember(Guid clubId, string userId)

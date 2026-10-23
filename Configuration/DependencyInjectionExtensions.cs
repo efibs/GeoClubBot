@@ -63,6 +63,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ClubApplicationNotificationsConfiguration>()
+            .Bind(config.GetSection(ClubApplicationNotificationsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<SwapSuggestionsConfiguration>()
             .Bind(config.GetSection(SwapSuggestionsConfiguration.SectionName))
             .ValidateDataAnnotations()

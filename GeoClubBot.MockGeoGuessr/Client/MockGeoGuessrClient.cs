@@ -64,6 +64,15 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore, Guid? clubId 
         return Task.FromResult(new ChallengeResultHighscoresDto { Items = items });
     }
 
+    public Task<ReadClubApplicationsResponseDto> ReadClubApplicationsAsync(Guid clubId, string? paginationToken = null, CancellationToken cancellationToken = default)
+    {
+        var items = dataStore.ClubApplications.TryGetValue(clubId, out var applications)
+            ? applications.Values.ToList()
+            : [];
+
+        return Task.FromResult(new ReadClubApplicationsResponseDto { Items = items, PaginationToken = null });
+    }
+
     public Task<ClubMissionBoardSnapshotDto> ReadClubMissionBoardAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(RequireBoard().Current);
 

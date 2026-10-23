@@ -154,6 +154,21 @@ async function loadClub(id){
     <div class="col-md-2"><a href="#" class="btn btn-outline-secondary btn-sm" onclick="showView('users')">Create New User</a></div>
   </div></div></div>`;
 
+  // Applications: what the bot reads from /v4/clubs/{id}/applications. Removing one stands in for
+  // accepting, rejecting or withdrawing it; adding the same user again is a new application.
+  const applicantIds=new Set(d.applications.map(a=>a.userId));
+  let applicantOptHtml=allUsers.filter(u=>!memberIds.has(u.id)&&!applicantIds.has(u.id)).map(u=>`<option value="${u.id}">${h(u.nick)} (${u.id.substring(0,8)}...)</option>`).join('');
+  html+=`<div class="card"><div class="card-header">Pending Applications (${d.applications.length})</div><div class="card-body">
+    <table class="table table-sm"><thead><tr><th>Nick</th><th>User ID</th><th>Actions</th></tr></thead><tbody>`;
+  d.applications.forEach(a=>{
+    html+=`<tr><td>${h(a.nick)}</td><td><code>${a.userId.substring(0,8)}...</code> ${userCopyBtns(a.userId)}</td>
+    <td><button class="btn btn-outline-danger btn-sm" onclick="removeApplication('${c.clubId}','${a.userId}')">Remove</button></td></tr>`;
+  });
+  html+=`</tbody></table><div class="row g-2 align-items-end">
+    <div class="col-md-4"><select class="form-select form-select-sm" id="add-application-sel"><option value="">-- Select user --</option>${applicantOptHtml}</select></div>
+    <div class="col-md-2"><button class="btn btn-success btn-sm" onclick="addApplication('${c.clubId}')">Apply to Club</button></div>
+  </div></div></div>`;
+
   // Activities. The kind matters: the daily challenge / duel and a board mission are both worth
   // 20 XP, so only the activity type tells the bot which of the two a member actually did. Board
   // missions are best driven from the Mission Board view, which also moves the board along.
@@ -229,6 +244,13 @@ async function addMember(cid){
   if(!uid)return;
   await post('/clubs/'+cid+'/members',{userId:uid});loadClub(cid);
 }
+
+async function addApplication(cid){
+  const uid=document.getElementById('add-application-sel').value;
+  if(!uid)return;
+  await post('/clubs/'+cid+'/applications',{userId:uid});loadClub(cid);
+}
+async function removeApplication(cid,uid){await del(`/clubs/${cid}/applications/${uid}`);loadClub(cid)}
 
 // ── Users ──
 async function load_users(){

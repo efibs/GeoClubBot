@@ -37,6 +37,12 @@ public class MockGeoGuessrDataStore
     public ConcurrentDictionary<Guid, ConcurrentBag<ReadClubActivitiesItemDto>> ClubActivities { get; } = new();
 
     /// <summary>
+    /// Pending applications indexed by ClubId, then by the applicant's UserId. GeoGuessr sends each
+    /// applicant in the shape of a member's user and nothing else.
+    /// </summary>
+    public ConcurrentDictionary<Guid, ConcurrentDictionary<string, ClubMemberUserDto>> ClubApplications { get; } = new();
+
+    /// <summary>
     /// Weekly mission boards indexed by ClubId, created on first use.
     /// </summary>
     public ConcurrentDictionary<Guid, MockClubMissionBoard> MissionBoards { get; } = new();

@@ -309,6 +309,52 @@ public sealed class EfRepositoryIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task ClubApplicationNotifications_ReadAndDelete_StayWithinTheClub()
+    {
+        var clubId = Guid.NewGuid();
+        var otherClubId = Guid.NewGuid();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            var repo = new EfClubApplicationNotificationRepository(seed);
+            repo.Add(ClubApplicationNotification.Create(clubId, "accepted", DateTimeOffset.UtcNow));
+            repo.Add(ClubApplicationNotification.Create(clubId, "pending", DateTimeOffset.UtcNow));
+            repo.Add(ClubApplicationNotification.Create(otherClubId, "accepted", DateTimeOffset.UtcNow));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var delete = fixture.CreateDbContext())
+        {
+            var deleted = await new EfClubApplicationNotificationRepository(delete).DeleteAsync(clubId, ["accepted"]);
+            deleted.Should().Be(1);
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var repository = new EfClubApplicationNotificationRepository(read);
+        (await repository.ReadNotifiedUserIdsAsync(clubId)).Should().BeEquivalentTo(["pending"]);
+        (await repository.ReadNotifiedUserIdsAsync(otherClubId)).Should().BeEquivalentTo(["accepted"]);
+    }
+
+    [Fact]
+    public async Task ClubApplicationNotifications_TheSamePendingApplicationCannotBeRecordedTwice()
+    {
+        var clubId = Guid.NewGuid();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(ClubApplicationNotification.Create(clubId, "applicant", DateTimeOffset.UtcNow));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var again = fixture.CreateDbContext();
+        again.Add(ClubApplicationNotification.Create(clubId, "applicant", DateTimeOffset.UtcNow));
+
+        var act = () => again.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>("the unique index is what makes the announcement idempotent");
+    }
+
+    [Fact]
     public async Task HistoryEntry_RoundTripsTheRecordedInterval()
     {
         var clubId = Guid.NewGuid();
