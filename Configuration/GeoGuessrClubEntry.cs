@@ -49,6 +49,8 @@ public class GeoGuessrClubEntry
 
     public int? AverageXpHistoryDepth { get; set; }
 
+    public int? MissionCompletionSlowestN { get; set; }
+
     public ulong? RoleId { get; set; }
 
     public int GetMinXP(ActivityCheckerConfiguration defaults) => MinXP ?? defaults.MinXP;
@@ -71,6 +73,9 @@ public class GeoGuessrClubEntry
     public int? GetAverageXpBottomN(ActivityCheckerConfiguration defaults) => AverageXpBottomN ?? defaults.AverageXpBottomN;
 
     public int GetAverageXpHistoryDepth(ActivityCheckerConfiguration defaults) => AverageXpHistoryDepth ?? defaults.AverageXpHistoryDepth;
+
+    public int? GetMissionCompletionSlowestN(ActivityCheckerConfiguration defaults) =>
+        MissionCompletionSlowestN ?? defaults.MissionCompletionSlowestN;
 
     private static Dictionary<string, int> Merge(Dictionary<string, int> global, Dictionary<string, int>? overrides)
     {

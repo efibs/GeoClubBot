@@ -38,6 +38,7 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
     private readonly IActivityStatusMessageSender _messageSender = Substitute.For<IActivityStatusMessageSender>();
     private readonly IActivityReportPublishGate _publishGate = Substitute.For<IActivityReportPublishGate>();
     private readonly IGeoGuessrActivityReader _activityReader = Substitute.For<IGeoGuessrActivityReader>();
+    private readonly IMissionClaimRepository _missionClaims = Substitute.For<IMissionClaimRepository>();
 
     private readonly GeoGuessrClubEntry _clubEntry = new() { ClubId = ClubId, NcfaToken = "x", IsMain = true };
     private readonly ActivityCheckerConfiguration _activityConfig = new()
@@ -187,6 +188,46 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         await _unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task Handle_ReportsTheSlowestAndUnfinishedMissionClaimers_OverTheAverageWindow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _activityConfig.MissionCompletionSlowestN = 3;
+        _missionClaims.ReadClaimsOfClubAsync(ClubId, Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                MissionClaims.Completed(UserId, now.AddDays(-2), TimeSpan.FromHours(30), ClubId),
+                // Before the check window (8 days) but within the 14-day average window: counted.
+                MissionClaims.Completed(UserId, now.AddDays(-12), TimeSpan.FromHours(10), ClubId),
+                // Before the average window: left out.
+                MissionClaims.Completed(UserId, now.AddDays(-16), TimeSpan.FromHours(100), ClubId),
+                MissionClaims.Unfinished(UserId, now.AddHours(-5), periodEnd: now.AddDays(1), ClubId),
+                // Not a member (any more): left out.
+                MissionClaims.Completed("someone-who-left", now.AddDays(-2), TimeSpan.FromHours(90), ClubId)
+            ]);
+
+        await CreateHandler().Handle(new CheckGeoGuessrPlayerActivityCommand(ClubId), CancellationToken.None);
+
+        await _messageSender.Received(1).SendMissionCompletionMessageAsync(
+            Arg.Is<List<ClubMemberMissionCompletion>>(slowest =>
+                slowest!.Count == 1 && slowest[0].Nickname == Nickname
+                                    && slowest[0].Times.CompletedCount == 2
+                                    && slowest[0].Times.AverageCompletionTime == TimeSpan.FromHours(20)),
+            Arg.Is<List<ClubMemberMissionCompletion>>(unfinished =>
+                unfinished!.Count == 1 && unfinished[0].Times.OpenClaimAge != null),
+            TimeSpan.FromDays(14),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_SkipsTheMissionCompletionReport_ByDefault()
+    {
+        await CreateHandler().Handle(new CheckGeoGuessrPlayerActivityCommand(ClubId), CancellationToken.None);
+
+        await _missionClaims.DidNotReceiveWithAnyArgs().ReadClaimsOfClubAsync(default, default, default);
+        await _messageSender.DidNotReceiveWithAnyArgs().SendMissionCompletionMessageAsync(default!, default!, default);
+    }
+
     private CheckGeoGuessrPlayerActivityHandler CreateHandler()
     {
         var geoGuessrConfig = new GeoGuessrConfiguration
@@ -201,6 +242,9 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
             new ActivityCheckSyncStep(_clientFactory, _mediator),
             new ActivityStatusCalculator(_strikes, _clubMembers, NullLogger<ActivityStatusCalculator>.Instance),
             new ActivityAverageXpRollupStep(_mediator, _messageSender),
+            new MissionCompletionReportStep(
+                _missionClaims, _messageSender,
+                Options.Create(new MissionClaimTrackingConfiguration { Schedule = "0 0 * ? * * *" })),
             _excuses,
             _history,
             _clubs,

@@ -1,6 +1,7 @@
 using Configuration;
 using Discord.WebSocket;
 using Entities;
+using Extensions;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.Notifications;
 
@@ -13,6 +14,8 @@ public sealed class DiscordActivityStatusMessageSender(
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig) : IActivityStatusMessageSender
 {
     private const int MaxNumPlayersPerMessage = 15;
+
+    private const int DiscordMessageLimit = 2000;
 
     public async Task SendActivityStatusUpdateMessageAsync(
         List<ClubMemberActivityStatus> statuses, string clubName, string requirements, CancellationToken cancellationToken = default)
@@ -65,6 +68,26 @@ public sealed class DiscordActivityStatusMessageSender(
 
         var channel = ResolveChannel();
         await channel.SendMessageAsync(message).ConfigureAwait(false);
+    }
+
+    public async Task SendMissionCompletionMessageAsync(
+        List<ClubMemberMissionCompletion> slowestMembers,
+        List<ClubMemberMissionCompletion> unfinishedMembers,
+        TimeSpan averageWindow,
+        CancellationToken cancellationToken = default)
+    {
+        var message = formatter.FormatMissionCompletionSummary(slowestMembers, unfinishedMembers, averageWindow);
+        if (message is null)
+        {
+            return;
+        }
+
+        // Every member can be on the unfinished list, which can outgrow one message.
+        var channel = ResolveChannel();
+        foreach (var chunk in message.SplitAtCharWithLimit("\n", DiscordMessageLimit))
+        {
+            await channel.SendMessageAsync(chunk).ConfigureAwait(false);
+        }
     }
 
     private SocketTextChannel ResolveChannel()

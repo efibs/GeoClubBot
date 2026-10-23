@@ -29,6 +29,7 @@ public record LinkRequestDto(string GeoGuessrUserId, string OneTimePassword);
 /// missions, and — for the current check period only — rule XP and requirement progress.
 /// <see cref="HelpedThisWeek"/>/<see cref="HelpedLastWeek"/> count missions of others the member
 /// pressed "help out" on; that proves nothing, so they are informational only.
+/// <see cref="MissionCompletion"/> is null when claims are not tracked or the member claimed none.
 /// </summary>
 public record WeekActivityDto(
     int TotalXp,
@@ -42,7 +43,20 @@ public record WeekActivityDto(
     IReadOnlyList<DayActivityDto> Days,
     IReadOnlyList<RequirementDto> Requirements,
     int? HelpedThisWeek,
-    int? HelpedLastWeek);
+    int? HelpedLastWeek,
+    MissionCompletionDto? MissionCompletion);
+
+/// <summary>
+/// How long the member took from claiming a board mission to completing it, over the activity's
+/// period. The average only covers completed missions; <see cref="AbandonedCount"/> counts claims
+/// whose board week ended unfinished, and <see cref="OpenClaimHours"/> is the age of the claim the
+/// member still holds.
+/// </summary>
+public record MissionCompletionDto(
+    int CompletedCount,
+    double? AverageCompletionHours,
+    int AbandonedCount,
+    double? OpenClaimHours);
 
 public record DayActivityDto(DateOnly Date, bool ChallengeDone, int BoardMissions, int Xp);
 

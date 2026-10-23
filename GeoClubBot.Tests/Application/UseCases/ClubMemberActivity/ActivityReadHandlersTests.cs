@@ -26,9 +26,16 @@ public sealed class ActivityReadHandlersTests
     private readonly IClubMemberRepository _clubMembers = Substitute.For<IClubMemberRepository>();
     private readonly IGeoGuessrActivityReader _activityReader = Substitute.For<IGeoGuessrActivityReader>();
     private readonly IClubMissionBoardReader _boardReader = Substitute.For<IClubMissionBoardReader>();
+    private readonly IMissionClaimRepository _missionClaims = Substitute.For<IMissionClaimRepository>();
     private readonly Guid _mainClubId = Guid.NewGuid();
 
-    private ActivityReadHandlers CreateHandler(bool showHelps = true)
+    public ActivityReadHandlersTests()
+    {
+        _missionClaims.ReadClaimsOfUserAsync(Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+    }
+
+    private ActivityReadHandlers CreateHandler(bool showHelps = true, bool trackClaims = true)
     {
         var geoGuessrConfig = Options.Create(new GeoGuessrConfiguration
         {
@@ -44,8 +51,9 @@ public sealed class ActivityReadHandlersTests
             .BuildOptions();
 
         return new ActivityReadHandlers(
-            _clubs, _clubMembers, _activityReader, _boardReader, ClubActivities.Classifier(), geoGuessrConfig,
+            _clubs, _clubMembers, _activityReader, _boardReader, _missionClaims, ClubActivities.Classifier(), geoGuessrConfig,
             activityChecker, Options.Create(new ActivityViewsConfiguration { ShowHelps = showHelps }),
+            Options.Create(new MissionClaimTrackingConfiguration { Schedule = "0 0 * ? * * *", Enabled = trackClaims }),
             NullLogger<ActivityReadHandlers>.Instance);
     }
 
@@ -204,6 +212,64 @@ public sealed class ActivityReadHandlersTests
 
         result.HelpedThisWeek.Should().BeNull();
         await _boardReader.DidNotReceive().ReadCurrentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_ShowsTheMissionCompletionTimes_OverTheRequestedDays()
+    {
+        var userId = "user-1";
+        var now = DateTimeOffset.UtcNow;
+        ArrangeMember(userId);
+        ArrangeActivities();
+        _missionClaims.ReadClaimsOfUserAsync(userId, Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                MissionClaims.Completed(userId, now.AddDays(-1), TimeSpan.FromHours(3)),
+                MissionClaims.Completed(userId, now.AddHours(-20), TimeSpan.FromHours(5)),
+                // Before the 3 days viewed: left out.
+                MissionClaims.Completed(userId, now.AddDays(-10), TimeSpan.FromHours(50)),
+                // Held since before the 3 days, and still open: shown.
+                MissionClaims.Unfinished(userId, now.AddDays(-4), periodEnd: now.AddDays(2))
+            ]);
+
+        var result = await CreateHandler().Handle(new GetActivityLastDaysQuery(userId, DaysBack: 3), CancellationToken.None);
+
+        result.MissionCompletion.Should().NotBeNull();
+        result.MissionCompletion!.CompletedCount.Should().Be(2);
+        result.MissionCompletion.AverageCompletionTime.Should().Be(TimeSpan.FromHours(4));
+        result.MissionCompletion.OpenClaimAge.Should().BeCloseTo(TimeSpan.FromDays(4), TimeSpan.FromMinutes(1));
+
+        // An open claim made before the period still counts, so the read reaches a board week further back.
+        await _missionClaims.Received(1).ReadClaimsOfUserAsync(
+            userId,
+            Arg.Is<DateTimeOffset>(from => from == result.PeriodStart!.Value.AddDays(-7)),
+            Arg.Any<DateTimeOffset>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_LeavesMissionCompletionOut_WithoutClaims()
+    {
+        var userId = "user-1";
+        ArrangeMember(userId);
+        ArrangeActivities();
+
+        var result = await CreateHandler().Handle(new GetActivityLastDaysQuery(userId, DaysBack: 7), CancellationToken.None);
+
+        result.MissionCompletion.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_LeavesMissionCompletionOut_WhenClaimsAreNotTracked()
+    {
+        var userId = "user-1";
+        ArrangeMember(userId);
+        ArrangeActivities();
+
+        var result = await CreateHandler(trackClaims: false).Handle(new GetActivityLastDaysQuery(userId, DaysBack: 7), CancellationToken.None);
+
+        result.MissionCompletion.Should().BeNull();
+        await _missionClaims.DidNotReceiveWithAnyArgs().ReadClaimsOfUserAsync(default!, default, default);
     }
 
     private void ArrangeMember(string userId) =>

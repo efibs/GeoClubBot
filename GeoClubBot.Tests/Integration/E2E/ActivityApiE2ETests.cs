@@ -249,6 +249,28 @@ public sealed class ActivityApiE2ETests : IAsyncLifetime
         var dto = await response.Content.ReadFromJsonAsync<WeekActivityDto>();
         dto!.TotalXp.Should().Be(0);
         dto.Days.Should().NotBeNull();
+        dto.MissionCompletion.Should().BeNull("the viewer claimed no mission");
+    }
+
+    [Fact]
+    public async Task GET_me_activity_includes_the_recorded_mission_completion_times()
+    {
+        await SeedClubAsync(_mainClubId, "Main Club");
+        await SeedMemberAsync(_viewerUserId, "ViewerNick", _viewerDiscordId, _mainClubId);
+        var claimedAt = DateTimeOffset.UtcNow.AddDays(-2);
+        await using (var seed = _fixture.CreateDbContext())
+        {
+            seed.Add(MissionClaim.Create(
+                _mainClubId, claimedAt.AddDays(-1), claimedAt.AddDays(6), Guid.NewGuid(), _viewerUserId,
+                claimedAt, claimedAt.AddHours(6)));
+            await seed.SaveChangesAsync();
+        }
+
+        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/me/activity?daysBack=7", ValidToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await response.Content.ReadFromJsonAsync<WeekActivityDto>();
+        dto!.MissionCompletion.Should().BeEquivalentTo(new MissionCompletionDto(1, 6.0, 0, null));
     }
 
     [Fact]

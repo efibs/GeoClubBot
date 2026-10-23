@@ -20,6 +20,7 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
     ActivityCheckSyncStep syncStep,
     ActivityStatusCalculator statusCalculator,
     ActivityAverageXpRollupStep averageXpStep,
+    MissionCompletionReportStep missionCompletionStep,
     IExcusesRepository excuses,
     IHistoryRepository history,
     IClubRepository clubs,
@@ -122,6 +123,13 @@ public sealed partial class CheckGeoGuessrPlayerActivityHandler(
                 await averageXpStep.ExecuteAsync(
                         clubId, clubName, averageXpTopN, averageXpBottomN,
                         clubEntry.GetAverageXpHistoryDepth(defaults), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (clubEntry.GetMissionCompletionSlowestN(defaults) is { } slowestN)
+            {
+                await missionCompletionStep
+                    .ExecuteAsync(clubId, members, now, slowestN, cancellationToken)
                     .ConfigureAwait(false);
             }
         }
