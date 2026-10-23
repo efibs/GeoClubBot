@@ -51,6 +51,11 @@ try
             await ProbeSingleAsync($"/v4/clubs/{RequireClub()}/members", itemsProperty: null).ConfigureAwait(false);
             break;
 
+        // Only staff with ManageApplications see them; any other account gets 404.
+        case "applications":
+            await ProbeSingleAsync($"/v4/clubs/{RequireClub()}/applications", itemsProperty: "items").ConfigureAwait(false);
+            break;
+
         case "club":
             await ProbeSingleAsync($"/v4/clubs/{RequireClub()}", itemsProperty: "members").ConfigureAwait(false);
             break;

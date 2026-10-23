@@ -14,6 +14,12 @@ public interface IGeoGuessrClient
 
     Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The club's pending applications. Needs a token with the ManageApplications permission in the
+    /// club; GeoGuessr answers 404 to any other account.
+    /// </summary>
+    Task<ReadClubApplicationsResponseDto> ReadClubApplicationsAsync(Guid clubId, string? paginationToken = null, CancellationToken cancellationToken = default);
+
     /// <summary>The running mission board of the club the client's account belongs to.</summary>
     Task<ClubMissionBoardSnapshotDto> ReadClubMissionBoardAsync(CancellationToken cancellationToken = default);
 

@@ -23,6 +23,9 @@ public interface IGeoGuessrApi
     [Get("/v4/clubs/{clubId}/activities")]
     Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, [Query] ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default);
 
+    [Get("/v4/clubs/{clubId}/applications")]
+    Task<ReadClubApplicationsResponseDto> ReadClubApplicationsAsync(Guid clubId, [Query] string? paginationToken, CancellationToken cancellationToken = default);
+
     [Get("/v4/missions/club/board")]
     Task<ClubMissionBoardSnapshotDto> ReadClubMissionBoardAsync(CancellationToken cancellationToken = default);
 

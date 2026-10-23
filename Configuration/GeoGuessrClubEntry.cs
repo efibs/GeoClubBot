@@ -33,6 +33,12 @@ public class GeoGuessrClubEntry
     /// <summary>Whether the reminder mentions this club's mission board. Defaults to true.</summary>
     public bool? RemindMissions { get; set; }
 
+    /// <summary>
+    /// Whether new applications to this club are announced (see <see cref="ClubApplicationNotificationsConfiguration"/>).
+    /// Defaults to true.
+    /// </summary>
+    public bool? NotifyApplications { get; set; }
+
     public int? GracePeriodDays { get; set; }
 
     public int? MaxNumStrikes { get; set; }

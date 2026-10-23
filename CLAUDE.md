@@ -192,6 +192,13 @@ API + Discord (controllers, slash command modules)
   the club). Helpers on a mission are only user ids of whoever pressed "help out" — nothing proves they
   contributed, so helps never count towards anything and are shown as unverified. The claim day comes
   from the board's `you.nextDayAt` (`MissionBoard:ClaimResetTime*` is only the fallback).
+- **Club applications** (optional, `ClubApplicationNotifications:Enabled`): `CheckClubApplicationsCommand`
+  polls `GET /v4/clubs/{id}/applications` with each club's own token (GeoGuessr answers **404** unless that
+  account has `ManageApplications`) and posts new applicants to one channel, pinging only the configured role.
+  Items carry no application id, date or message, so `(ClubId, UserId)` is the identity: the record is
+  deleted once the applicant leaves the pending list, which makes a re-application announce again. A failed
+  read prunes nothing. Clubs opt out with `NotifyApplications: false` on their `GeoGuessr:Clubs` entry.
+  Notify-only: the bot never accepts or rejects.
 - **Weekly activity rules**: the check reads the activity feed for its window (last check → now,
   capped by `ActivityChecker:MaxFeedLookback`) and judges it with `ActivityRules`/`ActivityRuleEvaluator`
   (`Application/UseCases/ClubMemberActivity/Rules/`): per-kind minimum counts (`Requirements`, e.g.
