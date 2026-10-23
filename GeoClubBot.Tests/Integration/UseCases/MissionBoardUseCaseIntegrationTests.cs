@@ -24,6 +24,7 @@ namespace GeoClubBot.Tests.Integration.UseCases;
 public sealed class MissionBoardUseCaseIntegrationTests(PostgresFixture fixture)
 {
     private const ulong AlertChannelId = 4242;
+    private const ulong ClubRoleId = 777;
 
     private MediatorTestHost CreateHost(Guid clubId, bool dmClaimer = false) =>
         new(fixture.ConnectionString, services =>
@@ -33,7 +34,7 @@ public sealed class MissionBoardUseCaseIntegrationTests(PostgresFixture fixture)
                 SyncSchedule = "0 0 0 * * ?",
                 ActivityNcfaToken = "x",
                 UserProfileNcfaToken = "x",
-                Clubs = [new GeoGuessrClubEntry { ClubId = clubId, NcfaToken = "x", IsMain = true }],
+                Clubs = [new GeoGuessrClubEntry { ClubId = clubId, NcfaToken = "x", IsMain = true, RoleId = ClubRoleId }],
             }));
             services.AddSingleton(Options.Create(new MissionBoardAlertsConfiguration
             {
@@ -65,7 +66,7 @@ public sealed class MissionBoardUseCaseIntegrationTests(PostgresFixture fixture)
     {
         var clubId = Guid.NewGuid();
         var (userId, discordUserId) = await SeedClaimerAsync(clubId);
-        var stuck = Tile(claimedBy: userId, claimedAt: DateTimeOffset.UtcNow.AddHours(-8), helpRequestedAt: DateTimeOffset.UtcNow.AddHours(-2));
+        var stuck = Tile(claimedBy: userId, claimedAt: DateTimeOffset.UtcNow.AddHours(-8));
 
         using var host = CreateHost(clubId, dmClaimer: true);
         host.Mock<IClubMissionBoardReader>().ReadCurrentAsync(clubId, Arg.Any<CancellationToken>())
@@ -77,22 +78,49 @@ public sealed class MissionBoardUseCaseIntegrationTests(PostgresFixture fixture)
         await host.SendAsync(new CheckStuckMissionsCommand());
         await host.SendAsync(new CheckStuckMissionsCommand());
 
-        // One open-claim and one help-request alert, both pinging only the claimer.
-        await host.Mock<IDiscordMessageAccess>().Received(2).SendMessageAsync(
-            Arg.Any<string>(), AlertChannelId,
+        // One open-claim alert, pinging only the claimer, and one DM.
+        await host.Mock<IDiscordMessageAccess>().Received(1).SendMessageAsync(
+            Arg.Is<string>(s => s!.Contains($"<@{discordUserId}>") && s.Contains("still open")), AlertChannelId,
             Arg.Is<MessageMentions>(m => m!.UserIds.Single() == discordUserId && m.RoleIds.Count == 0 && !m.Everyone),
             Arg.Any<CancellationToken>());
-        await host.Mock<IDiscordMessageAccess>().Received(1).SendMessageAsync(
-            Arg.Is<string>(s => s!.Contains($"<@{discordUserId}>") && s.Contains("needs help")), AlertChannelId,
-            Arg.Any<MessageMentions>(), Arg.Any<CancellationToken>());
-        // The DM goes out for the open claim only.
         await host.Mock<IDiscordDirectMessageAccess>().Received(1)
             .SendDirectMessageAsync(discordUserId, Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         await using var read = fixture.CreateDbContext();
         var recorded = await read.MissionBoardAlerts.AsNoTracking().Where(a => a.ClubId == clubId).ToListAsync();
-        recorded.Select(a => a.Kind).Should().BeEquivalentTo([MissionBoardAlertKind.OpenClaim, MissionBoardAlertKind.HelpRequest]);
-        recorded.Should().OnlyContain(a => a.MissionId == stuck.MissionId);
+        recorded.Should().ContainSingle().Which.Should().Match<MissionBoardAlert>(
+            a => a.Kind == MissionBoardAlertKind.OpenClaim && a.MissionId == stuck.MissionId);
+    }
+
+    [Fact]
+    public async Task StuckMissionAlert_WithHelpRequested_PingsOnlyTheClubRole_Once()
+    {
+        var clubId = Guid.NewGuid();
+        var (userId, discordUserId) = await SeedClaimerAsync(clubId);
+        var stuck = Tile(claimedBy: userId, claimedAt: DateTimeOffset.UtcNow.AddHours(-8), helpRequestedAt: DateTimeOffset.UtcNow.AddHours(-2));
+
+        using var host = CreateHost(clubId, dmClaimer: true);
+        host.Mock<IClubMissionBoardReader>().ReadCurrentAsync(clubId, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, [stuck, .. FreeTiles(3)])));
+
+        await host.SendAsync(new CheckStuckMissionsCommand());
+        await host.SendAsync(new CheckStuckMissionsCommand());
+
+        // Help was already requested: no "finish it or request help" alert, and the claimer is not
+        // pinged — the club's role is asked to help instead.
+        await host.Mock<IDiscordMessageAccess>().Received(1).SendMessageAsync(
+            Arg.Any<string>(), Arg.Any<ulong>(), Arg.Any<MessageMentions>(), Arg.Any<CancellationToken>());
+        await host.Mock<IDiscordMessageAccess>().Received(1).SendMessageAsync(
+            Arg.Is<string>(s => s!.Contains("needs help") && s.Contains($"<@&{ClubRoleId}>") && !s.Contains($"<@{discordUserId}>")),
+            AlertChannelId,
+            Arg.Is<MessageMentions>(m => m!.RoleIds.Single() == ClubRoleId && m.UserIds.Count == 0 && !m.Everyone),
+            Arg.Any<CancellationToken>());
+        await host.Mock<IDiscordDirectMessageAccess>().DidNotReceive()
+            .SendDirectMessageAsync(Arg.Any<ulong>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        await using var read = fixture.CreateDbContext();
+        var recorded = await read.MissionBoardAlerts.AsNoTracking().Where(a => a.ClubId == clubId).ToListAsync();
+        recorded.Should().ContainSingle().Which.Kind.Should().Be(MissionBoardAlertKind.HelpRequest);
     }
 
     [Fact]

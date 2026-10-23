@@ -38,6 +38,25 @@ public sealed class StuckMissionDetectorTests
     }
 
     [Fact]
+    public void Find_SkipsTheOpenClaimAlert_OnceHelpIsRequested()
+    {
+        // The open-claim alert tells the claimer to request help; once they have, only the
+        // help-request alert is due.
+        var tile = Tile(claimedBy: "a", claimedAt: Now.AddHours(-8), helpRequestedAt: Now.AddHours(-2));
+
+        StuckMissionDetector.Find(Week(Board(1, tile)), Now, Options())
+            .Should().ContainSingle().Which.Kind.Should().Be(MissionBoardAlertKind.HelpRequest);
+    }
+
+    [Fact]
+    public void Find_SkipsTheOpenClaimAlert_EvenBeforeTheHelpRequestIsDue()
+    {
+        var tile = Tile(claimedBy: "a", claimedAt: Now.AddHours(-8), helpRequestedAt: Now.AddMinutes(-10));
+
+        StuckMissionDetector.Find(Week(Board(1, tile)), Now, Options()).Should().BeEmpty();
+    }
+
+    [Fact]
     public void Find_WaitsForTheLastMissions_WhenAThresholdIsSet()
     {
         var old = Tile(index: 0, claimedBy: "a", claimedAt: Now.AddHours(-7));
@@ -68,10 +87,20 @@ public sealed class StuckMissionDetectorTests
         var week = Week(Board(3, [tile, .. FreeTiles(3, boardNumber: 3)]));
 
         var text = CheckStuckMissionsHandler.Render(
-            "{{claimer}}|{{mission}}|{{progress}}|{{claimed_at}}|{{board}}|{{remaining}}|{{club}}",
-            tile, week, "**Alice**", "Dragon");
+            "{{claimer}}|{{mission}}|{{progress}}|{{claimed_at}}|{{board}}|{{remaining}}|{{club}}|{{role}}",
+            tile, week, "**Alice**", "Dragon", roleId: 77);
 
-        text.Should().Be($"**Alice**|Win 2 Ranked Duels|1/2|<t:{Now.AddHours(-7).ToUnixTimeSeconds()}:R>|3|4|Dragon");
+        text.Should().Be($"**Alice**|Win 2 Ranked Duels|1/2|<t:{Now.AddHours(-7).ToUnixTimeSeconds()}:R>|3|4|Dragon|<@&77>");
+    }
+
+    [Fact]
+    public void Render_DefaultHelpRequest_LeavesNoTrailingSpace_WithoutARole()
+    {
+        var tile = Tile(claimedBy: "a", claimedAt: Now.AddHours(-7));
+
+        var text = CheckStuckMissionsHandler.Render(Options().HelpRequestMessage, tile, Week(Board(1, tile)), "**Alice**", "Dragon");
+
+        text.Should().EndWith("Can anyone help out?");
     }
 
     [Theory]
