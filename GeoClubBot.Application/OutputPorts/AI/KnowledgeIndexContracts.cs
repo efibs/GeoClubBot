@@ -66,21 +66,78 @@ public sealed record KnowledgePoint(
     ReadOnlyMemory<float> TextVector,
     ReadOnlyMemory<float>? ImageVector = null);
 
+/// <summary>
+/// Another wording of the question, embedded, and searched against chunk text as a list of its own.
+/// </summary>
+/// <param name="Name">Which wording it is, e.g. "conversation", for anyone explaining a result.</param>
+/// <param name="Weight">How much a place in its list counts, against the lead wording's at one.</param>
+public sealed record WeightedQueryVector(string Name, ReadOnlyMemory<float> Vector, double Weight);
+
+/// <summary>
+/// One search of the index. Each vector is searched as its own result list and the lists are fused by
+/// rank, each counting by its weight. Everything beyond <see cref="TextVector"/>,
+/// <see cref="ImageVector"/> and the hard filters defaults to adding nothing, so a bare query searches
+/// exactly as it always has.
+/// </summary>
 public sealed record KnowledgeQuery
 {
-    /// <summary>The question, embedded. Matches chunk text and image captions.</summary>
+    /// <summary>
+    /// The question, embedded. Matches chunk text and image captions. When there are several wordings
+    /// this is the lead one: the country and key-phrase searches rank by it.
+    /// </summary>
     public ReadOnlyMemory<float>? TextVector { get; init; }
 
     /// <summary>An attached image, embedded. Matches stored images directly.</summary>
     public ReadOnlyMemory<float>? ImageVector { get; init; }
 
+    /// <summary>A hard filter: nothing from another country is returned. Used by <c>/ai search</c>.</summary>
     public string? Country { get; init; }
 
     public string? SourceType { get; init; }
 
+    /// <summary>A hard filter on the kind of chunk: only pictures, for the answer's search tool.</summary>
+    public KnowledgeChunkKind? ChunkKind { get; init; }
+
     public int Limit { get; init; } = 8;
+
+    /// <summary>How much the lists searched by <see cref="TextVector"/> count.</summary>
+    public double TextWeight { get; init; } = 1;
+
+    /// <summary>How much the list searched by <see cref="ImageVector"/> counts.</summary>
+    public double ImageWeight { get; init; } = 1;
+
+    /// <summary>More wordings of the question: the one carrying its conversation, the rewritten ones.</summary>
+    public IReadOnlyList<WeightedQueryVector> ExtraTextVectors { get; init; } = [];
+
+    /// <summary>
+    /// Countries the question is about, as the index spells them. Unlike <see cref="Country"/> this
+    /// filters nothing: the lead wording and the screenshot are searched again within these countries,
+    /// and those lists are fused with the rest.
+    /// </summary>
+    public IReadOnlyList<string> BoostCountries { get; init; } = [];
+
+    /// <summary>How much a country-filtered list counts, against the same search unfiltered.</summary>
+    public double CountryBoostWeight { get; init; } = 1;
+
+    /// <summary>
+    /// Literal phrases a matching chunk would contain, e.g. "no supports". Chunks containing any of
+    /// them are ranked by the lead wording as one more list.
+    /// </summary>
+    public IReadOnlyList<string> KeyPhrases { get; init; } = [];
+
+    /// <summary>How much the key-phrase list counts.</summary>
+    public double KeyPhraseWeight { get; init; } = 1;
+
+    /// <summary>
+    /// Multiplies the fused score of a picture whose only text is a heading
+    /// (<see cref="KnowledgeHit.IsHeadingOnlyPicture"/>). One leaves them where they rank.
+    /// </summary>
+    public double HeadingOnlyPictureWeight { get; init; } = 1;
 }
 
+/// <param name="SourceType">The chunk's extractor family, so more of its guide can be read; null when unknown.</param>
+/// <param name="SourceKey">Its document within that family.</param>
+/// <param name="LocalKey">Its place within the document, the order a guide's chunks are read back in.</param>
 public sealed record KnowledgeHit(
     Guid Id,
     float Score,
@@ -92,7 +149,57 @@ public sealed record KnowledgeHit(
     string? Country,
     string? SectionPath,
     string? Author,
-    int Priority);
+    int Priority,
+    string? SourceType = null,
+    string? SourceKey = null,
+    string? LocalKey = null)
+{
+    /// <summary>Shorter captions say nothing a model could use: "Distribution", "Summary :", "Poles :".</summary>
+    private const int MinTopicalCaptionLength = 25;
+
+    /// <summary>
+    /// The pictures of copies with the same text that were collapsed into this hit, beyond
+    /// <see cref="ImageUrl"/>: best-ranked copy first, none twice, never <see cref="ImageUrl"/> itself.
+    /// One Google Slides caption sits beside every picture of its slide, up to eight of them, and
+    /// collapsing the copies once kept only the first: 72 % of slide pictures could never be offered.
+    /// Empty unless <see cref="ImageUrl"/> is set.
+    /// </summary>
+    public IReadOnlyList<string> ExtraImageUrls { get; init; } = [];
+
+    /// <summary>
+    /// The ids of the copies collapsed into this hit, beside its own <see cref="Id"/>. Kept so that what
+    /// an answer was offered can be read back whole, its extra pictures included.
+    /// </summary>
+    public IReadOnlyList<Guid> MergedChunkIds { get; init; } = [];
+
+    /// <summary>Every chunk this hit stands for: its own id, then its merged copies'. Never the empty id.</summary>
+    public IEnumerable<Guid> ChunkIds =>
+        new[] { Id }.Concat(MergedChunkIds).Where(id => id != Guid.Empty).Distinct();
+
+    /// <summary>
+    /// A picture whose only text is its guide's title or section heading — what an extractor falls
+    /// back to for a picture with no caption, e.g. "Svalbard — Identifying Svalbard". The model knows a
+    /// picture only by its text, so it can say nothing about one of these.
+    /// </summary>
+    public bool IsHeadingOnlyPicture
+    {
+        get
+        {
+            if (Kind != KnowledgeChunkKind.Image)
+            {
+                return false;
+            }
+
+            var text = string.Join(' ', Text.Split(default(char[]), StringSplitOptions.RemoveEmptyEntries));
+            return text.Length < MinTopicalCaptionLength
+                   || text.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(text, Title, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(text, SectionPath, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(text.Replace(" — ", " > ", StringComparison.Ordinal), SectionPath,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+    }
+}
 
 /// <summary>A document in the index, identified the same way as its source record.</summary>
 public sealed record IndexedSourceKey(string SourceType, string SourceKey);
@@ -111,6 +218,27 @@ public interface IKnowledgeIndex
     Task UpsertAsync(IReadOnlyList<KnowledgePoint> points, string ingestRun, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<KnowledgeHit>> SearchAsync(KnowledgeQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The chunks of one document, at most <paramref name="limit"/> of them, in no particular order and
+    /// without a score: the rest of a guide an excerpt came from, for the answer's read-the-guide tool.
+    /// Empty when the document is not in the index.
+    /// </summary>
+    Task<IReadOnlyList<KnowledgeHit>> ReadSourceChunksAsync(
+        string sourceType,
+        string sourceKey,
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The chunks with these ids, read rather than searched, in the order asked and without a score —
+    /// what an earlier answer cited, offered again with a follow-up. Copies with the same text are
+    /// collapsed into one, keeping each copy's picture, as a search would offer them. Ids no longer in
+    /// the index (a guide re-indexed since, a tool result that never was in it) are left out.
+    /// </summary>
+    Task<IReadOnlyList<KnowledgeHit>> ReadChunksAsync(
+        IReadOnlyList<Guid> ids,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes points of a source that the latest run did not re-produce, identified by carrying a

@@ -24,7 +24,9 @@ namespace Infrastructure.OutputAdapters.AI.Extractors;
 ///
 /// That gap also has no upper bound worth trusting. One library document exports 332 MB, and Google
 /// refuses to build an export larger still, answering 413 after the best part of a minute. Either way
-/// the text export is what gets indexed instead — a few kilobytes, and everything the model reads.
+/// the text export is what gets indexed instead — a few kilobytes, and everything the model reads. The
+/// same goes for an archive that times out or fails on Google's side, except that the result is marked
+/// degraded: the pictures are missing this time only.
 /// </summary>
 public sealed partial class GoogleDocSourceExtractor(
     IHttpClientFactory httpClientFactory,
@@ -52,44 +54,77 @@ public sealed partial class GoogleDocSourceExtractor(
         // afterwards; without a relay their bytes have nowhere to live.
         var wantsImages = imageRelay.IsEnabled && settings.EmbedImages;
 
+        // Set when the text stands in for an archive that failed for a reason that may not recur, so
+        // the caller can keep a fuller copy it already holds rather than trade it for this one.
+        Error? archiveFailure = null;
+
         if (wantsImages)
         {
             var archive = await FetchAsync(source, "zip", settings, cancellationToken).ConfigureAwait(false);
 
             if (archive.IsSuccess)
             {
-                return Document(
-                    await ReadArchiveAsync(archive.Value, source, cancellationToken).ConfigureAwait(false), source);
+                await using (archive.Value.ConfigureAwait(false))
+                {
+                    return Document(
+                        await ReadArchiveAsync(archive.Value, source, cancellationToken).ConfigureAwait(false),
+                        source);
+                }
             }
 
-            if (archive.Error.Code != ExportTooLargeCode)
+            if (archive.Error.Code == SourceExtractionErrorCodes.ExportTooLarge)
             {
+                // The text is most of the value and costs kilobytes, so an export too big to take is
+                // worth falling back on rather than giving up: these are guides of a few pages whose
+                // embedded images happen to be enormous. Measured at 332 MB for one of them, against
+                // around 10 KB of text.
+                LogExportTooLarge(logger, source.NaturalKey);
+            }
+            else if (archive.Error.Code == SourceExtractionErrorCodes.Unreachable)
+            {
+                // Timed out, or failed on Google's side. The text export is a separate and far lighter
+                // build that usually still answers, and without it a document whose archive never
+                // finishes in time would never be indexed at all.
+                LogArchiveUnavailable(logger, source.NaturalKey, archive.Error.Message);
+                archiveFailure = archive.Error;
+            }
+            else
+            {
+                // Deleted, private or a refusing host: the text export would be refused the same way.
                 return archive.Error;
             }
-
-            // The text is most of the value and costs kilobytes, so an export too big to take is
-            // worth falling back on rather than giving up: these are guides of a few pages whose
-            // embedded images happen to be enormous. Measured at 332 MB for one of them, against
-            // around 10 KB of text.
-            LogExportTooLarge(logger, source.NaturalKey);
         }
 
         var text = await FetchAsync(source, "txt", settings, cancellationToken).ConfigureAwait(false);
+        if (text.IsFailure)
+        {
+            return text.Error;
+        }
 
-        return text.IsFailure
-            ? text.Error
-            : Document(ParseText(System.Text.Encoding.UTF8.GetString(text.Value), source), source);
+        await using (text.Value.ConfigureAwait(false))
+        {
+            return Document(ParseTextExport(ReadUtf8(text.Value), DefaultSection(source)), source, archiveFailure);
+        }
     }
 
-    private static Result<ExtractedDocument> Document(List<ExtractedChunk> chunks, SourceDescriptor source) =>
+    /// <param name="archiveFailure">
+    /// Why the archive could not be read, when the text stands in for it for a reason that may not recur.
+    /// The document is then marked degraded — and text with nothing in it settles nothing: a document of
+    /// pictures has no text to speak of, and skipping it as empty would end it for good, pictures indexed
+    /// included, over one timeout. That failure is reported instead, so the document is retried with backoff.
+    /// </param>
+    private static Result<ExtractedDocument> Document(
+        List<ExtractedChunk> chunks,
+        SourceDescriptor source,
+        Error? archiveFailure = null) =>
         chunks.Count == 0
-            ? Error.Validation("ai.document_empty", "This document has no readable text.")
-            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks);
+            ? archiveFailure ?? Error.Validation("ai.document_empty", "This document has no readable text.")
+            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks, Degraded: archiveFailure is not null);
 
     /// <summary>
     /// Downloads one export, refusing to hold more of it than <see cref="AiIngestionConfiguration.MaxDocumentExportBytes"/>.
     /// </summary>
-    private async Task<Result<byte[]>> FetchAsync(
+    private async Task<Result<MemoryStream>> FetchAsync(
         SourceDescriptor source,
         string format,
         AiIngestionConfiguration settings,
@@ -114,80 +149,34 @@ public sealed partial class GoogleDocSourceExtractor(
 
             if (!response.IsSuccessStatusCode)
             {
-                // A document that is not publicly shared answers 401/403 and will keep doing so, so it
-                // is reported as validation and recorded as skipped rather than retried nightly.
-                return (int)response.StatusCode switch
-                {
-                    401 or 403 or 404 => Error.Validation("ai.document_not_public",
-                        $"This document is not publicly readable (HTTP {(int)response.StatusCode})."),
-
-                    // Google spends the best part of a minute building an export it then refuses.
-                    413 => Error.Validation(ExportTooLargeCode,
-                        "Google refused to export this document (HTTP 413); it is too large."),
-
-                    _ => Error.Unexpected("ai.source_unreachable",
-                        $"Could not fetch the document (HTTP {(int)response.StatusCode}).")
-                };
+                return SourceFetch.FromStatus(response.StatusCode, "document", ForbiddenMeans.NotPublic);
             }
 
-            return await ReadCappedAsync(response, settings.MaxDocumentExportBytes, bounded.Token)
+            return await SourceFetch.ReadCappedAsync(response, settings.MaxDocumentExportBytes, "document", bounded.Token)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (SourceFetch.IsFetchFailure(ex, cancellationToken))
         {
             LogFetchFailed(logger, source.NaturalKey, ex);
-            return Error.Unexpected("ai.source_unreachable", $"Could not fetch the document {source.NaturalKey}.");
+            return SourceFetch.FromException(ex, "document", ForbiddenMeans.NotPublic);
         }
     }
 
-    /// <summary>
-    /// Reads the body, giving up once it passes <paramref name="maxBytes"/>.
-    ///
-    /// The export arrives chunked, so its size is never announced and a header check would let it
-    /// through: the only way to find out is to read until it is too much. Buffering the lot is what
-    /// this avoids — one guide's export is a third of a gigabyte, in one array, in a container with a
-    /// memory limit.
-    /// </summary>
-    private static async Task<Result<byte[]>> ReadCappedAsync(
-        HttpResponseMessage response,
-        int maxBytes,
-        CancellationToken cancellationToken)
-    {
-        await using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        using var buffer = new MemoryStream();
-        var window = new byte[81920];
-
-        int read;
-        while ((read = await content.ReadAsync(window, cancellationToken).ConfigureAwait(false)) > 0)
-        {
-            if (buffer.Length + read > maxBytes)
-            {
-                return Error.Validation(ExportTooLargeCode,
-                    $"This document's export is larger than the {maxBytes} byte limit.");
-            }
-
-            await buffer.WriteAsync(window.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-        }
-
-        return buffer.ToArray();
-    }
-
-    /// <summary>An export too big to take. Distinguished because the text export is still worth asking for.</summary>
-    private const string ExportTooLargeCode = "ai.export_too_large";
+    private static string ReadUtf8(MemoryStream body) =>
+        System.Text.Encoding.UTF8.GetString(body.GetBuffer(), 0, (int)body.Length);
 
     /// <summary>
     /// Reads the zip export: the document's HTML plus its images as separate entries, so each image
     /// can be stored and captioned with the text it sits in.
     /// </summary>
     private async Task<List<ExtractedChunk>> ReadArchiveAsync(
-        byte[] payload,
+        MemoryStream payload,
         SourceDescriptor source,
         CancellationToken cancellationToken)
     {
         try
         {
-            using var archive = new ZipArchive(new MemoryStream(payload), ZipArchiveMode.Read);
+            using var archive = new ZipArchive(payload, ZipArchiveMode.Read, leaveOpen: true);
 
             var htmlEntry = archive.Entries.FirstOrDefault(entry =>
                 entry.FullName.EndsWith(".html", StringComparison.OrdinalIgnoreCase));
@@ -309,14 +298,19 @@ public sealed partial class GoogleDocSourceExtractor(
         return stored.IsSuccess ? stored.Value : null;
     }
 
-    private static List<ExtractedChunk> ParseText(string text, SourceDescriptor source)
+    /// <summary>
+    /// Splits a plain-text export into paragraph chunks under the headings it can recognise. Shared
+    /// with the Slides extractor, whose text export is the same shape.
+    /// </summary>
+    /// <param name="defaultSection">The section path for text before the first heading, and the root of every other.</param>
+    internal static List<ExtractedChunk> ParseTextExport(string text, string defaultSection)
     {
         var paragraphs = text
             .ReplaceLineEndings("\n")
             .Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var chunks = new List<ExtractedChunk>();
-        var section = DefaultSection(source);
+        var section = defaultSection;
         var index = 0;
 
         foreach (var paragraph in paragraphs)
@@ -325,7 +319,7 @@ public sealed partial class GoogleDocSourceExtractor(
             {
                 // Tracked so each chunk carries where in the document it came from; that path is
                 // shown in citations and folded into the embedding text.
-                section = $"{DefaultSection(source)} > {paragraph}";
+                section = $"{defaultSection} > {paragraph}";
                 continue;
             }
 
@@ -355,6 +349,10 @@ public sealed partial class GoogleDocSourceExtractor(
     [LoggerMessage(LogLevel.Information,
         "The export of Google document {DocumentId} is too large to take; indexing its text without images.")]
     static partial void LogExportTooLarge(ILogger logger, string documentId);
+
+    [LoggerMessage(LogLevel.Warning,
+        "The archive export of Google document {DocumentId} failed ({Reason}); indexing its text without images.")]
+    static partial void LogArchiveUnavailable(ILogger logger, string documentId, string reason);
 
     [LoggerMessage(LogLevel.Warning, "Could not fetch the Google document {DocumentId}.")]
     static partial void LogFetchFailed(ILogger logger, string documentId, Exception exception);

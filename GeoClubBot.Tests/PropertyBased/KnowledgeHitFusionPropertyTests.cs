@@ -58,6 +58,42 @@ public sealed class KnowledgeHitFusionPropertyTests
         });
 
     [Fact]
+    public void Loses_no_picture_or_id_of_a_copy_it_collapses() =>
+        Gen.Select(GenLists, Gen.Int[1, 8]).Sample((lists, limit) =>
+        {
+            var returned = lists.SelectMany(list => list.Hits).DistinctBy(hit => hit.Id).ToList();
+
+            foreach (var hit in KnowledgeHitFusion.Fuse(lists, limit))
+            {
+                var copies = returned.Where(other => SameText(other, hit)).ToList();
+                var copiesPictures = copies.Select(copy => copy.ImageUrl).OfType<string>().ToList();
+
+                hit.ChunkIds.Should().BeEquivalentTo(copies.Select(copy => copy.Id), "every copy's id is kept");
+                if (copiesPictures.Count > 0)
+                {
+                    new[] { hit.ImageUrl }.Concat(hit.ExtraImageUrls).Should().Contain(copiesPictures, "every copy's picture is kept");
+                }
+            }
+        });
+
+    [Fact]
+    public void Lists_each_picture_once_and_only_beside_a_picture() =>
+        Gen.Select(GenLists, Gen.Int[1, 8]).Sample((lists, limit) =>
+        {
+            foreach (var hit in KnowledgeHitFusion.Fuse(lists, limit))
+            {
+                if (hit.ImageUrl is null)
+                {
+                    hit.ExtraImageUrls.Should().BeEmpty();
+                    continue;
+                }
+
+                new[] { hit.ImageUrl }.Concat(hit.ExtraImageUrls).Should().OnlyHaveUniqueItems();
+                hit.MergedChunkIds.Should().NotContain(hit.Id);
+            }
+        });
+
+    [Fact]
     public void Offers_no_text_twice() =>
         Gen.Select(GenLists, Gen.Int[1, 8]).Sample((lists, limit) =>
         {
@@ -67,4 +103,11 @@ public sealed class KnowledgeHitFusionPropertyTests
 
             texts.Should().OnlyHaveUniqueItems();
         });
+
+    /// <summary>The same text as a reader would compare it — case, emphasis and spacing aside — and never empty.</summary>
+    private static bool SameText(KnowledgeHit one, KnowledgeHit other) =>
+        one.Id == other.Id || (Normalise(one.Text).Length > 0 && Normalise(one.Text) == Normalise(other.Text));
+
+    private static string Normalise(string text) =>
+        string.Join(' ', text.Replace("*", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
 }

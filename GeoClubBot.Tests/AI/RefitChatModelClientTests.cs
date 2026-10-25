@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -255,6 +256,148 @@ public sealed class RefitChatModelClientTests
     }
 
     [Fact]
+    public async Task ReadFreeModels_ReadsEachModelsSize_FromItsIdOrItsProse()
+    {
+        var client = CreateClient(await ReadFixtureAsync("openrouter-models-20261023.json"));
+
+        var models = (await client.ReadFreeModelsAsync()).Value.ToDictionary(model => model.Id);
+
+        models["nvidia/nemotron-3-ultra-550b-a55b:free"].Should().Match<ChatModelDescriptor>(model =>
+            model.TotalParametersBillions == 550 && model.ActiveParametersBillions == 55);
+        // No size in its id: "with 16B active parameters out of 280B total".
+        models["dots-studio/dots-3-note-preview:free"].EffectiveParametersBillions.Should().BeApproximately(66.9, 0.1);
+        models["liquid/lfm-2.5-2.6b:free"].EffectiveParametersBillions.Should().Be(2.6);
+        models["google/lyria-3-pro-preview"].EffectiveParametersBillions.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ReadFreeModels_FlagsTheModelsBuiltForCodingAgents()
+    {
+        var client = CreateClient(await ReadFixtureAsync("openrouter-models-20261023.json"));
+
+        var coding = (await client.ReadFreeModelsAsync()).Value
+            .Where(model => model.IsCodingSpecialist)
+            .Select(model => model.Id);
+
+        // Liquid's blurb for LFM says Liquid "advises against using it for agentic coding", and Inkling's
+        // lists coding among general uses: neither is a coding model.
+        coding.Should().BeEquivalentTo(
+            "recursive/flint-v1.0:free",
+            "poolside/laguna-s-2.1:free",
+            "poolside/laguna-xs-2.1:free",
+            "cohere/north-mini-code:free");
+    }
+
+    [Fact]
+    public async Task ReadModelHealth_ReportsTheBestEndpoint_FromTheFreeVariantsRoute()
+    {
+        var handler = new CapturingHandler("""
+            {"data": {"id": "a/model:free", "endpoints": [
+              {"provider_name": "Slow", "uptime_last_1d": 12.5},
+              {"provider_name": "Fast", "uptime_last_1d": 97.25},
+              {"provider_name": "New"}
+            ]}}
+            """);
+
+        var result = await CreateClient(handler).ReadModelHealthAsync("a/model:free");
+
+        result.Value.UptimeLastDayPercent.Should().Be(97.25, "the provider routes to whichever endpoint serves");
+        handler.LastRequestUri!.AbsolutePath.Should().Be("/api/v1/models/a/model%3Afree/endpoints");
+    }
+
+    [Theory]
+    [InlineData("""{"data": {"id": "a/model:free", "endpoints": [{"provider_name": "New"}]}}""")]
+    [InlineData("""{"data": {"id": "a/model:free", "endpoints": []}}""")]
+    public async Task ReadModelHealth_ReportsAModelWithoutAFigure_AsUnmeasured(string body) =>
+        // Unmeasured is not down: the selector treats it as healthy.
+        (await CreateClient(new CapturingHandler(body)).ReadModelHealthAsync("a/model:free"))
+            .Value.UptimeLastDayPercent.Should().BeNull();
+
+    [Fact]
+    public async Task ReadModelHealth_GoesThroughTheHealthClient_NotTheChatPipeline()
+    {
+        // The chat pipeline's retry and circuit breaker would count a failing endpoints route against
+        // every question; the health client shares only its rate limiter.
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(RefitChatModelClient.HealthHttpClientName).Returns(new HttpClient(
+            new CapturingHandler("""{"data": {"id": "a/model:free", "endpoints": [{"uptime_last_1d": 99}]}}"""))
+        {
+            BaseAddress = new Uri("https://openrouter.ai")
+        });
+        var client = new RefitChatModelClient(factory, NullLogger<RefitChatModelClient>.Instance);
+
+        (await client.ReadModelHealthAsync("a/model:free")).Value.UptimeLastDayPercent.Should().Be(99);
+        factory.DidNotReceive().CreateClient(RefitChatModelClient.HttpClientName);
+    }
+
+    [Fact]
+    public async Task ReadModelHealth_Fails_RatherThanThrowing_ForAModelTheProviderDoesNotKnow()
+    {
+        var client = CreateClient(new CapturingHandler("""{"error":{"message":"Not Found","code":404}}""", HttpStatusCode.NotFound));
+
+        (await client.ReadModelHealthAsync("gone/model:free")).IsFailure.Should().BeTrue();
+        (await client.ReadModelHealthAsync("no-author")).IsFailure.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Complete_ReportsAGatedHead_AsTheModelsFault_RatherThanARefusedRequest()
+    {
+        var client = CreateClient(new CapturingHandler(OpenRouterFailureClassifierTests.GatedInkling, HttpStatusCode.Forbidden));
+
+        var result = await client.CompleteAsync(new AiChatRequest(
+            ["thinkingmachines/inkling:free", "b/model"], [AiChatMessage.User("hi")]));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.ModelGated);
+    }
+
+    [Fact]
+    public async Task Complete_ReportsAGateFurtherDownTheChain_AsAFailedRequest()
+    {
+        // The head failed as well — the provider passes on the head's error when it has one — so every
+        // model failed, and only the head can be ruled out safely: never a model the error did not name.
+        var client = CreateClient(new CapturingHandler(OpenRouterFailureClassifierTests.GatedInkling, HttpStatusCode.Forbidden));
+
+        var result = await client.CompleteAsync(new AiChatRequest(
+            ["a/model", "thinkingmachines/inkling:free"], [AiChatMessage.User("hi")]));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.RequestFailed);
+    }
+
+    [Fact]
+    public async Task Complete_ReportsABusyHead_ApartFromOurOwnRateLimit()
+    {
+        // Measured: asked [gemma, inkling-small, inkling], OpenRouter answered with gemma's shared-pool 429.
+        var client = CreateClient(new CapturingHandler(OpenRouterFailureClassifierTests.BusyGemma, HttpStatusCode.TooManyRequests));
+
+        var result = await client.CompleteAsync(new AiChatRequest(
+            ["google/gemma-4-31b-it:free", "b/model"], [AiChatMessage.User("hi")]));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.ModelRateLimited);
+    }
+
+    [Fact]
+    public async Task Complete_ReportsABusyHead_ReportedInBand()
+    {
+        var client = CreateClient(new CapturingHandler("""
+            {"error": {"code": 429, "message": "Provider returned error", "metadata": {"raw": "a/model is temporarily rate-limited upstream.", "limit_source": "upstream_provider_shared_pool"}}}
+            """));
+
+        var result = await client.CompleteAsync(new AiChatRequest(["a/model", "b/model"], [AiChatMessage.User("hi")]));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.ModelRateLimited);
+    }
+
+    [Fact]
+    public async Task Complete_StillReportsAPlainForbidden_AsARefusedRequest()
+    {
+        var client = CreateClient(new CapturingHandler("""{"error": {"message": "Key limit exceeded", "code": 403}}""", HttpStatusCode.Forbidden));
+
+        var result = await client.CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")]));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.Rejected);
+    }
+
+    [Fact]
     public async Task Complete_Fails_WhenNoModelWasOffered()
     {
         var result = await CreateClient(new CapturingHandler("{}")).CompleteAsync(
@@ -262,6 +405,150 @@ public sealed class RefitChatModelClientTests
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be("ai.no_model_available");
+    }
+
+    private static readonly AiToolDefinition SearchTool = new(
+        "search_guides",
+        "Search the guides again.",
+        """{"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}""");
+
+    [Fact]
+    public async Task Complete_DeclaresTheTools_AndLetsTheModelChoose()
+    {
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"ok"}}]}""");
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")], Tools: [SearchTool]));
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody);
+        var tool = body.RootElement.GetProperty("tools").EnumerateArray().Single();
+        tool.GetProperty("type").GetString().Should().Be("function");
+        tool.GetProperty("function").GetProperty("name").GetString().Should().Be("search_guides");
+        tool.GetProperty("function").GetProperty("description").GetString().Should().Be("Search the guides again.");
+        tool.GetProperty("function").GetProperty("parameters").GetProperty("required")[0].GetString()
+            .Should().Be("query", "the schema goes out as JSON, not as a string of it");
+        body.RootElement.GetProperty("tool_choice").GetString().Should().Be("auto");
+    }
+
+    [Fact]
+    public async Task Complete_TellsTheModelToAnswer_WithTheToolsStillDeclared()
+    {
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"ok"}}]}""");
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(
+            ["m"], [AiChatMessage.User("hi")], Tools: [SearchTool], ToolChoice: AiToolChoice.None));
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody);
+        body.RootElement.GetProperty("tool_choice").GetString().Should().Be("none");
+        body.RootElement.GetProperty("tools").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Complete_SendsNoToolFields_WhenNoToolIsDeclared()
+    {
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"ok"}}]}""");
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")], ToolChoice: AiToolChoice.None));
+
+        handler.LastRequestBody.Should().NotContain("\"tools\"").And.NotContain("tool_choice").And.NotContain("tool_call");
+    }
+
+    [Fact]
+    public async Task Complete_SendsAToolRoundBack_InTheShapeTheProviderExpects()
+    {
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"ok"}}]}""");
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(
+            ["m"],
+            [
+                AiChatMessage.User("where are pole supports rare?"),
+                AiChatMessage.AssistantToolCalls("\n\n\n", [new AiToolCall("call-1", "search_guides", """{"query":"pole supports"}""")]),
+                AiChatMessage.ToolResult("call-1", "[3] Brazil > Poles\nNone in Ceará.")
+            ],
+            Tools: [SearchTool]));
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody);
+        var messages = body.RootElement.GetProperty("messages");
+
+        var assistant = messages[1];
+        assistant.GetProperty("role").GetString().Should().Be("assistant");
+        assistant.GetProperty("content").ValueKind.Should().Be(JsonValueKind.Null,
+            "a turn that only called tools has null content, and whitespace is not text");
+        var call = assistant.GetProperty("tool_calls").EnumerateArray().Single();
+        call.GetProperty("id").GetString().Should().Be("call-1");
+        call.GetProperty("type").GetString().Should().Be("function");
+        call.GetProperty("function").GetProperty("name").GetString().Should().Be("search_guides");
+        call.GetProperty("function").GetProperty("arguments").GetString()
+            .Should().Be("""{"query":"pole supports"}""", "arguments travel as a string of JSON");
+
+        var result = messages[2];
+        result.GetProperty("role").GetString().Should().Be("tool");
+        result.GetProperty("tool_call_id").GetString().Should().Be("call-1");
+        result.GetProperty("content").GetString().Should().Be("[3] Brazil > Poles\nNone in Ceará.");
+        messages[0].TryGetProperty("tool_calls", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Complete_ReadsAReplyThatOnlyCallsTools_AsASuccess()
+    {
+        // Captured from nemotron-3-ultra on 2026-10-23: no content at all, and the call. Read as an empty
+        // response it blamed — and demoted — the very models that call tools properly.
+        var handler = new CapturingHandler("""
+            {"model":"nvidia/nemotron-3-ultra-550b-a55b:free","choices":[{"finish_reason":"tool_calls","message":{
+              "role":"assistant","content":null,"tool_calls":[{"type":"function","index":0,"id":"call-0061f2b2",
+              "function":{"name":"search_guides","arguments":"{\"country\":\"Brazil\",\"query\":\"pole supports rare Brazil\"}"}}]}}],
+             "usage":{"prompt_tokens":438,"completion_tokens":76}}
+            """);
+
+        var result = await CreateClient(handler).CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")], Tools: [SearchTool]));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Text.Should().BeEmpty();
+        result.Value.RequestsTools.Should().BeTrue();
+        result.Value.FinishReason.Should().Be("tool_calls");
+        result.Value.ToolCalls.Should().ContainSingle().Which.Should().Be(
+            new AiToolCall("call-0061f2b2", "search_guides", """{"country":"Brazil","query":"pole supports rare Brazil"}"""));
+    }
+
+    [Fact]
+    public async Task Complete_ReadsArguments_SentAsTheObjectItself()
+    {
+        var handler = new CapturingHandler("""
+            {"model":"m","choices":[{"message":{"content":"\n\n\n","tool_calls":[
+              {"id":"c1","function":{"name":"read_guide","arguments":{"excerpt":3}}},
+              {"id":"c2","function":{"name":""}},
+              {"function":{"name":"species_range"}}]}}]}
+            """);
+
+        var result = await CreateClient(handler).CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")], Tools: [SearchTool]));
+
+        result.Value.ToolCalls.Should().Equal(
+            new AiToolCall("c1", "read_guide", """{"excerpt":3}"""),
+            // Nameless calls cannot be run or answered; one without an id or arguments keeps empty ones.
+            new AiToolCall("", "species_range", "{}"));
+    }
+
+    [Fact]
+    public async Task Complete_StillReportsAnEmptyReply_WhenItCallsNoTool()
+    {
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"  ","tool_calls":[]}}]}""");
+
+        var result = await CreateClient(handler).CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")], Tools: [SearchTool]));
+
+        result.Error.Code.Should().Be(ChatErrorCodes.EmptyResponse);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, """{"error":{"message":"No endpoints found that support tool use. To learn more about provider routing, visit: https://openrouter.ai/docs/provider-routing","code":404}}""")]
+    [InlineData(HttpStatusCode.BadRequest, """{"error":{"message":"Provider returned error: tool_choice 'auto' is not supported","code":400}}""")]
+    public async Task Complete_ReportsToolsTheProviderCannotUse_ApartFromARefusedRequest(HttpStatusCode status, string body)
+    {
+        var withTools = await CreateClient(new CapturingHandler(body, status))
+            .CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")], Tools: [SearchTool]));
+        var withoutTools = await CreateClient(new CapturingHandler(body, status))
+            .CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")]));
+
+        withTools.Error.Code.Should().Be(ChatErrorCodes.ToolsUnsupported, "the same question is worth asking without them");
+        withoutTools.Error.Code.Should().Be(ChatErrorCodes.Rejected, "a request that declared no tool cannot have been refused for one");
     }
 
     private static async Task<CapturingHandler> ReadFixtureAsync(string name)
@@ -276,6 +563,7 @@ public sealed class RefitChatModelClientTests
 
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(RefitChatModelClient.HttpClientName).Returns(httpClient);
+        factory.CreateClient(RefitChatModelClient.HealthHttpClientName).Returns(httpClient);
 
         return new RefitChatModelClient(factory, NullLogger<RefitChatModelClient>.Instance);
     }
@@ -286,10 +574,14 @@ public sealed class RefitChatModelClientTests
     {
         public string LastRequestBody { get; private set; } = string.Empty;
 
+        public Uri? LastRequestUri { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            LastRequestUri = request.RequestUri;
+
             if (request.Content is not null)
             {
                 LastRequestBody = await request.Content.ReadAsStringAsync(cancellationToken);

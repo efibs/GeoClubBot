@@ -40,6 +40,7 @@ Console.CancelKeyPress += (_, e) =>
 using var qdrant = ReadOnlyQdrantInterceptor.Connect(settings.QdrantAddress);
 var report = new ProbeReport();
 EmbeddingCache? embeddings = null;
+PlannerCache? planner = null;
 
 try
 {
@@ -58,7 +59,8 @@ try
         new QdrantKnowledgeIndex(qdrant, settings.Collection, settings.OpenRouter.EmbeddingDimensions),
         Embeddings,
         report,
-        cancellation.Token);
+        cancellation.Token,
+        Planner);
 
     await (arguments.Command switch
     {
@@ -96,6 +98,13 @@ finally
             $"OpenRouter: {embeddings.RequestsSent} embedding request(s) this run. Vectors are cached in {embeddings.CachePath}.");
         embeddings.Dispose();
     }
+
+    if (planner is not null)
+    {
+        Console.Error.WriteLine(
+            $"OpenRouter: {planner.RequestsSent} planner request(s) this run, the model roster included. Replies are cached in {planner.CachePath}.");
+        planner.Dispose();
+    }
 }
 
 if (arguments.OutputPath is not null)
@@ -122,4 +131,28 @@ EmbeddingCache Embeddings()
     embeddings = EmbeddingCache.ForOpenRouter(
         settings.ApiKey, settings.OpenRouter, Path.Combine(AppContext.BaseDirectory, "embedding-cache.json"));
     return embeddings;
+}
+
+// Null unless --allow-chat was given: then, and only then, a chat request may leave the probe.
+PlannerCache? Planner()
+{
+    if (!arguments.AllowChat)
+    {
+        return null;
+    }
+
+    if (planner is not null)
+    {
+        return planner;
+    }
+
+    if (settings.ApiKey is null)
+    {
+        throw new ProbeException(ProbeSettings.MissingKeyHelp);
+    }
+
+    Console.Error.WriteLine($"Planning with the OpenRouter key from {settings.ApiKeySource} (--allow-chat).");
+    planner = PlannerCache.ForOpenRouter(
+        settings.ApiKey, settings.OpenRouter, Path.Combine(AppContext.BaseDirectory, "planner-cache.json"), arguments.PlannerModels);
+    return planner;
 }

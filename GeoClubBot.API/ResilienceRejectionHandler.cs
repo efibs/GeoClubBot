@@ -1,4 +1,7 @@
+using Infrastructure.OutputAdapters.Http;
 using Polly;
+using Polly.CircuitBreaker;
+using Polly.RateLimiting;
 
 namespace GeoClubBot;
 
@@ -12,6 +15,10 @@ namespace GeoClubBot;
 /// guide host would end a nightly ingestion run and discard the bookkeeping of every source it had
 /// already processed. (Refit clients receive it wrapped in Refit's own request exception, which their
 /// adapters catch.) Translating at the client boundary keeps the adapters ignorant of the pipeline.
+///
+/// An open circuit or a full queue is about the host, not the request, and is reported as a
+/// <see cref="HostRefusedRequestException"/> so ingestion can leave the guide alone instead of backing it
+/// off; a timeout is about the moment and stays a plain failure.
 /// </summary>
 internal sealed class ResilienceRejectionHandler : DelegatingHandler
 {
@@ -22,6 +29,11 @@ internal sealed class ResilienceRejectionHandler : DelegatingHandler
         try
         {
             return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ExecutionRejectedException ex) when (ex is BrokenCircuitException or RateLimiterRejectedException)
+        {
+            throw new HostRefusedRequestException(
+                $"The request to {request.RequestUri?.Host} was not sent: {ex.Message}", ex);
         }
         catch (ExecutionRejectedException ex)
         {

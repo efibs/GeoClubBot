@@ -67,6 +67,63 @@ public sealed class OpenRouterResiliencePipelineTests
     }
 
     [Fact]
+    public async Task AChatModelsUpstreamRateLimit_IsNotWaitedOut()
+    {
+        // Gemma's provider, 2026-10-23: out of the capacity it shares among free users. Our window turning
+        // over changes nothing, and waiting a minute for it put the attempt past the caller's patience, so
+        // the question failed instead of being retried against models that were answering.
+        using var limiter = Unlimited();
+        var pipeline = Build(limiter);
+        var upstreamCalls = 0;
+
+        var response = await pipeline.ExecuteAsync(_ =>
+        {
+            upstreamCalls++;
+            return ValueTask.FromResult(RateLimited(retryAfter: TimeSpan.Zero, UpstreamPoolBody, "/api/v1/chat/completions"));
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        upstreamCalls.Should().Be(1);
+        (await response.Content.ReadAsStringAsync()).Should().Be(UpstreamPoolBody, "the client still reads the body after the pipeline");
+    }
+
+    [Fact]
+    public async Task AnEmbeddingsUpstreamRateLimit_IsStillWaitedOut()
+    {
+        // An embedding has no other model to turn to; waiting is all there is.
+        using var limiter = Unlimited();
+        var pipeline = Build(limiter);
+        var upstreamCalls = 0;
+
+        await pipeline.ExecuteAsync(_ =>
+        {
+            upstreamCalls++;
+            return ValueTask.FromResult(RateLimited(retryAfter: TimeSpan.Zero, UpstreamPoolBody, "/api/v1/embeddings"));
+        });
+
+        upstreamCalls.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task OurOwnRateLimitOnAChat_IsStillWaitedOut()
+    {
+        using var limiter = Unlimited();
+        var pipeline = Build(limiter);
+        var upstreamCalls = 0;
+
+        await pipeline.ExecuteAsync(_ =>
+        {
+            upstreamCalls++;
+            return ValueTask.FromResult(RateLimited(
+                retryAfter: TimeSpan.Zero,
+                """{"error": {"message": "Rate limit exceeded: free-models-per-min.", "code": 429}}""",
+                "/api/v1/chat/completions"));
+        });
+
+        upstreamCalls.Should().Be(2);
+    }
+
+    [Fact]
     public async Task RateLimits_DoNotOpenTheCircuit()
     {
         // A 429 means we were early, not that the provider is down. Counted as failures, a handful of them
@@ -166,10 +223,22 @@ public sealed class OpenRouterResiliencePipelineTests
     private static ConcurrencyLimiter Unlimited() =>
         new(new ConcurrencyLimiterOptions { PermitLimit = 1000, QueueLimit = 0 });
 
+    private const string UpstreamPoolBody = """
+        {"error": {"message": "Provider returned error", "code": 429, "metadata": {"raw": "google/gemma-4-31b-it:free is temporarily rate-limited upstream.", "limit_source": "upstream_provider_shared_pool"}}}
+        """;
+
     private static HttpResponseMessage RateLimited(TimeSpan retryAfter)
     {
         var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
         response.Headers.RetryAfter = new RetryConditionHeaderValue(retryAfter);
+        return response;
+    }
+
+    private static HttpResponseMessage RateLimited(TimeSpan retryAfter, string body, string path)
+    {
+        var response = RateLimited(retryAfter);
+        response.Content = new StringContent(body);
+        response.RequestMessage = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri("https://openrouter.ai"), path));
         return response;
     }
 

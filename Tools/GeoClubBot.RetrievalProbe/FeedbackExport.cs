@@ -1,20 +1,32 @@
 using System.Text.Json;
+using Entities;
+using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Feedback;
 
 namespace GeoClubBot.RetrievalProbe;
 
 /// <summary>A rated answer, and the question it answered.</summary>
 /// <param name="Question">
-/// The message the rated answer responded to — the text that was embedded to retrieve for it. Not
-/// the conversation's opening message: a follow-up is retrieved for by its own words.
+/// The message the rated answer responded to. Not the conversation's opening message: a follow-up is
+/// retrieved for by its own words together with <paramref name="Context"/>.
 /// </param>
 /// <param name="QuestionHadScreenshot">
 /// The question carried a screenshot, whose pixels were searched as well. Discord's attachment links
 /// expire within a day, so a replay searches by the text alone, and says so.
 /// </param>
-public sealed record RatedQuestion(AiFeedbackRecord Record, string Question, bool QuestionHadScreenshot)
+/// <param name="Context">
+/// The branch before the question, oldest first, as the bot replays it: empty for a fresh question. A
+/// follow-up is searched with it, as the bot searches it.
+/// </param>
+public sealed record RatedQuestion(
+    AiFeedbackRecord Record,
+    string Question,
+    bool QuestionHadScreenshot,
+    IReadOnlyList<ConversationTurnView> Context)
 {
     public bool IsNegative => string.Equals(Record.Rating, "negative", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsFollowUp => Context.Count > 0;
 }
 
 /// <summary>
@@ -63,14 +75,23 @@ public static class FeedbackExport
                 throw new ProbeException($"Line {lineNumber} of the export is not a feedback record: {ex.Message}");
             }
 
-            // The transcript ends with the rated answer; the last user turn is what it answered.
-            var asked = record.Transcript
-                .OrderBy(turn => turn.Ordinal)
-                .LastOrDefault(turn => string.Equals(turn.Role, "user", StringComparison.OrdinalIgnoreCase));
+            // The transcript ends with the rated answer; the last user turn is what it answered, and
+            // everything before it is the branch the bot replayed with it.
+            var transcript = record.Transcript.OrderBy(turn => turn.Ordinal).ToList();
+            var asked = transcript.FindLastIndex(turn => string.Equals(turn.Role, "user", StringComparison.OrdinalIgnoreCase));
 
-            if (asked is not null && !string.IsNullOrWhiteSpace(asked.Content))
+            if (asked >= 0 && !string.IsNullOrWhiteSpace(transcript[asked].Content))
             {
-                questions.Add(new RatedQuestion(record, asked.Content, asked.ImageUrls.Count > 0));
+                var context = transcript.Take(asked)
+                    .Select(turn => new ConversationTurnView(
+                        string.Equals(turn.Role, "assistant", StringComparison.OrdinalIgnoreCase) ? AiTurnRole.Assistant : AiTurnRole.User,
+                        turn.AuthorDiscordUserId,
+                        turn.Content,
+                        turn.ImageUrls))
+                    .ToList();
+
+                questions.Add(new RatedQuestion(
+                    record, transcript[asked].Content, transcript[asked].ImageUrls.Count > 0, context));
             }
         }
 

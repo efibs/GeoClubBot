@@ -1,4 +1,5 @@
 using System.Text;
+using Configuration;
 using Discord;
 using FluentAssertions;
 using GeoClubBot.Discord.InputAdapters.Interactions.AI;
@@ -24,7 +25,7 @@ public sealed class AiAnswerFormatterTests
             RetrievedSourceUrls: [],
             CitedSourceUrls: []);
 
-        return Verify(Render(AiAnswerFormatter.Render(answer)));
+        return Verify(Render(RenderLinked(answer)));
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public sealed class AiAnswerFormatterTests
             RetrievedSourceUrls: [],
             CitedSourceUrls: []);
 
-        return Verify(Render(AiAnswerFormatter.Render(answer)));
+        return Verify(Render(RenderLinked(answer)));
     }
 
     [Fact]
@@ -73,7 +74,7 @@ public sealed class AiAnswerFormatterTests
             RetrievedSourceUrls: [],
             CitedSourceUrls: []);
 
-        return Verify(Render(AiAnswerFormatter.Render(answer)));
+        return Verify(Render(RenderLinked(answer)));
     }
 
     [Fact]
@@ -96,7 +97,7 @@ public sealed class AiAnswerFormatterTests
             RetrievedSourceUrls: [],
             CitedSourceUrls: []);
 
-        return Verify(Render(AiAnswerFormatter.Render(answer)));
+        return Verify(Render(RenderLinked(answer)));
     }
 
     [Fact]
@@ -104,7 +105,7 @@ public sealed class AiAnswerFormatterTests
     {
         var answer = new AiAnswer("Still here.", [], [], "test/model", ConversationId: 100, Depth: 21, IsLongThread: true, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
-        return Verify(Render(AiAnswerFormatter.Render(answer)));
+        return Verify(Render(RenderLinked(answer)));
     }
 
     [Fact]
@@ -117,7 +118,7 @@ public sealed class AiAnswerFormatterTests
             [new AiAnswerSource(1, "A", "https://guide/a", IsImage: true)],
             "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
-        var rendering = AiAnswerFormatter.Render(answer);
+        var rendering = RenderLinked(answer);
 
         rendering.Embeds.Single().Title.Should().StartWith("[1] ").And.HaveLength(256);
     }
@@ -131,7 +132,7 @@ public sealed class AiAnswerFormatterTests
             string.Join("\n", Enumerable.Repeat("A fairly long line about bollards.", 120)),
             [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
-        var rendering = AiAnswerFormatter.Render(answer);
+        var rendering = RenderLinked(answer);
 
         rendering.MessageChunks.Should().HaveCountGreaterThan(1);
         rendering.MessageChunks.Should().OnlyContain(chunk => chunk.Length <= 2000);
@@ -145,10 +146,130 @@ public sealed class AiAnswerFormatterTests
         // a visible failure.
         var answer = new AiAnswer("   ", [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
-        var rendering = AiAnswerFormatter.Render(answer);
+        var rendering = RenderLinked(answer);
 
         rendering.MessageChunks[0].Should().NotBeNullOrWhiteSpace();
     }
+
+    [Fact]
+    public Task Render_UploadsRelayedPicturesAndLinksTheRest()
+    {
+        // A relayed picture's link only works while Discord can reach the bot's public URL, which it
+        // could not on 2026-10-22. On disk, the picture goes up with the answer and its embed points at
+        // the attachment; a relayed picture whose file is gone is linked under today's address, not
+        // the one it was indexed under; any other host's picture is linked as it was.
+        var onDisk = new string('a', 64) + ".png";
+        var gone = new string('b', 64) + ".jpg";
+        var answer = new AiAnswer(
+            "Philippine sugarcane grows on Negros [1]; the map shows the rest [2], and Luzon has some [3].",
+            [
+                new AiAnswerImage(1, $"https://old-host.tailnet.ts.net/api/v1/ai/images/{onDisk}", "https://www.plonkit.net/philippines#GaHP", "Philippines > Agriculture"),
+                new AiAnswerImage(2, "https://i.imgur.com/sugarcane.png", "https://docs.google.com/document/d/abc", "Sugarcane map"),
+                new AiAnswerImage(3, $"https://old-host.tailnet.ts.net/api/v1/ai/images/{gone}", "https://docs.google.com/presentation/d/def", null)
+            ],
+            [
+                new AiAnswerSource(1, "Philippines > Agriculture", "https://www.plonkit.net/philippines#GaHP", IsImage: true),
+                new AiAnswerSource(2, "Sugarcane map", "https://docs.google.com/document/d/abc", IsImage: true),
+                new AiAnswerSource(3, "Luzon > Slide 4", "https://docs.google.com/presentation/d/def", IsImage: true)
+            ],
+            "dots-studio/dots-3-note-preview:free",
+            ConversationId: 100,
+            Depth: 1,
+            IsLongThread: false,
+            RetrievedSourceUrls: [],
+            CitedSourceUrls: []);
+
+        var plan = AiAnswerPicturePlanner.Plan(
+            answer.Images,
+            new Dictionary<string, StoredPicture> { [onDisk] = new("image/png", 120_000) },
+            new AiImageRelayConfiguration { PublicBaseUrl = "https://bot.example.net" });
+
+        return Verify(Render(AiAnswerFormatter.Render(answer, plan)));
+    }
+
+    [Fact]
+    public Task Render_CountsTheSeveralPicturesOfOneCitedExcerpt()
+    {
+        // One slide caption sits beside each picture of its slide, so citing it once brings them all.
+        // Every embed carries the number the prose cites, and its place among them tells them apart.
+        var first = new string('c', 64) + ".png";
+        var second = new string('d', 64) + ".png";
+        var answer = new AiAnswer(
+            "Gen 4 with an antenna is common around Boa Vista [1], and in Rondônia [2].",
+            [
+                new AiAnswerImage(1, $"https://bot.example.net/api/v1/ai/images/{first}",
+                    "https://docs.google.com/presentation/d/brazil/edit#slide=id.p7", "Brazilian Poles Lite", Position: 1, Count: 3),
+                new AiAnswerImage(1, $"https://bot.example.net/api/v1/ai/images/{second}",
+                    "https://docs.google.com/presentation/d/brazil/edit#slide=id.p7", "Brazilian Poles Lite", Position: 2, Count: 3),
+                new AiAnswerImage(1, "https://i.imgur.com/roraima.png",
+                    "https://docs.google.com/presentation/d/brazil/edit#slide=id.p7", "Brazilian Poles Lite", Position: 3, Count: 3),
+                new AiAnswerImage(2, "https://i.imgur.com/rondonia.png", "https://www.plonkit.net/brazil#l5MR", "Brazil")
+            ],
+            [
+                new AiAnswerSource(1, "Brazil · Brazilian Poles Lite > Slide 7", "https://docs.google.com/presentation/d/brazil/edit#slide=id.p7", IsImage: true),
+                new AiAnswerSource(2, "Brazil > Car metas", "https://www.plonkit.net/brazil#l5MR", IsImage: true)
+            ],
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            ConversationId: 100,
+            Depth: 1,
+            IsLongThread: false,
+            RetrievedSourceUrls: [],
+            CitedSourceUrls: []);
+
+        var plan = AiAnswerPicturePlanner.Plan(
+            answer.Images,
+            new Dictionary<string, StoredPicture>
+            {
+                [first] = new("image/png", 200_000),
+                [second] = new("image/png", 300_000)
+            },
+            new AiImageRelayConfiguration { PublicBaseUrl = "https://bot.example.net" });
+
+        return Verify(Render(AiAnswerFormatter.Render(answer, plan)));
+    }
+
+    [Fact]
+    public void Render_KeepsThePicturesPlace_WhenALongTitleIsCut()
+    {
+        var answer = new AiAnswer(
+            "See [1].",
+            [new AiAnswerImage(1, "https://i.imgur.com/a.png", "https://guide/a", new string('x', 400), Position: 2, Count: 8)],
+            [new AiAnswerSource(1, "A", "https://guide/a", IsImage: true)],
+            "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
+
+        var title = RenderLinked(answer).Embeds.Single().Title;
+
+        title.Should().HaveLength(256).And.StartWith("[1] x").And.EndWith("… (2/8)");
+    }
+
+    [Fact]
+    public void Render_ShowsAtMostTenPictures_AndUploadsOnlyThoseShown()
+    {
+        // Discord takes at most ten embeds and ten attachments per message; an eleventh is refused
+        // with the whole message.
+        var images = Enumerable.Range(1, 12)
+            .Select(marker => new AiAnswerImage(
+                marker, $"https://bot.example.net/api/v1/ai/images/{marker:x64}.png", $"https://guide/{marker}", null))
+            .ToList();
+        var answer = new AiAnswer(
+            "Many pictures.", images, [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false,
+            RetrievedSourceUrls: [], CitedSourceUrls: []);
+        var plan = new AiAnswerPicturePlan([.. images.Select(image => new AiAnswerPicture(
+            image, AiAnswerPictureDelivery.Uploaded, image.ImageUrl,
+            new AiAnswerUpload($"picture-{image.Marker}.png", $"{image.Marker:x64}.png", 10)))]);
+
+        var rendering = AiAnswerFormatter.Render(answer, plan);
+
+        rendering.Embeds.Should().HaveCount(10);
+        rendering.Uploads.Should().HaveCount(10);
+        rendering.Uploads.Select(upload => upload.FileName).Should().NotContain(["picture-11.png", "picture-12.png"]);
+    }
+
+    /// <summary>Every picture linked as stored, as when nothing relayed is on disk.</summary>
+    private static AiAnswerRendering RenderLinked(AiAnswer answer) =>
+        AiAnswerFormatter.Render(
+            answer,
+            AiAnswerPicturePlanner.Plan(answer.Images, new Dictionary<string, StoredPicture>(), new AiImageRelayConfiguration()));
 
     /// <summary>Flattens the rendering into plain text so one snapshot captures the whole layout.</summary>
     private static string Render(AiAnswerRendering rendering)
@@ -167,6 +288,14 @@ public sealed class AiAnswerFormatterTests
             builder.AppendLine($"Title: {embed.Title}");
             builder.AppendLine($"Image: {embed.Image?.Url}");
             builder.AppendLine($"Url:   {embed.Url}");
+        }
+
+        // Listed only when there are any, so a layout without uploads reads exactly as it did.
+        foreach (var upload in rendering.Uploads)
+        {
+            builder.AppendLine("--- upload ---");
+            builder.AppendLine($"File:   {upload.FileName}");
+            builder.AppendLine($"Stored: {upload.StoredName} ({upload.Length} bytes)");
         }
 
         return builder.ToString();

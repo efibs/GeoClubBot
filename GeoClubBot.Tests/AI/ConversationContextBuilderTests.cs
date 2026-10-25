@@ -253,6 +253,36 @@ public sealed class ConversationContextBuilderTests
     }
 
     [Fact]
+    public void Build_CarriesWhatTheAnswerRepliedToCited_InItsOrder()
+    {
+        // "Show me the distribution" means a picture that answer cited; the follow-up is offered them again.
+        var (first, second, earlier) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var turns = new[]
+        {
+            User(100, null, 100, authorId: 1, "where is the four band car?"),
+            AiConversationTurn.CreateAssistantTurn(101, 100, 100, channelId: 5, guildId: 7, Bot, "Near Khorgo [1][2].",
+                "test/model", null, null, null, depth: 1, Now.AddMinutes(-1), citedChunkIds: [earlier]),
+            User(102, 101, 100, authorId: 1, "and the open tent?", depth: 2),
+            AiConversationTurn.CreateAssistantTurn(103, 102, 100, channelId: 5, guildId: 7, Bot, "Further west [1][2].",
+                "test/model", null, null, null, depth: 3, Now.AddMinutes(-1),
+                offeredChunkIds: [Guid.NewGuid(), first, second], citedChunkIds: [second, first])
+        };
+
+        var context = ConversationContextBuilder.Build(turns, 103, Limits(), Now);
+
+        context.PreviousCitedChunkIds.Should().Equal([second, first],
+            "only the answer replied to, in the order it numbered them; an earlier answer's are not carried");
+    }
+
+    [Fact]
+    public void Build_CarriesNothing_WhenTheReplyIsToAQuestion()
+    {
+        var turns = new[] { User(100, null, 100, authorId: 1, "a question") };
+
+        ConversationContextBuilder.Build(turns, 100, Limits(), Now).PreviousCitedChunkIds.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Build_ReportsNoRoot_WhenTheReplyStartsAFreshConversation()
     {
         // Idle past the window. The caller roots the new conversation at the incoming message, which

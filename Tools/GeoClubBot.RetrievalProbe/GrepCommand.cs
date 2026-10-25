@@ -36,10 +36,10 @@ public static class GrepCommand
 
         var fields = new WithPayloadSelector
         {
-            Include = new PayloadIncludeSelector { Fields = { "text", "sourceUrl", "chunkKind", "country", "sectionPath" } }
+            Include = new PayloadIncludeSelector { Fields = { "text", "sourceUrl", "chunkKind", "country", "sectionPath", "imageUrl" } }
         };
 
-        var matches = new List<(string Country, string Section, string Url, bool IsPicture, string Excerpt)>();
+        var matches = new List<(string Country, string Section, string Url, string ImageUrl, string Excerpt)>();
         var scanned = 0;
         PointId? offset = null;
 
@@ -61,7 +61,8 @@ public static class GrepCommand
                 if (match.Success)
                 {
                     matches.Add((Read(point.Payload, "country"), Read(point.Payload, "sectionPath"),
-                        Read(point.Payload, "sourceUrl"), Read(point.Payload, "chunkKind") == "image",
+                        Read(point.Payload, "sourceUrl"),
+                        Read(point.Payload, "chunkKind") == "image" ? Read(point.Payload, "imageUrl") : string.Empty,
                         Around(text, match)));
                 }
             }
@@ -93,7 +94,14 @@ public static class GrepCommand
         {
             var label = HitDescriptions.Cell(match.Section.Length > 0 ? match.Section : match.Url, 60)
                 .Replace("[", "(").Replace("]", ")");
-            report.Line($"- {(match.IsPicture ? "🖼 " : string.Empty)}[{label}]({match.Url}) — {match.Excerpt}");
+            report.Line($"- {(match.ImageUrl.Length > 0 ? "🖼 " : string.Empty)}[{label}]({match.Url}) — {match.Excerpt}");
+
+            // The picture's own address, because "is it attached?" and "does it load?" are separate
+            // questions, and only the second one depends on where the picture is served from.
+            if (match.ImageUrl.Length > 0)
+            {
+                report.Line($"  picture: {match.ImageUrl}");
+            }
         }
 
         if (matches.Count > context.Arguments.Max)

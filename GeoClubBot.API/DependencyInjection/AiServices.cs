@@ -1,17 +1,22 @@
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.RateLimiting;
 using Configuration;
 using Constants;
 using GeoClubBot.Services;
 using Infrastructure.OutputAdapters.AI;
 using Infrastructure.OutputAdapters.AI.Extractors;
+using Infrastructure.OutputAdapters.AI.Gbif;
 using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
+using UseCases.UseCases.AI.Conversations;
+using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.Tools;
 
 namespace GeoClubBot.DependencyInjection;
 
@@ -31,6 +36,7 @@ public static class AiServices
         services.AddOpenRouterServices(aiConfig);
         services.AddKnowledgeIndex(configuration, aiConfig);
         services.AddSourceExtractors(ingestionConfig);
+        services.AddAnswerTools(configuration);
 
         if (!aiConfig.Active)
         {
@@ -51,36 +57,55 @@ public static class AiServices
     private static void AddOpenRouterServices(this IServiceCollection services, AiConfiguration aiConfig)
     {
         var openRouter = aiConfig.OpenRouter;
+        var attemptTimeout = TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds);
 
-        services.AddHttpClient(RefitChatModelClient.HttpClientName, client =>
+        // One limiter for both clients below: the budget is the key's, whichever pipeline a request takes.
+        services.AddKeyedSingleton(
+            RefitChatModelClient.HttpClientName,
+            (_, _) => ResiliencePipelines.CreateOpenRouterRateLimiter(openRouter.PerMinuteRequestBudget));
+
+        void ConfigureClient(HttpClient client)
+        {
+            client.BaseAddress = new Uri(openRouter.BaseUrl);
+
+            // The whole call: queueing for a token, waiting out a rate-limit window, and the retry
+            // after it. Each attempt is bounded separately, inside the pipeline.
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(aiConfig.OverallTimeoutSeconds, aiConfig.RequestTimeoutSeconds));
+
+            if (!string.IsNullOrWhiteSpace(openRouter.ApiKey))
             {
-                client.BaseAddress = new Uri(openRouter.BaseUrl);
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", openRouter.ApiKey);
+            }
 
-                // The whole call: queueing for a token, waiting out a rate-limit window, and the retry
-                // after it. Each attempt is bounded separately, inside the pipeline.
-                client.Timeout = TimeSpan.FromSeconds(Math.Max(aiConfig.OverallTimeoutSeconds, aiConfig.RequestTimeoutSeconds));
+            // Optional attribution headers; OpenRouter surfaces them on their public leaderboards.
+            if (!string.IsNullOrWhiteSpace(openRouter.SiteUrl))
+            {
+                client.DefaultRequestHeaders.Add("HTTP-Referer", openRouter.SiteUrl);
+            }
 
-                if (!string.IsNullOrWhiteSpace(openRouter.ApiKey))
-                {
-                    client.DefaultRequestHeaders.Authorization =
-                        new AuthenticationHeaderValue("Bearer", openRouter.ApiKey);
-                }
+            client.DefaultRequestHeaders.Add("X-Title", openRouter.AppName);
+        }
 
-                // Optional attribution headers; OpenRouter surfaces them on their public leaderboards.
-                if (!string.IsNullOrWhiteSpace(openRouter.SiteUrl))
-                {
-                    client.DefaultRequestHeaders.Add("HTTP-Referer", openRouter.SiteUrl);
-                }
-
-                client.DefaultRequestHeaders.Add("X-Title", openRouter.AppName);
-            })
+        services.AddHttpClient(RefitChatModelClient.HttpClientName, ConfigureClient)
             .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "OpenRouterResiliencePipeline",
-                builder => ResiliencePipelines.AddOpenRouterResiliencePipeline(
+                (builder, context) => ResiliencePipelines.AddOpenRouterResiliencePipeline(
                     builder,
-                    openRouter.PerMinuteRequestBudget,
-                    TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds)));
+                    context.ServiceProvider.GetRequiredKeyedService<RateLimiter>(RefitChatModelClient.HttpClientName),
+                    attemptTimeout));
+
+        // Provider health reads, kept out of the chat pipeline's retry and circuit breaker: see
+        // ResiliencePipelines.AddOpenRouterHealthResiliencePipeline.
+        services.AddHttpClient(RefitChatModelClient.HealthHttpClientName, ConfigureClient)
+            .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
+            .AddResilienceHandler(
+                "OpenRouterHealthResiliencePipeline",
+                (builder, context) => ResiliencePipelines.AddOpenRouterHealthResiliencePipeline(
+                    builder,
+                    context.ServiceProvider.GetRequiredKeyedService<RateLimiter>(RefitChatModelClient.HttpClientName),
+                    attemptTimeout));
 
         // The system clock keeps the catalog's failure-decay logic swappable in tests without a new
         // dependency. AddClubBotServices registers it too; whichever runs first wins.
@@ -94,6 +119,35 @@ public static class AiServices
 
         // Embeddings share the chat client's HTTP pipeline, so they inherit its auth and rate limiter.
         services.AddSingleton<IEmbedder, OpenRouterEmbedder>();
+    }
+
+    /// <summary>
+    /// The tools the answering model may call, and the loop that runs them. Registered unconditionally
+    /// with the chat services, because the answer's handler needs them whether or not the feature is on.
+    /// </summary>
+    private static void AddAnswerTools(this IServiceCollection services, IConfiguration configuration)
+    {
+        var tools = configuration.GetSection(AiToolsConfiguration.SectionName).Get<AiToolsConfiguration>()
+                    ?? new AiToolsConfiguration();
+        var attemptTimeout = TimeSpan.FromSeconds(tools.SpeciesRange.RequestTimeoutSeconds);
+
+        services.AddHttpClient(GbifSpeciesRangeReader.HttpClientName, client =>
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                    "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+                // Both attempts and the pause between them.
+                client.Timeout = attemptTimeout * 2 + TimeSpan.FromSeconds(1);
+            })
+            .AddResilienceHandler(
+                "GbifResiliencePipeline",
+                builder => ResiliencePipelines.AddGbifResiliencePipeline(builder, attemptTimeout));
+
+        // Singleton for its cache, which is worth keeping across questions.
+        services.AddSingleton<ISpeciesRangeReader, GbifSpeciesRangeReader>();
+        services.AddSingleton<AnswerToolbox>();
+
+        // Scoped, like the budget repository it claims requests through.
+        services.AddScoped<AiAnswerLoop>();
     }
 
     /// <summary>
@@ -186,6 +240,11 @@ public static class AiServices
             new QdrantClient(qdrantConnectionString),
             BuildCollectionName(aiConfig),
             aiConfig.OpenRouter.EmbeddingDimensions));
+
+        // The index's country names, which every question is matched against: read once and kept. And
+        // the query planner's pause after a timeout, which must outlive the question that timed out.
+        services.AddSingleton<KnowledgeCountryDirectory>();
+        services.AddSingleton<QueryPlannerPause>();
     }
 
     /// <summary>

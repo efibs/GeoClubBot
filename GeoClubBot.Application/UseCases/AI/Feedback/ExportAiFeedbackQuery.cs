@@ -4,11 +4,20 @@ using MediatR;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.AI.Tools;
 using Utilities;
 
 namespace UseCases.UseCases.AI.Feedback;
 
 /// <param name="Role">"user" or "assistant", spelled the way chat APIs and eval tooling expect.</param>
+/// <param name="OfferedChunkIds">
+/// On an answer, the index chunks behind every excerpt it was offered, in the order they were numbered
+/// — the exact excerpts, where the record's <see cref="AiFeedbackRecord.RetrievedSourceUrls"/> names
+/// only their pages, so a replay can look each one up. Empty for answers stored before they were kept;
+/// absent on questions, and in exports written before the field existed.
+/// </param>
+/// <param name="CitedChunkIds">On an answer, the chunks behind the excerpts it cited, in the order it numbered them.</param>
+/// <param name="ToolCalls">On an answer, the tool calls the model made on the way; absent when it made none.</param>
 public sealed record AiFeedbackTurnRecord(
     int Ordinal,
     string Role,
@@ -16,7 +25,10 @@ public sealed record AiFeedbackTurnRecord(
     string Content,
     IReadOnlyList<string> ImageUrls,
     string? ModelId,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    IReadOnlyList<Guid>? OfferedChunkIds = null,
+    IReadOnlyList<Guid>? CitedChunkIds = null,
+    IReadOnlyList<AiToolCallSummary>? ToolCalls = null);
 
 /// <summary>
 /// One rated conversation, flattened for export.
@@ -96,8 +108,9 @@ public sealed class ExportAiFeedbackHandler(
             RetrievedSourceUrlsOf(feedback),
             CitedSourceUrlsOf(feedback));
 
-    private static AiFeedbackTurnRecord ToTurnRecord(AiFeedbackTurn turn) =>
-        new(
+    private static AiFeedbackTurnRecord ToTurnRecord(AiFeedbackTurn turn)
+    {
+        var record = new AiFeedbackTurnRecord(
             turn.Ordinal,
             turn.Role == AiTurnRole.Assistant ? "assistant" : "user",
             turn.AuthorDiscordUserId,
@@ -105,6 +118,21 @@ public sealed class ExportAiFeedbackHandler(
             turn.ImageUrls,
             turn.ModelId,
             turn.CreatedAtUtc);
+
+        if (turn.Role != AiTurnRole.Assistant)
+        {
+            return record;
+        }
+
+        var toolCalls = AiToolCallLog.Deserialize(turn.ToolCallsJson);
+
+        return record with
+        {
+            OfferedChunkIds = turn.OfferedChunkIds,
+            CitedChunkIds = turn.CitedChunkIds,
+            ToolCalls = toolCalls.Count > 0 ? toolCalls : null
+        };
+    }
 
     private static IReadOnlyList<string> RetrievedSourceUrlsOf(AiAnswerFeedback feedback) =>
         feedback.Turns.OrderBy(turn => turn.Ordinal).LastOrDefault()?.RetrievedSourceUrls ?? [];

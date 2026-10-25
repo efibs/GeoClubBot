@@ -64,7 +64,7 @@ public sealed class AiPromptBuilderTests
 
         var prompt = messages[^1].ToPlainText();
         prompt.Should().Contain("[1] Tunisia").And.Contain("Tunisian codes run 70-79.");
-        prompt.Should().Contain("[2] (picture)");
+        prompt.Should().Contain("[2] (picture");
         prompt.Should().NotContain("[image");
 
         excerpts.Should().HaveCount(2);
@@ -167,7 +167,7 @@ public sealed class AiPromptBuilderTests
     [Fact]
     public void SystemPrompt_AnswersWhatBetaTestersReported()
     {
-        var prompt = AiPromptBuilder.SystemPrompt;
+        var prompt = Normalise(AiPromptBuilder.SystemPrompt);
 
         prompt.Should().Contain("You cannot see those pictures",
             "told to describe pictures it only knew the text of, the model invented their contents");
@@ -179,6 +179,34 @@ public sealed class AiPromptBuilderTests
         prompt.Should().Contain("Answer the whole question",
             "answers stopped at what one guide covered");
     }
+
+    [Theory]
+    [InlineData("Lead with the direct answer to the exact question",
+        "\"a clear answer 'They are by far most common on the mainland but can be found elsewhere too' would have been great\"")]
+    [InlineData("never become \"only\" or \"never\"", "\"99% Peninsula\" was answered as \"mainly\"")]
+    [InlineData("Never turn a vague note into a complete list", "\"notably rare in the Northeast\" became nine named states")]
+    [InlineData("say what you infer", "inferences were stated as the guides' facts")]
+    [InlineData("related but different from what was asked", "\"I asked about snake traps. Not possum guards\"")]
+    [InlineData("stays in that country", "\"I don't care about other countries if I ask about regionguessing Australia\"")]
+    [InlineData("judge the screenshot against that country's clues", "the bollard \"wasn't Victoria\"")]
+    [InlineData("A follow-up continues the earlier turns' topic and country", "\"How can I clearly identify Sabah?\" was answered for Malaysia as a whole")]
+    [InlineData("Licence plates and faces are blurred", "\"the license plate thingy is basically useless in GeoGuessr\"")]
+    [InlineData("cite a picture that shows the distribution", "\"without the image ... that shows the exact distribution, this answer is basically useless\"")]
+    [InlineData("never say a picture is attached unless you cite it", "\"shown in the attached pictures\" was written of pictures never attached")]
+    public void SystemPrompt_AnswersWhatTheRatedAnswersGotWrong(string instruction, string because) =>
+        Normalise(AiPromptBuilder.SystemPrompt).Should().Contain(Normalise(instruction), because);
+
+    [Fact]
+    public void SystemPrompt_StaysShortEnoughForAFreeModelToFollow()
+    {
+        // One short instruction per lesson: free models follow a short list and lose a long one.
+        AiPromptBuilder.SystemPrompt.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Should().HaveCountLessThan(550);
+    }
+
+    /// <summary>The prompt as a model reads it: one line, whatever the source's wrapping.</summary>
+    private static string Normalise(string text) =>
+        string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     [Fact]
     public void Build_DoesNotRepeatTheCountry_WhenTheSectionPathAlreadyNamesIt()
@@ -211,6 +239,120 @@ public sealed class AiPromptBuilderTests
             ConversationContext.Empty, "what is this?", ["https://cdn/x.png"], []);
 
         messages[^1].Parts.OfType<AiImagePart>().Select(p => p.Url).Should().Equal("https://cdn/x.png");
+    }
+
+    [Fact]
+    public void AppendToSystemPrompt_AddsTheToolsParagraph_ToTheOneSystemPrompt()
+    {
+        var prompt = AiPromptBuilder.Build(ConversationContext.Empty, "question", [], [Hit(KnowledgeChunkKind.Text, "Poles.")]);
+
+        var offered = AiPromptBuilder.AppendToSystemPrompt(prompt, "You can also call tools.");
+
+        offered.Messages.Should().HaveCount(prompt.Messages.Count, "a model that weighs only the first system message still reads it");
+        offered.Messages[0].ToPlainText().Should().Be($"{AiPromptBuilder.SystemPrompt}\n\nYou can also call tools.");
+        offered.Messages.Skip(1).Should().Equal(prompt.Messages.Skip(1));
+        offered.Excerpts.Should().BeSameAs(prompt.Excerpts);
+    }
+
+    [Fact]
+    public void FormatExcerpt_ReadsExactlyAsTheExcerptsTheQuestionComesWith()
+    {
+        // The tools' results are numbered excerpts too, and must read the same however they were found.
+        var picture = Hit(KnowledgeChunkKind.Image, "The bollard is white.", imageUrl: "https://relay/b.png", country: "tunisia");
+        var (messages, _) = AiPromptBuilder.Build(ConversationContext.Empty, "question", [], [picture]);
+
+        var formatted = AiPromptBuilder.FormatExcerpt(picture, 1, out var excerpt);
+
+        messages[^1].ToPlainText().Should().Contain(formatted);
+        formatted.Should().StartWith("[1] (picture, usually with a distribution map) Tunisia > Identifying");
+        excerpt.Should().BeEquivalentTo(new OfferedExcerpt(1, "https://www.plonkit.net/tunisia", "Tunisia > Identifying", "https://relay/b.png", "Tunisia")
+        {
+            ChunkIds = [picture.Id]
+        });
+    }
+
+    [Theory]
+    [InlineData("plonkit", "https://www.plonkit.net/brazil#PvkL", "[1] (picture, usually with a distribution map) ")]
+    [InlineData(null, "https://www.plonkit.net/brazil#PvkL", "[1] (picture, usually with a distribution map) ")]
+    [InlineData("imgur", "https://imgur.com/a/ZfShHTQ", "[1] (picture) ")]
+    [InlineData("gslides", "https://docs.google.com/presentation/d/x/edit#slide=id.p8", "[1] (picture) ")]
+    public void FormatExcerpt_MarksAPlonkItPicture_AsUsuallyCarryingADistributionMap(string? sourceType, string sourceUrl, string expected)
+    {
+        // About 70 % of PlonkIt tip pictures carry a small distribution map, yet their text seldom says
+        // so: shown only "(picture)", the model told a user asking for the distribution "I don't have
+        // the actual distribution image" while it cited one.
+        var picture = Hit(KnowledgeChunkKind.Image, "Asymmetrical crossbar with no supports.", imageUrl: "https://relay/p.png")
+            with
+        { SourceUrl = sourceUrl, SourceType = sourceType };
+
+        AiPromptBuilder.FormatExcerpt(picture, 1, out _).Should().StartWith(expected);
+    }
+
+    [Fact]
+    public void FormatExcerpt_NeverMarksPlonkItText_AsAPicture()
+    {
+        var text = Hit(KnowledgeChunkKind.Text, "Pole supports are rare in the Northeast.") with { SourceType = "plonkit" };
+
+        AiPromptBuilder.FormatExcerpt(text, 1, out _).Should().NotContain("(picture").And.NotContain("distribution map");
+    }
+
+    [Fact]
+    public void FormatExcerpt_CountsThePicturesOfTheCopiesMergedIntoIt()
+    {
+        // One slide caption beside three of its pictures is one excerpt, and citing it attaches all three.
+        var firstCopy = Guid.NewGuid();
+        var secondCopy = Guid.NewGuid();
+        var slide = Hit(KnowledgeChunkKind.Image, "Brazilian Poles Lite > Slide 7", imageUrl: "https://relay/1.png") with
+        {
+            SourceUrl = "https://docs.google.com/presentation/d/x/edit#slide=id.p7",
+            ExtraImageUrls = ["https://relay/2.png", "https://relay/1.png", "https://relay/3.png"],
+            MergedChunkIds = [firstCopy, secondCopy]
+        };
+
+        var formatted = AiPromptBuilder.FormatExcerpt(slide, 4, out var excerpt);
+
+        formatted.Should().StartWith("[4] (3 pictures) ");
+        excerpt.ImageUrls.Should().Equal("https://relay/1.png", "https://relay/2.png", "https://relay/3.png");
+        excerpt.ChunkIds.Should().Equal(slide.Id, firstCopy, secondCopy);
+    }
+
+    [Fact]
+    public void FormatExcerpt_OffersNoPictures_ForTextWhoseCopiesHadSome()
+    {
+        // Only a picture chunk is announced as one; a text excerpt never promises an attachment.
+        var text = Hit(KnowledgeChunkKind.Text, "Possum guards are common in Kalimantan.") with { ExtraImageUrls = ["https://relay/x.png"] };
+
+        AiPromptBuilder.FormatExcerpt(text, 1, out var excerpt).Should().NotContain("picture");
+        excerpt.ImageUrls.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(1, 3, "([1] is the excerpt your previous answer cited; the rest were found for this question.)")]
+    [InlineData(2, 3, "([1] to [2] are the excerpts your previous answer cited, in the order it cited them; the rest were found for this question.)")]
+    [InlineData(3, 3, "([1] to [3] are the excerpts your previous answer cited, in the order it cited them.)")]
+    [InlineData(5, 3, "([1] to [3] are the excerpts your previous answer cited, in the order it cited them.)")]
+    public void Build_SaysWhichExcerptsThePreviousAnswerCited(int carried, int total, string expected)
+    {
+        // "Can you show me an image of the distribution?" meant the picture the answer before had cited
+        // as [1]; nothing else in the prompt tells the model which excerpt that was.
+        var hits = Enumerable.Range(1, total).Select(index => Hit(KnowledgeChunkKind.Text, $"Excerpt {index}.")).ToList();
+
+        var (messages, _) = AiPromptBuilder.Build(ConversationContext.Empty, "show me that", [], hits, carried);
+
+        var prompt = messages[^1].ToPlainText();
+        prompt.Should().Contain(expected);
+        prompt.IndexOf(expected, StringComparison.Ordinal).Should()
+            .BeGreaterThan(prompt.IndexOf("Guide excerpts:", StringComparison.Ordinal))
+            .And.BeLessThan(prompt.IndexOf("Excerpt 1.", StringComparison.Ordinal), "it introduces the excerpts");
+    }
+
+    [Fact]
+    public void Build_SaysNothingOfAPreviousAnswer_WhenNothingWasCarried()
+    {
+        var (messages, _) = AiPromptBuilder.Build(
+            ConversationContext.Empty, "question", [], [Hit(KnowledgeChunkKind.Text, "Poles.")], carried: 0);
+
+        messages[^1].ToPlainText().Should().NotContain("previous answer");
     }
 
     private static KnowledgeHit Hit(

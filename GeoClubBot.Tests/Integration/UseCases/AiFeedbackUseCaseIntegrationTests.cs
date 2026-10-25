@@ -1,8 +1,10 @@
 using Entities;
 using FluentAssertions;
+using GeoClubBot.Discord.InputAdapters.Interactions.AI;
 using Microsoft.EntityFrameworkCore;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Feedback;
+using UseCases.UseCases.AI.Tools;
 using Xunit;
 
 namespace GeoClubBot.Tests.Integration.UseCases;
@@ -19,6 +21,9 @@ namespace GeoClubBot.Tests.Integration.UseCases;
 public sealed class AiFeedbackUseCaseIntegrationTests(PostgresFixture fixture)
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
+
+    private static readonly Guid OfferedChunk = Guid.Parse("5b0c2a6e-1111-4a9b-8c00-000000000001");
+    private static readonly Guid CitedChunk = Guid.Parse("5b0c2a6e-1111-4a9b-8c00-000000000002");
 
     [Fact]
     public async Task Submit_ArchivesTheWholeBranch_OnTheFirstVerdict()
@@ -233,6 +238,32 @@ public sealed class AiFeedbackUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Export_NamesTheExactExcerptsAndToolCalls_OfEachAnswer()
+    {
+        // The page links say which guides were offered; the chunk ids say which excerpts, so a replay
+        // can look each one up — and the tool calls say what the model searched for on the way.
+        using var host = CreateHost();
+        var branch = await SeedBranchAsync();
+        await host.SendAsync(Submit(branch.AnswerMessageId, NewSnowflake(), AiFeedbackRating.Negative, null));
+
+        var result = await host.SendAsync(new ExportAiFeedbackQuery(null, Days: null, Limit: null));
+
+        var transcript = result.Value.Single(entry => entry.RatedDiscordMessageId == branch.AnswerMessageId).Transcript;
+        transcript[3].OfferedChunkIds.Should().Equal(OfferedChunk, CitedChunk);
+        transcript[3].CitedChunkIds.Should().Equal(CitedChunk);
+        transcript[3].ToolCalls.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new { Round = 1, Tool = AnswerTools.SearchGuides, Outcome = AiToolCallOutcome.Answered, NewExcerpts = 2 });
+
+        transcript[1].OfferedChunkIds.Should().BeEmpty("an answer stored without them names none");
+        transcript[1].ToolCalls.Should().BeNull("an answer that called no tool has none to list");
+        transcript[0].OfferedChunkIds.Should().BeNull("a question is offered nothing");
+        transcript[0].ToolCalls.Should().BeNull();
+
+        var line = AiFeedbackFormatter.RenderJsonLines(result.Value.Where(entry => entry.RatedDiscordMessageId == branch.AnswerMessageId).ToList());
+        line.Should().Contain($"\"citedChunkIds\":[\"{CitedChunk}\"]").And.Contain("\"outcome\":\"Answered\"");
+    }
+
+    [Fact]
     public async Task Export_HonoursTheConfiguredCeiling()
     {
         using var host = CreateHost(maxExportRecords: 1);
@@ -353,7 +384,11 @@ public sealed class AiFeedbackUseCaseIntegrationTests(PostgresFixture fixture)
                 BotUserId, "Also Ghana.", "test/model",
                 ["https://plonkit.net/ghana", "https://plonkit.net/togo"],
                 ["https://plonkit.net/ghana"],
-                [earlierChunkId], 3, at));
+                [earlierChunkId], 3, at,
+                offeredChunkIds: [OfferedChunk, CitedChunk],
+                citedChunkIds: [CitedChunk],
+                toolCallsJson: AiToolCallLog.Serialize(
+                    [new AiToolCallSummary(1, AnswerTools.SearchGuides, """{"query":"wires"}""", AiToolCallOutcome.Answered, 2, 900, 400)])));
 
         await db.SaveChangesAsync();
 

@@ -34,10 +34,17 @@ public sealed record ExtractedChunk(
 /// Upstream's own change marker when it publishes one. Cheaper and more reliable than hashing a body
 /// whose markup churns independently of its content.
 /// </param>
+/// <param name="Degraded">
+/// True when the content was read from a poorer export than usual — the text without its pictures —
+/// because the full one failed for a reason that may not recur, such as a timeout. Worth indexing for a
+/// source that has nothing indexed yet; for one that does, writing it would sweep every picture the
+/// full export gave, only for them to be embedded again once it answers.
+/// </param>
 public sealed record ExtractedDocument(
     string? Title,
     DateTimeOffset? SourceUpdatedAtUtc,
-    IReadOnlyList<ExtractedChunk> Chunks);
+    IReadOnlyList<ExtractedChunk> Chunks,
+    bool Degraded = false);
 
 /// <summary>
 /// Reads one family of sources into chunks. Adding a source type is one implementation plus one DI

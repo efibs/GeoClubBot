@@ -18,7 +18,7 @@ namespace GeoClubBot.Tests.PropertyBased;
 /// </summary>
 public sealed class CitationResolverPropertyTests
 {
-    private const int MaxImages = 2;
+    private const int MaxImages = 3;
 
     private static readonly string[] Words =
     [
@@ -57,9 +57,13 @@ public sealed class CitationResolverPropertyTests
             return "Answer " + answer;
         });
 
-    /// <summary>Up to eight excerpts, drawing on few enough pages and pictures that duplicates occur.</summary>
+    /// <summary>
+    /// Up to eight excerpts, drawing on few enough pages and pictures that duplicates occur — a picture
+    /// can come with one excerpt and among another's further pictures, as merged slide copies do.
+    /// </summary>
     private static readonly Gen<IReadOnlyList<OfferedExcerpt>> GenOffered =
-        Gen.Select(Gen.Int[0, 3], Gen.Int[0, 3], Gen.Bool, (page, picture, isPicture) => (page, picture, isPicture))
+        Gen.Select(Gen.Int[0, 3], Gen.Int[0, 5], Gen.Bool, Gen.Int[0, 5].List[0, 3],
+                (page, picture, isPicture, extras) => (page, picture, isPicture, extras))
             .List[0, 8]
             .Select(IReadOnlyList<OfferedExcerpt> (entries) =>
             [
@@ -68,7 +72,12 @@ public sealed class CitationResolverPropertyTests
                     $"https://guide/{entry.page}",
                     $"Guide {entry.page}",
                     entry.isPicture ? $"https://img/{entry.picture}.png" : null,
-                    entry.isPicture ? $"Picture {entry.picture}" : null))
+                    entry.isPicture ? $"Picture {entry.picture}" : null)
+                {
+                    ExtraImageUrls = entry.isPicture
+                        ? [.. entry.extras.Where(extra => extra != entry.picture).Distinct().Select(extra => $"https://img/{extra}.png")]
+                        : []
+                })
             ]);
 
     [Fact]
@@ -108,10 +117,67 @@ public sealed class CitationResolverPropertyTests
         Gen.Select(GenAnswer, GenOffered).Sample((answer, offered) =>
         {
             var result = CitationResolver.Resolve(answer, offered, MaxImages);
+            var pictured = result.Sources.Where(source => source.IsImage).ToList();
 
-            result.Images.Should().OnlyContain(image => image.IsImage && result.Sources.Contains(image));
-            result.Images.Should().HaveCountLessThanOrEqualTo(MaxImages);
-            result.Images.Should().HaveCount(Math.Min(MaxImages, result.Sources.Count(source => source.IsImage)));
+            // Each comes with an excerpt the answer cited, under that excerpt's number.
+            result.Images.Should().OnlyContain(image =>
+                pictured.Any(source => source.Number == image.Number && source.Excerpt == image.Excerpt)
+                && image.Excerpt.ImageUrls.Contains(image.ImageUrl));
+
+            // None twice, and as many as the cap allows of all the cited excerpts bring.
+            result.Images.Select(image => image.ImageUrl).Should().OnlyHaveUniqueItems();
+            result.Images.Should().HaveCount(Math.Min(
+                MaxImages, pictured.SelectMany(source => source.Excerpt.ImageUrls).Distinct().Count()));
+        });
+
+    [Fact]
+    public void Every_cited_picture_shows_its_first_picture_before_any_shows_a_second() =>
+        Gen.Select(GenAnswer, GenOffered).Sample((answer, offered) =>
+        {
+            var result = CitationResolver.Resolve(answer, offered, MaxImages);
+
+            var firsts = result.Sources
+                .Where(source => source.IsImage)
+                .Select(source => source.Excerpt.ImageUrls[0])
+                .Distinct()
+                .Take(MaxImages)
+                .ToList();
+
+            if (firsts.Count > 0)
+            {
+                result.Images.Select(image => image.ImageUrl).Should().Contain(firsts);
+            }
+        });
+
+    [Fact]
+    public void Each_excerpts_pictures_are_counted_in_number_order() =>
+        Gen.Select(GenAnswer, GenOffered).Sample((answer, offered) =>
+        {
+            var result = CitationResolver.Resolve(answer, offered, MaxImages);
+
+            result.Images.Select(image => image.Number).Should().BeInAscendingOrder();
+            foreach (var group in result.Images.GroupBy(image => image.Number))
+            {
+                group.Select(image => image.Position).Should().Equal(Enumerable.Range(1, group.Count()));
+                group.Should().OnlyContain(image => image.Count == group.Count());
+            }
+        });
+
+    [Fact]
+    public void The_cited_excerpts_are_the_ones_behind_the_sources_in_number_order() =>
+        Gen.Select(GenAnswer, GenOffered).Sample((answer, offered) =>
+        {
+            var result = CitationResolver.Resolve(answer, offered, MaxImages);
+
+            result.CitedExcerpts.Should().OnlyHaveUniqueItems().And.OnlyContain(excerpt => offered.Contains(excerpt));
+            foreach (var source in result.Sources)
+            {
+                result.CitedExcerpts.Should().Contain(source.Excerpt, "every listed source is a cited excerpt");
+            }
+
+            result.CitedExcerpts
+                .Select(excerpt => result.Sources.Single(source => KeyOf(source.Excerpt) == KeyOf(excerpt)).Number)
+                .Should().BeInAscendingOrder();
         });
 
     [Fact]
@@ -123,6 +189,9 @@ public sealed class CitationResolverPropertyTests
             NumbersIn(stripped).Should().BeEmpty();
             CitationResolver.StripMarkers(stripped).Should().Be(stripped);
         });
+
+    /// <summary>What makes two excerpts one source: a picture by its picture, text by its page.</summary>
+    private static string KeyOf(OfferedExcerpt excerpt) => excerpt.ImageUrl ?? excerpt.SourceUrl;
 
     private static IEnumerable<int> NumbersIn(string text) =>
         Regex.Matches(text, @"\[([0-9]+)\]").Select(match => int.Parse(match.Groups[1].Value));

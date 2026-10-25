@@ -10,13 +10,25 @@ public sealed record ResolvedCitation(int Number, OfferedExcerpt Excerpt)
     public bool IsImage => Excerpt.ImageUrl is not null;
 }
 
+/// <summary>One picture attached to an answer.</summary>
+/// <param name="Number">The number of the excerpt it comes with, which its embed shows like the prose.</param>
+/// <param name="Position">Which of that excerpt's attached pictures it is, from one.</param>
+/// <param name="Count">How many of that excerpt's pictures are attached.</param>
+public sealed record ResolvedPicture(int Number, OfferedExcerpt Excerpt, string ImageUrl, int Position, int Count);
+
 /// <param name="Text">The answer with every citation rewritten as <c>[n]</c> in the reader's numbering.</param>
 /// <param name="Sources">Every cited excerpt, pictures included, in number order — so the list under the answer runs 1, 2, 3.</param>
-/// <param name="Images">The cited pictures to attach, in number order, capped.</param>
+/// <param name="Images">The pictures to attach, capped, in number order and each excerpt's own order.</param>
+/// <param name="CitedExcerpts">
+/// Every excerpt the answer cited, by the number it is listed under and then in order of first
+/// mention. Usually one per number; text excerpts of one page share a number, and all of them are
+/// here. What a follow-up is offered again.
+/// </param>
 public sealed record CitationResolution(
     string Text,
     IReadOnlyList<ResolvedCitation> Sources,
-    IReadOnlyList<ResolvedCitation> Images);
+    IReadOnlyList<ResolvedPicture> Images,
+    IReadOnlyList<OfferedExcerpt> CitedExcerpts);
 
 /// <summary>
 /// Turns the citations a model writes into the ones a reader sees.
@@ -32,6 +44,11 @@ public sealed record CitationResolution(
 /// first mention and written back as plain <c>[n]</c>. A picture is cited like any other excerpt and
 /// attached as well as listed, so one number means the same thing in the prose, in the source list
 /// and on the embed. Numbers that point at nothing are removed along with the space before them.
+///
+/// An excerpt can come with several pictures (one slide caption beside each of its slide's pictures).
+/// All of them may be attached, but the cap counts pictures, not excerpts, and every cited excerpt's
+/// first picture comes before any excerpt's second: an answer citing two pictures should show both,
+/// not three of the first.
 ///
 /// Pure, so each of those styles is pinned by a test rather than rediscovered in a user's reply.
 /// </summary>
@@ -83,6 +100,8 @@ public static partial class CitationResolver
 
         var numbering = new Dictionary<string, int>(StringComparer.Ordinal);
         var cited = new List<ResolvedCitation>();
+        var citedExcerpts = new List<(int Number, OfferedExcerpt Excerpt)>();
+        var citedMarkers = new HashSet<int>();
 
         var text = CitationOrCode().Replace(answer, match =>
         {
@@ -102,12 +121,11 @@ public static partial class CitationResolver
             return Rewrite(match, match.Groups["lead"].Value, match.Groups["trail"].Value);
         });
 
-        var images = cited
-            .Where(citation => citation.IsImage)
-            .Take(Math.Max(0, maxImages))
-            .ToList();
-
-        return new CitationResolution(Tidy(text), cited, images);
+        return new CitationResolution(
+            Tidy(text),
+            cited,
+            ChoosePictures(cited, maxImages),
+            [.. citedExcerpts.OrderBy(entry => entry.Number).Select(entry => entry.Excerpt)]);
 
         // A run that cites nothing offered is removed together with the whitespace around it that the
         // pattern captured: the space before it mid-line, so no "in ." or "( , )" is left where it
@@ -133,6 +151,11 @@ public static partial class CitationResolver
                         cited.Add(new ResolvedCitation(number, excerpt));
                     }
 
+                    if (citedMarkers.Add(marker))
+                    {
+                        citedExcerpts.Add((number, excerpt));
+                    }
+
                     numbers.Add(number);
                 }
             }
@@ -146,6 +169,57 @@ public static partial class CitationResolver
                    + string.Concat(numbers.Select(number => $"[{number.ToString(CultureInfo.InvariantCulture)}]"))
                    + trail;
         }
+    }
+
+    /// <summary>
+    /// The pictures to attach: a round of each cited picture excerpt's first picture, in number order,
+    /// then a round of second pictures, and so on until <paramref name="maxImages"/> are chosen. A
+    /// picture already chosen for another excerpt is not attached twice. Returned in number order, each
+    /// excerpt's pictures in their own order, so the embeds read "[1] (1/2)", "[1] (2/2)", "[2]".
+    /// </summary>
+    private static List<ResolvedPicture> ChoosePictures(IReadOnlyList<ResolvedCitation> cited, int maxImages)
+    {
+        var pictured = cited.Where(citation => citation.IsImage).ToList();
+        var chosen = new List<(ResolvedCitation Citation, int Index, string Url)>();
+        var taken = new HashSet<string>(StringComparer.Ordinal);
+        var budget = Math.Max(0, maxImages);
+
+        for (var round = 0; chosen.Count < budget; round++)
+        {
+            var anyLeft = false;
+            foreach (var citation in pictured)
+            {
+                var urls = citation.Excerpt.ImageUrls;
+                if (round >= urls.Count)
+                {
+                    continue;
+                }
+
+                anyLeft = true;
+                if (chosen.Count < budget && taken.Add(urls[round]))
+                {
+                    chosen.Add((citation, round, urls[round]));
+                }
+            }
+
+            if (!anyLeft)
+            {
+                break;
+            }
+        }
+
+        return
+        [
+            .. chosen
+                .GroupBy(entry => entry.Citation.Number)
+                .OrderBy(group => group.Key)
+                .SelectMany(group =>
+                {
+                    var pictures = group.OrderBy(entry => entry.Index).ToList();
+                    return pictures.Select((entry, position) => new ResolvedPicture(
+                        entry.Citation.Number, entry.Citation.Excerpt, entry.Url, position + 1, pictures.Count));
+                })
+        ];
     }
 
     /// <summary>

@@ -6,12 +6,16 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.Behaviors;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.AI.Conversations;
+using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.Tools;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
@@ -136,6 +140,18 @@ public sealed class MediatorTestHost : IDisposable
         services.AddTransient<ActivityStatusCalculator>();
         services.AddTransient<ActivityAverageXpRollupStep>();
         services.AddTransient<MissionCompletionReportStep>();
+
+        // Mirrors AiServices: the answer path matches questions against the index's country names,
+        // read through this cache from the substituted index, and skips the query planner for a while
+        // after it timed out.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<KnowledgeCountryDirectory>();
+        services.AddSingleton<QueryPlannerPause>();
+
+        // Mirrors AiServices: the answer's tool calls run through the toolbox, against the substituted
+        // index, embedder and species database, and the loop claims each further call from the budget.
+        services.AddSingleton<AnswerToolbox>();
+        services.AddScoped<AiAnswerLoop>();
     }
 
     private static void RegisterConfigurationOptions(IServiceCollection services, IConfiguration configuration)

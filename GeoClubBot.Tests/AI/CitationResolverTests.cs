@@ -248,6 +248,77 @@ public sealed class CitationResolverTests
     }
 
     [Fact]
+    public void Resolve_AttachesEveryPictureAnExcerptBrings_UnderItsNumber()
+    {
+        // One slide caption sits beside each picture of its slide; citing it once shows them all.
+        var offered = new[]
+        {
+            Text(1, "https://guide/text"),
+            Picture(2, "https://guide/slide", "https://img/1.png", "https://img/2.png", "https://img/3.png")
+        };
+
+        var result = CitationResolver.Resolve("Poles [2], per the guide [1].", offered, maxImages: 6);
+
+        result.Text.Should().Be("Poles [1], per the guide [2].");
+        result.Sources.Should().HaveCount(2, "one excerpt is one source, however many pictures it brings");
+        result.Images.Select(image => (image.Number, image.ImageUrl, image.Position, image.Count)).Should().Equal(
+            (1, "https://img/1.png", 1, 3),
+            (1, "https://img/2.png", 2, 3),
+            (1, "https://img/3.png", 3, 3));
+    }
+
+    [Fact]
+    public void Resolve_ShowsEveryCitedPicturesFirstPicture_BeforeAnyExcerptsSecond()
+    {
+        // An answer citing two pictured excerpts should show both, not three of the first.
+        var offered = new[]
+        {
+            Picture(1, "https://guide/a", "https://img/a1.png", "https://img/a2.png", "https://img/a3.png"),
+            Picture(2, "https://guide/b", "https://img/b1.png", "https://img/b2.png")
+        };
+
+        var result = CitationResolver.Resolve("A [1], B [2].", offered, maxImages: 3);
+
+        result.Images.Select(image => (image.Number, image.ImageUrl, image.Position, image.Count)).Should().Equal(
+            (1, "https://img/a1.png", 1, 2),
+            (1, "https://img/a2.png", 2, 2),
+            (2, "https://img/b1.png", 1, 1));
+    }
+
+    [Fact]
+    public void Resolve_AttachesAPictureTwoExcerptsShare_Once()
+    {
+        var offered = new[]
+        {
+            Picture(1, "https://guide/a", "https://img/a.png", "https://img/shared.png"),
+            Picture(2, "https://guide/b", "https://img/shared.png")
+        };
+
+        var result = CitationResolver.Resolve("A [1], B [2].", offered, maxImages: 6);
+
+        result.Images.Select(image => image.ImageUrl).Should().Equal(["https://img/a.png", "https://img/shared.png"]);
+        result.Images.Select(image => image.Number).Should().Equal([1, 2], "the shared picture goes to the excerpt it leads");
+    }
+
+    [Fact]
+    public void Resolve_NamesTheCitedExcerpts_InTheOrderTheReaderSeesThem()
+    {
+        // What a follow-up is offered again: both chunks behind [2], though they share one link.
+        var offered = new[]
+        {
+            Text(1, "https://guide/a"),
+            Text(2, "https://guide/b"),
+            Text(3, "https://guide/a"),
+            Text(4, "https://guide/c")
+        };
+
+        var result = CitationResolver.Resolve("C [4], A [1], B [2], A again [3]. Invented [9].", offered, maxImages: 3);
+
+        result.Text.Should().Be("C [1], A [2], B [3], A again [2]. Invented.");
+        result.CitedExcerpts.Select(excerpt => excerpt.Marker).Should().Equal(4, 1, 3, 2);
+    }
+
+    [Fact]
     public void Resolve_LeavesAnAnswerWithoutCitationsUnchanged()
     {
         const string answer = "Blue roofs are not a regional clue in Japan.\n\nThey are mostly temporary tarps.";
@@ -321,6 +392,6 @@ public sealed class CitationResolverTests
     private static OfferedExcerpt Text(int marker, string sourceUrl) =>
         new(marker, sourceUrl, $"Guide {marker}");
 
-    private static OfferedExcerpt Picture(int marker, string sourceUrl, string imageUrl) =>
-        new(marker, sourceUrl, $"Guide {marker}", imageUrl, $"Picture {marker}");
+    private static OfferedExcerpt Picture(int marker, string sourceUrl, string imageUrl, params string[] extraImageUrls) =>
+        new(marker, sourceUrl, $"Guide {marker}", imageUrl, $"Picture {marker}") { ExtraImageUrls = extraImageUrls };
 }

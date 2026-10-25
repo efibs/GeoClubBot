@@ -31,6 +31,9 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                 return;
             }
 
+            // Started first, because it may wait out its timeout and nothing else here depends on it.
+            var pictureLinks = _imageRelay?.CheckPublicReachabilityAsync(ct);
+
             var status = _catalog.ReadStatus();
             var chain = await _catalog.ReadChainAsync(new ChatModelRequirements(), ct).ConfigureAwait(false);
             var sources = await Mediator.Send(new ReadKnowledgeSourceStatusQuery(), ct).ConfigureAwait(false);
@@ -65,9 +68,10 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                 {
                     { IsFailure: true } => "unavailable",
                     { Value.Total: 0 } => "none catalogued — run `/ai sync-sources`",
-                    var ok => $"{ok.Value.Ingested} indexed · {ok.Value.Pending} pending · " +
-                              $"{ok.Value.Failed} failed · {ok.Value.Skipped} skipped"
+                    var ok => AiSourcesFormatter.DescribeCounts(ok.Value)
                 })
+                .AddField(AiImageRelayStatusFormatter.FieldName, AiImageRelayStatusFormatter.Describe(
+                    pictureLinks is null ? null : await pictureLinks.ConfigureAwait(false)))
                 .Build();
 
             await FollowupAsync(embed: embed, ephemeral: true).ConfigureAwait(false);
@@ -202,30 +206,14 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
             // A run that attempts nothing is the common first-time case, and four zeros explain
             // none of it: the queue is empty because nothing has been catalogued, or because
             // everything catalogued was indexed recently and is not due again yet.
-            if (report.Attempted == 0 && !report.BudgetExhausted && !report.RateLimited)
+            if (report is { Attempted: 0, BudgetExhausted: false, RateLimited: false, HostRefused: 0, Removed: 0 })
             {
                 await FollowupAsync(await DescribeEmptyRunAsync(ct).ConfigureAwait(false), ephemeral: true)
                     .ConfigureAwait(false);
                 return;
             }
 
-            var message = new StringBuilder()
-                .AppendLine($"Indexed **{report.Ingested}** source(s), **{report.ChunksWritten}** chunk(s).")
-                .AppendLine($"Unchanged: {report.Unchanged} · Failed: {report.Failed} · Skipped: {report.Skipped}");
-
-            if (report.BudgetExhausted)
-            {
-                message.AppendLine("\n⚠️ Stopped early — indexing has used its share of today's AI allowance.");
-            }
-
-            if (report.RateLimited)
-            {
-                message.AppendLine("\n⚠️ Stopped early — the AI provider kept rate-limiting even after waiting "
-                                   + "out its window. Something else may be using the same API key; the rest is "
-                                   + "picked up on the next run.");
-            }
-
-            await FollowupAsync(message.ToString(), ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync(AiSourcesFormatter.DescribeRun(report), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to index guide sources.");
 
     [DefaultMemberPermissions(GuildPermission.Administrator)]
@@ -250,6 +238,61 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
             await FollowupAsync(message, ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to queue the image backfill.");
 
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("sources", "List guide sources that failed, were skipped or are unavailable, and why")]
+    public Task SourcesAsync(
+        [Summary(description: "Which sources to list")]
+        [Choice("needing a look", nameof(KnowledgeSourceListKind.Problems))]
+        [Choice("failed", nameof(KnowledgeSourceListKind.Failed))]
+        [Choice("skipped", nameof(KnowledgeSourceListKind.Skipped))]
+        [Choice("unavailable", nameof(KnowledgeSourceListKind.Unavailable))]
+        [Choice("pending", nameof(KnowledgeSourceListKind.Pending))]
+        [Choice("no longer listed", nameof(KnowledgeSourceListKind.Removed))]
+        string status = nameof(KnowledgeSourceListKind.Problems),
+        [Summary(description: "Restrict to one source type, e.g. gdoc")] string? sourceType = null) =>
+        ExecuteAsync(async ct =>
+        {
+            var kind = Enum.TryParse<KnowledgeSourceListKind>(status, out var parsed)
+                ? parsed
+                : KnowledgeSourceListKind.Problems;
+
+            var result = await Mediator.Send(new ListKnowledgeSourcesQuery(kind, sourceType), ct).ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            await FollowupAsync(embed: AiSourcesFormatter.BuildListEmbed(result.Value, kind, sourceType), ephemeral: true)
+                .ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to list the guide sources.");
+
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("source-retry", "Queue failed, skipped or unavailable guide sources to be tried again")]
+    public Task SourceRetryAsync(
+        [Summary(description: "One source, by the key or link /ai sources shows")] string? key = null,
+        [Summary(description: "Every such source of one type, e.g. rmrg")] string? sourceType = null) =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new RetryKnowledgeSourcesCommand(key, sourceType), ct)
+                .ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            var report = result.Value;
+            var message = report.Queued == 0
+                ? $"None of the **{report.Matched}** matching source(s) was failed, skipped or unavailable — nothing to queue."
+                : $"Queued **{report.Queued}** of **{report.Matched}** matching source(s). The coming runs pick them "
+                  + "up; `/ai ingest` does it now.";
+
+            await FollowupAsync(message, ephemeral: true).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to queue the guide sources.");
+
     /// <summary>
     /// Explains a run that indexed nothing. Which of the two reasons applies is the difference
     /// between "you have not started yet" and "there is nothing left to do", and the operator cannot
@@ -266,11 +309,10 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                    + "Run `/ai sync-sources` first to discover them.";
         }
 
-        var counts = sources.Value;
-        return $"Nothing was due for indexing. {counts.Ingested} source(s) are already indexed, "
-               + $"{counts.Pending} pending, {counts.Failed} failed, {counts.Skipped} skipped.\n"
+        return $"Nothing was due for indexing. Sources: {AiSourcesFormatter.DescribeCounts(sources.Value)}.\n"
                + "Already-indexed sources are left alone until their re-index interval passes; "
-               + "use `force: true` to re-index them now.";
+               + "use `force: true` to re-index them now. Failed, skipped and unavailable ones are listed "
+               + "by `/ai sources` and queued again by `/ai source-retry`.";
     }
 
     /// <summary>Compact so several hits fit one ephemeral reply and can be judged at a glance.</summary>
@@ -312,4 +354,6 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
     private readonly IChatModelCatalog? _catalog = serviceProvider.GetService<IChatModelCatalog>();
 
     private readonly IKnowledgeIndex? _knowledgeIndex = serviceProvider.GetService<IKnowledgeIndex>();
+
+    private readonly IImageRelay? _imageRelay = serviceProvider.GetService<IImageRelay>();
 }

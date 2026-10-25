@@ -38,10 +38,15 @@ stand in for "no references":
 2. **`EmbeddingsOnlyHandler`.** The only request allowed to leave for OpenRouter is
    `POST /api/v1/embeddings`. A chat completion, which is where the bot's real cost lies, cannot be sent
    by mistake. Every request that does leave is counted, and the count is printed at the end of each
-   run.
+   run. The one exception has to be asked for by name: with `--allow-chat`, the query planner's
+   `POST /api/v1/chat/completions` and the `GET /api/v1/models` roster it picks a model from may leave
+   too — through a second handler built for the planner alone. The embedder's handler never lets a chat
+   request through, flag or not.
 3. **No verb in the CLI.** Every command reads. There is no option that writes.
-4. **A cache.** Question vectors are kept in `embedding-cache.json` next to the built binary, keyed by
-   embedding model, so rerunning a report costs nothing.
+4. **A cache.** Question vectors are kept in `embedding-cache.json` and planner replies in
+   `planner-cache.json`, next to the built binary, so rerunning a report costs nothing. Vectors are
+   keyed by embedding model; planner replies by exactly what was sent (and by the chain, when
+   `--planner-models` names one).
 
 ## Setting up
 
@@ -95,8 +100,8 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 
 | Command | What it answers |
 |---|---|
-| `replay <export.jsonl>` | For every rated answer: what retrieval offers for its question now, where each excerpt came from, and what changed since the rating |
-| `compare <export.jsonl>` | The same questions under other fusion weights and under approximate search, counted side by side |
+| `replay <export.jsonl>` | For every rated answer: what retrieval offers for its question now, what it was searched by, where each excerpt came from, and what changed since the rating |
+| `compare <export.jsonl>` | The same questions under other retrieval settings — the bot before conversation-aware retrieval, each step of it, other excerpt counts — counted side by side |
 | `grep <regex>` | Every indexed chunk whose text matches. Was the answer there to find at all? |
 | `similarity` | How close a guide's chunks sit to a question, as stored and as re-worded (`--question`, `--source`, `--variant`) |
 
@@ -104,9 +109,12 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 |---|---|
 | `--qdrant <url>` | Qdrant's gRPC address |
 | `--collection <name>` | Collection to read (default: the bot's own) |
-| `--limit <n>` | Excerpts per question (default 8, as the bot offers) |
+| `--limit <n>` | Excerpts per question (default: `AI:Retrieval:ExcerptLimit`'s default, as the bot offers) |
 | `--rating good\|bad` | `replay`/`compare`: only answers rated this way |
-| `--targets <file>` | `compare`: count on-target excerpts (see below) |
+| `--targets <file>` | `replay`/`compare`: count on-target excerpts, place known answers, stand in for expired screenshots (see below) |
+| `--allow-chat` | `replay`/`compare`: let the query planner's chat requests leave the probe — one per question, cached. `replay` then searches with the planner on (it ships off); without it, `compare`'s variants that plan search as the bot does when the planner fails |
+| `--planner-models <ids>` | `replay`/`compare`: comma-separated chain the planner asks instead of the bot's own, to measure another model; cached apart |
+| `--variants <file>` | `compare`: retrieval settings to compare instead of the built-in steps (see below) |
 | `--question <text>` | `similarity`: the question |
 | `--source <url>` | `similarity`: a chunk's source URL, as listed under an answer or in a replay |
 | `--variant <text>` | `similarity`: re-worded chunk text to try; repeatable |
@@ -133,10 +141,15 @@ This is an abridged example from the first export's Khasi pines question:
 | 6 | –    | 1      | 🖼 The final type of coverage is a number of tiny forest paths.     | … |
 ```
 
-- **text / pixels**: the excerpt's rank when the question is searched against chunk text, and against
-  picture pixels. "–" means it is not in that search's top 40, so row 6 was found by its pixels alone.
+- **text / pixels**: the excerpt's rank when the lead wording is searched against chunk text, and
+  against picture pixels. "–" means it is not in that search's top 40, so row 6 was found by its pixels
+  alone.
 - **✓**: the rated answer cited this excerpt. **★**: it was not offered when the answer was rated, which
-  is what a retrieval change should show on the question it was meant to fix.
+  is what a retrieval change should show on the question it was meant to fix. **◎**: on target, when
+  `--targets` is given.
+- Above each table, **Searched by** lists every wording the question was searched by and its weight —
+  for a follow-up its branch, with `--allow-chat` the planner's rewrite and phrasings — the countries
+  boosted and the key phrases.
 - Above each table, **Offered now** counts how many of the guides the answer was given are still
   offered, and how many are new. Below it, **No longer offered** lists the ones that dropped out.
 
@@ -147,25 +160,67 @@ with the prompt or the model.
 
 ### `compare`
 
-Each cell counts, in the top 8, **pixel-only** excerpts (found by their pixels alone) and
-**caption-only** pictures (whose only text is a guide heading, so the model can say nothing about
-them). The columns:
+Every question of the export, searched under several sets of retrieval settings, counted side by side.
+Each variant is the bot's own query building (`RetrievalQueryComposer`), search and fusion with other
+settings, so the numbers are what users would get. A follow-up (↩) is searched with its branch, as the
+bot searches it.
 
-- **shipped** is the bot as it runs.
-- **pixels ×w** re-weights the question-against-pixels search.
-- **approximate** skips exact search.
+Without `--variants` the columns are the built-in steps: **before** (the question's own words, no
+country boost, every picture where it ranks, 8 excerpts), then **+context**, **+countries**,
+**+headings** and **+planner** added one at a time at 8 excerpts, then the planner on top of the
+defaults at 10 and 12 excerpts, and **shipped** — the defaults, which leave the planner off for the
+request it costs, and which are also what a question gets when the planner is on but fails, times out
+or sits out its pause. Without `--allow-chat` the planner is not asked, and the variants using it
+search as the bot does when it fails.
 
-Relevance cannot be counted without saying what relevant means, so it takes a targets file. Each key
-is words that occur in a question, and each value is a regex that an on-target excerpt for that
-question matches:
+`--variants` names a JSON file of other settings, each applied to the shipped defaults, or to the ones
+before conversation-aware retrieval with `"base": "before"`. Keys are those of `AI:Retrieval`. Two are
+the probe's own, for what the bot fixes in code: `"pixels"` re-weights the question-against-pixels
+list and `"approximate": true` skips exact search.
 
 ```json
-{ "khasi": "khasi|kesiya", "long antenna": "long antenna", "pampa": "pampas" }
+{ "country ×3": { "CountryBoost": { "Weight": 3 } },
+  "12, planner": { "ExcerptLimit": 12, "QueryPlanner": { "Enabled": true } } }
 ```
 
-This is how the first export's 18 written questions came out, over 144 top-8 slots, before the weights
-changed. The production column is the bot as it ran then, at full pixel weight, without exact search
-or de-duplication:
+Relevance cannot be counted without saying what relevant means, so it takes a targets file
+(`--targets`). Each key is words that occur in a question; the value is a regex that an on-target
+excerpt matches, or an object that also names the question's countries (an excerpt from elsewhere is
+not on target), the excerpts known to answer it (matched against source URL and text, and placed in a
+table of their own), and an indexed picture to stand in for an expired screenshot (📷):
+
+```json
+{ "khasi": "khasi|kesiya",
+  "what about corn": { "match": "corn|maize", "countries": ["philippines"], "chunks": ["philippines#9hUv"] },
+  "bollard a meta in australia": { "match": "bollard", "countries": ["australia"],
+                                   "screenshot": "https://www.plonkit.net/netherlands#R6It" } }
+```
+
+`Targets/feedback-20261023.json` is the file for the 2026-10-23 export. Each cell reads **on-target
+· in the question's country**; below the table come the totals, **pixel-only** excerpts (found by no
+text search), **heading-only** pictures (whose only text is a guide heading, so the model can say
+nothing about them), where each named excerpt was placed, and how long the planner took.
+
+This is how the 2026-10-23 export's 49 questions came out, with `nemotron-3-ultra` planning. It was
+measured before a follow-up stopped taking its branch's countries when it names countries of its own
+without referring back, or asks where its screenshot was taken. Without the planner, that boosts no
+question of the export differently; with it, only where the planner named a branch's country for such
+a follow-up:
+
+| | before | +context | +countries | +headings | +planner | +planner, 10 | +planner, 12 | shipped (10) |
+|---|---|---|---|---|---|---|---|---|
+| on-target | 187 of 392 (48 %) | 199 (51 %) | 227 (58 %) | 228 (58 %) | 224 (57 %) | 261 of 490 (53 %) | 303 of 588 (52 %) | 258 of 490 (53 %) |
+| from the question's country | 72 % | 77 % | 96 % | 95 % | 96 % | 94 % | 93 % | 93 % |
+| named excerpts offered | 7 of 24 | 11 | 13 | 14 | 14 | 16 | 17 | 14 |
+| pixel-only | 44 | 39 | 13 | 12 | 2 | 4 | 4 | 23 |
+| heading-only pictures | 29 | 21 | 24 | 9 | 15 | 18 | 21 | 14 |
+
+The planner's two named excerpts cost a request per question. At the 45 requests a day the bot ships
+with, that is 17 answers a day instead of 22, which is why it ships off.
+
+The first export's 18 written questions, before the fusion weights changed, over 144 top-8 slots. The
+production column is the bot as it ran then, at full pixel weight, without exact search or
+de-duplication:
 
 | | production then | pixels ×0.25, exact, de-duplicated | pixels ×0 |
 |---|---|---|---|
