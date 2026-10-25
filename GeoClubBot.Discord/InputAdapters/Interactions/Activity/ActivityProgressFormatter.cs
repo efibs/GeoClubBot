@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Discord;
 using Entities;
+using Extensions;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Activity;
 
@@ -47,6 +48,11 @@ internal static class ActivityProgressFormatter
             embed.AddField("🤝 Helped out (unverified)", helps);
         }
 
+        if (activity.MissionCompletion is { } completion)
+        {
+            embed.AddField("⏱️ Mission completion", BuildMissionCompletionValue(completion));
+        }
+
         embed.AddField("Progress", BuildProgressValue(activity.Days));
 
         var isPerfect = activity.RequirementResults.Count > 0
@@ -83,6 +89,33 @@ internal static class ActivityProgressFormatter
         if (activity.HelpedLastWeek is { } lastWeek)
         {
             parts.Add($"last board week **{lastWeek.ToString(Invariant)}**");
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>E.g. <c>avg **1d 4h** over 5 missions · ⚠️ 1 never finished · open claim held **2d 3h**</c>.</summary>
+    public static string BuildMissionCompletionValue(MissionCompletionTimes completion)
+    {
+        var parts = new List<string>();
+        if (completion.AverageCompletionTime is { } average)
+        {
+            var missions = completion.CompletedCount == 1 ? "mission" : "missions";
+            parts.Add($"avg **{average.ToShortDuration()}** over {completion.CompletedCount.ToString(Invariant)} {missions}");
+        }
+        else
+        {
+            parts.Add("no claimed mission finished");
+        }
+
+        if (completion.AbandonedCount > 0)
+        {
+            parts.Add($"⚠️ {completion.AbandonedCount.ToString(Invariant)} never finished");
+        }
+
+        if (completion.OpenClaimAge is { } openAge)
+        {
+            parts.Add($"open claim held **{openAge.ToShortDuration()}**");
         }
 
         return string.Join(" · ", parts);

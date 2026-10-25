@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   defaultHistoryDepth,
   depthOptions,
+  formatHours,
+  formatMissionCompletion,
   formatStreak,
   formatXp,
   rankBadge,
@@ -10,6 +12,34 @@ import {
 } from './format';
 
 describe('format', () => {
+  it('shows the two largest units of a duration', () => {
+    expect(formatHours(0)).toBe('<1m');
+    expect(formatHours(0.5)).toBe('30m');
+    expect(formatHours(4.2)).toBe('4h 12m');
+    expect(formatHours(5)).toBe('5h');
+    expect(formatHours(51)).toBe('2d 3h');
+    expect(formatHours(48.9)).toBe('2d');
+  });
+
+  it('describes mission completion with unfinished claims apart from the average', () => {
+    expect(
+      formatMissionCompletion({
+        completedCount: 5,
+        averageCompletionHours: 28,
+        abandonedCount: 1,
+        openClaimHours: 51,
+      }),
+    ).toBe('avg 1d 4h over 5 missions · 1 never finished · open claim held 2d 3h');
+    expect(
+      formatMissionCompletion({
+        completedCount: 0,
+        averageCompletionHours: null,
+        abandonedCount: 0,
+        openClaimHours: 2,
+      }),
+    ).toBe('no claimed mission finished · open claim held 2h');
+  });
+
   it('rounds and separates XP values', () => {
     expect(formatXp(1234.6)).toBe('1,235 XP');
     expect(formatXp(0)).toBe('0 XP');

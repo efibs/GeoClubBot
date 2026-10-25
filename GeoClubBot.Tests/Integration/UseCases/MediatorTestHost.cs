@@ -135,6 +135,7 @@ public sealed class MediatorTestHost : IDisposable
         services.AddTransient<ActivityCheckSyncStep>();
         services.AddTransient<ActivityStatusCalculator>();
         services.AddTransient<ActivityAverageXpRollupStep>();
+        services.AddTransient<MissionCompletionReportStep>();
     }
 
     private static void RegisterConfigurationOptions(IServiceCollection services, IConfiguration configuration)

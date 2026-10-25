@@ -39,8 +39,17 @@ public class MissionBoardAlertsConfiguration : IValidatableObject
     [Range(0, 100)]
     public int LastMissionsThreshold { get; set; }
 
-    /// <summary>Mention the claimer in the channel alert when their Discord account is linked.</summary>
+    /// <summary>
+    /// Mention the claimer in the open-claim alert when their Discord account is linked. The
+    /// help-request alert never mentions the claimer: they already asked, it is the others' turn.
+    /// </summary>
     public bool MentionClaimer { get; set; } = true;
+
+    /// <summary>
+    /// Mention the club's role (<c>RoleId</c> of its <c>GeoGuessr:Clubs</c> entry) in the help-request
+    /// alert, so the members who can help are asked. Nothing is mentioned for a club without a role.
+    /// </summary>
+    public bool MentionClubRoleOnHelpRequest { get; set; } = true;
 
     /// <summary>Also DM the claimer when their Discord account is linked.</summary>
     public bool DmClaimer { get; set; }
@@ -48,7 +57,8 @@ public class MissionBoardAlertsConfiguration : IValidatableObject
     /// <summary>
     /// Channel alert for a mission claimed too long ago. Placeholders: <c>{{claimer}}</c>,
     /// <c>{{mission}}</c>, <c>{{progress}}</c>, <c>{{claimed_at}}</c>, <c>{{board}}</c>,
-    /// <c>{{remaining}}</c>, <c>{{club}}</c>. Every club's alerts can share one channel, and
+    /// <c>{{remaining}}</c>, <c>{{club}}</c>, <c>{{role}}</c> (the club's role mention on a help
+    /// request, otherwise empty). Every club's alerts can share one channel, and
     /// GeoGuessr gives each club the same missions, so the defaults lead with the club.
     /// </summary>
     public string OpenClaimMessage { get; set; } =
@@ -57,7 +67,7 @@ public class MissionBoardAlertsConfiguration : IValidatableObject
 
     /// <summary>Channel alert for a mission whose claimer asked for help. Same placeholders.</summary>
     public string HelpRequestMessage { get; set; } =
-        "🆘 **[{{club}}]** {{claimer}} needs help with **{{mission}}** ({{progress}}) on board {{board}}. Can anyone help out?";
+        "🆘 **[{{club}}]** {{claimer}} needs help with **{{mission}}** ({{progress}}) on board {{board}}. Can anyone help out? {{role}}";
 
     /// <summary>DM to the claimer for a mission claimed too long ago. Same placeholders.</summary>
     public string OpenClaimDirectMessage { get; set; } =

@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text;
 using Entities;
+using Extensions;
 using UseCases.OutputPorts.Notifications;
 
 namespace GeoClubBot.Discord.OutputAdapters;
@@ -84,6 +86,60 @@ public sealed class DiscordActivityStatusMessageFormatter : IActivityStatusMessa
         }
 
         return builder.Length > 0 ? builder.ToString() : null;
+    }
+
+    public string? FormatMissionCompletionSummary(
+        IReadOnlyList<ClubMemberMissionCompletion> slowestMembers,
+        IReadOnlyList<ClubMemberMissionCompletion> unfinishedMembers,
+        TimeSpan averageWindow)
+    {
+        var builder = new StringBuilder();
+
+        if (slowestMembers.Count > 0)
+        {
+            builder.Append($"​\nSlowest {slowestMembers.Count} members to finish their claimed club missions (average from claim to completion, last {averageWindow.ToReadableSpan()}):");
+            for (var i = 0; i < slowestMembers.Count; i++)
+            {
+                var times = slowestMembers[i].Times;
+                builder.AppendLine();
+                builder.Append(CultureInfo.InvariantCulture,
+                    $"{i + 1}. {slowestMembers[i].Nickname} — {times.AverageCompletionTime!.Value.ToShortDuration()} over {times.CompletedCount} mission(s)");
+            }
+        }
+
+        if (unfinishedMembers.Count > 0)
+        {
+            if (builder.Length > 0)
+                builder.AppendLine();
+
+            builder.Append($"​\nMembers with unfinished claimed club missions (last {averageWindow.ToReadableSpan()}):");
+            foreach (var member in unfinishedMembers)
+            {
+                builder.AppendLine();
+                builder.Append("* ");
+                builder.Append(member.Nickname);
+                builder.Append(" — ");
+                builder.Append(DescribeUnfinished(member.Times));
+            }
+        }
+
+        return builder.Length > 0 ? builder.ToString() : null;
+    }
+
+    private static string DescribeUnfinished(MissionCompletionTimes times)
+    {
+        var parts = new List<string>();
+        if (times.AbandonedCount > 0)
+        {
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{times.AbandonedCount} never finished before the board reset"));
+        }
+
+        if (times.OpenClaimAge is { } openAge)
+        {
+            parts.Add($"open claim held for {openAge.ToShortDuration()}");
+        }
+
+        return string.Join(" · ", parts);
     }
 
     private static void AppendPlayers(StringBuilder builder, IReadOnlyList<ClubMemberActivityStatus> players)

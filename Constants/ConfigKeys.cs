@@ -32,6 +32,10 @@ public static class ConfigKeys
 
     public const string MissionBoardAlertsCronScheduleConfigurationKey = "MissionBoardAlerts:Schedule";
 
+    public const string MissionClaimTrackingCronScheduleConfigurationKey = "MissionClaimTracking:Schedule";
+
+    public const string ClubApplicationNotificationsCronScheduleConfigurationKey = "ClubApplicationNotifications:Schedule";
+
     public const string MemberPrivateChannelArchiveCleanupCronScheduleConfigurationKey = "MemberPrivateChannels:ArchiveCleanupSchedule";
 
     public const string AiModelCatalogRefreshCronScheduleConfigurationKey = "AI:ModelCatalogRefreshSchedule";

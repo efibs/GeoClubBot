@@ -1,3 +1,5 @@
+import type { MissionCompletionDto } from './types';
+
 /** Leaderboard depth presets. `historyDepth` is the number of recent XP intervals averaged. */
 export interface DepthOption {
   label: string;
@@ -80,6 +82,44 @@ export function formatRelative(iso: string, now: Date = new Date()): string {
         ? `${Math.round(minutes / 60)}h`
         : `${Math.round(minutes / (24 * 60))}d`;
   return diffMs >= 0 ? `in ${text}` : `${text} ago`;
+}
+
+/** The two largest units of a duration in hours, e.g. `2d 3h`, `4h 12m`, `35m` or `<1m`. */
+export function formatHours(hours: number): string {
+  const totalMinutes = Math.floor(hours * 60);
+  if (totalMinutes < 1) {
+    return '<1m';
+  }
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const remainingHours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) {
+    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+  }
+  if (remainingHours > 0) {
+    return minutes > 0 ? `${remainingHours}h ${minutes}m` : `${remainingHours}h`;
+  }
+  return `${minutes}m`;
+}
+
+/** E.g. `avg 1d 4h over 5 missions · 1 never finished · open claim held 2d 3h`. */
+export function formatMissionCompletion(completion: MissionCompletionDto): string {
+  const parts: string[] = [];
+  if (completion.averageCompletionHours != null) {
+    const missions = completion.completedCount === 1 ? 'mission' : 'missions';
+    parts.push(
+      `avg ${formatHours(completion.averageCompletionHours)} over ${completion.completedCount} ${missions}`,
+    );
+  } else {
+    parts.push('no claimed mission finished');
+  }
+  if (completion.abandonedCount > 0) {
+    parts.push(`${completion.abandonedCount} never finished`);
+  }
+  if (completion.openClaimHours != null) {
+    parts.push(`open claim held ${formatHours(completion.openClaimHours)}`);
+  }
+  return parts.join(' · ');
 }
 
 /** A compact date like "Jul 4, 2026" from an ISO timestamp. */

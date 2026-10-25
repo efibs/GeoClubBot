@@ -101,6 +101,18 @@ export interface WeekActivityDto {
   // Missions of others the member pressed "help out" on — unverified, informational only.
   helpedThisWeek: number | null;
   helpedLastWeek: number | null;
+  // Null when claims are not tracked or the member claimed no mission in the period.
+  missionCompletion: MissionCompletionDto | null;
+}
+
+// Claim-to-completion times of the member's board missions over the activity's period. The average
+// covers completed missions only; abandoned claims (board week ended unfinished) and the claim still
+// held are counted apart.
+export interface MissionCompletionDto {
+  completedCount: number;
+  averageCompletionHours: number | null;
+  abandonedCount: number;
+  openClaimHours: number | null;
 }
 
 export interface RankedDto {

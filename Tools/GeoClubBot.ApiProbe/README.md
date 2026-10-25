@@ -79,6 +79,7 @@ dotnet run --project Tools/GeoClubBot.ApiProbe -- <command> [options]
 | `board` | `GET /v4/missions/club/board` — the weekly club mission board of the **token's own club** |
 | `board-previous` | `GET /v4/missions/club/board/previous` — last week's board (`null` in the first week) |
 | `members` | `GET /v4/clubs/{club}/members` |
+| `applications` | `GET /v4/clubs/{club}/applications` — pending applications; **404** unless the token's account has `ManageApplications` in the club |
 | `club` | `GET /v4/clubs/{club}` |
 | `user <userId>` | `GET /v3/users/{userId}` |
 | `raw <path>` | `GET https://www.geoguessr.com/api<path>` — for undocumented endpoints |

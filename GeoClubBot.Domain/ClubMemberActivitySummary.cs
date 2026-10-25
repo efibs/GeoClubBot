@@ -20,6 +20,10 @@ public record DayActivity(DateOnly Date, bool ChallengeDone, int BoardMissions, 
 /// the button proves nothing. Null when not shown or the board can't be read.
 /// </param>
 /// <param name="HelpedLastWeek">The same for the previous board week.</param>
+/// <param name="MissionCompletion">
+/// How long the member took to finish the board missions they claimed in the period; null when
+/// claims are not tracked or the member claimed none.
+/// </param>
 public record ClubMemberActivitySummary(
     IReadOnlyList<DayActivity> Days,
     int TotalXp,
@@ -32,7 +36,8 @@ public record ClubMemberActivitySummary(
     IReadOnlyList<ActivityRequirementResult>? Requirements = null,
     int? HelpedThisWeek = null,
     int? HelpedLastWeek = null,
-    DateTimeOffset? PeriodStart = null)
+    DateTimeOffset? PeriodStart = null,
+    MissionCompletionTimes? MissionCompletion = null)
 {
     public IReadOnlyList<ActivityRequirementResult> RequirementResults => Requirements ?? [];
 

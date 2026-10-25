@@ -13,4 +13,10 @@ public interface IActivityStatusMessageSender
         string clubName,
         int historyDepth,
         CancellationToken cancellationToken = default);
+
+    Task SendMissionCompletionMessageAsync(
+        List<ClubMemberMissionCompletion> slowestMembers,
+        List<ClubMemberMissionCompletion> unfinishedMembers,
+        TimeSpan averageWindow,
+        CancellationToken cancellationToken = default);
 }

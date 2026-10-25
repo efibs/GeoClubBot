@@ -7,7 +7,8 @@ public sealed record StuckMission(ClubMissionTile Tile, MissionBoardAlertKind Ki
 
 /// <summary>
 /// Finds the board missions that hold the club up: claimed long ago and still open, or with help
-/// requested a while ago and nobody finishing them.
+/// requested a while ago and nobody finishing them. Once help is requested, only the help-request
+/// alert applies — telling the claimer to "finish it or request help" would be beside the point.
 /// </summary>
 public static class StuckMissionDetector
 {
@@ -28,6 +29,7 @@ public static class StuckMissionDetector
         foreach (var tile in board.OpenClaims)
         {
             if (options.OpenClaimAlertAfter is { } openAfter
+                && tile.HelpRequestedAt is null
                 && tile.ClaimedAt is { } claimedAt
                 && now - claimedAt >= openAfter)
             {

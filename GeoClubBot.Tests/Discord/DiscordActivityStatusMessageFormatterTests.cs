@@ -100,4 +100,25 @@ public sealed class DiscordActivityStatusMessageFormatterTests
     [Fact]
     public void FormatAverageXpSummary_ReturnsNull_WhenNoMembers() =>
         _formatter.FormatAverageXpSummary([], [], historyDepth: 4).Should().BeNull();
+
+    [Fact]
+    public Task FormatMissionCompletionSummary_RendersSlowestAndUnfinished()
+    {
+        var slowest = new List<ClubMemberMissionCompletion>
+        {
+            new("Grace", "u-1", new MissionCompletionTimes(3, TimeSpan.FromHours(51), 0, null)),
+            new("Heidi", "u-2", new MissionCompletionTimes(1, TimeSpan.FromMinutes(95), 1, null)),
+        };
+        var unfinished = new List<ClubMemberMissionCompletion>
+        {
+            new("Heidi", "u-2", new MissionCompletionTimes(1, TimeSpan.FromMinutes(95), 1, null)),
+            new("Ivan", "u-3", new MissionCompletionTimes(0, null, 0, TimeSpan.FromHours(26))),
+        };
+
+        return Verify(_formatter.FormatMissionCompletionSummary(slowest, unfinished, TimeSpan.FromDays(14)));
+    }
+
+    [Fact]
+    public void FormatMissionCompletionSummary_ReturnsNull_WhenNoMembers() =>
+        _formatter.FormatMissionCompletionSummary([], [], TimeSpan.FromDays(14)).Should().BeNull();
 }

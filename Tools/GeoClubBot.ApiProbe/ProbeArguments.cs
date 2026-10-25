@@ -98,6 +98,7 @@ public sealed record ProbeArguments(
               board                 GET /v4/missions/club/board       (the token's club's mission board)
               board-previous        GET /v4/missions/club/board/previous
               members               GET /v4/clubs/{club}/members
+              applications          GET /v4/clubs/{club}/applications (needs ManageApplications)
               club                  GET /v4/clubs/{club}
               user <userId>         GET /v3/users/{userId}
               raw <path>            GET https://www.geoguessr.com/api<path>

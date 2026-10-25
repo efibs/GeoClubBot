@@ -33,6 +33,12 @@ public class GeoGuessrClubEntry
     /// <summary>Whether the reminder mentions this club's mission board. Defaults to true.</summary>
     public bool? RemindMissions { get; set; }
 
+    /// <summary>
+    /// Whether new applications to this club are announced (see <see cref="ClubApplicationNotificationsConfiguration"/>).
+    /// Defaults to true.
+    /// </summary>
+    public bool? NotifyApplications { get; set; }
+
     public int? GracePeriodDays { get; set; }
 
     public int? MaxNumStrikes { get; set; }
@@ -42,6 +48,8 @@ public class GeoGuessrClubEntry
     public int? AverageXpBottomN { get; set; }
 
     public int? AverageXpHistoryDepth { get; set; }
+
+    public int? MissionCompletionSlowestN { get; set; }
 
     public ulong? RoleId { get; set; }
 
@@ -65,6 +73,9 @@ public class GeoGuessrClubEntry
     public int? GetAverageXpBottomN(ActivityCheckerConfiguration defaults) => AverageXpBottomN ?? defaults.AverageXpBottomN;
 
     public int GetAverageXpHistoryDepth(ActivityCheckerConfiguration defaults) => AverageXpHistoryDepth ?? defaults.AverageXpHistoryDepth;
+
+    public int? GetMissionCompletionSlowestN(ActivityCheckerConfiguration defaults) =>
+        MissionCompletionSlowestN ?? defaults.MissionCompletionSlowestN;
 
     private static Dictionary<string, int> Merge(Dictionary<string, int> global, Dictionary<string, int>? overrides)
     {

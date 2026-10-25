@@ -92,23 +92,39 @@ public sealed partial class CheckStuckMissionsHandler(
             .ReadClubMembersByUserIdsAsync(toSend.Select(s => s.Tile.ClaimedBy!).Distinct().ToList(), cancellationToken)
             .ConfigureAwait(false);
 
+        var clubRoleId = options.MentionClubRoleOnHelpRequest
+            ? geoGuessrConfig.Value.Clubs.FirstOrDefault(c => c.ClubId == clubId)?.RoleId
+            : null;
+
         foreach (var (tile, kind) in toSend)
         {
             var claimer = claimers.GetValueOrDefault(tile.ClaimedBy!);
             var discordUserId = claimer?.User.DiscordUserId;
             var nickname = claimer?.User.Nickname ?? tile.ClaimedBy!;
-            var mention = options.MentionClaimer && discordUserId is { } id ? $"<@{id}>" : $"**{nickname}**";
-
-            var template = kind == MissionBoardAlertKind.HelpRequest ? options.HelpRequestMessage : options.OpenClaimMessage;
 
             if (options.TextChannelId is { } channelId)
             {
-                var mentions = options.MentionClaimer && discordUserId is { } userId
-                    ? new MessageMentions([], [userId], false)
-                    : MessageMentions.None;
+                string text;
+                MessageMentions mentions;
+                if (kind == MissionBoardAlertKind.HelpRequest)
+                {
+                    // The claimer already asked for help, so it is the rest of the club that is pinged.
+                    text = Render(options.HelpRequestMessage, tile, board, $"**{nickname}**", clubName, clubRoleId);
+                    mentions = clubRoleId is { } roleId ? new MessageMentions([roleId], [], false) : MessageMentions.None;
+                }
+                else if (options.MentionClaimer && discordUserId is { } userId)
+                {
+                    text = Render(options.OpenClaimMessage, tile, board, $"<@{userId}>", clubName);
+                    mentions = new MessageMentions([], [userId], false);
+                }
+                else
+                {
+                    text = Render(options.OpenClaimMessage, tile, board, $"**{nickname}**", clubName);
+                    mentions = MessageMentions.None;
+                }
 
                 await discordMessageAccess
-                    .SendMessageAsync(Render(template, tile, board, mention, clubName), channelId, mentions, cancellationToken)
+                    .SendMessageAsync(text, channelId, mentions, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -132,7 +148,7 @@ public sealed partial class CheckStuckMissionsHandler(
         }
     }
 
-    public static string Render(string template, ClubMissionTile tile, ClubMissionBoardWeek board, string claimer, string clubName) =>
+    public static string Render(string template, ClubMissionTile tile, ClubMissionBoardWeek board, string claimer, string clubName, ulong? roleId = null) =>
         template
             .Replace("{{claimer}}", claimer)
             .Replace("{{mission}}", tile.Title)
@@ -140,7 +156,9 @@ public sealed partial class CheckStuckMissionsHandler(
             .Replace("{{claimed_at}}", tile.ClaimedAt is { } at ? $"<t:{at.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)}:R>" : "a while ago")
             .Replace("{{board}}", tile.BoardNumber.ToString(CultureInfo.InvariantCulture))
             .Replace("{{remaining}}", (board.Boards.FirstOrDefault(b => b.Number == tile.BoardNumber)?.RemainingCount ?? 0).ToString(CultureInfo.InvariantCulture))
-            .Replace("{{club}}", clubName);
+            .Replace("{{club}}", clubName)
+            .Replace("{{role}}", roleId is { } id ? $"<@&{id.ToString(CultureInfo.InvariantCulture)}>" : string.Empty)
+            .Trim();
 
     [LoggerMessage(LogLevel.Information, "Sent a {Kind} alert for mission {MissionId} of club {ClubId}.")]
     partial void LogAlertSent(MissionBoardAlertKind kind, Guid missionId, Guid clubId);

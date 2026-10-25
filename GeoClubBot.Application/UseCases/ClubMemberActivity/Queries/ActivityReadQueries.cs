@@ -14,10 +14,12 @@ public sealed partial class ActivityReadHandlers(
     IClubMemberRepository clubMembers,
     IGeoGuessrActivityReader activityReader,
     IClubMissionBoardReader boardReader,
+    IMissionClaimRepository missionClaims,
     ClubActivityKindClassifier activityKinds,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<ActivityCheckerConfiguration> activityCheckerConfig,
     IOptions<ActivityViewsConfiguration> viewsConfig,
+    IOptions<MissionClaimTrackingConfiguration> claimTrackingConfig,
     ILogger<ActivityReadHandlers> logger)
     : IRequestHandler<GetLastCheckTimeQuery, DateTimeOffset?>,
       IRequestHandler<GetActivityThisWeekQuery, ClubMemberActivitySummary>,
@@ -141,6 +143,7 @@ public sealed partial class ActivityReadHandlers(
         }
 
         var (helpedThisWeek, helpedLastWeek) = await CountHelpsAsync(clubId, userId, cancellationToken).ConfigureAwait(false);
+        var missionCompletion = await ComputeMissionCompletionAsync(userId, from, to, cancellationToken).ConfigureAwait(false);
 
         return new ClubMemberActivitySummary(
             Days: days,
@@ -154,7 +157,25 @@ public sealed partial class ActivityReadHandlers(
             Requirements: requirements,
             HelpedThisWeek: helpedThisWeek,
             HelpedLastWeek: helpedLastWeek,
-            PeriodStart: from);
+            PeriodStart: from,
+            MissionCompletion: missionCompletion);
+    }
+
+    /// <summary>Over the view's own period, like everything else the view shows.</summary>
+    private async Task<MissionCompletionTimes?> ComputeMissionCompletionAsync(
+        string userId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken)
+    {
+        if (!claimTrackingConfig.Value.Enabled)
+        {
+            return null;
+        }
+
+        var claims = await missionClaims
+            .ReadClaimsOfUserAsync(userId, MissionCompletionStats.ReadFrom(from), to, cancellationToken)
+            .ConfigureAwait(false);
+
+        var times = MissionCompletionStats.Compute(claims, from, to);
+        return times.IsEmpty ? null : times;
     }
 
     private async Task<(int? ThisWeek, int? LastWeek)> CountHelpsAsync(
