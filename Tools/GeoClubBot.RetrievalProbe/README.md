@@ -1,7 +1,7 @@
 # GeoClubBot.RetrievalProbe
 
-A **read-only** console tool that replays questions through the bot's own retrieval against a
-knowledge index, which is normally production's.
+A **read-only** console tool that replays questions through the bot's own retrieval — and, with
+`answer`, its whole answering code — against a knowledge index, which is normally production's.
 
 ## Why it exists
 
@@ -38,15 +38,19 @@ stand in for "no references":
 2. **`EmbeddingsOnlyHandler`.** The only request allowed to leave for OpenRouter is
    `POST /api/v1/embeddings`. A chat completion, which is where the bot's real cost lies, cannot be sent
    by mistake. Every request that does leave is counted, and the count is printed at the end of each
-   run. The one exception has to be asked for by name: with `--allow-chat`, the query planner's
-   `POST /api/v1/chat/completions` and the `GET /api/v1/models` roster it picks a model from may leave
-   too — through a second handler built for the planner alone. The embedder's handler never lets a chat
-   request through, flag or not.
+   run. The one exception has to be asked for by name: with `--allow-chat`,
+   `POST /api/v1/chat/completions` may leave too, and the two reads the bot picks a model with — the
+   `GET /api/v1/models` roster and a model's provider health, `GET /api/v1/models/{author}/{slug}/endpoints`
+   — through handlers built for the planner and for `answer` alone. Nothing else does: no route that
+   changes the account, no other method on these. The embedder's handler of `replay` and `compare` never
+   lets a chat request through, flag or not. `answer`'s calls to GBIF, for the species-range tool, pass a
+   handler that lets only `GET` through.
 3. **No verb in the CLI.** Every command reads. There is no option that writes.
 4. **A cache.** Question vectors are kept in `embedding-cache.json` and planner replies in
    `planner-cache.json`, next to the built binary, so rerunning a report costs nothing. Vectors are
    keyed by embedding model; planner replies by exactly what was sent (and by the chain, when
-   `--planner-models` names one).
+   `--planner-models` names one). `answer` keeps each answer, and each verdict, in `answer-cache/`
+   there too (see [`answer`](#answer)).
 
 ## Setting up
 
@@ -104,16 +108,22 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `compare <export.jsonl>` | The same questions under other retrieval settings — the bot before conversation-aware retrieval, each step of it, other excerpt counts — counted side by side |
 | `grep <regex>` | Every indexed chunk whose text matches. Was the answer there to find at all? |
 | `similarity` | How close a guide's chunks sit to a question, as stored and as re-worded (`--question`, `--source`, `--variant`) |
+| `answer <export.jsonl>` | Every rated answer asked again through the bot's own answering code — retrieval, model chain, tool calls — shown as Discord would post it, beside the rated one; with `--judge`, compared by a model. Needs `--allow-chat` |
 
 | Option | Meaning |
 |---|---|
 | `--qdrant <url>` | Qdrant's gRPC address |
 | `--collection <name>` | Collection to read (default: the bot's own) |
-| `--limit <n>` | Excerpts per question (default: `AI:Retrieval:ExcerptLimit`'s default, as the bot offers) |
-| `--rating good\|bad` | `replay`/`compare`: only answers rated this way |
+| `--limit <n>` | Excerpts per question (default: `AI:Retrieval:ExcerptLimit`'s default, as the bot offers); `answer`: the most rated answers to ask |
+| `--rating good\|bad` | `replay`/`compare`/`answer`: only answers rated this way |
 | `--targets <file>` | `replay`/`compare`: count on-target excerpts, place known answers, stand in for expired screenshots (see below) |
-| `--allow-chat` | `replay`/`compare`: let the query planner's chat requests leave the probe — one per question, cached. `replay` then searches with the planner on (it ships off); without it, `compare`'s variants that plan search as the bot does when the planner fails |
+| `--allow-chat` | `replay`/`compare`: let the query planner's chat requests leave the probe — one per question, cached. `replay` then searches with the planner on (it ships off); without it, `compare`'s variants that plan search as the bot does when the planner fails. `answer`: required, since it asks the bot's models |
 | `--planner-models <ids>` | `replay`/`compare`: comma-separated chain the planner asks instead of the bot's own, to measure another model; cached apart |
+| `--set <Key=Value>` | `answer`: overrides one of the bot's AI settings, e.g. `--set AI:Tools:Enabled=false`; repeatable |
+| `--only <list>` | `answer`: record numbers and ranges, feedback-id prefixes, `after:`/`before:` dates, comma-separated (`1-25,31`, `after:2026-09-27`) |
+| `--parallel <n>` | `answer`: rated answers asked at once (default 2, at most 8) |
+| `--judge` | `answer`: a model compares each new answer with the rated one — one request each, cached |
+| `--judge-model <ids>` | `answer`: comma-separated chain the judge asks (implies `--judge`; default: the best free text model of today's chain) |
 | `--variants <file>` | `compare`: retrieval settings to compare instead of the built-in steps (see below) |
 | `--question <text>` | `similarity`: the question |
 | `--source <url>` | `similarity`: a chunk's source URL, as listed under an answer or in a replay |
@@ -247,6 +257,72 @@ are embedded now and the same way, while the stored vector may predate a change 
 
 This is how link URLs were found to hurt. With the URLs stripped, "white car long antenna" went from
 0.590 to 0.646, which moves it from about 39th to 8th.
+
+### `answer`
+
+`replay` says what an answer would be *offered* today. `answer` asks it: every rated answer of an
+export goes through the bot's answering code again — `AskAiHandler` with its real collaborators, the
+`OpenRouterEmbedder`, the `QdrantKnowledgeIndex` behind the read-only interceptor, the
+`RefitChatModelClient` and `ChatModelCatalog` with today's roster and models' health, the tool loop
+(`AiAnswerLoop`, `AnswerToolbox`) and the `GbifSpeciesRangeReader` — and the report puts the new answer,
+rendered by the bot's own `AiAnswerFormatter`, beside the one the member rated.
+
+```bash
+# Everything, with the tools on as they ship, and a model's verdict on each.
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- answer ai_feedback/<export>.jsonl \
+    --allow-chat --judge --out ai_feedback/eval/answer.md
+
+# The answers rated since the first export, without tools.
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- answer ai_feedback/<export>.jsonl \
+    --allow-chat --judge --only after:2026-09-27 --set AI:Tools:Enabled=false --out ai_feedback/eval/no-tools.md
+```
+
+**Settings.** The bot's `GeoClubBot.API/appsettings.json`, bound into its configuration classes as its
+host binds them, with `--set` overrides on top (`AI:…` keys only; `AI__X__Y` spelling works too) and
+validated as the bot validates them at start-up. Not its development settings, which pick other models
+and another collection, and not the environment, so a variable left set in a shell cannot change a
+measurement unseen. Production's own environment overrides are not applied either: name them with
+`--set` to measure them.
+
+**What is not the bot's.** No Discord: nothing is posted or stored, and a relayed picture is listed by
+its link where production would upload it from its disk. The conversation store holds one branch,
+rebuilt from the export with made-up message ids and dated a minute apart just before now, so a
+follow-up is answered with its branch, and offered again the excerpts the answer before it cited
+where the export kept their chunk ids (exports from before 2026-10-25 did not). The allowance never
+runs out and starts afresh for every answer, as the first question of a day. The bot's HTTP pipeline
+lives in the API project, so `PacedRetryHandler` stands in for it: requests paced to
+`AI:OpenRouter:PerMinuteRequestBudget`, each attempt bounded by `AI:RequestTimeoutSeconds`, transient
+failures retried twice and a 429 once after its minute, as the bot retries them. The catalog is refreshed
+once per run — its failure penalties then carry from one answer to the next, as in the bot.
+
+**Screenshots.** A Discord attachment link carries its expiry (`ex`) and is dead after it; a model asked
+to read one fails the whole request. Such a screenshot is left out — the question asked by its text
+alone, and the report says so (📷). A judge is told, since the rated answer could see it.
+
+**Cost and the cache.** An answer costs what it costs the bot: one embedding and one chat request, plus a
+chat request per tool round and an embedding per round that searches — six at most with the default two
+rounds, and one more when the call after them is asked again without tools (a reply that was not an
+answer, such as a tool call written out as text).
+Every run also reads the roster and up to `HealthCheckModelCount` models' health (free `GET`s). Each
+answer is cached in `answer-cache/` next to the binary, keyed by the feedback record, a fingerprint of the
+settings, and the build of the bot's Application and Infrastructure assemblies, so a rerun asks only what
+failed or what a code or settings change made new. Failures are never cached: after a 429 or a 504, run
+the same command again later and it resumes. Verdicts are cached by the exact prompt and judge chain.
+
+**The report.** A summary — the judge's verdicts overall and for 👎, how many commented answers it says
+are addressed, hallucination risk, tool calls by tool, answers citing a picture, latency, requests —
+and a table with a row per record. Then per record: the branch and question, the rating and comment,
+the old answer and what it cited, the new answer as Discord would post it (citations resolved, the
+numbered source list, the model), its pictures and where they come from, its tool calls (arguments,
+outcome, result size, time), the guides offered now against then (✓ cited, ★ new), each chat request
+(chain, tools, the model that answered, finish reason, tokens, time), and the bot's log.
+
+**The judge** (`--judge`) is given the branch, the question, the member's rating and comment, both
+answers — the new one as the model wrote it, its numbers those of the excerpts — the pictures the new
+answer attaches, and the excerpts and tool results it was written from. It replies
+`{verdict: better|same|worse, addressesComment: true|false|null, hallucinationRisk: low|medium|high, reasons}`.
+Its verdicts are **indicative**: one free model's reading, blind to pictures, possibly the model that
+wrote the new answer, and not the member who rated the old one. Read the answers too.
 
 ## Adding a command
 

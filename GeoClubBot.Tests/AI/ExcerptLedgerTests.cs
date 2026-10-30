@@ -81,6 +81,21 @@ public sealed class ExcerptLedgerTests
         ledger.Holds(merged).Should().BeTrue();
     }
 
+    [Fact]
+    public void OffersNothing_PastTheHighestNumberACitationIsReadAs()
+    {
+        // Citations are read as one or two digits; an excerpt offered as [100] could be cited but never
+        // resolved — raw "[100]" in the reply, no link, no picture.
+        var ledger = new ExcerptLedger([.. Enumerable.Range(1, 98).Select(index => Text($"Retrieved {index}."))]);
+
+        ledger.Offer(Text("Found by a tool.")).Should().StartWith("[99] ");
+        ledger.IsFull.Should().BeTrue();
+
+        ledger.Offer(Text("One too many.")).Should().BeNull();
+        ledger.Count.Should().Be(ExcerptLedger.MaxMarker).And.Be(99);
+        ledger.HitAt(100).Should().BeNull();
+    }
+
     private static KnowledgeHit Text(string text, string url = "https://www.plonkit.net/ghana#x") =>
         new(Guid.NewGuid(), 0.5f, KnowledgeChunkKind.Text, text, url, null, "Ghana", "ghana", "Ghana > Bollards", null, 0);
 

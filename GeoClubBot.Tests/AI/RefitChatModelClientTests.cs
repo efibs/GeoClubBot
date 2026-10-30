@@ -6,6 +6,7 @@ using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using UseCases.OutputPorts.AI;
+using UseCases.UseCases.AI.Tools;
 using Xunit;
 
 namespace GeoClubBot.Tests.AI;
@@ -485,6 +486,38 @@ public sealed class RefitChatModelClientTests
         result.GetProperty("tool_call_id").GetString().Should().Be("call-1");
         result.GetProperty("content").GetString().Should().Be("[3] Brazil > Poles\nNone in Ceará.");
         messages[0].TryGetProperty("tool_calls", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Complete_SendsTheCallThatHasToAnswer_WithItsInstructionAfterEveryResult()
+    {
+        // The OpenAI chat schema asks only that every tool call is answered by a tool message before the
+        // conversation goes on; a user message may follow the results. The call that has to answer after
+        // the last round carries one, beside tool_choice "none".
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"ok"}}]}""");
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(
+            ["m"],
+            [
+                AiChatMessage.User("where are pole supports rare?"),
+                AiChatMessage.AssistantToolCalls(null, [
+                    new AiToolCall("call-1", "search_guides", """{"query":"pole supports"}"""),
+                    new AiToolCall("call-2", "read_guide", """{"excerpt":1}""")]),
+                AiChatMessage.ToolResult("call-1", "[3] Brazil > Poles\nNone in Ceará."),
+                AiChatMessage.ToolResult("call-2", "Nothing more."),
+                AiChatMessage.User(AnswerTools.AnswerNow)
+            ],
+            Tools: [SearchTool],
+            ToolChoice: AiToolChoice.None));
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody);
+        var messages = body.RootElement.GetProperty("messages").EnumerateArray().ToList();
+
+        messages.Select(message => message.GetProperty("role").GetString()).Should().Equal("user", "assistant", "tool", "tool", "user");
+        messages[2].GetProperty("tool_call_id").GetString().Should().Be("call-1");
+        messages[3].GetProperty("tool_call_id").GetString().Should().Be("call-2");
+        messages[4].GetProperty("content").GetString().Should().Be(AnswerTools.AnswerNow);
+        body.RootElement.GetProperty("tool_choice").GetString().Should().Be("none");
     }
 
     [Fact]

@@ -615,9 +615,10 @@ public sealed class SourceExtractorTests
     {
         // The export writes an emoji as a numeric entity, and the previous decoder turned &#128016;
         // into "&##128016;" — which production showed under answers as "Research by Yaron&##128016;".
+        // (A credit like that one is no longer taken for a heading at all.)
         var archive = BuildDocArchive(
             "<html><body>"
-            + "<p>Research by Yaron &#128016;</p>"
+            + "<h2>Astrakhan &#128016;</h2>"
             + "<p>Astrakhan can look like Mars &#128128; &amp; its caf&#233;s are rare.</p>"
             + "</body></html>");
 
@@ -625,8 +626,137 @@ public sealed class SourceExtractorTests
             .ExtractAsync(GoogleDoc());
 
         var chunk = result.Value.Chunks.Should().ContainSingle().Subject;
-        chunk.SectionPath.Should().EndWith("Research by Yaron 🐐");
+        chunk.SectionPath.Should().EndWith("Astrakhan 🐐");
         chunk.Text.Should().Be("Astrakhan can look like Mars 💀 & its cafés are rare.");
+    }
+
+    [Fact]
+    public async Task GoogleDoc_TakesOnlyItsHeadingElementsForHeadings_WhenItMarksItsSectionsWithThem()
+    {
+        // "Usa · A Unique USA > Counties (33) ->" headed answers in the 2026-10-29 replay: a short line
+        // taken for a heading.
+        var archive = BuildDocArchive(
+            "<html><body>"
+            + "<h1>Plates</h1>"
+            + "<h2>Front Plate Requirements</h2>"
+            + "<p>Most states require a front plate.</p>"
+            + "<p>This is just the normal</p>"
+            + "<p>Ohio dropped its front plate in 2020.</p>"
+            + "<h3>Image credit to PlonkIt</h3>"
+            + "<p>Last words.</p>"
+            + "<h2>Counties</h2>"
+            + "<p>Counted by state.</p>"
+            + "</body></html>");
+
+        var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), Relay(enabled: true))
+            .ExtractAsync(GoogleDoc());
+
+        result.Value.Chunks.Select(chunk => (chunk.SectionPath, chunk.Text)).Should().Equal(
+            ("Tunisia Doc > Front Plate Requirements", "Most states require a front plate."),
+            ("Tunisia Doc > Front Plate Requirements", "This is just the normal"),
+            ("Tunisia Doc > Front Plate Requirements", "Ohio dropped its front plate in 2020."),
+            ("Tunisia Doc > Front Plate Requirements", "Image credit to PlonkIt"),
+            ("Tunisia Doc > Front Plate Requirements", "Last words."),
+            ("Tunisia Doc > Counties", "Counted by state."));
+    }
+
+    [Fact]
+    public async Task GoogleDoc_StillReadsSectionsByTheirShape_WhenOnlyItsTitleIsAHeadingElement()
+    {
+        // A title styled as a heading above sections in bold: read by its styles alone, the document
+        // would lose every section name.
+        var archive = BuildDocArchive(
+            "<html><body>"
+            + "<h1>Mexico Deconstructed</h1>"
+            + "<p>Boojum tree</p>"
+            + "<p>Found only in the south of Baja California.</p>"
+            + "</body></html>");
+
+        var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), Relay(enabled: true))
+            .ExtractAsync(GoogleDoc());
+
+        result.Value.Chunks.Should().ContainSingle().Which.SectionPath.Should().Be("Tunisia Doc > Boojum tree");
+    }
+
+    [Fact]
+    public async Task GoogleDoc_NeverTakesALinkAListItemOrACreditForAHeading_WhenItStylesNone()
+    {
+        var archive = BuildDocArchive(
+            "<html><body>"
+            + "<p>Bollards</p>"
+            + "<p>Bollards are white with a red band.</p>"
+            + "<p><span><a href=\"https://www.google.com/url?q=https://maps\">Counties (33)</a></span> -&gt;</p>"
+            + "<p><a href=\"https://www.google.com/url?q=https://flags\">You can view the flags in more detail here</a></p>"
+            + "<p>@bagaboiebailey</p>"
+            + "<ul><li>Short item</li></ul>"
+            + "<p>Flags differ by county.</p>"
+            + "</body></html>");
+
+        var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), Relay(enabled: true))
+            .ExtractAsync(GoogleDoc());
+
+        result.Value.Chunks.Should().OnlyContain(chunk => chunk.SectionPath == "Tunisia Doc > Bollards");
+        result.Value.Chunks.Select(chunk => chunk.Text).Should().Contain(["Counties (33) ->", "@bagaboiebailey", "Short item"]);
+    }
+
+    [Fact]
+    public async Task GoogleDoc_ReadsTheTextExportsHeadings_WithoutTheLinesThatOnlyLookLikeThem()
+    {
+        var extractor = CreateDocExtractor(Factory(
+            "Tunisian roads\n\nAre numbered oddly.\n\nImage credit to PlonkIt\n\nhttps://goo.gl/maps/abc\n\n"
+            + "Counties (33) ->\n\n________________\n\nSigns are blue."));
+
+        var result = await extractor.ExtractAsync(GoogleDoc());
+
+        result.Value.Chunks.Should().OnlyContain(chunk => chunk.SectionPath == "Tunisia Doc > Tunisian roads");
+        result.Value.Chunks.Should().HaveCount(6, "a line that is no heading is still content");
+    }
+
+    [Fact]
+    public async Task GoogleDoc_KeepsItsStyledHeadings_WhateverTheirLengthCaseOrAside()
+    {
+        // Dropped, a heading files every chunk under it under the one before: the Slovakia guide's bollard
+        // paragraphs would have been told to the model as being about poles.
+        var archive = BuildDocArchive(
+            "<html><body>"
+            + "<h1>Slovakia Guide</h1>"
+            + "<h2>Poles</h2>"
+            + "<p>Concrete poles with holes.</p>"
+            + "<h2>Bollards : (they are also present in the Czech Republic)</h2>"
+            + "<p>White with a black band and an orange reflector.</p>"
+            + "<h2>blue gen 4 with antenna</h2>"
+            + "<p>Seen in the east.</p>"
+            + "<h2>How to tell Spain and Portugal apart by road lines</h2>"
+            + "<p>Yellow outer lines are Spanish.</p>"
+            + "</body></html>");
+
+        var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), Relay(enabled: true))
+            .ExtractAsync(GoogleDoc());
+
+        result.Value.Chunks.Select(chunk => (chunk.SectionPath, chunk.Text)).Should().Equal(
+            ("Tunisia Doc > Poles", "Concrete poles with holes."),
+            ("Tunisia Doc > Bollards : (they are also present in the Czech Republic)", "White with a black band and an orange reflector."),
+            ("Tunisia Doc > blue gen 4 with antenna", "Seen in the east."),
+            ("Tunisia Doc > How to tell Spain and Portugal apart by road lines", "Yellow outer lines are Spanish."));
+    }
+
+    [Fact]
+    public async Task GoogleDoc_ReadsTheTextExportsHeadings_WithAnAsideOrInLowerCase()
+    {
+        // The text export (and the Slides fallback, which shares it) knows headings only by their shape.
+        var extractor = CreateDocExtractor(Factory(
+            "Poles\n\nConcrete poles with holes.\n\n"
+            + "Bollards : (they are also present in the Czech Republic)\n\nWhite with a black band.\n\n"
+            + "blue gen 4 with antenna\n\nSeen in the east.\n\n"
+            + "Credit unions and banks\n\nSlovenská sporiteľňa is everywhere."));
+
+        var result = await extractor.ExtractAsync(GoogleDoc());
+
+        result.Value.Chunks.Select(chunk => chunk.SectionPath).Should().Equal(
+            "Tunisia Doc > Poles",
+            "Tunisia Doc > Bollards : (they are also present in the Czech Republic)",
+            "Tunisia Doc > blue gen 4 with antenna",
+            "Tunisia Doc > Credit unions and banks");
     }
 
     [Fact]

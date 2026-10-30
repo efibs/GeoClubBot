@@ -24,6 +24,12 @@ public sealed record WeightedHitList(IReadOnlyList<KnowledgeHit> Hits, double We
 /// caption sits beside each picture of its slide — eight of them on "India Poles > Slide 18" — and
 /// keeping only the first had left 3,389 of the index's 4,738 slide pictures (72 %) impossible to offer.
 ///
+/// Only a copy from the same place adds its picture: the same link and the same section, as the
+/// pictures of one slide are. Matching text proves nothing more than that — two decks' slides captioned
+/// only "Bollards" — and an extra picture is shown under the kept excerpt's title, link and number, so a
+/// Czech bollard would be presented as the Polish one. A picture from elsewhere is left out, as every
+/// copy's picture was before extra pictures were kept, and so is its id: the excerpt does not stand for it.
+///
 /// Pure, so the arithmetic is tested rather than inferred from a store's behaviour.
 /// </summary>
 public static partial class KnowledgeHitFusion
@@ -107,11 +113,18 @@ public static partial class KnowledgeHitFusion
 
     /// <summary>
     /// <paramref name="kept"/> with <paramref name="copy"/> folded in. A copy bringing the first picture
-    /// takes the kept copy's place, so the excerpt is one the model can attach; a copy bringing another
-    /// picture adds it. Either way the excerpt keeps the better copy's score, and every copy's id.
+    /// takes the kept copy's place, so the excerpt is one the model can attach — it is then shown under
+    /// the copy's own title and link. A copy from the same place bringing another picture adds it; one
+    /// from elsewhere is dropped (<see cref="IsSamePlace"/>). The excerpt keeps the better copy's score,
+    /// and the id of every copy it stands for.
     /// </summary>
     private static KnowledgeHit Merge(KnowledgeHit kept, KnowledgeHit copy)
     {
+        if (kept.ImageUrl is not null && copy.ImageUrl is not null && !IsSamePlace(kept, copy))
+        {
+            return kept;
+        }
+
         var ids = kept.ChunkIds.Concat(copy.ChunkIds).Distinct().ToList();
 
         if (kept.ImageUrl is null)
@@ -132,6 +145,14 @@ public static partial class KnowledgeHitFusion
             MergedChunkIds = [.. ids.Where(id => id != kept.Id)]
         };
     }
+
+    /// <summary>
+    /// Whether two chunks come from the same place in the same guide: one link and one section, as the
+    /// pictures beside one slide's caption do. Only then is one's picture shown as the other's.
+    /// </summary>
+    private static bool IsSamePlace(KnowledgeHit one, KnowledgeHit other) =>
+        string.Equals(one.SourceUrl, other.SourceUrl, StringComparison.Ordinal)
+        && string.Equals(one.SectionPath, other.SectionPath, StringComparison.Ordinal);
 
     /// <summary>
     /// The text as a reader would compare it: case, emphasis, link targets and spacing ignored. An

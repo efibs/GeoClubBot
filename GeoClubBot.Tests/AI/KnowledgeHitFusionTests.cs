@@ -111,6 +111,37 @@ public sealed class KnowledgeHitFusionTests
     }
 
     [Fact]
+    public void Fuse_NeverShowsAPictureFromElsewhere_UnderTheKeptExcerptsTitleAndLink()
+    {
+        // Two decks each have a slide whose only text is "Bollards". Folded in as an extra picture, the
+        // Czech bollard was shown as "[1] Poland … (2/2)", linking to the Poland deck.
+        var poland = Picture("Bollards", sourceUrl: "https://docs.google.com/presentation/d/poland#slide=id.p4",
+            section: "Poland > Slide 4");
+        var czechia = Picture("Bollards", sourceUrl: "https://docs.google.com/presentation/d/czechia#slide=id.p9",
+            section: "Czechia > Slide 9");
+        var sameSlide = Picture("Bollards", sourceUrl: poland.SourceUrl, section: poland.SectionPath!);
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, poland, czechia, sameSlide)], limit: 8).Single();
+
+        fused.Id.Should().Be(poland.Id);
+        fused.ExtraImageUrls.Should().Equal([sameSlide.ImageUrl!], "only a picture of the same slide is shown as this one's");
+        fused.ChunkIds.Should().Equal([poland.Id, sameSlide.Id], "the excerpt does not stand for a picture it dropped");
+    }
+
+    [Fact]
+    public void Fuse_KeepsApartPicturesOfTwoSectionsOfOneGuide()
+    {
+        // A Google Doc has one link for all its sections; "Example:" under Poland and under Czechia are
+        // still two different places.
+        var poland = Picture("Example:", sourceUrl: "https://docs.google.com/document/d/europe", section: "Bollards > Poland");
+        var czechia = Picture("Example:", sourceUrl: poland.SourceUrl, section: "Bollards > Czechia");
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, poland, czechia)], limit: 8).Single();
+
+        fused.ExtraImageUrls.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Fuse_KeepsTheIdsOfTheTextCopiesItCollapses_AndAddsNoPictureToText()
     {
         var first = Hit("Gen 4 is found in most of North-Central Province.");
@@ -222,7 +253,11 @@ public sealed class KnowledgeHitFusionTests
         new(Guid.NewGuid(), 0.5f, KnowledgeChunkKind.Text, text, "https://guide/text", ImageUrl: null,
             "Guide", "country", "Guide > Section", "Author", 0);
 
-    private static KnowledgeHit Picture(string text, string title = "Guide") =>
-        new(Guid.NewGuid(), 0.2f, KnowledgeChunkKind.Image, text, "https://guide/picture", $"https://img/{Guid.NewGuid():N}.png",
-            title, "country", "Guide > Section", "Author", 0);
+    private static KnowledgeHit Picture(
+        string text,
+        string title = "Guide",
+        string sourceUrl = "https://guide/picture",
+        string section = "Guide > Section") =>
+        new(Guid.NewGuid(), 0.2f, KnowledgeChunkKind.Image, text, sourceUrl, $"https://img/{Guid.NewGuid():N}.png",
+            title, "country", section, "Author", 0);
 }

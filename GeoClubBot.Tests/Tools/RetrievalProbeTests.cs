@@ -95,6 +95,60 @@ public sealed class RetrievalProbeTests
     }
 
     [Fact]
+    public void FeedbackExport_SetsApartTheGuidesCarriedFromTheAnswerBefore()
+    {
+        // The rated follow-up was offered the guide its parent cited first, without any search finding it.
+        // Read as retrieval, it was reported "no longer offered" by a replay that never could find it.
+        var record = Record(
+            ("user", "Malaysian bollards?", false),
+            ("assistant", "White with a red band [1].", false),
+            ("user", "what about Indonesia?", false),
+            ("assistant", "Black and white [2].", false));
+        record = record with
+        {
+            Transcript =
+            [
+                record.Transcript[0],
+                record.Transcript[1] with { CitedChunkIds = [Guid.NewGuid()], CitedSourceUrls = ["https://www.plonkit.net/malaysia#b1"] },
+                record.Transcript[2],
+                record.Transcript[3]
+            ],
+            RetrievedSourceUrls = ["https://www.plonkit.net/malaysia#b1", "https://www.plonkit.net/indonesia#b1", "https://www.plonkit.net/malaysia#b2"]
+        };
+
+        var question = FeedbackExport.Parse(AiFeedbackFormatter.RenderJsonLines([record]).Split('\n')).Single();
+
+        question.CarriedSourceUrls.Should().Equal("https://www.plonkit.net/malaysia#b1");
+        question.SearchedSourceUrls.Should().Equal("https://www.plonkit.net/indonesia#b1", "https://www.plonkit.net/malaysia#b2");
+    }
+
+    [Fact]
+    public void FeedbackExport_CarriesNothing_AfterAnAnswerThatKeptNoCitedChunks()
+    {
+        // Answers from before excerpts were carried name no chunks; nothing was carried after them.
+        var record = Record(
+            ("user", "Malaysian bollards?", false),
+            ("assistant", "White with a red band [1].", false),
+            ("user", "what about Indonesia?", false),
+            ("assistant", "Black and white [2].", false));
+        record = record with
+        {
+            Transcript =
+            [
+                record.Transcript[0],
+                record.Transcript[1] with { CitedSourceUrls = ["https://www.plonkit.net/india#F2x8"] },
+                record.Transcript[2],
+                record.Transcript[3]
+            ]
+        };
+
+        var question = FeedbackExport.Parse(AiFeedbackFormatter.RenderJsonLines([record]).Split('\n')).Single();
+
+        question.CarriedSourceUrls.Should().BeEmpty();
+        question.SearchedSourceUrls.Should().Equal(record.RetrievedSourceUrls);
+    }
+
+    [Fact]
     public void FeedbackExport_GivesAFreshQuestionNoBranch() =>
         FeedbackExport.Parse(AiFeedbackFormatter.RenderJsonLines([Record(("user", "q", false), ("assistant", "a", false))]).Split('\n'))
             .Single().IsFollowUp.Should().BeFalse();

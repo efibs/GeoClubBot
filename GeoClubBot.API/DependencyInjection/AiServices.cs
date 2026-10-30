@@ -138,6 +138,9 @@ public static class AiServices
                 // Both attempts and the pause between them.
                 client.Timeout = attemptTimeout * 2 + TimeSpan.FromSeconds(1);
             })
+            // Two timed-out attempts end in Polly's own exception, which the reader — like every adapter
+            // calling HttpClient directly — does not catch: it reports "unreachable", and never throws.
+            .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "GbifResiliencePipeline",
                 builder => ResiliencePipelines.AddGbifResiliencePipeline(builder, attemptTimeout));

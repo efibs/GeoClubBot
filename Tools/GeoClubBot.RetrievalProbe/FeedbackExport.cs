@@ -18,15 +18,30 @@ namespace GeoClubBot.RetrievalProbe;
 /// The branch before the question, oldest first, as the bot replays it: empty for a fresh question. A
 /// follow-up is searched with it, as the bot searches it.
 /// </param>
+/// <param name="CarriedSourceUrls">
+/// The guides the rated answer was offered again because the answer before it had cited them: the
+/// first of <see cref="AiFeedbackRecord.RetrievedSourceUrls"/>, which no search found. Empty for a
+/// fresh question, and for exports or answers from before excerpts were carried.
+/// </param>
+/// <param name="Number">The record's line in the export, from one: how reports number it, and <c>--only</c> picks it.</param>
 public sealed record RatedQuestion(
     AiFeedbackRecord Record,
     string Question,
     bool QuestionHadScreenshot,
-    IReadOnlyList<ConversationTurnView> Context)
+    IReadOnlyList<ConversationTurnView> Context,
+    IReadOnlyList<string> CarriedSourceUrls,
+    int Number = 0)
 {
     public bool IsNegative => string.Equals(Record.Rating, "negative", StringComparison.OrdinalIgnoreCase);
 
     public bool IsFollowUp => Context.Count > 0;
+
+    /// <summary>
+    /// The guides retrieval offered the rated answer: <see cref="AiFeedbackRecord.RetrievedSourceUrls"/>
+    /// without the carried ones. A carried guide the search also found was listed once, among the
+    /// carried, so it cannot be told apart and is left out of the comparison either way.
+    /// </summary>
+    public IReadOnlyList<string> SearchedSourceUrls => [.. Record.RetrievedSourceUrls.Skip(CarriedSourceUrls.Count)];
 }
 
 /// <summary>
@@ -91,10 +106,30 @@ public static class FeedbackExport
                     .ToList();
 
                 questions.Add(new RatedQuestion(
-                    record, transcript[asked].Content, transcript[asked].ImageUrls.Count > 0, context));
+                    record, transcript[asked].Content, transcript[asked].ImageUrls.Count > 0, context,
+                    CarriedSourceUrls(record, asked > 0 ? transcript[asked - 1] : null), lineNumber));
             }
         }
 
         return questions;
+    }
+
+    /// <summary>
+    /// The guides offered first because <paramref name="previous"/>, the answer the question replied to,
+    /// cited them: the opening run of the offered guides that it cited. Only when it kept the chunks it
+    /// cited, since an answer from before then had nothing carried after it.
+    /// </summary>
+    private static IReadOnlyList<string> CarriedSourceUrls(AiFeedbackRecord record, AiFeedbackTurnRecord? previous)
+    {
+        if (previous is null
+            || !string.Equals(previous.Role, "assistant", StringComparison.OrdinalIgnoreCase)
+            || previous.CitedChunkIds is not { Count: > 0 }
+            || previous.CitedSourceUrls is not { Count: > 0 } cited)
+        {
+            return [];
+        }
+
+        var citedThen = cited.ToHashSet(StringComparer.Ordinal);
+        return [.. record.RetrievedSourceUrls.TakeWhile(citedThen.Contains)];
     }
 }

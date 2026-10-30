@@ -162,7 +162,8 @@ public sealed record KnowledgeHit(
     /// <see cref="ImageUrl"/>: best-ranked copy first, none twice, never <see cref="ImageUrl"/> itself.
     /// One Google Slides caption sits beside every picture of its slide, up to eight of them, and
     /// collapsing the copies once kept only the first: 72 % of slide pictures could never be offered.
-    /// Empty unless <see cref="ImageUrl"/> is set.
+    /// Only copies from the same link and section bring theirs, since each is shown under this hit's
+    /// title and link. Empty unless <see cref="ImageUrl"/> is set.
     /// </summary>
     public IReadOnlyList<string> ExtraImageUrls { get; init; } = [];
 

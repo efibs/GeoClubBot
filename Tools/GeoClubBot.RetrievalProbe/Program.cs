@@ -17,7 +17,7 @@ if (arguments is null)
     return 1;
 }
 
-if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity"))
+if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity" or "answer"))
 {
     Console.Error.WriteLine($"Unknown command '{arguments.Command}'.");
     ProbeArguments.PrintUsage();
@@ -67,6 +67,7 @@ try
         "replay" => ReplayCommand.RunAsync(context),
         "compare" => CompareCommand.RunAsync(context),
         "grep" => GrepCommand.RunAsync(context),
+        "answer" => AnswerCommand.RunAsync(context),
         _ => SimilarityCommand.RunAsync(context)
     }).ConfigureAwait(false);
 }

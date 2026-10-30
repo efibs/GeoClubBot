@@ -18,6 +18,11 @@ namespace UseCases.UseCases.AI.Feedback;
 /// </param>
 /// <param name="CitedChunkIds">On an answer, the chunks behind the excerpts it cited, in the order it numbered them.</param>
 /// <param name="ToolCalls">On an answer, the tool calls the model made on the way; absent when it made none.</param>
+/// <param name="CitedSourceUrls">
+/// On an answer, the guides it cited. The answer after it was offered those excerpts again first, so its
+/// <see cref="AiFeedbackRecord.RetrievedSourceUrls"/> open with these guides although no search found
+/// them; a replay has to set them apart to compare what retrieval offered then and now.
+/// </param>
 public sealed record AiFeedbackTurnRecord(
     int Ordinal,
     string Role,
@@ -28,7 +33,8 @@ public sealed record AiFeedbackTurnRecord(
     DateTimeOffset CreatedAtUtc,
     IReadOnlyList<Guid>? OfferedChunkIds = null,
     IReadOnlyList<Guid>? CitedChunkIds = null,
-    IReadOnlyList<AiToolCallSummary>? ToolCalls = null);
+    IReadOnlyList<AiToolCallSummary>? ToolCalls = null,
+    IReadOnlyList<string>? CitedSourceUrls = null);
 
 /// <summary>
 /// One rated conversation, flattened for export.
@@ -36,7 +42,9 @@ public sealed record AiFeedbackTurnRecord(
 /// <param name="RetrievedSourceUrls">
 /// Every guide offered to the model, best match first. This is what separates "the right guide was
 /// never retrieved" from "it was retrieved and the answer ignored it" — two failures that look
-/// identical in the transcript and need completely different fixes.
+/// identical in the transcript and need completely different fixes. On a follow-up the guides the
+/// previous answer cited come first (its turn's <see cref="AiFeedbackTurnRecord.CitedSourceUrls"/>),
+/// and what the answer's tool calls found last.
 /// </param>
 /// <param name="CitedSourceUrls">
 /// What the answer actually pointed at. Empty alongside a populated offer list is the uncited
@@ -130,7 +138,8 @@ public sealed class ExportAiFeedbackHandler(
         {
             OfferedChunkIds = turn.OfferedChunkIds,
             CitedChunkIds = turn.CitedChunkIds,
-            ToolCalls = toolCalls.Count > 0 ? toolCalls : null
+            ToolCalls = toolCalls.Count > 0 ? toolCalls : null,
+            CitedSourceUrls = turn.CitedSourceUrls
         };
     }
 

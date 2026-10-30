@@ -128,6 +128,30 @@ public sealed class RetrievalProbeIntegrationTests(QdrantFixture fixture) : IDis
     }
 
     [Fact]
+    public async Task Replay_LeavesTheGuidesCarriedFromTheAnswerBefore_OutOfTheComparison()
+    {
+        // The follow-up was offered the Uganda guide its parent cited, first and without a search. Read
+        // as retrieval, it showed up as "no longer offered", and the answer as one whose search changed.
+        var collection = await SeedAsync();
+        var export = WriteExport(
+            "and in Vietnam?",
+            offered:
+            [
+                "https://www.plonkit.net/uganda#cited-before", "https://www.plonkit.net/india#khasi",
+                "https://www.plonkit.net/vietnam#vietnam", "https://www.plonkit.net/uganda#forest"
+            ],
+            cited: [],
+            before: ("where can I find Khasi pines?", "Mainly Meghalaya [1]."),
+            citedBefore: ["https://www.plonkit.net/uganda#cited-before"]);
+
+        var report = await RunAsync(collection, "replay", export);
+
+        report.Should().Contain("1 of them carried from the answer before it rather than searched for.");
+        report.Should().NotContain("No longer offered");
+        report.Should().Contain("- Answers offered different guides now than when they were rated: 0 of 1");
+    }
+
+    [Fact]
     public async Task Replay_SearchesAFollowUpWithItsBranch_AndSaysSo()
     {
         var collection = await SeedAsync();
@@ -212,17 +236,23 @@ public sealed class RetrievalProbeIntegrationTests(QdrantFixture fixture) : IDis
     }
 
     /// <param name="before">An earlier question and its answer, making <paramref name="question"/> a follow-up.</param>
+    /// <param name="citedBefore">The guides that earlier answer cited, carried into the rated one.</param>
     private string WriteExport(
         string question,
         IReadOnlyList<string> offered,
         IReadOnlyList<string> cited,
-        (string Question, string Answer)? before = null)
+        (string Question, string Answer)? before = null,
+        IReadOnlyList<string>? citedBefore = null)
     {
         var turns = new List<AiFeedbackTurnRecord>();
         if (before is { } earlier)
         {
             turns.Add(new AiFeedbackTurnRecord(turns.Count, "user", 42, earlier.Question, [], null, DateTimeOffset.UtcNow));
-            turns.Add(new AiFeedbackTurnRecord(turns.Count, "assistant", 1, earlier.Answer, [], "test/model", DateTimeOffset.UtcNow));
+            turns.Add(new AiFeedbackTurnRecord(turns.Count, "assistant", 1, earlier.Answer, [], "test/model", DateTimeOffset.UtcNow)
+            {
+                CitedChunkIds = citedBefore is null ? null : [Guid.NewGuid()],
+                CitedSourceUrls = citedBefore
+            });
         }
 
         turns.Add(new AiFeedbackTurnRecord(turns.Count, "user", 42, question, [], null, DateTimeOffset.UtcNow));

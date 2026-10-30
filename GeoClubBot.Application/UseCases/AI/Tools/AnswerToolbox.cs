@@ -27,11 +27,21 @@ public enum AiToolCallOutcome
     /// <summary>Its arguments could not be read, or named something that does not exist; the model was told why.</summary>
     InvalidArguments,
 
-    /// <summary>What it needed could not be reached, or the day's allowance could not cover it.</summary>
+    /// <summary>
+    /// What it needed could not be reached, the day's allowance could not cover it, or no more excerpts
+    /// could be numbered (<see cref="ExcerptLedger.MaxMarker"/>).
+    /// </summary>
     Unavailable,
 
     /// <summary>The round already ran as many calls as it may.</summary>
-    NotRun
+    NotRun,
+
+    /// <summary>
+    /// A search ran and offered something new, but none of it from the country it named, and none from a
+    /// guide filed under no country: the model was told so, and that if it needs that country, the
+    /// guides seem to have nothing more on it.
+    /// </summary>
+    OffTarget
 }
 
 /// <summary>One tool call an answer made, for the logs, the retrieval probe and the feedback archive.</summary>
@@ -84,6 +94,23 @@ public sealed record ToolRoundResult(
 /// Nothing here throws to the caller or spends the daily allowance: the answer's loop reserves the
 /// round's embedding before asking for it, and every failure becomes a short message the model is
 /// shown in place of the result, so it can still answer with what it has.
+///
+/// A search that comes back empty-handed says so in as many words. In the answer replay of 2026-10-29
+/// models kept searching for what the library lacks: every answer that took three rounds searched once
+/// a round, the third search of a Philippine rice question came back with Thai excerpts, and those
+/// answers grew to 25–29 excerpts and 7–8 requests without citing one excerpt the third round found. So
+/// a search that offered nothing new tells the model the guides seem not to cover more of it, and one
+/// that offered nothing from the country it was about — named as its country, or in its words — says
+/// so first, and that if it is that country the model needs, it should answer with what it has.
+///
+/// Only the search's own country counts, never the question's. A search giving none looks across
+/// countries on purpose: 6 of the replay's 37 searches gave none, and each was after several — every
+/// country with Gen 2, the Balkans beside Kosovo, Scots pine in Europe beside the Pacific Northwest —
+/// and the Scots pine one found the Spanish excerpt its answer cited. Judged by the question's one
+/// country, a comparison ("which other countries use the same bollards as Poland?") would be told that
+/// the excerpts answering it are off target. And an excerpt from a guide filed under no country, a
+/// multi-country guide of the library, may well cover the country searched, so with one among the new
+/// excerpts nothing is said.
 /// </summary>
 public sealed partial class AnswerToolbox(
     IEmbedder embedder,
@@ -302,8 +329,19 @@ public sealed partial class AnswerToolbox(
                 ? $"No guides are filed under '{search.Country}', so every country was searched."
                 : null;
 
+            // What the search is about: the country it names, else those its words name; none when it
+            // names none, since it then looks across countries on purpose.
+            IReadOnlyList<CountryMention> about = named.Count > 0 ? named : composed.Countries;
+            var aboutName = named.Count > 0 ? search.Country
+                : about.Count > 0 ? string.Join(" or ", about.Select(country => TitleCase(country.Name)))
+                : null;
+
             return new CallData.Found([.. hits], MaxSearchExcerpts, note,
-                hits.Count == 0 ? "Nothing in the guides matched this search." : null);
+                hits.Count == 0 ? "Nothing in the guides matched this search." : null)
+            {
+                Searched = new SearchedFor(
+                    [.. about.SelectMany(country => country.IndexNames).Distinct(StringComparer.OrdinalIgnoreCase)], aboutName)
+            };
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -378,6 +416,20 @@ public sealed partial class AnswerToolbox(
         }
     }
 
+    /// <summary>What a search that found nothing new is told, after saying so: stop looking, and say what is missing.</summary>
+    private const string NothingToSearchFor =
+        "The guides seem not to cover more of this than you have. Answer with what is there, and say plainly what they don't cover.";
+
+    /// <summary>What a search that found nothing from its country is told first: if that country is what it needs, stop looking.</summary>
+    private static string OffTargetNote(string country) =>
+        $"None of these new excerpts is from {country}. If it is {country} you need, the guides seem to have nothing more "
+        + "on it than you have: answer with what you have.\n\n";
+
+    /// <summary>What the model is told once no more excerpts can be numbered (<see cref="ExcerptLedger.IsFull"/>).</summary>
+    private static readonly string ExcerptsFull =
+        $"No more excerpts can be offered: the numbers up to [{ExcerptLedger.MaxMarker.ToString(CultureInfo.InvariantCulture)}] "
+        + "are all taken. Answer with the excerpts you have.";
+
     /// <summary>Offers what a call found, in call order, and says what the model is shown.</summary>
     private static (string Result, AiToolCallOutcome Outcome, int Offered) Offer(
         CallData data,
@@ -397,6 +449,9 @@ public sealed partial class AnswerToolbox(
                     }
 
                     var offered = 0;
+                    var full = false;
+                    var fromCountry = false;
+                    var unfiled = false;
                     foreach (var hit in found.Hits)
                     {
                         if (offered >= found.MaxNew)
@@ -404,11 +459,31 @@ public sealed partial class AnswerToolbox(
                             break;
                         }
 
+                        if (ledger.IsFull)
+                        {
+                            full = !ledger.Holds(hit);
+                            if (full)
+                            {
+                                break;
+                            }
+
+                            continue;
+                        }
+
                         if (ledger.Offer(hit) is { } excerpt)
                         {
                             text.AppendLine(excerpt).AppendLine();
                             offered++;
+                            fromCountry |= found.Searched?.IsFrom(hit) == true;
+                            unfiled |= string.IsNullOrWhiteSpace(hit.Country);
                         }
+                    }
+
+                    if (full)
+                    {
+                        // Said rather than passed off as nothing new: the guides did have more to say.
+                        text.Append(ExcerptsFull);
+                        return (text.ToString().Trim(), offered == 0 ? AiToolCallOutcome.Unavailable : AiToolCallOutcome.Answered, offered);
                     }
 
                     if (offered == 0)
@@ -417,7 +492,21 @@ public sealed partial class AnswerToolbox(
                                     ?? (call.Read is not null
                                         ? "Nothing more: everything near that excerpt has been offered already."
                                         : "Nothing new: everything this found is among the numbered excerpts already."));
+                        if (call.Search is not null)
+                        {
+                            text.Append(' ').Append(NothingToSearchFor);
+                        }
+
                         return (text.ToString().Trim(), AiToolCallOutcome.NothingNew, 0);
+                    }
+
+                    if (found.Searched is { Name: { } country } && !fromCountry && !unfiled)
+                    {
+                        // Said first, where a model reading the result cannot miss it; the excerpts are
+                        // still offered, for a look-alike worth ruling out. Said as a condition, not as a
+                        // verdict: a search can name a country to find others like it.
+                        text.Insert(0, OffTargetNote(country));
+                        return (text.ToString().Trim(), AiToolCallOutcome.OffTarget, offered);
                     }
 
                     return (text.ToString().Trim(), AiToolCallOutcome.Answered, offered);
@@ -437,10 +526,25 @@ public sealed partial class AnswerToolbox(
         /// <param name="MaxNew">Most of <paramref name="Hits"/> to offer.</param>
         /// <param name="Note">Said before the excerpts.</param>
         /// <param name="WhenEmpty">Said when nothing was found at all.</param>
-        public sealed record Found(IReadOnlyList<KnowledgeHit> Hits, int MaxNew, string? Note, string? WhenEmpty) : CallData;
+        public sealed record Found(IReadOnlyList<KnowledgeHit> Hits, int MaxNew, string? Note, string? WhenEmpty) : CallData
+        {
+            /// <summary>For a search, the country it was about; null for any other call.</summary>
+            public SearchedFor? Searched { get; init; }
+        }
 
         public sealed record Refused(string Message, AiToolCallOutcome Outcome) : CallData;
     }
+
+    /// <summary>A search's country, as the index files it and as the model is told of it.</summary>
+    /// <param name="IndexNames">Every spelling the index files it under; empty when the search was about no country.</param>
+    /// <param name="Name">How the model is told of it; null when the search was about none.</param>
+    private sealed record SearchedFor(IReadOnlyList<string> IndexNames, string? Name)
+    {
+        public bool IsFrom(KnowledgeHit hit) =>
+            hit.Country is { } country && IndexNames.Contains(country, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string TitleCase(string name) => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(name);
 
     [LoggerMessage(LogLevel.Information,
         "AI tool call (round {Round}) {Tool} {Arguments}: {Outcome}, {NewExcerpts} new excerpt(s), {Characters} characters, {Milliseconds} ms.")]

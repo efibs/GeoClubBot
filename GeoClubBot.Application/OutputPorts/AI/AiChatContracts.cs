@@ -211,4 +211,12 @@ public static class ChatErrorCodes
     /// model that should never have been asked. Raised by the use case, not by the client.
     /// </summary>
     public const string UnusableAnswer = "ai.unusable_answer";
+
+    /// <summary>
+    /// A completion arrived but is a tool call written out as text — <c>&lt;tool_call&gt;</c> markup or
+    /// a bare JSON call — rather than an answer or a real call. Unlike <see cref="UnusableAnswer"/> it
+    /// says nothing against the model: nemotron-3-ultra wrote one when told to answer after its tool
+    /// rounds, and answered the same question well once asked without tools. Raised by the use case.
+    /// </summary>
+    public const string ToolCallMarkup = "ai.tool_call_markup";
 }

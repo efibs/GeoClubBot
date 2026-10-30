@@ -95,9 +95,80 @@ public sealed class CarriedExcerptsTests
         combined.Carried.Should().Be(0);
     }
 
-    private static KnowledgeHit Text(string text) =>
-        new(Guid.NewGuid(), 0f, KnowledgeChunkKind.Text, text, "https://www.plonkit.net/mongolia#a", null,
-            "Mongolia", "mongolia", "Mongolia > Car metas", null, 0, "plonkit", "mongolia");
+    [Fact]
+    public void Combine_SaysWhichNumberTheReaderSawEachUnder_WhenTwoChunksOfOnePageSharedOne()
+    {
+        // The reader saw both chunks of the Doc section as [1], the picture as [2] and the tip as [3].
+        // Carried one number each, "show [2] bigger" pointed the model at a text chunk.
+        var chunkA = Text("Four straps near Khorgo.", "https://docs.google.com/document/d/mongolia");
+        var chunkB = Text("Three straps further east.", "https://docs.google.com/document/d/mongolia");
+        var picture = Picture("Tent map.");
+        var tip = Text("Open tents bridge the strap sections.", "https://www.plonkit.net/mongolia#t1");
+        IReadOnlyList<Guid> cited = [chunkA.Id, chunkB.Id, picture.Id, tip.Id];
+
+        var combined = CarriedExcerpts.Combine([chunkA, chunkB, picture, tip], [Text("Found now.", "https://x")], maxCarried: 6, cited);
+
+        combined.Carried.Should().Be(4);
+        combined.CarriedSourceNumbers.Should().Equal(1, 1, 2, 3);
+    }
+
+    [Fact]
+    public void Combine_NumbersTwoSectionsOfOnePage_AsTheReaderSawThem_OneEach()
+    {
+        // The reader sees a Google Doc's sections as lines of their own (CitationResolver.KeyOf), so a
+        // carried chunk from another section of the same Doc keeps a number of its own.
+        var chunkA = Text("Four straps near Khorgo.", "https://docs.google.com/document/d/mongolia", "Mongolia Gen 4 Car Meta > Four Straps");
+        var chunkB = Text("Three straps further east.", "https://docs.google.com/document/d/mongolia", "Mongolia Gen 4 Car Meta > Four Straps");
+        var chunkC = Text("The tent is open.", "https://docs.google.com/document/d/mongolia", "Mongolia Gen 4 Car Meta > Open Tent");
+        var picture = Picture("Tent map.");
+        IReadOnlyList<Guid> cited = [chunkA.Id, chunkB.Id, chunkC.Id, picture.Id];
+
+        var combined = CarriedExcerpts.Combine([chunkA, chunkB, chunkC, picture], [], maxCarried: 6, cited);
+
+        combined.CarriedSourceNumbers.Should().Equal(1, 1, 2, 3);
+    }
+
+    [Fact]
+    public void Combine_SaysNoNumbers_WhenTheReaderSawTheCarriedOnes()
+    {
+        var text = Text("Four straps near Khorgo.", "https://docs.google.com/document/d/mongolia");
+        var picture = Picture("Tent map.");
+
+        CarriedExcerpts.Combine([text, picture], [], maxCarried: 6, [text.Id, picture.Id])
+            .CarriedSourceNumbers.Should().BeNull("[1] and [2] already mean what the reader saw");
+    }
+
+    [Fact]
+    public void Combine_SaysNoNumbers_WhenACitedChunkDidNotComeBack()
+    {
+        // A guide re-indexed since, or a species range that never was in the index: every number after
+        // the missing one would be off by one.
+        var chunkA = Text("Four straps near Khorgo.", "https://docs.google.com/document/d/mongolia");
+        var chunkB = Text("Three straps further east.", "https://docs.google.com/document/d/mongolia");
+        var picture = Picture("Tent map.");
+
+        CarriedExcerpts.Combine([chunkA, chunkB, picture], [], maxCarried: 6, [chunkA.Id, Guid.NewGuid(), chunkB.Id, picture.Id])
+            .CarriedSourceNumbers.Should().BeNull();
+    }
+
+    [Fact]
+    public void Combine_NumbersOnlyTheCarriedExcerptsItKeeps()
+    {
+        var chunkA = Text("Four straps near Khorgo.", "https://docs.google.com/document/d/mongolia");
+        var chunkB = Text("Three straps further east.", "https://docs.google.com/document/d/mongolia");
+        var picture = Picture("Tent map.");
+
+        var combined = CarriedExcerpts.Combine([chunkA, chunkB, picture], [], maxCarried: 2, [chunkA.Id, chunkB.Id, picture.Id]);
+
+        combined.Hits.Should().Equal(chunkA, chunkB);
+        combined.CarriedSourceNumbers.Should().Equal(1, 1);
+    }
+
+    private static KnowledgeHit Text(string text) => Text(text, "https://www.plonkit.net/mongolia#a");
+
+    private static KnowledgeHit Text(string text, string sourceUrl, string section = "Mongolia > Car metas") =>
+        new(Guid.NewGuid(), 0f, KnowledgeChunkKind.Text, text, sourceUrl, null,
+            "Mongolia", "mongolia", section, null, 0, "plonkit", "mongolia");
 
     private static KnowledgeHit Picture(string text) =>
         new(Guid.NewGuid(), 0f, KnowledgeChunkKind.Image, text, "https://docs.google.com/document/d/mongolia", $"https://relay/{Guid.NewGuid():N}.png",

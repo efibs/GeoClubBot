@@ -512,9 +512,9 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
         const string caption = "India Poles > Slide 18: concrete poles with one crossbar.";
         await index.UpsertAsync(
         [
-            new KnowledgePoint(Chunk("s18-1", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/1.png"), Axis(0), Axis(5)),
-            new KnowledgePoint(Chunk("s18-2", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/2.png"), Axis(0), Axis(6)),
-            new KnowledgePoint(Chunk("s18-3", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/3.png"), Axis(0), Axis(7)),
+            new KnowledgePoint(Chunk("s18-1", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/1.png", anchor: "slide=id.p18"), Axis(0), Axis(5)),
+            new KnowledgePoint(Chunk("s18-2", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/2.png", anchor: "slide=id.p18"), Axis(0), Axis(6)),
+            new KnowledgePoint(Chunk("s18-3", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/3.png", anchor: "slide=id.p18"), Axis(0), Axis(7)),
             new KnowledgePoint(Chunk("other", KnowledgeChunkKind.Text, text: "Kerala poles are tall."), Between(0, 1))
         ], "run-1");
 
@@ -524,6 +524,26 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
         new[] { hits[0].ImageUrl! }.Concat(hits[0].ExtraImageUrls).Should()
             .BeEquivalentTo(["https://relay/1.png", "https://relay/2.png", "https://relay/3.png"]);
         hits[0].ChunkIds.Should().HaveCount(3, "each copy's id is kept, so the excerpt can be read back whole");
+    }
+
+    [Fact]
+    public async Task Search_NeverShowsAnotherGuidesPicture_AsAnExtraPictureOfAnExcerpt()
+    {
+        // Two decks each have a slide captioned only "Bollards". Folded into one excerpt, the Czech
+        // bollard was shown under the Polish deck's title and link.
+        var index = await CreateIndexAsync();
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(Chunk("pl-1", KnowledgeChunkKind.Image, text: "Bollards", imageUrl: "https://relay/pl.png",
+                sourceKey: "poland", anchor: "slide=id.p4"), Axis(0), Axis(5)),
+            new KnowledgePoint(Chunk("cz-1", KnowledgeChunkKind.Image, text: "Bollards", imageUrl: "https://relay/cz.png",
+                sourceKey: "czechia", anchor: "slide=id.p9"), Axis(0), Axis(6))
+        ], "run-1");
+
+        var hit = (await index.SearchAsync(new KnowledgeQuery { TextVector = Axis(0), Limit = 5 })).Single();
+
+        new[] { hit.ImageUrl! }.Concat(hit.ExtraImageUrls).Should().ContainSingle()
+            .Which.Should().Be(hit.SourceUrl.Contains("poland", StringComparison.Ordinal) ? "https://relay/pl.png" : "https://relay/cz.png");
     }
 
     [Fact]
@@ -555,8 +575,8 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
         // excerpt again, with every picture.
         var index = await CreateIndexAsync();
         const string caption = "Brazilian Poles Lite > Slide 7: Roraima, antenna common.";
-        var first = Chunk("s7-1", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/a.png");
-        var second = Chunk("s7-2", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/b.png");
+        var first = Chunk("s7-1", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/a.png", anchor: "slide=id.p7");
+        var second = Chunk("s7-2", KnowledgeChunkKind.Image, text: caption, imageUrl: "https://relay/b.png", anchor: "slide=id.p7");
         var text = Chunk("t", KnowledgeChunkKind.Text, text: "Gen 4 in Boa Vista.");
         await index.UpsertAsync(
         [
@@ -622,13 +642,15 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
         return index;
     }
 
+    /// <param name="anchor">The place in the guide its link leads to; its own key unless it shares one, as a slide's pictures do.</param>
     private static KnowledgeChunk Chunk(
         string localKey,
         KnowledgeChunkKind kind,
         string? text = null,
         string? imageUrl = null,
         string? country = null,
-        string sourceKey = "tunisia") =>
+        string sourceKey = "tunisia",
+        string? anchor = null) =>
         new()
         {
             SourceType = "plonkit",
@@ -636,7 +658,7 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
             LocalKey = localKey,
             Kind = kind,
             Text = text ?? localKey,
-            SourceUrl = $"https://www.plonkit.net/{sourceKey}#{localKey}",
+            SourceUrl = $"https://www.plonkit.net/{sourceKey}#{anchor ?? localKey}",
             ImageUrl = imageUrl,
             Country = country ?? "Tunisia",
             Title = "Tunisia",

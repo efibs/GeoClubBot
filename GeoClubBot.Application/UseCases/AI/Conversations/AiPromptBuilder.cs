@@ -36,6 +36,14 @@ public sealed record OfferedExcerpt(
 
     /// <summary>Every picture citing the excerpt can attach, its own first.</summary>
     public IReadOnlyList<string> ImageUrls => ImageUrl is null ? [] : [ImageUrl, .. ExtraImageUrls];
+
+    /// <summary>
+    /// What an attached picture is titled: the source's own title, or — for a picture without one, as
+    /// every PlonkIt picture is — the heading it is listed under beneath the answer. Its embeds read
+    /// "Guide image" in 101 places of the 2026-10-29 replay, beside a source list naming the same
+    /// picture "Brazil > Regional and state-specific clues".
+    /// </summary>
+    public string PictureTitle => string.IsNullOrWhiteSpace(Title) ? Label : Title;
 }
 
 /// <param name="Excerpts">Every excerpt offered, so a marker in the answer can be resolved to its source.</param>
@@ -100,6 +108,11 @@ public static class AiPromptBuilder
     /// like 99.9% of the license plates are fully blurred".</item>
     /// <item>The guides are a floor, not a ceiling: answers stopped at what one guide said ("Khasi pines
     /// are also found outside India") or declined a list the guides only partly cover.</item>
+    /// <item>What is not from the guides is marked where it stands. "Say which part is not from the
+    /// guides" was not enough: in the 2026-10-29 replay "In practice, Philippine roads typically have
+    /// solid white outer edge lines" (#35) and "darker soil … often overcast" (#30) read as the guides'
+    /// own, and the judge marked them as unsupported. A fixed lead-in is a rule a free model can
+    /// follow, and it costs four words.</item>
     /// </list>
     /// </summary>
     public const string SystemPrompt = """
@@ -130,8 +143,8 @@ public static class AiPromptBuilder
           asked, possum guards described; snow bollards asked, ordinary road bollards described), say
           so plainly instead of treating them as the same thing.
         - A question about one country stays in that country, with the clues that tell its regions
-          apart. Mention another country only briefly, as a look-alike to rule out. A guide's country
-          is where its excerpt applies, not necessarily what the user is asking about.
+          apart. Mention another country only when it helps rule out a look-alike, and briefly. A
+          guide's country is where its excerpt applies, not necessarily what the user is asking about.
         - A follow-up continues the earlier turns' topic and country unless it says otherwise ("How can
           I identify Sabah?" after a Malaysia question means within Malaysia).
         - When the user attaches a screenshot you can see it. Describe only what is visible, and say so
@@ -141,8 +154,9 @@ public static class AiPromptBuilder
           architecture, the Google car and its generation. Licence plates and faces are blurred in
           Street View, so plate letters are rarely usable.
         - Answer the whole question. When the guides cover only part of it, complete the answer from
-          your own knowledge and say which part is not from the guides. When they don't cover it at
-          all, say so in one short sentence, then answer. Call them "the guides", never "excerpts".
+          your own knowledge, each such claim in a sentence of its own that starts "Not from the
+          guides:". When they don't cover it at all, say so in one short sentence, then answer. Call
+          them "the guides", never "excerpts".
 
         Keep answers short and concrete.
         """;
@@ -156,12 +170,19 @@ public static class AiPromptBuilder
     /// offered again in the order it cited them. The model is told, because "that picture" or "source
     /// 3" in a follow-up means one of them, and nothing else in the prompt says which.
     /// </param>
+    /// <param name="carriedSourceNumbers">
+    /// The number the reader saw each carried excerpt under, when that is not simply its own
+    /// (<see cref="FollowUpExcerpts.CarriedSourceNumbers"/>). Each carried excerpt then says it, since
+    /// the user's "[2]" means the reader's [2], and the answer it was written under is replayed without
+    /// its numbers.
+    /// </param>
     public static AiPrompt Build(
         ConversationContext context,
         string question,
         IReadOnlyList<string> attachmentImageUrls,
         IReadOnlyList<KnowledgeHit> hits,
-        int carried = 0)
+        int carried = 0,
+        IReadOnlyList<int>? carriedSourceNumbers = null)
     {
         var messages = new List<AiChatMessage> { AiChatMessage.System(SystemPrompt) };
 
@@ -182,14 +203,19 @@ public static class AiPromptBuilder
                 : AiChatMessage.User(FormatUserTurn(turn), turn.ImageUrls));
         }
 
-        var (excerpts, offered) = FormatExcerpts(hits);
+        carried = Math.Clamp(carried, 0, hits.Count);
+        var sourceNumbers = carried > 0 && carriedSourceNumbers is { } numbers && numbers.Count >= carried
+            ? numbers
+            : null;
+
+        var (excerpts, offered) = FormatExcerpts(hits, sourceNumbers is null ? 0 : carried, sourceNumbers);
         var pictures = offered.Where(excerpt => excerpt.ImageUrl is not null).ToList();
 
         var prompt = new StringBuilder();
         if (excerpts.Length > 0)
         {
             prompt.AppendLine("Guide excerpts:");
-            if (DescribeCarried(Math.Min(carried, hits.Count), hits.Count) is { } note)
+            if (DescribeCarried(carried, hits.Count, sourceNumbers is not null) is { } note)
             {
                 prompt.AppendLine(note);
             }
@@ -251,7 +277,8 @@ public static class AiPromptBuilder
     /// distribution "I don't have the actual distribution image" while it cited one.
     /// </summary>
     /// <param name="offered">What the excerpt is offered as, to resolve a citation of it.</param>
-    public static string FormatExcerpt(KnowledgeHit hit, int marker, out OfferedExcerpt offered)
+    /// <param name="note">Said after the heading in brackets, and nowhere else: the reply names the excerpt by its heading alone.</param>
+    public static string FormatExcerpt(KnowledgeHit hit, int marker, out OfferedExcerpt offered, string? note = null)
     {
         ArgumentNullException.ThrowIfNull(hit);
 
@@ -287,7 +314,13 @@ public static class AiPromptBuilder
             builder.Append(") ");
         }
 
-        builder.AppendLine(heading);
+        builder.Append(heading);
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            builder.Append(" (").Append(note).Append(')');
+        }
+
+        builder.AppendLine();
         builder.AppendLine(hit.Text);
         builder.Append("(source: ").Append(hit.SourceUrl).Append(')');
 
@@ -309,8 +342,14 @@ public static class AiPromptBuilder
             && (url.Host.Equals("plonkit.net", StringComparison.OrdinalIgnoreCase)
                 || url.Host.EndsWith(".plonkit.net", StringComparison.OrdinalIgnoreCase)));
 
-    /// <summary>What the model is told of the excerpts carried from the previous answer, or null for none.</summary>
-    private static string? DescribeCarried(int carried, int total)
+    /// <summary>
+    /// What the model is told of the excerpts carried from the previous answer, or null for none. When
+    /// the reader saw them under other numbers, each says which (<see cref="SourceNote"/>); the user's
+    /// "[2]" or "source 2" means the one marked "the user saw this as 2", which is still cited by its
+    /// number here. The reader's number is written without brackets, so a model copying it out cannot
+    /// cite the wrong excerpt by it, and without "source", which each excerpt's link line already says.
+    /// </summary>
+    private static string? DescribeCarried(int carried, int total, bool numbered)
     {
         if (carried <= 0)
         {
@@ -321,38 +360,67 @@ public static class AiPromptBuilder
             ? "[1] is the excerpt your previous answer cited"
             : $"[1] to [{carried.ToString(CultureInfo.InvariantCulture)}] are the excerpts your previous answer cited, in the order it cited them";
 
-        return carried < total ? $"({which}; the rest were found for this question.)" : $"({which}.)";
+        var described = carried < total ? $"{which}; the rest were found for this question." : $"{which}.";
+
+        if (numbered)
+        {
+            described += " The user saw them under other numbers, given on each as \"the user saw this as N\": a \"[N]\" or "
+                         + "\"source N\" in the question means that excerpt, which you still cite by its number here.";
+        }
+
+        return $"({described})";
     }
+
+    /// <summary>The note on a carried excerpt naming the number the reader saw it under.</summary>
+    private static string SourceNote(int number) =>
+        $"the user saw this as {number.ToString(CultureInfo.InvariantCulture)}";
+
+    private static string? FirstNonEmpty(params string[] candidates) =>
+        candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));
 
     private static string FormatUserTurn(ConversationTurnView turn) =>
         $"<@{turn.AuthorDiscordUserId.ToString(CultureInfo.InvariantCulture)}>: {turn.Content}";
 
-    /// <summary>Renders retrieved chunks as numbered excerpts, one <see cref="FormatExcerpt"/> each.</summary>
+    /// <summary>
+    /// Renders retrieved chunks as numbered excerpts, one <see cref="FormatExcerpt"/> each, the first
+    /// <paramref name="numbered"/> marked with the number the reader saw them under.
+    /// </summary>
     private static (string Excerpts, IReadOnlyList<OfferedExcerpt> Offered) FormatExcerpts(
-        IReadOnlyList<KnowledgeHit> hits)
+        IReadOnlyList<KnowledgeHit> hits,
+        int numbered,
+        IReadOnlyList<int>? sourceNumbers)
     {
         var builder = new StringBuilder();
         var offered = new List<OfferedExcerpt>();
 
         for (var index = 0; index < hits.Count; index++)
         {
-            builder.AppendLine(FormatExcerpt(hits[index], FirstMarker + index, out var excerpt)).AppendLine();
+            var note = index < numbered && sourceNumbers is not null ? SourceNote(sourceNumbers[index]) : null;
+            builder.AppendLine(FormatExcerpt(hits[index], FirstMarker + index, out var excerpt, note)).AppendLine();
             offered.Add(excerpt);
         }
 
         return (builder.ToString().TrimEnd(), offered);
     }
 
+    /// <summary>
+    /// The excerpt's heading: its section path as <see cref="SectionLabel"/> cleans it, else its title,
+    /// else its link, led by its country when the path does not start with it. A country of three
+    /// letters or fewer is an abbreviation ("usa", "uk", "uae") and is written in capitals: "Usa · A
+    /// Unique USA" read as a typo.
+    /// </summary>
     private static string BuildHeading(KnowledgeHit hit)
     {
-        var title = hit.SectionPath ?? hit.Title ?? hit.SourceUrl;
+        var title = FirstNonEmpty(SectionLabel.Clean(hit.SectionPath), SectionLabel.Clean(hit.Title)) ?? hit.SourceUrl;
 
         if (string.IsNullOrWhiteSpace(hit.Country))
         {
             return title;
         }
 
-        var country = CultureInfo.InvariantCulture.TextInfo.ToTitleCase(hit.Country);
+        var country = hit.Country.Trim().Length <= 3
+            ? hit.Country.Trim().ToUpperInvariant()
+            : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(hit.Country);
 
         // Section paths are usually rooted at the country already, and "Eswatini · Eswatini > Spotlight"
         // reads as a mistake rather than as emphasis.

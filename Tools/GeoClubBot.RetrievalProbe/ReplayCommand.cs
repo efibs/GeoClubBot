@@ -61,11 +61,15 @@ public static class ReplayCommand
             var textRanks = Ranks(lists, QdrantKnowledgeIndex.QuestionTextSearch);
             var pixelRanks = Ranks(lists, QdrantKnowledgeIndex.QuestionPixelSearch);
 
+            // Retrieval is compared with retrieval: the guides carried from the previous answer were
+            // offered without any search finding them, and would read as dropped by today's search.
+            var carried = rated.CarriedSourceUrls.ToHashSet(StringComparer.Ordinal);
             var offeredThen = record.RetrievedSourceUrls.ToHashSet(StringComparer.Ordinal);
+            var searchedThen = rated.SearchedSourceUrls.ToHashSet(StringComparer.Ordinal);
             var cited = record.CitedSourceUrls.ToHashSet(StringComparer.Ordinal);
-            var offeredNow = offered.Select(hit => hit.SourceUrl).ToHashSet(StringComparer.Ordinal);
-            var gone = offeredThen.Except(offeredNow).ToList();
-            var added = offeredNow.Except(offeredThen).Count();
+            var offeredNow = offered.Select(hit => hit.SourceUrl).Where(url => !carried.Contains(url)).ToHashSet(StringComparer.Ordinal);
+            var gone = searchedThen.Except(offeredNow).ToList();
+            var added = offeredNow.Except(searchedThen).Count();
 
             report.Line();
             report.Line($"## {(rated.IsNegative ? "👎" : "👍")} {HitDescriptions.Cell(rated.Question, 200)}");
@@ -77,7 +81,10 @@ public static class ReplayCommand
 
             report.Line();
             report.Line($"_Rated answer: depth {record.AnswerDepth}, {record.ModelId ?? "model unknown"}, "
-                        + $"cited {cited.Count} of the {offeredThen.Count} guide(s) it was offered._");
+                        + $"cited {cited.Count} of the {offeredThen.Count} guide(s) it was offered"
+                        + (carried.Count > 0
+                            ? $", {carried.Count} of them carried from the answer before it rather than searched for._"
+                            : "._"));
 
             if (rated.QuestionHadScreenshot)
             {
@@ -104,7 +111,7 @@ public static class ReplayCommand
 
             report.Line(gone.Count == 0 && added == 0
                 ? "_Offered now: the same guides as when it was rated._"
-                : $"_Offered now: {offeredThen.Count - gone.Count} of the guides offered then, and {added} new._");
+                : $"_Offered now: {searchedThen.Count - gone.Count} of the guides offered then, and {added} new._");
 
             report.Line();
             report.Line("| # | text | pixels | excerpt | guide |");

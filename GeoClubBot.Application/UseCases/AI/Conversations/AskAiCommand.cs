@@ -28,8 +28,8 @@ public sealed record AskAiCommand(
 /// <param name="Marker">The number the prose cites this picture by, shown on its embed so the two line up.</param>
 /// <param name="Position">
 /// Which of its excerpt's attached pictures this is, from one. An excerpt can bring several — one slide
-/// caption sits beside each picture of its slide — and every one keeps the excerpt's number, so the
-/// embeds tell them apart as "(1/3)", "(2/3)".
+/// caption sits beside each picture of its slide — and every one keeps the excerpt's number. Discord
+/// shows pictures sharing a link as one grid under one title, so this only tells their files apart.
 /// </param>
 /// <param name="Count">How many of its excerpt's pictures are attached.</param>
 public sealed record AiAnswerImage(
@@ -101,8 +101,8 @@ public sealed partial class AskAiHandler(
     : IRequestHandler<AskAiCommand, Result<AiAnswer>>
 {
     /// <summary>
-    /// Guides credited when the model cited none. These are the best matches rather than anything the
-    /// answer pointed at, so a long list would overstate them.
+    /// Guides credited when the model cited none. These are the best matches found for the question
+    /// rather than anything the answer pointed at, so a long list would overstate them.
     /// </summary>
     private const int MaxUncitedSourcesInReply = 3;
 
@@ -162,12 +162,13 @@ public sealed partial class AskAiHandler(
             return hits.Error;
         }
 
-        var offered = CarriedExcerpts.Combine(await carriedRead.ConfigureAwait(false), hits.Value, maxCarried);
+        var offered = CarriedExcerpts.Combine(
+            await carriedRead.ConfigureAwait(false), hits.Value, maxCarried, context.PreviousCitedChunkIds);
 
         var completion = await answerLoop.AnswerAsync(
                 new AnswerRequest(
                     context, request.Content, request.AttachmentImageUrls, offered.Hits,
-                    DateOnly.FromDateTime(now.UtcDateTime), startedAt, offered.Carried),
+                    DateOnly.FromDateTime(now.UtcDateTime), startedAt, offered.Carried, offered.CarriedSourceNumbers),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -194,11 +195,19 @@ public sealed partial class AskAiHandler(
         // Listed without numbers, because there is no marker in the prose for them to anchor, and
         // labelled as the closest matches rather than as sources: what the model did with the
         // excerpts is unknown, and claiming it drew on them would be inventing a citation rather than
-        // supplying a missing one. Chunks of one document share a link, which is credited once.
+        // supplying a missing one. Chunks of one section of a document are one line, as when cited
+        // (CitationResolver.SectionKeyOf).
+        //
+        // On a follow-up the excerpts the previous answer cited lead the list, but they were not found
+        // for this question: credited first, an answer about Indonesia listed the Malaysia guides the
+        // answer before it had cited as its closest matches. They are credited only when nothing was
+        // found for this question at all.
         if (sources.Count == 0)
         {
-            sources = [.. outcome.Excerpts
-                .DistinctBy(excerpt => excerpt.SourceUrl, StringComparer.Ordinal)
+            var found = outcome.Excerpts.Where(excerpt => excerpt.Marker > offered.Carried).ToList();
+
+            sources = [.. (found.Count > 0 ? found : outcome.Excerpts)
+                .DistinctBy(CitationResolver.SectionKeyOf, StringComparer.Ordinal)
                 .Take(MaxUncitedSourcesInReply)
                 .Select(excerpt => new AiAnswerSource(Marker: null, excerpt.Label, excerpt.SourceUrl))];
         }
@@ -207,8 +216,9 @@ public sealed partial class AskAiHandler(
 
         return new AiAnswer(
             citations.Text,
+            // Titled as listed beneath the answer when the source has no title of its own.
             [.. citations.Images.Select(image => new AiAnswerImage(
-                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.Title, image.Position, image.Count))],
+                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count))],
             sources,
             outcome.Response.ModelUsed,
             ResolveConversationId(context, request),

@@ -14,9 +14,15 @@ namespace UseCases.UseCases.AI.Tools;
 /// one source, which the reader then sees listed twice. So a chunk already offered — the same point,
 /// or the same text from another copy of a guide — is skipped. A picture is new beside text it shares,
 /// as in the index's fusion: it brings something the model can attach.
+///
+/// Numbering stops at <see cref="MaxMarker"/>: citations are read as one or two digits, so an excerpt
+/// offered as [100] could be cited but never resolved — no link, no picture.
 /// </summary>
 public sealed class ExcerptLedger
 {
+    /// <summary>The highest number an excerpt is offered under: the highest the citations are read up to.</summary>
+    public const int MaxMarker = CitationResolver.MaxCitationNumber;
+
     private readonly List<KnowledgeHit> _hits = [];
     private readonly List<OfferedExcerpt> _offered = [];
     private readonly HashSet<Guid> _ids = [];
@@ -48,6 +54,9 @@ public sealed class ExcerptLedger
 
     public int Count => _hits.Count;
 
+    /// <summary>Whether every number up to <see cref="MaxMarker"/> is taken, so nothing more can be offered.</summary>
+    public bool IsFull => _hits.Count >= MaxMarker;
+
     /// <summary>The chunk offered as <c>[marker]</c>, or null when no excerpt has that number.</summary>
     public KnowledgeHit? HitAt(int marker) => marker >= 1 && marker <= _hits.Count ? _hits[marker - 1] : null;
 
@@ -61,13 +70,13 @@ public sealed class ExcerptLedger
 
     /// <summary>
     /// Offers a chunk under the next marker and returns it as the model is shown it, or null when it
-    /// was offered already.
+    /// was offered already, or when the numbers have run out (<see cref="IsFull"/>).
     /// </summary>
     public string? Offer(KnowledgeHit hit)
     {
         ArgumentNullException.ThrowIfNull(hit);
 
-        return Holds(hit) ? null : Add(hit);
+        return Holds(hit) || IsFull ? null : Add(hit);
     }
 
     private string Add(KnowledgeHit hit)

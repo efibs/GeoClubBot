@@ -168,6 +168,51 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
+    public async Task AskAi_CreditsEachSectionOfOneDocument_AsALineOfItsOwn_WhenTheModelCitesNothing()
+    {
+        // Credited as they would have been cited: one line per section, not one per link.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Front plates are required in most states.");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                Section("Most states require a front plate.", "A Unique USA > Front Plate Requirements"),
+                Section("Ohio dropped its front plate.", "A Unique USA > Front Plate Requirements"),
+                Section("Counties are listed by state.", "A Unique USA > Counties (33) ->")
+            ]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "which states don't require front plates?"));
+
+        result.Value.Sources.Select(source => (source.Marker, source.Label)).Should().Equal(
+            (null, "USA · A Unique USA > Front Plate Requirements"),
+            (null, "USA · A Unique USA > Counties (33)"));
+
+        static KnowledgeHit Section(string text, string section) =>
+            new(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Text, text, "https://docs.google.com/document/d/usa/edit", ImageUrl: null,
+                "A Unique USA", "usa", section, null, 0);
+    }
+
+    [Fact]
+    public async Task AskAi_TitlesAPictureWithoutATitle_AsTheSourceListNamesIt()
+    {
+        // Every PlonkIt picture comes without a title; its embed read "Guide image" (2026-10-29).
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Rounded tiles are common in central India [1].");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new KnowledgeHit(Guid.NewGuid(), 0.8f, KnowledgeChunkKind.Image, "Rounded roof tiles are common in central India.",
+                    "https://www.plonkit.net/india#cIYN", "https://relay/tiles.png",
+                    null, "india", "India > Regional and state-specific clues", "Plonk It team", 0)
+            ]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where are round roof tiles in India?"));
+
+        result.Value.Images.Should().ContainSingle().Which.Title.Should().Be("India > Regional and state-specific clues");
+        result.Value.Sources.Should().ContainSingle().Which.Label.Should().Be("India > Regional and state-specific clues");
+    }
+
+    [Fact]
     public async Task AskAi_KeepsTheModelsOwnCitations_WhenItDoesCite()
     {
         using var host = CreateHost();
@@ -697,6 +742,93 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
         await host.SendAsync(Ask(NewSnowflake(), botMessageId, "and Sarawak?"));
 
         await index.DidNotReceive().ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAi_TellsTheModelWhichNumberTheReaderSawEachCarriedExcerptUnder()
+    {
+        // Both chunks of the Doc were listed to the reader as [1] and the map as [2]; carried, the map is
+        // [3]. "Can you show [2] bigger?" has to lead the model to the map.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        var chunkA = Hit("Four straps near Khorgo.", "https://docs.google.com/document/d/mongolia");
+        var chunkB = Hit("Three straps further east.", "https://docs.google.com/document/d/mongolia");
+        var map = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Image, "Strap map.",
+            "https://www.plonkit.net/mongolia#m", "https://relay/map.png", "Mongolia", "mongolia", "Mongolia > Car metas", null, 0);
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([chunkA, chunkB, map], []);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>()).Returns([chunkA, chunkB, map]);
+        var chat = ArrangeCompletions(host,
+            Success("Four straps [1], three further east [2], see the map [3].", "test/model"),
+            Success("Here it is [3].", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "where are the strap cars?"));
+        first.Value.Text.Should().Be("Four straps [1], three further east [1], see the map [2].");
+        var botMessageId = await RecordAsync(host, first.Value, null, "where are the strap cars?", userId: 55, messageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "can you show [2] bigger?"));
+
+        var prompt = chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Last()
+            .Messages[^1].ToPlainText();
+        prompt.Should().Contain("[3] (picture, usually with a distribution map) Mongolia > Car metas (the user saw this as 2)");
+        followUp.Value.Images.Should().ContainSingle().Which.ImageUrl.Should().Be("https://relay/map.png");
+    }
+
+    [Fact]
+    public async Task AskAi_CreditsWhatAFollowUpFound_NotWhatThePreviousAnswerCited_WhenItCitesNothing()
+    {
+        // The carried excerpts lead a follow-up's list. Credited as its closest matches, an uncited
+        // answer about Indonesia listed the Malaysia guides the answer before it had cited.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        var malaysia = Hit("Malaysian bollards are white with a red band.", "https://www.plonkit.net/malaysia#b1");
+        var indonesia = Hit("Indonesian bollards are black and white.", "https://www.plonkit.net/indonesia#b1");
+        var indonesiaToo = Hit("Indonesian kilometre markers are yellow.", "https://www.plonkit.net/indonesia#k2");
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([malaysia], [indonesia, indonesiaToo]);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>()).Returns([malaysia with { Score = 0f }]);
+        ArrangeCompletions(host,
+            Success("White with a red band [1].", "test/model"),
+            Success("Black and white, mostly.", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "Malaysian bollards?"));
+        var botMessageId = await RecordAsync(host, first.Value, null, "Malaysian bollards?", userId: 55, messageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "what about Indonesia?"));
+
+        followUp.Value.Sources.Should().OnlyContain(source => source.Marker == null);
+        followUp.Value.Sources.Select(source => source.Url).Should().Equal(
+            ["https://www.plonkit.net/indonesia#b1", "https://www.plonkit.net/indonesia#k2"],
+            "the closest matches are what was found for this question, not the guides the previous answer cited");
+        followUp.Value.RetrievedSourceUrls.Should().StartWith("https://www.plonkit.net/malaysia#b1",
+            "the carried excerpt was still offered first");
+    }
+
+    [Fact]
+    public async Task AskAi_CreditsTheCarriedGuides_WhenAnUncitedFollowUpFoundNothingElse()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        var malaysia = Hit("Malaysian bollards are white with a red band.", "https://www.plonkit.net/malaysia#b1");
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([malaysia], []);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>()).Returns([malaysia with { Score = 0f }]);
+        ArrangeCompletions(host,
+            Success("White with a red band [1].", "test/model"),
+            Success("As before, white with a red band.", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "Malaysian bollards?"));
+        var botMessageId = await RecordAsync(host, first.Value, null, "Malaysian bollards?", userId: 55, messageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "are you sure?"));
+
+        followUp.Value.Sources.Select(source => source.Url).Should().Equal("https://www.plonkit.net/malaysia#b1");
     }
 
     [Fact]

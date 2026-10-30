@@ -70,9 +70,69 @@ public sealed class AiToolsConfigurationTests
         AnswerTools.Definitions(speciesRange: true).Select(tool => tool.Name)
             .Should().Equal(AnswerTools.SearchGuides, AnswerTools.ReadGuide, AnswerTools.SpeciesRange);
         AnswerTools.Definitions(speciesRange: false).Select(tool => tool.Name).Should().NotContain(AnswerTools.SpeciesRange);
-        AnswerTools.SystemPromptFor(speciesRange: false).Should().NotContain(AnswerTools.SpeciesRange,
-            "a model told of a tool it cannot call tries to call it in prose");
-        AnswerTools.SystemPromptFor(speciesRange: true).Should().Contain(AnswerTools.SpeciesRange);
+
+        // So the paragraph never tells of a tool that is not declared: a model told of a tool it cannot
+        // call tries to call it in prose.
+        AnswerTools.SystemPrompt.Should().NotContainAny(AnswerTools.Names);
+    }
+
+    [Fact]
+    public void ToolsParagraph_HasTheModelSearchBeforeFallingBackOnItsOwnKnowledge()
+    {
+        // The main prompt says to complete an answer from the model's own knowledge when the guides fall
+        // short. Unordered, "snow bollards" got "the guides don't cover this" and no search for "snow poles".
+        Paragraph().Should().Contain("Search before you say the guides don't cover something or answer from your own knowledge.");
+    }
+
+    [Fact]
+    public void ToolsParagraph_NamesAPartialAnswerAsTheReasonToCall()
+    {
+        // 2026-10-29: tools in 15 of 49 answers, species_range never, read_guide not for "the second guide
+        // definitely mentions other plants"; "Don't call a tool when the excerpts already answer the
+        // question" let excerpts answering part of it count as enough. And every three-round answer made
+        // one search a round.
+        Paragraph().Should().Contain("Call tools when the excerpts answer only part of the question")
+            .And.Contain("You can make several calls at once: search for every place or term you need in one round.")
+            .And.Contain("Don't call a tool when the excerpts fully answer the question.")
+            .And.NotContain("already answer");
+    }
+
+    [Fact]
+    public void ToolsParagraph_HasTheModelSearchTheAskedThingFirst_WhenTheExcerptsDescribeAnother()
+    {
+        // "I asked about snake traps. Not possum guards" was answered from the possum-guard excerpt, no
+        // search made. The main prompt says the two are not the same; the tools say to look first.
+        Paragraph().Should().Contain(
+            "search the user's own words first; only if nothing turns up, say that the guides cover the one, not the other.");
+    }
+
+    [Fact]
+    public void ToolsParagraph_StaysShort_LeavingEachToolsConditionsToItsDescription()
+    {
+        // Free models follow short prompts better, and a condition said in the paragraph and again in the
+        // tool's description is sent twice with every question. It was 116 words before the 2026-10-29
+        // replay, and grew to 185 by repeating the descriptions.
+        Paragraph().Split(' ').Should().HaveCountLessThan(110);
+
+        var descriptions = string.Join(' ', AnswerTools.Definitions(speciesRange: true).Select(tool => tool.Description));
+        descriptions.Should().Contain("it asks for every, all or exactly which places and they name only some")
+            .And.Contain("a list of regions or plants cut short, or the user says the guide says more")
+            .And.Contain("guides rarely list every country, so excerpts naming some are a reason to call it");
+        foreach (var condition in new[] { "every, all or exactly which places", "cut short", "rarely list every country" })
+        {
+            Paragraph().Should().NotContain(condition, "each tool's conditions are said once, in its description");
+        }
+    }
+
+    /// <summary>The tools paragraph as one line, so a phrase can be found across its line breaks.</summary>
+    private static string Paragraph() =>
+        string.Join(' ', AnswerTools.SystemPrompt.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    [Fact]
+    public void Defaults_StopAfterTwoToolRounds()
+    {
+        // No third round contributed a cited excerpt in the 2026-10-29 replay (11 answers took one).
+        new AiToolsConfiguration().MaxToolRounds.Should().Be(2);
     }
 
     [Fact]

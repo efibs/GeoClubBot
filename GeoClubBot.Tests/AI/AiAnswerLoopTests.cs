@@ -222,6 +222,213 @@ public sealed class AiAnswerLoopTests
         var last = fixture.Chat.Requests[1];
         last.ToolChoice.Should().Be(AiToolChoice.None);
         last.Tools.Should().NotBeNullOrEmpty("a conversation holding tool calls keeps its tools declared");
+
+        // Told in words too, after every result: the parameter alone left nemotron-3-ultra writing calls as text.
+        last.Messages[^1].Role.Should().Be(AiChatRole.User);
+        last.Messages[^1].ToPlainText().Should().Be(AnswerTools.AnswerNow);
+        last.Messages[^2].Role.Should().Be(AiChatRole.Tool);
+        last.Messages[^3].ToolCalls.Should().ContainSingle().Which.Id.Should().Be("call-1");
+    }
+
+    [Fact]
+    public async Task HasTheModelAnswer_AfterTwoRounds_ByDefault()
+    {
+        // No third round contributed a cited excerpt in the 2026-10-29 replay; the second did in five answers.
+        var fixture = new Fixture();
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "poles"}""")))
+            .Then(ToolCalls(("call-2", AnswerTools.SearchGuides, """{"query": "pole supports"}""")))
+            .Then(Answer("Done [1]."));
+
+        (await fixture.AskAsync()).IsSuccess.Should().BeTrue();
+
+        fixture.Chat.Requests.Select(request => request.ToolChoice)
+            .Should().Equal(AiToolChoice.Auto, AiToolChoice.Auto, AiToolChoice.None);
+        fixture.Chat.Requests[1].Messages[^1].Role.Should().Be(AiChatRole.Tool, "a call that may still search is not told to answer");
+    }
+
+    /// <summary>What nemotron-3-ultra answered #17 of the 2026-10-29 replay with, told to answer after three rounds.</summary>
+    private const string RecordedMarkup =
+        "<tool_call>\n<function=search_guides>\n<parameter=country>\nPhilippines\n</parameter>\n<parameter=query>\n"
+        + "rice paddy Philippines agriculture\n</parameter>\n</function>\n</tool_call>";
+
+    [Fact]
+    public async Task AsksOnceMoreWithoutTools_WhenTheModelWritesItsCallAsText_AfterItsLastRound()
+    {
+        // #17 of the 2026-10-29 answer replay, as recorded: three rounds of one search each — the third
+        // finding only Thai excerpts — then, told to answer, nemotron-3-ultra wrote a fourth search as
+        // text, which was posted as the answer under "This answer cites no guide". Without tools the
+        // same model answered it.
+        var fixture = new Fixture
+        {
+            Hits =
+            [
+                Hit("Rice terraces line the Cordillera.", "https://www.plonkit.net/philippines#lS7l", "philippines", "lS7l", "Philippines > Region-specific clues", "philippines"),
+                Hit("Northern Luzon has wooden houses.", "https://www.plonkit.net/philippines#9hUv", "philippines", "9hUv", "Philippines > Region-specific clues", "philippines")
+            ]
+        };
+        fixture.Tools.MaxToolRounds = 3;
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+                [Hit("Grain is dried on the road in Luzon.", "https://www.plonkit.net/philippines#2ctB", "philippines", "2ctB", "Philippines > Region-specific clues", "philippines")],
+                [Hit("Central Luzon is flat and green.", "https://www.plonkit.net/philippines#GaHP", "philippines", "GaHP", "Philippines > Region-specific clues", "philippines")],
+                [Hit("Thai rice fields are flooded in the wet season.", "https://www.plonkit.net/thailand#ZxIl", "thailand", "ZxIl", "Thailand > Vegetation", "thailand")]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"country":"Philippines","query":"rice distribution Philippines"}""")))
+            .Then(ToolCalls(("call-2", AnswerTools.SearchGuides, """{"country":"Philippines","query":"rice paddies Philippines cultivation"}""")))
+            .Then(ToolCalls(("call-3", AnswerTools.SearchGuides, """{"query":"rice cultivation Philippines regions","country":"Philippines"}""")))
+            .Then(Answer(RecordedMarkup))
+            .Then(Answer("Rice is grown on the Cordillera's terraces [1] and across flat Central Luzon [4]."));
+
+        var result = await fixture.AskAsync("where do they grow rice in the Philippenes?");
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Response.Text.Should().StartWith("Rice is grown").And.NotContain("<tool_call>");
+        result.Value.Excerpts.Should().HaveCount(5, "what the rounds found is still citable");
+        result.Value.ToolCalls.Select(call => call.Outcome)
+            .Should().Equal(AiToolCallOutcome.Answered, AiToolCallOutcome.Answered, AiToolCallOutcome.OffTarget);
+
+        var told = fixture.Chat.Requests[3];
+        told.ToolChoice.Should().Be(AiToolChoice.None);
+        told.Messages[^1].ToPlainText().Should().Be(AnswerTools.AnswerNow);
+        told.Messages[^2].ToPlainText().Should().StartWith("None of these new excerpts is from Philippines");
+
+        var rescue = fixture.Chat.Requests[4];
+        rescue.Tools.Should().BeNull();
+        rescue.Messages.Should().NotContain(message => message.Role == AiChatRole.Tool);
+        rescue.Messages[^1].ToPlainText().Should().Contain("[4] Philippines > Region-specific clues").And.Contain("Central Luzon is flat");
+        rescue.ModelChain.Should().Contain("a/model", "it mis-formatted a call; it is not a model that cannot answer");
+        fixture.Catalog.DidNotReceive().ReportUnfit(Arg.Any<string>());
+        fixture.Budget.Spent.Should().Be(Fixture.QuestionCost + 3 * 2 + 1, "three rounds of a call and an embedding each, then the last call");
+    }
+
+    [Fact]
+    public async Task RetriesTheFirstCall_WhenItsAnswerIsACallWrittenAsText_WithoutCallingTheModelUnfit()
+    {
+        var fixture = new Fixture();
+        fixture.Chat
+            .Then(Answer(RecordedMarkup, "a/model"))
+            .Then(Answer("Pole supports are rare in Ceará [1].", "b/model"));
+
+        var result = await fixture.AskAsync();
+
+        result.Value.Response.ModelUsed.Should().Be("b/model");
+        fixture.Catalog.DidNotReceive().ReportUnfit(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task NeverPostsACallWrittenAsText_EvenWhenTheLastCallWritesOneToo()
+    {
+        var fixture = new Fixture();
+        fixture.Tools.MaxToolRounds = 1;
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "poles"}""")))
+            .Then(Answer(RecordedMarkup))
+            .Then(Answer("""{"name": "search_guides", "arguments": {"query": "poles"}}"""));
+
+        var result = await fixture.AskAsync();
+
+        result.Error.Code.Should().Be(ChatErrorCodes.ToolCallMarkup);
+        fixture.Chat.Requests.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task TellsTheModel_WhenASearchFindsNothingFromTheCountryItNames()
+    {
+        var fixture = new Fixture();
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Thai rice fields are flooded.", "https://www.plonkit.net/thailand#ZxIl", "thailand", "ZxIl", "Thailand > Vegetation", "thailand")]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "rice paddies", "country": "Philippines"}""")))
+            .Then(Answer("The guides don't say [1]."));
+
+        var result = await fixture.AskAsync("where do they grow rice?");
+
+        var content = fixture.Chat.Requests[1].Messages[^1].ToPlainText();
+        content.Should().StartWith("None of these new excerpts is from Philippines. If it is Philippines you need, the guides seem to "
+                                   + "have nothing more on it than you have: answer with what you have.")
+            .And.Contain("[3] Thailand > Vegetation", "still offered, for a look-alike worth ruling out")
+            .And.NotContain("don't cover", "a search can name a country to find others like it; that is no verdict on the answer");
+        result.Value.ToolCalls.Single().Should().BeEquivalentTo(new { Outcome = AiToolCallOutcome.OffTarget, NewExcerpts = 1 });
+    }
+
+    [Theory]
+    [InlineData("Which other countries have flooded rice fields like the Philippines?")]
+    [InlineData("where do they grow rice in the Philippenes?")]
+    public async Task NeverJudgesASearchNamingNoCountry_ByTheQuestionsCountry(string question)
+    {
+        // A search giving no country looks across countries on purpose: the six of the 2026-10-29 replay
+        // that gave none were each after several. For a comparison these excerpts are the answer.
+        var fixture = new Fixture();
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Thai rice fields are flooded.", "https://www.plonkit.net/thailand#ZxIl", "thailand", "ZxIl", "Thailand > Vegetation", "thailand")]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "flooded rice fields"}""")))
+            .Then(Answer("Thailand [3]."));
+
+        var result = await fixture.AskAsync(question);
+
+        fixture.Chat.Requests[1].Messages[^1].ToPlainText().Should().StartWith("[3] Thailand > Vegetation");
+        result.Value.ToolCalls.Single().Outcome.Should().Be(AiToolCallOutcome.Answered);
+    }
+
+    [Theory]
+    [InlineData("""{"query": "rice paddies", "country": "Philippines"}""")]
+    [InlineData("""{"query": "rice paddies Philippines"}""")]
+    public async Task SaysNothingOfACountry_WhenANewExcerptIsFromAGuideFiledUnderNone(string arguments)
+    {
+        // A library guide with a blank country is filed under none, and may cover several, the one
+        // searched among them.
+        var fixture = new Fixture();
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                Hit("Thai rice fields are flooded.", "https://www.plonkit.net/thailand#ZxIl", "thailand", "ZxIl", "Thailand > Vegetation", "thailand"),
+                Hit("Terraced rice across Southeast Asia.", "https://docs.google.com/document/d/sea", "sea", "p4", "Southeast Asian Crops > Rice")
+                    with { Country = null }
+            ]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, arguments)))
+            .Then(Answer("Terraces [4]."));
+
+        var result = await fixture.AskAsync("where do they grow rice in the Philippines?");
+
+        fixture.Chat.Requests[1].Messages[^1].ToPlainText().Should().StartWith("[3] Thailand > Vegetation");
+        result.Value.ToolCalls.Single().Should().BeEquivalentTo(new { Outcome = AiToolCallOutcome.Answered, NewExcerpts = 2 });
+    }
+
+    [Theory]
+    [InlineData("Is rice grown in Thailand or the Philippines?")]
+    [InlineData("where do they grow rice?")]
+    public async Task SaysNothingOfACountry_WhenNeitherTheSearchNorTheQuestionIsAboutOne(string question)
+    {
+        var fixture = new Fixture();
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Malaysian rice fields are flooded.", "https://www.plonkit.net/malaysia#r1", "malaysia", "r1", "Malaysia > Vegetation", "malaysia")]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "rice terraces"}""")))
+            .Then(Answer("Malaysia [3]."));
+
+        var result = await fixture.AskAsync(question);
+
+        fixture.Chat.Requests[1].Messages[^1].ToPlainText().Should().StartWith("[3] Malaysia > Vegetation");
+        result.Value.ToolCalls.Single().Outcome.Should().Be(AiToolCallOutcome.Answered);
+    }
+
+    [Fact]
+    public async Task TellsTheModelToStopLooking_WhenASearchFindsNothingNew()
+    {
+        var fixture = new Fixture();
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([fixture.Hits[0]]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "pole supports", "country": "Brazil"}""")))
+            .Then(Answer("In the south [1]."));
+
+        var result = await fixture.AskAsync();
+
+        fixture.Chat.Requests[1].Messages[^1].ToPlainText().Should()
+            .StartWith("Nothing new").And.Contain("The guides seem not to cover more of this than you have.");
+        result.Value.ToolCalls.Single().Outcome.Should().Be(AiToolCallOutcome.NothingNew);
     }
 
     [Fact]
@@ -403,7 +610,7 @@ public sealed class AiAnswerLoopTests
         result.IsSuccess.Should().BeTrue();
         await fixture.Embedder.DidNotReceive().EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>());
         var last = fixture.Chat.Requests[1];
-        last.Messages[^1].ToPlainText().Should().Contain("not available");
+        last.Messages[^2].ToPlainText().Should().Contain("not available", "the round's result, before the call is told to answer");
         last.ToolChoice.Should().Be(AiToolChoice.None);
         result.Value.ToolCalls.Single().Outcome.Should().Be(AiToolCallOutcome.Unavailable);
     }
@@ -491,13 +698,92 @@ public sealed class AiAnswerLoopTests
             Arg.Is<IReadOnlyList<EmbeddingInput>>(inputs => inputs.Count == 1), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task AsksWithoutTools_WhenTheRetrysProviderRefusesThem_EvenOnTheLastAttempt()
+    {
+        // The first chain failed for a moment; the retry's provider then refused the tools themselves.
+        // The models were not at fault, so the user gets an answer without tools rather than the refusal.
+        var fixture = new Fixture();
+        fixture.Chat
+            .Then(Failure(ChatErrorCodes.RequestFailed))
+            .Then(Failure(ChatErrorCodes.ToolsUnsupported))
+            .Then(Answer("An answer [1].", "d/model"));
+
+        var result = await fixture.AskAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        fixture.Chat.Requests.Should().HaveCount(3);
+        fixture.Chat.Requests[1].Tools.Should().NotBeNull();
+        var withoutTools = fixture.Chat.Requests[2];
+        withoutTools.Tools.Should().BeNull();
+        withoutTools.Messages[0].ToPlainText().Should().Be(AiPromptBuilder.SystemPrompt);
+        withoutTools.ModelChain.Should().Contain("d/model", "the models that refused the tools were not at fault")
+            .And.NotContain(["a/model", "b/model", "c/model"], "the first chain did fail");
+        fixture.Budget.Spent.Should().Be(Fixture.QuestionCost + 2);
+    }
+
+    [Fact]
+    public async Task RetriesWithoutTools_OnceTheDeadlineHasPassed()
+    {
+        // A slow first attempt used up the answer's time; a retry inviting tool rounds would run the
+        // question further past it.
+        var fixture = new Fixture();
+        fixture.Chat
+            .Then(_ =>
+            {
+                fixture.Clock.Now += TimeSpan.FromSeconds(fixture.Tools.AnswerDeadlineSeconds + 1);
+                return Failure(ChatErrorCodes.RequestFailed);
+            })
+            .Then(Answer("An answer [1].", "d/model"));
+
+        var result = await fixture.AskAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        var retry = fixture.Chat.Requests[1];
+        retry.Tools.Should().BeNull();
+        retry.Messages[0].ToPlainText().Should().Be(AiPromptBuilder.SystemPrompt, "a model told of tools it cannot call tries them in prose");
+        retry.ModelChain.Should().NotContain(["a/model", "b/model", "c/model"]);
+    }
+
+    [Fact]
+    public async Task StopsOfferingExcerpts_OnceTheirNumbersRunOut_AndHasTheModelAnswer()
+    {
+        // Citations are read up to [99]. An excerpt numbered past it could be cited but never resolved.
+        var fixture = new Fixture
+        {
+            Hits = [.. Enumerable.Range(1, 98).Select(index => Hit($"Retrieved {index}.", $"https://www.plonkit.net/brazil#r{index}"))]
+        };
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                Hit("Ceará poles have no supports.", "https://www.plonkit.net/brazil#u1"),
+                Hit("Piauí poles are round.", "https://www.plonkit.net/brazil#u2"),
+                Hit("Bahia poles are square.", "https://www.plonkit.net/brazil#u3")
+            ]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "pole supports"}""")))
+            .Then(Answer("Ceará [99]."));
+
+        var result = await fixture.AskAsync();
+
+        result.Value.Excerpts.Should().HaveCount(99);
+        result.Value.Excerpts[^1].SourceUrl.Should().Be("https://www.plonkit.net/brazil#u1");
+        result.Value.ToolCalls.Single().NewExcerpts.Should().Be(1);
+
+        var next = fixture.Chat.Requests[1];
+        next.Messages[^2].ToPlainText().Should().Contain("[99] ").And.Contain("No more excerpts can be offered")
+            .And.NotContain("[100]");
+        next.ToolChoice.Should().Be(AiToolChoice.None, "another search could offer nothing");
+    }
+
     private static KnowledgeHit Hit(
         string text,
         string sourceUrl,
         string sourceKey = "brazil",
         string localKey = "k1",
-        string section = "Brazil > Poles") =>
-        new(Guid.NewGuid(), 0.5f, KnowledgeChunkKind.Text, text, sourceUrl, null, "Brazil", sourceKey, section, "Plonk It team", 0,
+        string section = "Brazil > Poles",
+        string? country = null) =>
+        new(Guid.NewGuid(), 0.5f, KnowledgeChunkKind.Text, text, sourceUrl, null, "Brazil", country ?? sourceKey, section, "Plonk It team", 0,
             "plonkit", sourceKey, localKey);
 
     private static Result<AiChatResponse> Answer(string text, string model = "a/model") =>
@@ -543,7 +829,7 @@ public sealed class AiAnswerLoopTests
         /// <summary>How many of <see cref="Hits"/> the previous answer cited, as the handler says.</summary>
         public int Carried { get; init; }
 
-        public IReadOnlyList<KnowledgeHit> Hits { get; } =
+        public IReadOnlyList<KnowledgeHit> Hits { get; init; } =
         [
             Hit("Pole supports are common in the south.", "https://www.plonkit.net/brazil#k1"),
             Hit("Northeastern poles are square.", "https://www.plonkit.net/brazil#k9", localKey: "k9")
@@ -566,7 +852,7 @@ public sealed class AiAnswerLoopTests
             Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromResult<IReadOnlyList<KnowledgeHit>>([]));
             Index.ListCountriesAsync(Arg.Any<CancellationToken>())
-                .Returns(Task.FromResult<IReadOnlyList<string>>(["brazil", "chile", "argentina", "thailand", "malaysia"]));
+                .Returns(Task.FromResult<IReadOnlyList<string>>(["brazil", "chile", "argentina", "thailand", "malaysia", "philippines"]));
         }
 
         public Task<Result<AnswerOutcome>> AskAsync(string question = "Where are pole supports rare in Brazil?")

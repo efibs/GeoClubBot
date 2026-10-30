@@ -25,12 +25,16 @@ public class AiToolsConfiguration : IValidatableObject
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Rounds of tool calls one answer may take. The call after the last round has to answer. Three
-    /// leaves room to search, read the guide a search found, and search once more; each round costs at
-    /// least one chat request and the time it takes the model to think again.
+    /// Rounds of tool calls one answer may take. The call after the last round has to answer; each
+    /// round costs at least one chat request and the time it takes the model to think again.
+    ///
+    /// Two, measured on the answer replay of 2026-10-29 (49 rated questions, three rounds allowed): 11
+    /// answers took a third round, and not one of them cited an excerpt it found. Six of those 11 then
+    /// wrote a tool call as text instead of answering, and the rest cost 7–8 requests and 25–96 s. The
+    /// second round did pay: five answers cited excerpts only it had found (#28, #30, #33, #35, #37).
     /// </summary>
     [Range(1, 6)]
-    public int MaxToolRounds { get; set; } = 3;
+    public int MaxToolRounds { get; set; } = 2;
 
     /// <summary>
     /// Tool calls run per round; calls beyond it are answered "not run". A round's searches share one

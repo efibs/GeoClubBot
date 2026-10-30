@@ -254,6 +254,10 @@ public sealed class AiFeedbackUseCaseIntegrationTests(PostgresFixture fixture)
         transcript[3].ToolCalls.Should().ContainSingle().Which.Should().BeEquivalentTo(
             new { Round = 1, Tool = AnswerTools.SearchGuides, Outcome = AiToolCallOutcome.Answered, NewExcerpts = 2 });
 
+        transcript[3].CitedSourceUrls.Should().Equal(["https://plonkit.net/ghana"],
+            "a replay of the answer after this one has to tell the guides carried from it from those searched");
+        transcript[0].CitedSourceUrls.Should().BeNull("a question cites nothing");
+
         transcript[1].OfferedChunkIds.Should().BeEmpty("an answer stored without them names none");
         transcript[1].ToolCalls.Should().BeNull("an answer that called no tool has none to list");
         transcript[0].OfferedChunkIds.Should().BeNull("a question is offered nothing");

@@ -9,7 +9,8 @@ public sealed class AiToolCallLogTests
     private static readonly IReadOnlyList<AiToolCallSummary> Calls =
     [
         new(1, AnswerTools.SearchGuides, """{"query":"snow poles","country":"Finland"}""", AiToolCallOutcome.Answered, 3, 1200, 850),
-        new(2, AnswerTools.ReadGuide, """{"excerpt":4}""", AiToolCallOutcome.NothingNew, 0, 80, 40)
+        new(2, AnswerTools.ReadGuide, """{"excerpt":4}""", AiToolCallOutcome.NothingNew, 0, 80, 40),
+        new(2, AnswerTools.SearchGuides, """{"query":"rice","country":"Philippines"}""", AiToolCallOutcome.OffTarget, 6, 1900, 240)
     ];
 
     [Fact]
@@ -24,7 +25,7 @@ public sealed class AiToolCallLogTests
         // The archive is read by people and scripts that do not know the enum's order.
         var json = AiToolCallLog.Serialize(Calls)!;
 
-        json.Should().Contain("\"outcome\":\"Answered\"").And.Contain("\"outcome\":\"NothingNew\"");
+        json.Should().Contain("\"outcome\":\"Answered\"").And.Contain("\"outcome\":\"NothingNew\"").And.Contain("\"outcome\":\"OffTarget\"");
         json.Should().Contain("\"tool\":\"search_guides\"").And.Contain("\"newExcerpts\":3");
     }
 

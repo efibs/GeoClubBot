@@ -16,6 +16,7 @@ namespace UseCases.UseCases.AI.Conversations;
 /// <param name="BudgetDay">The day its requests count against, as its first two were claimed.</param>
 /// <param name="StartedAt">When it arrived: <see cref="AiToolsConfiguration.AnswerDeadlineSeconds"/> counts from here.</param>
 /// <param name="CarriedCount">How many of <paramref name="Hits"/>, from the first, the previous answer cited (<see cref="CarriedExcerpts"/>).</param>
+/// <param name="CarriedSourceNumbers">The numbers the reader saw those under, when not their own (<see cref="FollowUpExcerpts.CarriedSourceNumbers"/>).</param>
 public sealed record AnswerRequest(
     ConversationContext Context,
     string Question,
@@ -23,7 +24,8 @@ public sealed record AnswerRequest(
     IReadOnlyList<KnowledgeHit> Hits,
     DateOnly BudgetDay,
     DateTimeOffset StartedAt,
-    int CarriedCount = 0);
+    int CarriedCount = 0,
+    IReadOnlyList<int>? CarriedSourceNumbers = null);
 
 /// <param name="Response">The completion that answered.</param>
 /// <param name="Excerpts">Every excerpt offered, the retrieved ones first: citations resolve against these.</param>
@@ -59,7 +61,8 @@ public static class AiAnswerErrors
 /// a model has answered, it heads the chain for the rest, because a tool call's id is its provider's.
 /// A later call that fails does not lose what was gathered: one last call without tools is asked with
 /// every excerpt in the prompt, as a single-shot question would have been. Only the text that answers
-/// is screened for a classifier's verdict — a tool call is never one — and an answer is never empty.
+/// is screened — for a classifier's verdict, and for a tool call written out as text
+/// (<see cref="ToolCallMarkupDetector"/>) — and an answer is never empty.
 /// </summary>
 public sealed partial class AiAnswerLoop(
     IChatModelClient chatClient,
@@ -76,7 +79,8 @@ public sealed partial class AiAnswerLoop(
     /// <summary>
     /// A first chain that fails, or answers with something that is not an answer, gets one more try
     /// against models not yet asked. One, because each costs a request from the daily allowance and a
-    /// provider failing twice in a row is rarely going to answer a third time.
+    /// provider failing twice in a row is rarely going to answer a third time. A retry that only drops
+    /// the tools a provider refused is not counted (<see cref="CompleteFirstAsync"/>).
     /// </summary>
     private const int MaxChatAttempts = 2;
 
@@ -100,7 +104,8 @@ public sealed partial class AiAnswerLoop(
         var tools = toolsConfiguration.Value;
 
         var prompt = AiPromptBuilder.Build(
-            request.Context, request.Question, request.AttachmentImageUrls, request.Hits, request.CarriedCount);
+            request.Context, request.Question, request.AttachmentImageUrls, request.Hits, request.CarriedCount,
+            request.CarriedSourceNumbers);
 
         // A vision-capable model only when a picture actually travels with the request — the question's
         // own attachment, or a screenshot replayed from earlier in the branch, which a follow-up sends
@@ -124,17 +129,18 @@ public sealed partial class AiAnswerLoop(
             }
 
             var chain = await modelCatalog.ReadChainAsync(requirements, cancellationToken).ConfigureAwait(false);
-            var single = await CompleteFirstAsync(singleShot, chain, withoutTools: null, request.BudgetDay, config, cancellationToken)
+            var single = await CompleteFirstAsync(singleShot, chain, withoutTools: null, request.BudgetDay, deadline: null, config, cancellationToken)
                 .ConfigureAwait(false);
 
             return single.IsFailure ? single.Error : new AnswerOutcome(single.Value.Response, prompt.Excerpts, []);
         }
 
         var definitions = AnswerTools.Definitions(tools.SpeciesRange.Enabled);
-        var toolPrompt = AiPromptBuilder.AppendToSystemPrompt(prompt, AnswerTools.SystemPromptFor(tools.SpeciesRange.Enabled));
+        var toolPrompt = AiPromptBuilder.AppendToSystemPrompt(prompt, AnswerTools.SystemPrompt);
         var withTools = new Asking(toolPrompt.Messages, requirements with { NeedsTools = true }, definitions);
 
-        var first = await CompleteFirstAsync(withTools, toolChain, singleShot, request.BudgetDay, config, cancellationToken)
+        var deadline = request.StartedAt + TimeSpan.FromSeconds(tools.AnswerDeadlineSeconds);
+        var first = await CompleteFirstAsync(withTools, toolChain, singleShot, request.BudgetDay, deadline, config, cancellationToken)
             .ConfigureAwait(false);
 
         if (first.IsFailure)
@@ -187,7 +193,12 @@ public sealed partial class AiAnswerLoop(
                     return new AnswerOutcome(response, ledger.Offered, summaries);
                 }
 
-                return await RescueAsync(request, requirements, ledger, summaries, unusable, [response.ModelUsed], config, cancellationToken)
+                // A call written out as text is a good model mis-formatting under tool_choice "none",
+                // so the last call may ask it again: without tools, nemotron-3-ultra answered #17 and
+                // #24 of the 2026-10-29 replay correctly, which it had answered with markup after three
+                // rounds. Anything else unusable is not asked of the same model twice.
+                IReadOnlyList<string> excluded = unusable.Code == ChatErrorCodes.ToolCallMarkup ? [] : [response.ModelUsed];
+                return await RescueAsync(request, requirements, ledger, summaries, unusable, excluded, config, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -221,11 +232,18 @@ public sealed partial class AiAnswerLoop(
                 conversation.Add(AiChatMessage.ToolResult(executed.Calls[index].Id, executed.Results[index]));
             }
 
-            choice = await ChooseNextAsync(round, deadline, request.BudgetDay, config, tools, cancellationToken).ConfigureAwait(false);
+            choice = await ChooseNextAsync(round, deadline, ledger, request.BudgetDay, config, tools, cancellationToken).ConfigureAwait(false);
+
+            // The call that has to answer is also told so in words, after the results: the parameter
+            // alone left nemotron-3-ultra writing the call it still wanted as text. Not kept in the
+            // conversation, since nothing is asked after it but the rescue, which rebuilds its prompt.
+            IReadOnlyList<AiChatMessage> messages = choice == AiToolChoice.None
+                ? [.. conversation, AiChatMessage.User(AnswerTools.AnswerNow)]
+                : conversation;
 
             var started = Stopwatch.GetTimestamp();
             var next = await chatClient
-                .CompleteAsync(new AiChatRequest(chain, conversation, Temperature, Tools: definitions, ToolChoice: choice), cancellationToken)
+                .CompleteAsync(new AiChatRequest(chain, messages, Temperature, Tools: definitions, ToolChoice: choice), cancellationToken)
                 .ConfigureAwait(false);
             var elapsed = Stopwatch.GetElapsedTime(started);
 
@@ -245,13 +263,15 @@ public sealed partial class AiAnswerLoop(
     }
 
     /// <summary>
-    /// Whether the call after a round may still call tools: rounds left, time left, and an allowance
-    /// that could pay for another round. Otherwise it has to answer, with the tools still declared — a
-    /// conversation holding tool calls is one some providers refuse once none are.
+    /// Whether the call after a round may still call tools: rounds left, time left, numbers left for
+    /// new excerpts, and an allowance that could pay for another round. Otherwise it has to answer, with
+    /// the tools still declared — a conversation holding tool calls is one some providers refuse once
+    /// none are — and with <see cref="AnswerTools.AnswerNow"/> as its last message.
     /// </summary>
     private async Task<AiToolChoice> ChooseNextAsync(
         int round,
         DateTimeOffset deadline,
+        ExcerptLedger ledger,
         DateOnly day,
         AiConfiguration config,
         AiToolsConfiguration tools,
@@ -265,6 +285,10 @@ public sealed partial class AiAnswerLoop(
         else if (timeProvider.GetUtcNow() >= deadline)
         {
             reason = "its deadline has passed";
+        }
+        else if (ledger.IsFull)
+        {
+            reason = "no more excerpts can be numbered";
         }
         else if (!await CanAffordToolRoundAsync(day, config, cancellationToken).ConfigureAwait(false))
         {
@@ -320,7 +344,8 @@ public sealed partial class AiAnswerLoop(
         LogRescuing(logger, failure.Code ?? "(none)", ledger.Count, string.Join(", ", chain));
 
         var everything = AiPromptBuilder.Build(
-            request.Context, request.Question, request.AttachmentImageUrls, ledger.Hits, request.CarriedCount);
+            request.Context, request.Question, request.AttachmentImageUrls, ledger.Hits, request.CarriedCount,
+            request.CarriedSourceNumbers);
         var completion = await chatClient
             .CompleteAsync(new AiChatRequest(chain, everything.Messages, Temperature), cancellationToken)
             .ConfigureAwait(false);
@@ -349,14 +374,21 @@ public sealed partial class AiAnswerLoop(
     /// a second request only when that request can actually reach a model not yet asked.
     ///
     /// Asked with tools, the retry asks with tools too, of tool-capable models not yet tried; when none
-    /// is left it asks <paramref name="withoutTools"/> of the ordinary chain, router included as always.
-    /// A provider that refuses the tools themselves is asked again without them, of the same models.
+    /// is left, or the answer's <paramref name="deadline"/> has passed by then, it asks
+    /// <paramref name="withoutTools"/> of the ordinary chain, router included as always — a retry that
+    /// could still start tool rounds would only run the question further past its deadline.
+    ///
+    /// A provider that refuses the tools themselves is asked again without them, of the same models
+    /// (those an earlier attempt failed with aside). That holds on the last attempt too: the models were
+    /// not at fault, and it can happen only once, since a request without tools cannot refuse them.
     /// </summary>
+    /// <param name="deadline">When tool rounds must stop (<see cref="AiToolsConfiguration.AnswerDeadlineSeconds"/>); null without tools.</param>
     private async Task<Result<FirstAnswer>> CompleteFirstAsync(
         Asking asking,
         IReadOnlyList<string> chain,
         Asking? withoutTools,
         DateOnly day,
+        DateTimeOffset? deadline,
         AiConfiguration config,
         CancellationToken cancellationToken)
     {
@@ -399,7 +431,7 @@ public sealed partial class AiAnswerLoop(
             }
 
             var dropTools = asking.Tools is not null && withoutTools is not null && failure.Code == ChatErrorCodes.ToolsUnsupported;
-            if (attempt >= MaxChatAttempts || (!dropTools && !AnswerAttemptPolicy.ShouldRetry(failure, elapsed, patience)))
+            if (!dropTools && (attempt >= MaxChatAttempts || !AnswerAttemptPolicy.ShouldRetry(failure, elapsed, patience)))
             {
                 return failure;
             }
@@ -409,14 +441,25 @@ public sealed partial class AiAnswerLoop(
             IReadOnlyList<string> next = [];
             if (dropTools)
             {
-                // The models were not at fault, so they are asked again — without the tools.
+                // The models were not at fault, so they are asked again — without the tools. Those an
+                // earlier attempt failed with are not.
                 LogToolsRefused(logger, string.Join(", ", chain));
                 asking = withoutTools!;
-                next = await modelCatalog.ReadChainAsync(asking.Requirements, cancellationToken).ConfigureAwait(false);
+                var failedBefore = new HashSet<string>(
+                    tried.Except(chain, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+                next = await modelCatalog.ReadChainAsync(
+                        failedBefore.Count > 0 ? asking.Requirements with { ExcludedModelIds = failedBefore } : asking.Requirements,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             else
             {
-                if (asking.Tools is not null)
+                if (asking.Tools is not null && withoutTools is not null && deadline is { } due && timeProvider.GetUtcNow() >= due)
+                {
+                    LogRetryingWithoutToolsPastDeadline(logger);
+                    asking = withoutTools;
+                }
+                else if (asking.Tools is not null)
                 {
                     next = await ReadToolChainAsync(asking.Requirements, tried, config, cancellationToken).ConfigureAwait(false);
                     if (next.Count == 0 && withoutTools is not null)
@@ -493,15 +536,26 @@ public sealed partial class AiAnswerLoop(
     }
 
     /// <summary>
-    /// Whether a completion is an answer: some text, not a classifier's verdict, and not from a model
-    /// that should never have been asked. A classifier the description rules did not recognise is kept
-    /// out until restart, and named in the log so it can be blocked for good.
+    /// Whether a completion is an answer: some text, not a tool call written out as text, not a
+    /// classifier's verdict, and not from a model that should never have been asked. A classifier the
+    /// description rules did not recognise is kept out until restart, and named in the log so it can be
+    /// blocked for good. A model that wrote a call as text is not: it is a formatting slip of a model
+    /// that answers well, and it fails as <see cref="ChatErrorCodes.ToolCallMarkup"/>, so the last call
+    /// can ask it again without tools.
     /// </summary>
     private bool IsUsable(AiChatResponse response, out Error failure)
     {
         if (string.IsNullOrWhiteSpace(response.Text))
         {
             failure = Error.Unexpected(ChatErrorCodes.EmptyResponse, "The AI model returned an empty response.");
+            return false;
+        }
+
+        if (ToolCallMarkupDetector.IsToolCallMarkup(response.Text, AnswerTools.Names))
+        {
+            LogToolCallMarkup(logger, response.ModelUsed);
+            failure = Error.Unexpected(ChatErrorCodes.ToolCallMarkup,
+                "The AI model I reached couldn't give a real answer just now. Please ask again in a moment.");
             return false;
         }
 
@@ -574,6 +628,9 @@ public sealed partial class AiAnswerLoop(
         "AI model {ModelId} returned something that is not an answer on attempt {Attempt}; discarding it.")]
     static partial void LogUnusableAnswer(ILogger logger, string modelId, int attempt);
 
+    [LoggerMessage(LogLevel.Warning, "AI model {ModelId} wrote a tool call as text instead of answering; discarding it.")]
+    static partial void LogToolCallMarkup(ILogger logger, string modelId);
+
     [LoggerMessage(LogLevel.Information, "Retrying an AI answer after {ErrorCode}, now asking {Chain}.")]
     static partial void LogRetrying(ILogger logger, string errorCode, string chain);
 
@@ -582,6 +639,9 @@ public sealed partial class AiAnswerLoop(
 
     [LoggerMessage(LogLevel.Information, "The AI provider refused the tools for {Chain}; asking again without them.")]
     static partial void LogToolsRefused(ILogger logger, string chain);
+
+    [LoggerMessage(LogLevel.Information, "The AI answer's deadline passed before its retry; retrying without tools.")]
+    static partial void LogRetryingWithoutToolsPastDeadline(ILogger logger);
 
     [LoggerMessage(LogLevel.Information, "After tool round {Round} the AI model has to answer: {Reason}.")]
     static partial void LogAnswerNow(ILogger logger, int round, string reason);

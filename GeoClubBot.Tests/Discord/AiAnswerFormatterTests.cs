@@ -191,7 +191,8 @@ public sealed class AiAnswerFormatterTests
     public Task Render_CountsTheSeveralPicturesOfOneCitedExcerpt()
     {
         // One slide caption sits beside each picture of its slide, so citing it once brings them all.
-        // Every embed carries the number the prose cites, and its place among them tells them apart.
+        // Discord shows them as one grid under the first embed's title, so that title counts them all;
+        // only the uploaded files are told apart by their place.
         var first = new string('c', 64) + ".png";
         var second = new string('d', 64) + ".png";
         var answer = new AiAnswer(
@@ -229,17 +230,45 @@ public sealed class AiAnswerFormatterTests
     }
 
     [Fact]
-    public void Render_KeepsThePicturesPlace_WhenALongTitleIsCut()
+    public void Render_KeepsThePictureCount_WhenALongTitleIsCut()
     {
         var answer = new AiAnswer(
             "See [1].",
-            [new AiAnswerImage(1, "https://i.imgur.com/a.png", "https://guide/a", new string('x', 400), Position: 2, Count: 8)],
+            [
+                new AiAnswerImage(1, "https://i.imgur.com/a.png", "https://guide/a", new string('x', 400), Position: 1, Count: 2),
+                new AiAnswerImage(1, "https://i.imgur.com/b.png", "https://guide/a", new string('x', 400), Position: 2, Count: 2)
+            ],
             [new AiAnswerSource(1, "A", "https://guide/a", IsImage: true)],
             "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
 
-        var title = RenderLinked(answer).Embeds.Single().Title;
+        var titles = RenderLinked(answer).Embeds.Select(embed => embed.Title).ToList();
 
-        title.Should().HaveLength(256).And.StartWith("[1] x").And.EndWith("… (2/8)");
+        titles.Should().HaveCount(2).And.AllSatisfy(title =>
+            title.Should().HaveLength(256).And.StartWith("[1] x").And.EndWith("… (2 pictures)"));
+    }
+
+    [Fact]
+    public void Render_TitlesPicturesSharingALink_AsTheOneGridDiscordShowsThem()
+    {
+        // Discord shows embeds with the same link as one, under the first one's title: two pictures cited
+        // as [1] and [3] from one Google Doc came out as "[1] …" over both, and [3] was nowhere. They are
+        // posted together and titled as the group they become.
+        var answer = new AiAnswer(
+            "Straps [1], tents [2], map [3].",
+            [
+                new AiAnswerImage(1, "https://i.imgur.com/straps.png", "https://docs.google.com/document/d/mongolia", "Mongolia Gen 4 Car Meta"),
+                new AiAnswerImage(2, "https://i.imgur.com/tents.png", "https://www.plonkit.net/mongolia#t1", "Mongolia"),
+                new AiAnswerImage(3, "https://i.imgur.com/map.png", "https://docs.google.com/document/d/mongolia", "Mongolia Gen 4 Car Meta")
+            ],
+            [],
+            "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
+
+        var embeds = RenderLinked(answer).Embeds;
+
+        embeds.Select(embed => embed.Image!.Value.Url).Should().Equal(
+            "https://i.imgur.com/straps.png", "https://i.imgur.com/map.png", "https://i.imgur.com/tents.png");
+        embeds.Select(embed => embed.Title).Should().Equal(
+            "[1][3] Mongolia Gen 4 Car Meta (2 pictures)", "[1][3] Mongolia Gen 4 Car Meta (2 pictures)", "[2] Mongolia");
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
+using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Ingestion;
 using Utilities;
 
@@ -37,7 +38,16 @@ public sealed partial class GoogleDocSourceExtractor(
     /// <summary>A line this short, standing alone between blanks, is treated as a heading.</summary>
     private const int MaxHeadingLength = 80;
 
+    /// <summary>
+    /// Heading elements a document needs before they alone mark its sections. One or two are often a
+    /// title styled as a heading above sections in bold, whose names only the shape of a line gives
+    /// away; reading such a document by its styles would lose every section name in it.
+    /// </summary>
+    private const int MinStyledHeadings = 3;
+
     private static readonly string[] BlockElements = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "li"];
+
+    private static readonly HashSet<string> HeadingElements = new(StringComparer.OrdinalIgnoreCase) { "h1", "h2", "h3", "h4", "h5", "h6" };
 
     public string SourceType => SourceLinkClassifier.GoogleDoc;
 
@@ -210,6 +220,10 @@ public sealed partial class GoogleDocSourceExtractor(
         var blocks = document.DocumentNode.SelectNodes(
             string.Join(" | ", BlockElements.Select(element => $"//body//{element}")));
 
+        // A document whose author used heading styles says where its sections are, and nothing else is
+        // guessed to be one. Only a document without them is read by the shape of its lines.
+        var styled = (blocks?.Count(block => HeadingElements.Contains(block.Name)) ?? 0) >= MinStyledHeadings;
+
         var chunks = new List<ExtractedChunk>();
         var section = DefaultSection(source);
         var textIndex = 0;
@@ -223,9 +237,11 @@ public sealed partial class GoogleDocSourceExtractor(
             var text = HtmlText.Decode(block.InnerText ?? string.Empty).Trim();
             var images = block.SelectNodes(".//img") ?? Enumerable.Empty<HtmlNode>();
 
+            var isHeading = text.Length > 0 && IsHeading(block, text, styled);
+
             if (text.Length > 0)
             {
-                if (LooksLikeHeading(text))
+                if (isHeading)
                 {
                     section = $"{DefaultSection(source)} > {text}";
                 }
@@ -249,7 +265,7 @@ public sealed partial class GoogleDocSourceExtractor(
                 // Captioned from the paragraph the image sits in, falling back to the previous one.
                 // Images here are frequently the actual answer, and a written question reaches them
                 // only through this text.
-                var caption = text.Length > 0 && !LooksLikeHeading(text) ? text : lastText;
+                var caption = text.Length > 0 && !isHeading ? text : lastText;
 
                 chunks.Add(new ExtractedChunk(
                     $"img{imageIndex++}",
@@ -335,16 +351,53 @@ public sealed partial class GoogleDocSourceExtractor(
         source.Title ?? source.Country ?? "Document";
 
     /// <summary>
-    /// Heuristic: the exports lose heading markup, so a heading is recognised by shape — short,
-    /// standing alone, and not punctuated like a sentence. Wrong guesses only affect the section
-    /// label, never whether content is indexed.
+    /// Whether a block of the archive's HTML is a heading: a heading element, unless it is a credit, a
+    /// URL or has no words (<see cref="SectionLabel.IsNeverAHeading"/>) — never for its length or its
+    /// case, since its author chose to make it one, and a heading lost files every chunk under it under
+    /// the heading before; and in a document that does not mark its sections with heading elements
+    /// (<paramref name="styled"/>), also a line shaped like one that is neither a list item nor nothing
+    /// but a link. "Counties (33) ->" and "You can view the flags in more detail here" were links, and
+    /// became the section of every chunk after them.
+    /// </summary>
+    private static bool IsHeading(HtmlNode block, string text, bool styled) =>
+        HeadingElements.Contains(block.Name)
+            ? !SectionLabel.IsNeverAHeading(text)
+            : !styled
+              && !string.Equals(block.Name, "li", StringComparison.OrdinalIgnoreCase)
+              && LooksLikeHeading(text)
+              && !IsOnlyALink(block, text);
+
+    /// <summary>Whether the block's words are all inside links, arrows and spacing aside.</summary>
+    private static bool IsOnlyALink(HtmlNode block, string text)
+    {
+        var links = block.SelectNodes(".//a[@href]");
+        if (links is null)
+        {
+            return false;
+        }
+
+        var linked = string.Concat(links.Select(link => HtmlText.Decode(link.InnerText ?? string.Empty)));
+        return LettersAndDigits(linked).Length > 0 && LettersAndDigits(linked) == LettersAndDigits(text);
+    }
+
+    private static string LettersAndDigits(string text) => string.Concat(text.Where(char.IsLetterOrDigit));
+
+    /// <summary>
+    /// Heuristic: the text export loses heading markup, so a heading is recognised by shape — short,
+    /// standing alone, and not punctuated like a sentence — and by not being one of the lines that are
+    /// shaped like one but are not (<see cref="SectionLabel.IsNotAHeading"/>): credits, URLs, filler,
+    /// captions, or a line ending in an arrow. Those headed the answers of the 2026-10-29 replay as
+    /// "Image credit to PlonkIt", "@bagaboiebailey", "Research by Yaron", "________________". Wrong
+    /// guesses only affect the section label, never whether content is indexed.
     /// </summary>
     private static bool LooksLikeHeading(string paragraph) =>
         paragraph.Length <= MaxHeadingLength
         && !paragraph.Contains('\n')
         && !paragraph.EndsWith('.')
         && !paragraph.EndsWith(',')
-        && !paragraph.EndsWith(':');
+        && !paragraph.EndsWith(':')
+        && !SectionLabel.EndsWithArrow(paragraph)
+        && !SectionLabel.IsNotAHeading(paragraph);
 
     [LoggerMessage(LogLevel.Information,
         "The export of Google document {DocumentId} is too large to take; indexing its text without images.")]

@@ -14,6 +14,7 @@ public sealed class AnswerAttemptPolicyTests
     [InlineData(ChatErrorCodes.RequestFailed)]
     [InlineData(ChatErrorCodes.EmptyResponse)]
     [InlineData(ChatErrorCodes.UnusableAnswer)]
+    [InlineData(ChatErrorCodes.ToolCallMarkup)]
     public void ShouldRetry_AfterAQuickFailureOtherModelsCouldFix(string code) =>
         AnswerAttemptPolicy.ShouldRetry(Error.Unexpected(code, "x"), TimeSpan.FromSeconds(3), Patience)
             .Should().BeTrue();
@@ -56,6 +57,8 @@ public sealed class AnswerAttemptPolicyTests
     [InlineData(ChatErrorCodes.NoModelAvailable, AnswerFailureBlame.None)]
     [InlineData(ChatErrorCodes.UnusableAnswer, AnswerFailureBlame.None)]
     [InlineData(ChatErrorCodes.ToolsUnsupported, AnswerFailureBlame.None)]
+    // A good model's formatting slip under tool_choice "none" (nemotron-3-ultra, 2026-10-29).
+    [InlineData(ChatErrorCodes.ToolCallMarkup, AnswerFailureBlame.None)]
     public void AssignBlame_OnlyForFailuresThatSaySomethingAboutTheModels(string code, AnswerFailureBlame blame) =>
         // An outage blamed on the chain would demote the three best models on the roster at once, and a
         // busy or gated head blamed on the whole chain would demote the healthy models behind it.

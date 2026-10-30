@@ -17,6 +17,14 @@ namespace UseCases.UseCases.AI.Tools;
 /// <item><see cref="SpeciesRange"/>: no guide says where a tree grows ("I am pretty sure you can also
 /// find Khasi pines in other countries such as probably Thailand").</item>
 /// </list>
+///
+/// The answer replay of 2026-10-29 (49 rated questions, tools on) showed the first wording undersold
+/// them: tools were called in 15 answers, species_range never — not for either Khasi-pine question —
+/// and read_guide not for Baja California, whose rater wrote "the second guide definitely mentions
+/// other plants". "Don't call a tool when the excerpts already answer the question" let excerpts that
+/// answered part of it count as enough, so a partial answer is now named as the reason to call. And
+/// every answer that took three rounds made one search per round, so the model is told it can make
+/// several calls at once.
 /// </summary>
 public static class AnswerTools
 {
@@ -27,37 +35,45 @@ public static class AnswerTools
     /// <summary>
     /// Added to the system prompt only when tools are offered — a model told of tools it cannot call
     /// tries to call them in prose. It closes the main prompt (<c>AiPromptBuilder.SystemPrompt</c>) and
-    /// leans on it: the citing, the pictures and the rules for answering are said there once, so this
-    /// says only when a tool is worth a call — including for a picture the user asked to see, or the
-    /// thing they named when the excerpts describe something related but different.
+    /// leans on it: the citing, the pictures and the rules for answering are said there once. And it
+    /// leaves when each tool is worth a call to that tool's description, which the model reads where it
+    /// calls it, so no condition is sent twice; this says only what holds across the tools. A partial
+    /// answer is the reason to call. Several calls fit in one round: every answer of the 2026-10-29
+    /// replay that took three rounds made one search per round. The asked thing is searched for before
+    /// a related one is offered in its place — the main prompt says the two are not the same, and "I
+    /// asked about snake traps. Not possum guards" was answered from the possum-guard excerpt without a
+    /// search (2026-10-29). And searching comes before the main prompt's own knowledge.
+    ///
+    /// Kept short, as the main prompt is, because free models follow short prompts better; a test pins
+    /// its length.
     /// </summary>
     public const string SystemPrompt = """
-        When the excerpts are not enough you can call tools; their results are numbered excerpts too,
-        cited the same way. search_guides searches the guides in your own words: use it when the
-        excerpts use other terms than the question, describe only something related to what was
-        asked, miss a place it names, or have no picture of what the user asks to see. read_guide
-        shows more of the guide an excerpt came from, when that guide clearly says more. species_range
-        says where a plant, tree or crop species is recorded. Don't call a tool when the excerpts
-        already answer the question.
+        Call tools when the excerpts answer only part of the question; their results are numbered
+        excerpts too, cited the same way. You can make several calls at once: search for every place
+        or term you need in one round. When the excerpts describe something related but different from
+        what was asked, search the user's own words first; only if nothing turns up, say that the
+        guides cover the one, not the other. Search before you say the guides don't cover something or
+        answer from your own knowledge. Don't call a tool when the excerpts fully answer the question.
         """;
 
-    /// <summary><see cref="SystemPrompt"/> for when <see cref="SpeciesRange"/> is turned off.</summary>
-    public const string SystemPromptWithoutSpeciesRange = """
-        When the excerpts are not enough you can call tools; their results are numbered excerpts too,
-        cited the same way. search_guides searches the guides in your own words: use it when the
-        excerpts use other terms than the question, describe only something related to what was
-        asked, miss a place it names, or have no picture of what the user asks to see. read_guide
-        shows more of the guide an excerpt came from, when that guide clearly says more. Don't call a
-        tool when the excerpts already answer the question.
-        """;
+    /// <summary>
+    /// Sent as the last message of the call that has to answer after the tool rounds, beside
+    /// tool_choice "none". Told only by the request's parameter, nemotron-3-ultra wrote the call it
+    /// still wanted as text in 6 of the 11 answers that reached that call (2026-10-29); a user message
+    /// after the tool results is valid in the OpenAI chat schema, which OpenRouter speaks.
+    /// </summary>
+    public const string AnswerNow =
+        "No more tool calls are possible, so don't write one. Answer the question now from the excerpts above, "
+        + "citing them, or say briefly that the guides don't cover it.";
 
     private static readonly AiToolDefinition SearchGuidesTool = new(
         SearchGuides,
-        "Search the community GeoGuessr guides again, in your own words. Use it when the excerpts you "
-        + "were given do not answer the question: the question uses other terms than the guides (they say "
-        + "\"snow poles\" where a player says \"snow bollards\"), or it is about a country or region the "
-        + "excerpts miss. Returns up to 6 new numbered excerpts, cited like the others. Don't use it when "
-        + "the excerpts already answer the question.",
+        "Search the community GeoGuessr guides again, in your own words. Use it when the excerpts answer only "
+        + "part of the question: it asks for every, all or exactly which places and they name only some; it uses "
+        + "other terms than the guides (they say \"snow poles\" where a player says \"snow bollards\"); it names a "
+        + "country or region they miss; or they describe something related but different. Returns up to 6 new "
+        + "numbered excerpts, cited like the others, and says so when none of them is from the country searched. "
+        + "Don't use it when the excerpts fully answer the question.",
         """
         {
           "type": "object",
@@ -72,10 +88,10 @@ public static class AnswerTools
 
     private static readonly AiToolDefinition ReadGuideTool = new(
         ReadGuide,
-        "Read more of the guide one of the numbered excerpts came from: the sections around it. Use it "
-        + "when that guide clearly covers the question in more detail than its excerpt shows, such as a list "
-        + "of regions cut short. Returns up to 8 new numbered excerpts from that guide. Don't use it when the "
-        + "excerpt already answers the question.",
+        "Read more of the guide one of the numbered excerpts came from: the sections around it. Use it when "
+        + "that guide covers the question in more detail than its excerpt shows: a list of regions or plants cut "
+        + "short, or the user says the guide says more. Returns up to 8 new numbered excerpts from that guide. "
+        + "Don't use it when the excerpt fully answers the question.",
         """
         {
           "type": "object",
@@ -89,9 +105,10 @@ public static class AnswerTools
     private static readonly AiToolDefinition SpeciesRangeTool = new(
         SpeciesRange,
         "Where a plant, tree or crop species is recorded, by country, or by region within one country, "
-        + "from the GBIF biodiversity database. Use it for questions about where a plant, tree or crop grows "
-        + "when the guides don't settle it. Returns one numbered excerpt, cited like the others. Don't use it "
-        + "for anything but a plant, or when the excerpts already say where it grows.",
+        + "from the GBIF biodiversity database. Use it for any question about where a plant, tree or crop grows "
+        + "or in which countries or regions it is found: guides rarely list every country, so excerpts naming "
+        + "some are a reason to call it, not to skip it. Returns one numbered excerpt, cited like the others. "
+        + "Don't use it for anything but a plant.",
         """
         {
           "type": "object",
@@ -103,11 +120,10 @@ public static class AnswerTools
         }
         """);
 
+    /// <summary>Every tool's name, declared or not: a reply that writes a call of any of them out as text is not an answer.</summary>
+    public static IReadOnlyList<string> Names { get; } = [SearchGuides, ReadGuide, SpeciesRange];
+
     /// <summary>The tools to declare, <see cref="SpeciesRange"/> only when it is on.</summary>
     public static IReadOnlyList<AiToolDefinition> Definitions(bool speciesRange) =>
         speciesRange ? [SearchGuidesTool, ReadGuideTool, SpeciesRangeTool] : [SearchGuidesTool, ReadGuideTool];
-
-    /// <summary>The system prompt's paragraph for the tools <see cref="Definitions"/> declares.</summary>
-    public static string SystemPromptFor(bool speciesRange) =>
-        speciesRange ? SystemPrompt : SystemPromptWithoutSpeciesRange;
 }

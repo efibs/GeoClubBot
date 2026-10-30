@@ -188,11 +188,14 @@ public sealed class AiPromptBuilderTests
     [InlineData("say what you infer", "inferences were stated as the guides' facts")]
     [InlineData("related but different from what was asked", "\"I asked about snake traps. Not possum guards\"")]
     [InlineData("stays in that country", "\"I don't care about other countries if I ask about regionguessing Australia\"")]
+    [InlineData("Mention another country only when it helps rule out a look-alike", "a look-alike line invited a tour of other countries")]
     [InlineData("judge the screenshot against that country's clues", "the bollard \"wasn't Victoria\"")]
     [InlineData("A follow-up continues the earlier turns' topic and country", "\"How can I clearly identify Sabah?\" was answered for Malaysia as a whole")]
     [InlineData("Licence plates and faces are blurred", "\"the license plate thingy is basically useless in GeoGuessr\"")]
     [InlineData("cite a picture that shows the distribution", "\"without the image ... that shows the exact distribution, this answer is basically useless\"")]
     [InlineData("never say a picture is attached unless you cite it", "\"shown in the attached pictures\" was written of pictures never attached")]
+    [InlineData("each such claim in a sentence of its own that starts \"Not from the guides:\"",
+        "\"In practice, Philippine roads typically have solid white outer edge lines\" read as the guides' own (2026-10-29, #35)")]
     public void SystemPrompt_AnswersWhatTheRatedAnswersGotWrong(string instruction, string because) =>
         Normalise(AiPromptBuilder.SystemPrompt).Should().Contain(Normalise(instruction), because);
 
@@ -221,6 +224,37 @@ public sealed class AiPromptBuilderTests
 
         excerpts.Should().ContainSingle();
         excerpts[0].Label.Should().Be("Tunisia > Identifying");
+    }
+
+    [Theory]
+    // As stored in the index, and as the 2026-10-29 replay listed them under answers.
+    [InlineData("usa", "A Unique USA > Counties (33) ->", "A Unique USA", "USA · A Unique USA > Counties (33)")]
+    [InlineData("japan", "A Japan Guide > Image credit to PlonkIt", "A Japan Guide", "Japan · A Japan Guide")]
+    [InlineData("mexico", "Useful License Plates: 2025 Update > @bagaboiebailey", "Useful License Plates: 2025 Update", "Mexico · Useful License Plates: 2025 Update")]
+    [InlineData("russia", null, "A Learnable Russia", "Russia · A Learnable Russia")]
+    public void Build_NamesAnExcerpt_ByItsCleanedSection(string country, string? section, string title, string expected)
+    {
+        var hit = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Text, "text", "https://docs.google.com/document/d/x/edit",
+            null, title, country, section, null, 0);
+
+        AiPromptBuilder.FormatExcerpt(hit, 1, out var excerpt).Should().StartWith($"[1] {expected}\n");
+        excerpt.Label.Should().Be(expected);
+    }
+
+    [Fact]
+    public void PictureTitle_IsTheSourcesTitle_OrTheHeadingTheSourceListShows()
+    {
+        // Every PlonkIt picture comes without a title of its own, and its embed read "Guide image".
+        var plonkIt = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Image, "Rounded tiles.", "https://www.plonkit.net/india#cIYN",
+            "https://relay/tiles.png", null, "india", "India > Regional and state-specific clues", "Plonk It team", 0, "plonkit", "india");
+        var slide = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Image, "Antenna.", "https://docs.google.com/presentation/d/b/edit#slide=id.p7",
+            "https://relay/antenna.png", "Brazilian Poles Lite", "brazil", "Brazilian Poles Lite > Slide 7", null, 0, "gslides", "b");
+
+        AiPromptBuilder.FormatExcerpt(plonkIt, 1, out var tip);
+        AiPromptBuilder.FormatExcerpt(slide, 2, out var picture);
+
+        tip.PictureTitle.Should().Be("India > Regional and state-specific clues").And.Be(tip.Label);
+        picture.PictureTitle.Should().Be("Brazilian Poles Lite");
     }
 
     [Fact]
@@ -344,6 +378,31 @@ public sealed class AiPromptBuilderTests
         prompt.IndexOf(expected, StringComparison.Ordinal).Should()
             .BeGreaterThan(prompt.IndexOf("Guide excerpts:", StringComparison.Ordinal))
             .And.BeLessThan(prompt.IndexOf("Excerpt 1.", StringComparison.Ordinal), "it introduces the excerpts");
+    }
+
+    [Fact]
+    public void Build_MarksEachCarriedExcerpt_WithTheNumberTheReaderSawIt()
+    {
+        // Two chunks of one page were listed to the reader as [1], so the picture they saw as [2] is
+        // carried as [3]. "Can you show [2] bigger?" has to lead the model to [3].
+        var hits = new[]
+        {
+            Hit(KnowledgeChunkKind.Text, "Chunk A."),
+            Hit(KnowledgeChunkKind.Text, "Chunk B."),
+            Hit(KnowledgeChunkKind.Image, "The map.", imageUrl: "https://relay/map.png"),
+            Hit(KnowledgeChunkKind.Text, "Found now.")
+        };
+
+        var (messages, offered) = AiPromptBuilder.Build(
+            ConversationContext.Empty, "can you show [2] bigger?", [], hits, carried: 3, carriedSourceNumbers: [1, 1, 2]);
+
+        var prompt = messages[^1].ToPlainText().ReplaceLineEndings("\n");
+        prompt.Should().Contain("[1] Tunisia > Identifying (the user saw this as 1)\nChunk A.");
+        prompt.Should().Contain("[2] Tunisia > Identifying (the user saw this as 1)\nChunk B.");
+        prompt.Should().Contain("[3] (picture, usually with a distribution map) Tunisia > Identifying (the user saw this as 2)\nThe map.");
+        prompt.Should().Contain("[4] Tunisia > Identifying\nFound now.", "only the carried excerpts were numbered by the reader");
+        prompt.Should().Contain("a \"[N]\" or \"source N\" in the question means that excerpt, which you still cite by its number here.");
+        offered.Select(excerpt => excerpt.Label).Should().AllBe("Tunisia > Identifying", "the reply names an excerpt by its heading alone");
     }
 
     [Fact]

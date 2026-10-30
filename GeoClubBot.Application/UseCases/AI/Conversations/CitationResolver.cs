@@ -21,8 +21,8 @@ public sealed record ResolvedPicture(int Number, OfferedExcerpt Excerpt, string 
 /// <param name="Images">The pictures to attach, capped, in number order and each excerpt's own order.</param>
 /// <param name="CitedExcerpts">
 /// Every excerpt the answer cited, by the number it is listed under and then in order of first
-/// mention. Usually one per number; text excerpts of one page share a number, and all of them are
-/// here. What a follow-up is offered again.
+/// mention. Usually one per number; text excerpts of one section of a page share a number, and all of
+/// them are here. What a follow-up is offered again.
 /// </param>
 public sealed record CitationResolution(
     string Text,
@@ -50,12 +50,26 @@ public sealed record CitationResolution(
 /// first picture comes before any excerpt's second: an answer citing two pictures should show both,
 /// not three of the first.
 ///
+/// Two more things reached readers in the answer replay of 2026-10-29 and are tidied here. The
+/// prompt's own notes on an excerpt were copied into answers — "[1] (picture, usually with a
+/// distribution map) shows the tile style" (#3) — and are removed wherever they stand outside code.
+/// And a range written as two citations, "([1]–[6])" (#13), was read as two separate ones: [1], not
+/// cited before, became [5] and [6] became [4], so the reader saw "([5]–[4])". Two citations joined by
+/// a dash are now the range they mean, bounded like a range in one bracket.
+///
 /// Pure, so each of those styles is pinned by a test rather than rediscovered in a user's reply.
 /// </summary>
 public static partial class CitationResolver
 {
     /// <summary>A range wider than this is a typo or a year span rather than a run of citations; only its ends count.</summary>
     private const int MaxRangeSpan = 10;
+
+    /// <summary>
+    /// The highest number read as a citation; <see cref="CitationNumber"/> spells it out. Nothing may be
+    /// offered under a higher one (<see cref="Tools.ExcerptLedger.MaxMarker"/>): it could be cited, but
+    /// never resolved to a link or a picture.
+    /// </summary>
+    public const int MaxCitationNumber = 99;
 
     // One citation number, 1–99, in ASCII digits. \d would also accept Arabic-Indic and full-width
     // digits, and anything longer is a year or a count — "[2019]" is content, not a citation.
@@ -78,12 +92,21 @@ public static partial class CitationResolver
         + "[ \\t]*(?:(?::[0-9]+)?†[^\\]】］〕\\n]*)?"
         + "[\\]】］〕](?!\\()";
 
-    // Adjacent citations read as one — "[1][2]", "[1], [2]" — together with the parentheses or emphasis
-    // wrapped around nothing but them, which would otherwise be left standing as "()" or "****".
+    // One citation in emphasis of its own, "**[1]**", or none. The emphasis is closed as it was opened,
+    // then forgotten (the balancing "(?<-mark>)"), so the next citation of the run may have none.
+    private const string MarkedGroup =
+        "(?<mark>\\*{1,3}|_{1,2})?" + Group + "(?(mark)\\k<mark>(?<-mark>))";
+
+    // Adjacent citations read as one — "[1][2]", "[1], [2]", "[1]–[6]", "**[1]**–**[6]**" — together
+    // with the parentheses or emphasis wrapped around nothing but them, which would otherwise be left
+    // standing as "()" or "****". A dash between two of them makes them a range (<see cref="ReadRun"/>):
+    // read as two runs, "**[1]**–**[6]**" came out as "[2]–[1]" after "[6]" was cited first. Emphasis
+    // around each citation is tried before emphasis around the whole run, which would end the run at
+    // the first citation's closing marks.
     private const string Run =
         "(?<open>\\([ \\t]*)?"
-        + "(?<wrap>\\*{1,3}|_{1,2})?"
-        + Group + "(?:[ \\t]*[,;]?[ \\t]*" + Group + ")*"
+        + "(?<wrap>\\*{1,3}|_{1,2})??"
+        + MarkedGroup + "(?:[ \\t]*(?:(?<dash>[-–—])|[,;])?[ \\t]*" + MarkedGroup + ")*"
         + "(?(wrap)\\k<wrap>)"
         + "(?(open)[ \\t]*\\))";
 
@@ -103,7 +126,7 @@ public static partial class CitationResolver
         var citedExcerpts = new List<(int Number, OfferedExcerpt Excerpt)>();
         var citedMarkers = new HashSet<int>();
 
-        var text = CitationOrCode().Replace(answer, match =>
+        var text = CitationOrCode().Replace(RemoveAnnotations(answer), match =>
         {
             if (match.Groups["fence"].Success)
             {
@@ -134,30 +157,27 @@ public static partial class CitationResolver
         {
             var numbers = new SortedSet<int>();
 
-            foreach (Capture items in run.Groups["items"].Captures)
+            foreach (var marker in ReadRun(run))
             {
-                foreach (var marker in ReadMarkers(items.Value))
+                if (!byMarker.TryGetValue(marker, out var excerpt))
                 {
-                    if (!byMarker.TryGetValue(marker, out var excerpt))
-                    {
-                        continue;
-                    }
-
-                    var key = KeyOf(excerpt);
-                    if (!numbering.TryGetValue(key, out var number))
-                    {
-                        number = numbering.Count + 1;
-                        numbering[key] = number;
-                        cited.Add(new ResolvedCitation(number, excerpt));
-                    }
-
-                    if (citedMarkers.Add(marker))
-                    {
-                        citedExcerpts.Add((number, excerpt));
-                    }
-
-                    numbers.Add(number);
+                    continue;
                 }
+
+                var key = KeyOf(excerpt);
+                if (!numbering.TryGetValue(key, out var number))
+                {
+                    number = numbering.Count + 1;
+                    numbering[key] = number;
+                    cited.Add(new ResolvedCitation(number, excerpt));
+                }
+
+                if (citedMarkers.Add(marker))
+                {
+                    citedExcerpts.Add((number, excerpt));
+                }
+
+                numbers.Add(number);
             }
 
             if (numbers.Count == 0)
@@ -175,7 +195,7 @@ public static partial class CitationResolver
     /// The pictures to attach: a round of each cited picture excerpt's first picture, in number order,
     /// then a round of second pictures, and so on until <paramref name="maxImages"/> are chosen. A
     /// picture already chosen for another excerpt is not attached twice. Returned in number order, each
-    /// excerpt's pictures in their own order, so the embeds read "[1] (1/2)", "[1] (2/2)", "[2]".
+    /// excerpt's pictures in their own order.
     /// </summary>
     private static List<ResolvedPicture> ChoosePictures(IReadOnlyList<ResolvedCitation> cited, int maxImages)
     {
@@ -229,6 +249,46 @@ public static partial class CitationResolver
     /// </summary>
     public static string StripMarkers(string text) => Resolve(text, [], maxImages: 0).Text;
 
+    /// <summary>
+    /// Every marker a run cites, in the order written: each bracket's own, and between two brackets
+    /// joined by a dash the numbers they span — "[1]–[6]" is [1] to [6], as "[1-6]" is. A span that runs
+    /// backwards or wider than <see cref="MaxRangeSpan"/> is no range, and only its ends count.
+    /// </summary>
+    private static List<int> ReadRun(Match run)
+    {
+        var groups = run.Groups["items"].Captures;
+        var dashes = run.Groups["dash"].Captures;
+        var markers = new List<int>();
+
+        for (var index = 0; index < groups.Count; index++)
+        {
+            var own = ReadMarkers(groups[index].Value).ToList();
+
+            if (index > 0 && markers.Count > 0 && own.Count > 0
+                && dashes.Any(dash => dash.Index > groups[index - 1].Index && dash.Index < groups[index].Index))
+            {
+                var low = markers[^1];
+                var high = own[0];
+                if (high > low && high - low <= MaxRangeSpan)
+                {
+                    markers.AddRange(Enumerable.Range(low + 1, high - low - 1));
+                }
+            }
+
+            markers.AddRange(own);
+        }
+
+        return markers;
+    }
+
+    /// <summary>
+    /// Removes what the prompt says about an excerpt from an answer that copied it: "(picture)",
+    /// "(3 pictures)", "(picture, usually with a distribution map)", "(the user saw this as 2)", and the
+    /// distribution-map note written bare after a citation. Code is left exactly as written.
+    /// </summary>
+    private static string RemoveAnnotations(string answer) =>
+        AnnotationOrCode().Replace(answer, match => match.Groups["note"].Success ? string.Empty : match.Value);
+
     private static IEnumerable<int> ReadMarkers(string items)
     {
         foreach (Match item in ItemMarkers().Matches(items))
@@ -257,11 +317,24 @@ public static partial class CitationResolver
     }
 
     /// <summary>
-    /// Text is deduplicated by page and pictures by picture: two chunks of one Google Doc are one link
-    /// to the reader, while two pictures from one album are two different attachments.
+    /// Text is deduplicated by section of a page and pictures by picture. Excerpts with the same key
+    /// share the number the reader sees: two chunks of one Google Doc section are one line under the
+    /// answer, while two pictures from one album are two different attachments.
+    ///
+    /// By section, not by page: every text chunk of a Google Doc shares the document's one link, and
+    /// keyed by the link alone an answer listing nine US states cited all of them as one "[2] … Counties
+    /// (33)", and a Baja California answer cited the guide's whole plant list as "[2] Mexico
+    /// Deconstructed > Boojum tree" (2026-10-29). The section is the heading the reader sees
+    /// (<see cref="OfferedExcerpt.Label"/>), so two sections that read alike are still one line.
     /// </summary>
-    private static string KeyOf(OfferedExcerpt excerpt) =>
-        excerpt.ImageUrl is { } imageUrl ? $"image|{imageUrl}" : $"text|{excerpt.SourceUrl}";
+    internal static string KeyOf(OfferedExcerpt excerpt) =>
+        excerpt.ImageUrl is { } imageUrl ? $"image|{imageUrl}" : $"text|{SectionKeyOf(excerpt)}";
+
+    /// <summary>
+    /// The page and the heading an excerpt is listed under: what makes two excerpts one line to a
+    /// reader, picture or not. The guides credited for an answer that cited none are told apart by it.
+    /// </summary>
+    internal static string SectionKeyOf(OfferedExcerpt excerpt) => $"{excerpt.SourceUrl}|{excerpt.Label}";
 
     /// <summary>
     /// Drops the lines left holding nothing but citations — a model's own "[2] [5] [8]" or "Sources:"
@@ -287,6 +360,21 @@ public static partial class CitationResolver
 
     [GeneratedRegex("^[ \\t]*" + Run + "[ \\t]*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CitationOnly();
+
+    // The prompt's notes on an excerpt (AiPromptBuilder.FormatExcerpt), in brackets and perhaps in
+    // emphasis, with the whitespace before them; or the map note written bare after a citation. Code
+    // is matched first so nothing inside it is touched.
+    [GeneratedRegex(
+        "(?<fence>```[\\s\\S]*?(?:```|\\z))"
+        + "|(?<code>`[^`\\n]+`)"
+        + "|(?<note>[ \\t]*(?<w>\\*{1,3}|_{1,2})?\\([ \\t]*(?:"
+        + "(?:pictures?|[0-9]{1,2}[ \\t]+pictures)(?:[ \\t]*,[ \\t]*" + AiPromptBuilder.DistributionMapNote + ")?"
+        + "|" + AiPromptBuilder.DistributionMapNote
+        + "|the user saw this as [0-9]{1,2}"
+        + ")[ \\t]*\\)(?(w)\\k<w>))"
+        + "|(?<=[\\]】］〕])(?<note>[ \\t]*[,:–—-]?[ \\t]*" + AiPromptBuilder.DistributionMapNote + "\\b,?)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex AnnotationOrCode();
 
     [GeneratedRegex(
         "(?<low>" + CitationNumber + ")(?:[ \\t]*[-–—][ \\t]*" + KindPrefix + "(?<high>" + CitationNumber + "))?",

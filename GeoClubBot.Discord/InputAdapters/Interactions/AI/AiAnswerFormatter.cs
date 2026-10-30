@@ -48,30 +48,40 @@ public static class AiAnswerFormatter
             [.. pictures.Pictures.Take(AiAnswerPicturePlanner.MaxPicturesPerMessage)]);
 
         var embeds = shown.Pictures
-            .Select(picture => new EmbedBuilder()
-                .WithImageUrl(picture.EmbedImageUrl)
-                // Linking the embed to its source makes every shown image a citation rather than a
-                // decoration, and credits the guide it came from.
-                .WithUrl(picture.Image.SourceUrl)
-                // Numbered like the prose, so "[2]" in a sentence leads to the picture that shows it.
-                .WithTitle(BuildTitle(picture.Image))
-                .Build())
+            .GroupBy(picture => picture.Image.SourceUrl, StringComparer.Ordinal)
+            .SelectMany(gallery =>
+            {
+                var title = BuildTitle([.. gallery.Select(picture => picture.Image)]);
+                return gallery.Select(picture => new EmbedBuilder()
+                    .WithImageUrl(picture.EmbedImageUrl)
+                    // Linking the embed to its source makes every shown image a citation rather than a
+                    // decoration, and credits the guide it came from.
+                    .WithUrl(picture.Image.SourceUrl)
+                    // Numbered like the prose, so "[2]" in a sentence leads to the picture that shows it.
+                    .WithTitle(title)
+                    .Build());
+            })
             .ToList();
 
         return new AiAnswerRendering(chunks, embeds, shown.Uploads);
     }
 
     /// <summary>
-    /// "[2] Title", and "[2] Title (1/3)" when the excerpt brought several pictures: every one carries
-    /// the number the prose cites, so the count is what tells them apart. Kept when a long title is
-    /// cut, since it is the part that differs between the embeds.
+    /// The title of every embed linking to one source: "[2] Title", "[2] Title (3 pictures)" when it
+    /// shows several, "[1][3] Title (2 pictures)" when several cited excerpts share the link.
+    ///
+    /// Discord shows embeds sharing a link as one, under the first one's title, with all their pictures
+    /// in a grid. So they are posted together, and each carries the title of the whole group: a
+    /// position like "(1/3)" would head a grid of three, and the "(2/3)" and "(3/3)" it promises never
+    /// appear. The count is kept when a long title is cut.
     /// </summary>
-    private static string BuildTitle(AiAnswerImage image)
+    private static string BuildTitle(IReadOnlyList<AiAnswerImage> gallery)
     {
-        var name = string.IsNullOrWhiteSpace(image.Title) ? "Guide image" : image.Title;
-        var position = image.Count > 1 ? $" ({image.Position}/{image.Count})" : string.Empty;
+        var name = gallery.Select(image => image.Title).FirstOrDefault(title => !string.IsNullOrWhiteSpace(title)) ?? "Guide image";
+        var markers = string.Concat(gallery.Select(image => image.Marker).Distinct().Order().Select(marker => $"[{marker}]"));
+        var count = gallery.Count > 1 ? $" ({gallery.Count} pictures)" : string.Empty;
 
-        return Truncate($"[{image.Marker}] {name}", MaxEmbedTitleLength - position.Length) + position;
+        return Truncate($"{markers} {name}", MaxEmbedTitleLength - count.Length) + count;
     }
 
     /// <summary>
