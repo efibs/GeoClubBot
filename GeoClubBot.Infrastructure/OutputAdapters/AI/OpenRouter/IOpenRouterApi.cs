@@ -12,6 +12,17 @@ public interface IOpenRouterApi
     [Get("/api/v1/models")]
     Task<OpenRouterModelsResponseDto> ReadModelsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The provider endpoints serving one model. <paramref name="slug"/> keeps its variant suffix
+    /// (<c>inkling:free</c>): the free variant's endpoints are the ones the bot is routed to, and the
+    /// escaped colon is accepted.
+    /// </summary>
+    [Get("/api/v1/models/{author}/{slug}/endpoints")]
+    Task<OpenRouterModelEndpointsResponseDto> ReadModelEndpointsAsync(
+        string author,
+        string slug,
+        CancellationToken cancellationToken = default);
+
     [Post("/api/v1/chat/completions")]
     Task<OpenRouterChatResponseDto> CreateChatCompletionAsync(
         [Body] OpenRouterChatRequestDto request,

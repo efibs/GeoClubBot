@@ -1,0 +1,22 @@
+﻿--- message 1 ---
+Philippine sugarcane grows on Negros [1]; the map shows the rest [2], and Luzon has some [3].
+
+-# [1] 🖼️ [Philippines > Agriculture](https://www.plonkit.net/philippines#GaHP)
+-# [2] 🖼️ [Sugarcane map](https://docs.google.com/document/d/abc)
+-# [3] 🖼️ [Luzon > Slide 4](https://docs.google.com/presentation/d/def)
+-# via dots-studio/dots-3-note-preview:free
+--- embed ---
+Title: [1] Philippines > Agriculture
+Image: attachment://picture-1.png
+Url:   https://www.plonkit.net/philippines#GaHP
+--- embed ---
+Title: [2] Sugarcane map
+Image: https://i.imgur.com/sugarcane.png
+Url:   https://docs.google.com/document/d/abc
+--- embed ---
+Title: [3] Guide image
+Image: https://bot.example.net/api/v1/ai/images/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.jpg
+Url:   https://docs.google.com/presentation/d/def
+--- upload ---
+File:   picture-1.png
+Stored: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png (120000 bytes)

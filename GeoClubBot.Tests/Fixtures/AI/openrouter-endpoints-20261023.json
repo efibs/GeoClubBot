@@ -1,0 +1,212 @@
+{
+  "cohere/north-mini-code:free": {
+    "data": {
+      "id": "cohere/north-mini-code:free",
+      "endpoints": [
+        {
+          "provider_name": "Cohere",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "dots-studio/dots-3-note-preview:free": {
+    "data": {
+      "id": "dots-studio/dots-3-note-preview:free",
+      "endpoints": [
+        {
+          "provider_name": "AtlasCloud",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "google/gemma-4-26b-a4b-it:free": {
+    "data": {
+      "id": "google/gemma-4-26b-a4b-it:free",
+      "endpoints": [
+        {
+          "provider_name": "Google AI Studio",
+          "status": 0,
+          "uptime_last_5m": null,
+          "uptime_last_30m": null,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "google/gemma-4-31b-it:free": {
+    "data": {
+      "id": "google/gemma-4-31b-it:free",
+      "endpoints": [
+        {
+          "provider_name": "Google AI Studio",
+          "status": 0,
+          "uptime_last_5m": null,
+          "uptime_last_30m": null,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "liquid/lfm-2.5-2.6b:free": {
+    "data": {
+      "id": "liquid/lfm-2.5-2.6b:free",
+      "endpoints": [
+        {
+          "provider_name": "Liquid",
+          "status": -5,
+          "uptime_last_5m": 0,
+          "uptime_last_30m": 20,
+          "uptime_last_1d": 8.680555555555555
+        }
+      ]
+    }
+  },
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
+    "data": {
+      "id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "endpoints": [
+        {
+          "provider_name": "Nvidia",
+          "status": -5,
+          "uptime_last_5m": 20,
+          "uptime_last_30m": 26.666666666666668,
+          "uptime_last_1d": 13.055555555555557
+        }
+      ]
+    }
+  },
+  "nvidia/nemotron-3-super-120b-a12b:free": {
+    "data": {
+      "id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "endpoints": [
+        {
+          "provider_name": "Nvidia",
+          "status": -5,
+          "uptime_last_5m": 0,
+          "uptime_last_30m": 0,
+          "uptime_last_1d": 0
+        }
+      ]
+    }
+  },
+  "nvidia/nemotron-3-ultra-550b-a55b:free": {
+    "data": {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "endpoints": [
+        {
+          "provider_name": "Nvidia",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 99.30555555555556
+        }
+      ]
+    }
+  },
+  "nvidia/nemotron-3.5-lightning:free": {
+    "data": {
+      "id": "nvidia/nemotron-3.5-lightning:free",
+      "endpoints": [
+        {
+          "provider_name": "Nvidia",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "nvidia/nemotron-3.5-super-vl:free": {
+    "data": {
+      "id": "nvidia/nemotron-3.5-super-vl:free",
+      "endpoints": [
+        {
+          "provider_name": "Nvidia",
+          "status": -2,
+          "uptime_last_5m": 80,
+          "uptime_last_30m": 83.33333333333334,
+          "uptime_last_1d": 91.11111111111111
+        }
+      ]
+    }
+  },
+  "poolside/laguna-s-2.1:free": {
+    "data": {
+      "id": "poolside/laguna-s-2.1:free",
+      "endpoints": [
+        {
+          "provider_name": "Poolside",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "recursive/flint-v1.0:free": {
+    "data": {
+      "id": "recursive/flint-v1.0:free",
+      "endpoints": [
+        {
+          "provider_name": "Recursive",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "thinkingmachines/inkling-small:free": {
+    "data": {
+      "id": "thinkingmachines/inkling-small:free",
+      "endpoints": [
+        {
+          "provider_name": "Thinking Machines",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "thinkingmachines/inkling:free": {
+    "data": {
+      "id": "thinkingmachines/inkling:free",
+      "endpoints": [
+        {
+          "provider_name": "Thinking Machines",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 100
+        }
+      ]
+    }
+  },
+  "xingchen-agi/xing4.0-29b-a4b:free": {
+    "data": {
+      "id": "xingchen-agi/xing4.0-29b-a4b:free",
+      "endpoints": [
+        {
+          "provider_name": "Phala",
+          "status": 0,
+          "uptime_last_5m": 100,
+          "uptime_last_30m": 100,
+          "uptime_last_1d": 97.91666666666666
+        }
+      ]
+    }
+  }
+}

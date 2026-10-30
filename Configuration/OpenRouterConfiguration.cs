@@ -24,12 +24,21 @@ public class OpenRouterConfiguration
     /// </summary>
     public int PerMinuteRequestBudget { get; set; } = 18;
 
-    /// <summary>Model id prefixes that outrank everything else, e.g. "google/". Lets an operator pin a family without chasing version suffixes.</summary>
+    /// <summary>
+    /// Model id prefixes that outrank everything else, e.g. "google/", best first: a model matching an
+    /// earlier prefix outranks one matching a later prefix. Lets an operator pin a family without
+    /// chasing version suffixes. A preference orders the models that qualify; it does not let in one
+    /// the size or uptime bar keeps out, and a preferred model that keeps failing still falls behind.
+    /// Blank entries are ignored, which is how an environment override drops a shipped one.
+    /// </summary>
     public List<string> PreferredModelPrefixes { get; set; } = [];
 
     /// <summary>
-    /// Models never to ask. Models that answer with something that is not an answer are also excluded
-    /// at runtime, until restart — <c>/ai status</c> lists them as candidates for this list.
+    /// Models never to ask. Models that answer with something that is not an answer, or refuse to serve
+    /// this bot at all (a 403 "only available on agentic harnesses"), are also excluded at runtime, until
+    /// restart — <c>/ai status</c> lists them as candidates for this list. A refusal is learned only when
+    /// it reaches the bot, which OpenRouter's failover usually prevents, so a known one belongs here.
+    /// Blank entries are ignored, which is how an environment override drops a shipped one.
     /// </summary>
     public List<string> BlockedModelIds { get; set; } = [];
 
@@ -51,6 +60,28 @@ public class OpenRouterConfiguration
 
     /// <summary>Models retiring sooner than this are excluded so a chain cannot go stale mid-day.</summary>
     public int ExpiryHorizonHours { get; set; } = 48;
+
+    /// <summary>
+    /// Smallest model asked, in billions of effective parameters (the geometric mean of total and active
+    /// parameters, so a mixture of experts compares with a dense model). Read from the model's id, name
+    /// and description; a model that states no size is not held to it. Ignored for a request no model
+    /// could otherwise answer. Negative values count as 0.
+    /// </summary>
+    public double MinEffectiveParametersBillions { get; set; } = 8;
+
+    /// <summary>
+    /// Models whose best provider served less than this share of the last day's requests (0–100) are not
+    /// asked. Measured on each catalog refresh; a model whose health could not be read counts as
+    /// healthy, and the bar is ignored for a request no model could otherwise answer.
+    /// </summary>
+    public double MinProviderUptimePercent { get; set; } = 50;
+
+    /// <summary>
+    /// Models whose provider health is read on each catalog refresh, taken from the head of the text and
+    /// vision rankings. One request each, through the same rate limiter as questions, so it is bounded
+    /// rather than the whole roster: values above 20 are clamped to 20, and 0 turns the check off.
+    /// </summary>
+    public int HealthCheckModelCount { get; set; } = 10;
 
     /// <summary>
     /// Embedding model. Must produce vectors matching <see cref="EmbeddingDimensions"/>; changing

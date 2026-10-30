@@ -2,6 +2,7 @@ using Entities;
 using MediatR;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.AI.Tools;
 using Utilities;
 
 namespace UseCases.UseCases.AI.Conversations;
@@ -21,6 +22,9 @@ namespace UseCases.UseCases.AI.Conversations;
 /// The other messages of a split answer. Recorded so a reaction or a reply on any part of it still
 /// resolves to this turn.
 /// </param>
+/// <param name="OfferedChunkIds">The excerpts the answer was offered (<see cref="AiAnswer.OfferedChunkIds"/>).</param>
+/// <param name="CitedChunkIds">The excerpts it cited, which a follow-up is offered again (<see cref="AiAnswer.CitedChunkIds"/>).</param>
+/// <param name="ToolCalls">The tool calls it made on the way, stored as JSON (<see cref="AiToolCallLog"/>).</param>
 public sealed record RecordAiTurnsCommand(
     ulong UserMessageId,
     ulong? ParentMessageId,
@@ -37,7 +41,10 @@ public sealed record RecordAiTurnsCommand(
     IReadOnlyList<string> RetrievedSourceUrls,
     IReadOnlyList<string> CitedSourceUrls,
     IReadOnlyList<ulong> EarlierBotMessageIds,
-    int Depth) : ICommand<Result>;
+    int Depth,
+    IReadOnlyList<Guid>? OfferedChunkIds = null,
+    IReadOnlyList<Guid>? CitedChunkIds = null,
+    IReadOnlyList<AiToolCallSummary>? ToolCalls = null) : ICommand<Result>;
 
 public sealed class RecordAiTurnsHandler(IAiConversationRepository conversations)
     : IRequestHandler<RecordAiTurnsCommand, Result>
@@ -69,7 +76,10 @@ public sealed class RecordAiTurnsHandler(IAiConversationRepository conversations
             request.CitedSourceUrls,
             request.EarlierBotMessageIds,
             request.Depth + 1,
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow,
+            request.OfferedChunkIds,
+            request.CitedChunkIds,
+            AiToolCallLog.Serialize(request.ToolCalls)));
 
         return Task.FromResult(Result.Success());
     }

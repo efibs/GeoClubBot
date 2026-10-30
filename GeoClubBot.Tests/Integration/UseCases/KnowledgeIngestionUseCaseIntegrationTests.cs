@@ -796,17 +796,615 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
             .ReadSourcesMissingImageVectorsAsync(Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task Ingest_MarksADeletedSourceUnavailable_AndLeavesItAloneUntilTheRecheck()
+    {
+        // Production's nine dead links answered 410 every night, were recorded as failed, and took a slot
+        // of every third run for ever.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeFailure(host, Error.NotFound(SourceExtractionErrorCodes.Gone, "This document no longer exists (HTTP 410)."));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Gone.Should().Be(1);
+        result.Value.Failed.Should().Be(0);
+
+        var stored = await ReadSourceAsync(key);
+        stored!.Status.Should().Be(KnowledgeSourceStatus.Unavailable);
+        stored.StatusReason.Should().Contain("410");
+
+        // Not on the failure backoff's next night: on its own, far longer interval.
+        await BackdateLastAttemptAsync(TimeSpan.FromDays(3));
+        (await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10))).Value.Attempted.Should().Be(0);
+
+        await BackdateLastAttemptAsync(TimeSpan.FromDays(31));
+        (await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10))).Value.Gone.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Ingest_RemovesADeletedSourcesChunks_OnlyWhenTheRecheckFindsItStillGone()
+    {
+        // Nothing stopped a deleted guide from being cited for ever. One check is not enough to drop it —
+        // a guide briefly unshared would lose everything — so the second one in a row does.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        var index = ArrangeExtraction(host, Chunk("a", "Tunisian bollards are short."));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        await BackdateLastAttemptAsync();
+        index.ClearReceivedCalls();
+        ArrangeFailure(host, Error.NotFound(SourceExtractionErrorCodes.Gone, "This guide page no longer exists (HTTP 404)."));
+
+        var first = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        first.Value.Removed.Should().Be(0);
+        await index.DidNotReceive().SweepAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        (await ReadSourceAsync(key))!.HoldsIndexedContent.Should().BeTrue();
+
+        await BackdateLastAttemptAsync(TimeSpan.FromDays(31));
+        var second = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        second.Value.Removed.Should().Be(1);
+        await index.Received(1).SweepAsync("plonkit", key, Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        var stored = await ReadSourceAsync(key);
+        stored!.HoldsIndexedContent.Should().BeFalse();
+        stored.ContentHash.Should().BeNull("a guide that comes back must be written in full, not judged unchanged");
+    }
+
+    [Fact]
+    public async Task Ingest_KeepsAPrivateSourcesChunks_HoweverOftenItIsFoundPrivate()
+    {
+        // A private document still exists and may be shared again; its owner unsharing it for a while is
+        // no reason to forget what it said.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        var index = ArrangeExtraction(host, Chunk("a", "Tunisian bollards are short."));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        index.ClearReceivedCalls();
+
+        ArrangeFailure(host, Error.Forbidden(SourceExtractionErrorCodes.NotPublic, "This document is not publicly readable (HTTP 403)."));
+
+        for (var check = 0; check < 3; check++)
+        {
+            await BackdateLastAttemptAsync(TimeSpan.FromDays(400));
+            (await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10))).Value.NotPublic.Should().Be(1);
+        }
+
+        await index.DidNotReceive().SweepAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        (await ReadSourceAsync(key))!.HoldsIndexedContent.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Ingest_BringsBackAnUnavailableSource_WhenItIsSharedAgain()
+    {
+        // Skipped, as it used to be, a document shared again never came back.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeFailure(host, Error.Forbidden(SourceExtractionErrorCodes.NotPublic, "This document is not publicly readable (HTTP 403)."));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        await BackdateLastAttemptAsync(TimeSpan.FromDays(31));
+        ArrangeExtraction(host, Chunk("a", "Tunisian bollards are short."));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Ingested.Should().Be(1);
+        var stored = await ReadSourceAsync(key);
+        stored!.Status.Should().Be(KnowledgeSourceStatus.Ingested);
+        stored.ConsecutiveFailures.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Ingest_LeavesEverySourceOfARefusingHostUntouched_AndCarriesOnWithOtherHosts()
+    {
+        // One open circuit used to be recorded as the failure of every source after it, other sites'
+        // included, and back each of them off. A refusal says nothing about the guides themselves.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var refused = new[] { NewKey(), NewKey() };
+        var elsewhere = NewKey();
+        ArrangeCatalog(host,
+            Descriptor(refused[0]), Descriptor(refused[1]),
+            new SourceDescriptor("plonkit", elsewhere, new Uri($"https://mirror.example/{elsewhere}"), Country: elsewhere));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var extractor = ArrangeExtractor(host);
+        extractor.ExtractAsync(Arg.Is<SourceDescriptor>(source => source.Url.Host == "www.plonkit.net"), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Failure(
+                Error.Conflict(SourceExtractionErrorCodes.HostRefused, "The host of this guide page is refusing requests (HTTP 429).")));
+        extractor.ExtractAsync(Arg.Is<SourceDescriptor>(source => source.Url.Host == "mirror.example"), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Success(new ExtractedDocument("Tunisia", null, [Chunk("a", "text")])));
+        host.Mock<IEmbedder>().EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>())
+            .Returns(call => EmbedEverything((IReadOnlyList<EmbeddingInput>)call[0]));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.HostRefused.Should().Be(2);
+        result.Value.Ingested.Should().Be(1, "another site's guides are no business of the refusing host");
+        result.Value.Failed.Should().Be(0);
+        await extractor.Received(1).ExtractAsync(
+            Arg.Is<SourceDescriptor>(source => source.Url.Host == "www.plonkit.net"), Arg.Any<CancellationToken>());
+
+        foreach (var key in refused)
+        {
+            var stored = await ReadSourceAsync(key);
+            stored!.Status.Should().Be(KnowledgeSourceStatus.Pending);
+            stored.LastAttemptedAtUtc.Should().BeNull("it keeps its place at the front of the next run's queue");
+        }
+    }
+
+    [Fact]
+    public async Task Ingest_GivesTheSlotsOfARefusingHostsSources_ToTheNextSourcesOfOtherHosts()
+    {
+        // Handed a fixed batch, a run whose batch was all one refusing host's sources did nothing else, night
+        // after night while the refusal lasted, with every other site's due guides waiting behind them.
+        await ResetSourcesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var refused = new[] { SourceOn("www.plonkit.net"), SourceOn("www.plonkit.net") };
+        var elsewhere = new[] { SourceOn("mirror.example"), SourceOn("mirror.example") };
+
+        // Never indexed sorts first, so the refusing host's sources take the whole of a two-slot batch.
+        foreach (var source in elsewhere)
+        {
+            source.MarkIngested("hash", null, chunkCount: 1, imageCount: 0, now.AddDays(-20));
+        }
+
+        await SeedAsync([.. refused, .. elsewhere]);
+
+        using var host = CreateHost();
+        var extractor = ArrangeExtractor(host);
+        extractor.ExtractAsync(Arg.Is<SourceDescriptor>(source => source.Url.Host == "www.plonkit.net"), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Failure(
+                Error.Conflict(SourceExtractionErrorCodes.HostRefused, "The host of this guide page is refusing requests (HTTP 429).")));
+        extractor.ExtractAsync(Arg.Is<SourceDescriptor>(source => source.Url.Host == "mirror.example"), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Success(new ExtractedDocument("Tunisia", null, [Chunk("a", "new text")])));
+        host.Mock<IEmbedder>().EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>())
+            .Returns(call => EmbedEverything((IReadOnlyList<EmbeddingInput>)call[0]));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 2));
+
+        result.Value.HostRefused.Should().Be(2);
+        result.Value.Ingested.Should().Be(1, "the refused source's slot goes to another host's source, and only the one");
+        extractor.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ISourceExtractor.ExtractAsync))
+            .Should().Be(2, "the limit still bounds what a run asks of the guide hosts");
+
+        foreach (var source in refused)
+        {
+            (await ReadSourceAsync(source.NaturalKey))!.LastAttemptedAtUtc.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public async Task Ingest_KeepsTheIndexedPictures_WhenOnlyADegradedTextExportCouldBeRead()
+    {
+        // A document's archive that timed out tonight will probably answer tomorrow. Writing its text in the
+        // meantime would sweep every picture and spend the allowance embedding them all again.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        var index = ArrangeExtraction(host, Chunk("a", "caption", imageUrl: "https://i.imgur.com/a.png"));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        var indexed = await ReadSourceAsync(key);
+
+        await BackdateLastAttemptAsync();
+        index.ClearReceivedCalls();
+        ArrangeExtractor(host).ExtractAsync(Arg.Any<SourceDescriptor>(), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Success(
+                new ExtractedDocument("Tunisia", null, [Chunk("p0", "caption")], Degraded: true)));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Failed.Should().Be(1);
+        await index.DidNotReceive().UpsertAsync(
+            Arg.Any<IReadOnlyList<KnowledgePoint>>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        var stored = await ReadSourceAsync(key);
+        stored!.ImageCount.Should().Be(indexed!.ImageCount).And.BeGreaterThan(0);
+        stored.ContentHash.Should().Be(indexed.ContentHash);
+    }
+
+    [Fact]
+    public async Task Ingest_KeepsPicturesStillOwedTheirEmbedding_WhenOnlyADegradedTextExportCouldBeRead()
+    {
+        // Every picture postponed leaves an image count of zero, yet their chunks are written and owed a
+        // retry. Judged by the count, the degraded text replaced them and cleared the debt, leaving the
+        // source without pictures until its next re-index weeks later.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        var index = ArrangeExtraction(
+            host,
+            WhenEmbeddingImages(_ => Unavailable("The embedding provider failed (HTTP 502)")),
+            Chunk("a", "caption", imageUrl: "https://i.imgur.com/a.png"));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        var indexed = await ReadSourceAsync(key);
+        indexed!.ImageCount.Should().Be(0);
+        indexed.ImagesDeferred.Should().BeTrue();
+
+        // Owed pictures make it due again at once, which is when the archive tends to time out a second time.
+        index.ClearReceivedCalls();
+        ArrangeExtractor(host).ExtractAsync(Arg.Any<SourceDescriptor>(), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Success(
+                new ExtractedDocument("Tunisia", null, [Chunk("p0", "caption")], Degraded: true)));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Failed.Should().Be(1);
+        await index.DidNotReceive().UpsertAsync(
+            Arg.Any<IReadOnlyList<KnowledgePoint>>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        var stored = await ReadSourceAsync(key);
+        stored!.ImagesDeferred.Should().BeTrue("the pictures are still owed, and come back once the archive answers");
+        stored.ContentHash.Should().Be(indexed.ContentHash);
+    }
+
+    [Fact]
+    public async Task Ingest_IndexesADegradedTextExport_WhenNothingBetterIsIndexedYet()
+    {
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeExtractor(host).ExtractAsync(Arg.Any<SourceDescriptor>(), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Success(
+                new ExtractedDocument("Tunisia", null, [Chunk("p0", "Tunisian bollards are short.")], Degraded: true)));
+        host.Mock<IEmbedder>().EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>())
+            .Returns(call => EmbedEverything((IReadOnlyList<EmbeddingInput>)call[0]));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Ingested.Should().Be(1, "the text is far better than nothing");
+    }
+
+    [Fact]
+    public async Task Ingest_RemovesTheChunksOfASourceNoCatalogueHasListedForTheGracePeriod()
+    {
+        // A sync tombstones rather than deletes, but the chunks of a withdrawn guide stayed in the index
+        // for ever and answers kept citing it.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var kept = NewKey();
+        var withdrawn = NewKey();
+        var justDropped = NewKey();
+        ArrangeCatalog(host, Descriptor(kept), Descriptor(withdrawn), Descriptor(justDropped));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        var index = ArrangeExtraction(host, Chunk("a", "text"));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        ArrangeCatalog(host, Descriptor(kept));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        await BackdateRemovalAsync(withdrawn, TimeSpan.FromDays(31));
+        index.ClearReceivedCalls();
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Removed.Should().Be(1);
+        await index.Received(1).SweepAsync("plonkit", withdrawn, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await index.DidNotReceive().SweepAsync("plonkit", justDropped, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        (await ReadSourceAsync(withdrawn))!.HoldsIndexedContent.Should().BeFalse();
+
+        // Once is enough: the next run has nothing left to remove.
+        index.ClearReceivedCalls();
+        (await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10))).Value.Removed.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Ingest_RetriesNoMoreFailingSourcesThanConfigured()
+    {
+        await ResetSourcesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        await SeedAsync([.. Enumerable.Range(1, 4).Select(_ => Failing(failures: 1, attemptedAt: now.AddDays(-4)))]);
+
+        using var host = CreateHost(maxFailingRetries: 2);
+        ArrangeExtraction(host, Chunk("a", "text"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Attempted.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ReadDue_FindsADueSourceBehindManyNotYetDueOnes()
+    {
+        // The queue read the limit×4 longest-waiting sources and only then asked which were due. A hundred
+        // indexed ten days ago — not due for another four — hid a failing source whose backoff had passed,
+        // and the run did less than was waiting, or nothing.
+        await ResetSourcesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var notYetDue = Enumerable.Range(0, 120).Select(_ => Indexed(now.AddDays(-10))).ToList();
+        var due = Failing(failures: 1, attemptedAt: now.AddDays(-3));
+        await SeedAsync([.. notYetDue, due]);
+
+        var picked = await ReadDueAsync(now, limit: 25, maxRetries: 5);
+
+        picked.Should().ContainSingle().Which.NaturalKey.Should().Be(due.NaturalKey);
+    }
+
+    [Fact]
+    public async Task ReadDue_TakesNeverIndexedSourcesFirst_ThenOwedPictures_ThenReindexes_ThenFailingOnes()
+    {
+        await ResetSourcesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var failing = Failing(failures: 1, attemptedAt: now.AddDays(-30));
+        var reindex = Indexed(now.AddDays(-20));
+        var owedPictures = Indexed(now.AddHours(-1), imagesDeferred: true);
+        var neverIndexed = NewSource();
+        await SeedAsync(failing, reindex, owedPictures, neverIndexed);
+
+        var picked = await ReadDueAsync(now, limit: 10, maxRetries: 5);
+
+        picked.Select(source => source.NaturalKey).Should().Equal(
+            neverIndexed.NaturalKey, owedPictures.NaturalKey, reindex.NaturalKey, failing.NaturalKey);
+    }
+
+    [Fact]
+    public async Task ReadDue_RetriesOnlyAFewFailingSourcesARun_FewestFailuresFirst()
+    {
+        // Ten dead links that shared a timestamp came due together and took ten of a run's twenty-five slots.
+        await ResetSourcesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        await SeedAsync([.. Enumerable.Range(1, 8).Reverse().Select(failures => Failing(failures, now.AddDays(-4)))]);
+
+        var picked = await ReadDueAsync(now, limit: 25, maxRetries: 5);
+
+        picked.Select(source => source.ConsecutiveFailures).Should().Equal(1, 2, 3, 4, 5);
+    }
+
+    [Fact]
+    public async Task ReadDue_RestrictsToOneFamily_BeforeTheLimitIsApplied()
+    {
+        // Filtered afterwards, a run for one family was handed the first sources of every family and kept
+        // whichever few happened to be its own.
+        await ResetSourcesAsync();
+
+        await SeedAsync([
+            .. Enumerable.Range(0, 3).Select(_ => NewSource("imgur")),
+            .. Enumerable.Range(0, 3).Select(_ => NewSource())
+        ]);
+
+        await using var db = fixture.CreateDbContext();
+        var picked = await new Infrastructure.OutputAdapters.Repositories.EfKnowledgeSourceRepository(db)
+            .ReadDueForIngestAsync(DateTimeOffset.UtcNow, Schedule, limit: 3, maxRetries: 5, sourceType: "plonkit");
+
+        picked.Should().HaveCount(3).And.OnlyContain(source => source.SourceType == "plonkit");
+    }
+
+    [Fact]
+    public async Task Retry_BringsBackSkippedSources_SoAFixedExtractorCanReadThem()
+    {
+        // rmrg.me changed its markup and every guide was skipped as "not a guide page". Skipping is for
+        // good, so once the extractor was fixed nothing could bring them back.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeFailure(host, Error.Validation("ai.not_a_guide_page", "This page carries no guide content."));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        var retry = await host.SendAsync(new RetryKnowledgeSourcesCommand(SourceType: "plonkit"));
+
+        retry.Value.Should().Be(new KnowledgeSourceRetryReport(Matched: 1, Queued: 1));
+
+        ArrangeExtraction(host, Chunk("a", "Greek bollards have a red band."));
+        (await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10))).Value.Ingested.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Retry_ByKeyOrLink_QueuesOnlyThatSource()
+    {
+        await ResetSourcesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var first = Failing(failures: 2, attemptedAt: now);
+        var second = Failing(failures: 2, attemptedAt: now);
+        var indexed = Indexed(now);
+        await SeedAsync(first, second, indexed);
+
+        using var host = CreateHost();
+
+        (await host.SendAsync(new RetryKnowledgeSourcesCommand(first.NaturalKey))).Value
+            .Should().Be(new KnowledgeSourceRetryReport(Matched: 1, Queued: 1));
+        (await host.SendAsync(new RetryKnowledgeSourcesCommand(indexed.Url))).Value
+            .Should().Be(new KnowledgeSourceRetryReport(Matched: 1, Queued: 0), "an indexed source is not a problem to retry");
+
+        (await ReadSourceAsync(first.NaturalKey))!.Status.Should().Be(KnowledgeSourceStatus.Pending);
+        (await ReadSourceAsync(second.NaturalKey))!.Status.Should().Be(KnowledgeSourceStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Retry_TakesTheTypedKeyTheListingShows()
+    {
+        // `/ai sources` prints each source as type:key, so that is what gets pasted back.
+        await ResetSourcesAsync();
+
+        var failing = Failing(failures: 1, attemptedAt: DateTimeOffset.UtcNow);
+        await SeedAsync(failing);
+
+        using var host = CreateHost();
+
+        (await host.SendAsync(new RetryKnowledgeSourcesCommand($"imgur:{failing.NaturalKey}"))).IsFailure
+            .Should().BeTrue("the type in the key must match the source's");
+        (await host.SendAsync(new RetryKnowledgeSourcesCommand($"plonkit:{failing.NaturalKey}"))).Value
+            .Should().Be(new KnowledgeSourceRetryReport(Matched: 1, Queued: 1));
+
+        (await ReadSourceAsync(failing.NaturalKey))!.Status.Should().Be(KnowledgeSourceStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Retry_Refuses_WithoutBeingToldWhichSources()
+    {
+        using var host = CreateHost();
+
+        var result = await host.SendAsync(new RetryKnowledgeSourcesCommand());
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Type.Should().Be(ErrorType.Validation);
+    }
+
+    [Fact]
+    public async Task List_ShowsEachProblemSource_WithWhyAndWhenItIsNextTried()
+    {
+        await ResetSourcesAsync();
+
+        var now = DateTimeOffset.UtcNow;
+        var gone = NewSource();
+        gone.MarkUnavailable("This document no longer exists (HTTP 410).", now.AddDays(-1));
+        var failing = Failing(failures: 1, attemptedAt: now.AddHours(-1));
+        var skipped = NewSource();
+        skipped.MarkSkipped("This page carries no guide content.", now.AddDays(-2));
+        await SeedAsync(gone, failing, skipped, Indexed(now));
+
+        using var host = CreateHost();
+
+        var result = await host.SendAsync(new ListKnowledgeSourcesQuery());
+
+        result.Value.Total.Should().Be(3, "an indexed source is no problem");
+
+        var listed = result.Value.Sources.ToDictionary(source => source.NaturalKey);
+        listed[gone.NaturalKey].StatusReason.Should().Contain("410");
+        listed[gone.NaturalKey].NextAttemptAtUtc.Should().BeCloseTo(now.AddDays(29), TimeSpan.FromSeconds(1));
+        listed[failing.NaturalKey].NextAttemptAtUtc.Should().BeCloseTo(now.AddHours(1), TimeSpan.FromSeconds(1));
+        listed[skipped.NaturalKey].NextAttemptAtUtc.Should().BeNull();
+        listed[skipped.NaturalKey].IsDue.Should().BeFalse();
+
+        var unavailable = await host.SendAsync(new ListKnowledgeSourcesQuery(KnowledgeSourceListKind.Unavailable));
+        unavailable.Value.Sources.Should().ContainSingle().Which.NaturalKey.Should().Be(gone.NaturalKey);
+    }
+
+    [Fact]
+    public async Task Status_CountsAnUnlistedSourceOnce_AsNoLongerListed()
+    {
+        // Counted as indexed too, a withdrawn guide went on inflating that figure after its chunks had gone.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var kept = NewKey();
+        var withdrawn = NewKey();
+        ArrangeCatalog(host, Descriptor(kept), Descriptor(withdrawn));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeExtraction(host, Chunk("a", "text"));
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        ArrangeCatalog(host, Descriptor(kept));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var counts = await host.SendAsync(new ReadKnowledgeSourceStatusQuery());
+
+        counts.Value.Should().Be(new KnowledgeSourceCounts(Total: 2, Pending: 0, Ingested: 1, Failed: 0, Skipped: 0,
+            Unavailable: 0, Removed: 1));
+    }
+
+    private static readonly KnowledgeSourceSchedule Schedule = new(TimeSpan.FromDays(14), TimeSpan.FromDays(30));
+
+    private async Task<IReadOnlyList<KnowledgeSource>> ReadDueAsync(DateTimeOffset now, int limit, int maxRetries)
+    {
+        await using var db = fixture.CreateDbContext();
+        return await new Infrastructure.OutputAdapters.Repositories.EfKnowledgeSourceRepository(db)
+            .ReadDueForIngestAsync(now, Schedule, limit, maxRetries);
+    }
+
+    private async Task SeedAsync(params KnowledgeSource[] seeded)
+    {
+        await using var db = fixture.CreateDbContext();
+        db.AddRange(seeded);
+        await db.SaveChangesAsync();
+    }
+
+    private static KnowledgeSource NewSource(string sourceType = "plonkit")
+    {
+        var key = NewKey();
+        return KnowledgeSource.Create(sourceType, key, $"https://www.plonkit.net/{key}", KnowledgeSourceOrigin.Sync,
+            DateTimeOffset.UtcNow.AddDays(-100), country: key);
+    }
+
+    /// <summary>A never-indexed source fetched from <paramref name="host"/>, which is what a refusal is about.</summary>
+    private static KnowledgeSource SourceOn(string host)
+    {
+        var key = NewKey();
+        return KnowledgeSource.Create("plonkit", key, $"https://{host}/{key}", KnowledgeSourceOrigin.Sync,
+            DateTimeOffset.UtcNow.AddDays(-100), country: key);
+    }
+
+    private static KnowledgeSource Indexed(DateTimeOffset at, bool imagesDeferred = false)
+    {
+        var source = NewSource();
+        source.MarkIngested("hash", null, chunkCount: 1, imageCount: 0, at, imagesDeferred);
+        return source;
+    }
+
+    private static KnowledgeSource Failing(int failures, DateTimeOffset attemptedAt)
+    {
+        var source = NewSource();
+        for (var failure = 0; failure < failures; failure++)
+        {
+            source.MarkFailed("Could not fetch this guide page (HTTP 503).", attemptedAt);
+        }
+
+        return source;
+    }
+
+    private static void ArrangeFailure(MediatorTestHost host, Error error) =>
+        ArrangeExtractor(host)
+            .ExtractAsync(Arg.Any<SourceDescriptor>(), Arg.Any<CancellationToken>())
+            .Returns(Result<ExtractedDocument>.Failure(error));
+
     private async Task ResetSourcesAsync()
     {
         await using var db = fixture.CreateDbContext();
         await db.Database.ExecuteSqlRawAsync("""DELETE FROM "KnowledgeSources" """);
     }
 
-    private async Task BackdateLastAttemptAsync()
+    private Task BackdateLastAttemptAsync() => BackdateLastAttemptAsync(TimeSpan.FromDays(400));
+
+    private async Task BackdateLastAttemptAsync(TimeSpan age)
     {
         await using var db = fixture.CreateDbContext();
-        await db.Database.ExecuteSqlRawAsync(
-            """UPDATE "KnowledgeSources" SET "LastAttemptedAtUtc" = now() - interval '400 days' """);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""UPDATE "KnowledgeSources" SET "LastAttemptedAtUtc" = {DateTimeOffset.UtcNow - age}""");
+    }
+
+    private async Task BackdateRemovalAsync(string naturalKey, TimeSpan age)
+    {
+        await using var db = fixture.CreateDbContext();
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""UPDATE "KnowledgeSources" SET "RemovedFromSyncAtUtc" = {DateTimeOffset.UtcNow - age} WHERE "NaturalKey" = {naturalKey}""");
     }
 
     private async Task ResetTodaysBudgetAsync()
@@ -848,9 +1446,13 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
         int ingestionPercent = 100,
         int batchSize = 32,
         int maxRequestBytes = 8 * 1024 * 1024,
-        bool embedImages = true) =>
+        bool embedImages = true,
+        int maxFailingRetries = 5) =>
         new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>
         {
+            ["AI:Ingestion:MaxFailingRetriesPerRun"] = maxFailingRetries.ToString(),
+            ["AI:Ingestion:UnavailableRecheckDays"] = "30",
+            ["AI:Ingestion:RemovedSourceGraceDays"] = "30",
             ["AI:Active"] = "true",
             ["AI:OpenRouter:DailyRequestBudget"] = dailyBudget.ToString(),
             ["AI:OpenRouter:EmbeddingBatchSize"] = batchSize.ToString(),

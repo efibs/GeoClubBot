@@ -171,7 +171,8 @@ public sealed class ProbeSettings
     private static string ProjectDirectory() =>
         FindUpwards(directory => directory.GetFiles("*.csproj").Length > 0) ?? AppContext.BaseDirectory;
 
-    private static string? RepositoryRoot() =>
+    /// <summary>The repository the probe was built in, found from the binary upwards; null outside one.</summary>
+    public static string? RepositoryRoot() =>
         FindUpwards(directory => directory.GetFiles("GeoClubBot.sln").Length > 0);
 
     private static string? FindUpwards(Func<DirectoryInfo, bool> isTheOne)

@@ -21,7 +21,10 @@ public interface IChatModelCatalog
     /// <summary>Ranked candidates with their scores, for operator-facing diagnostics.</summary>
     Task<IReadOnlyList<RankedChatModel>> ReadRankingAsync(ChatModelRequirements requirements, CancellationToken cancellationToken = default);
 
-    /// <summary>Re-reads the roster from upstream. Called at start-up and on a schedule.</summary>
+    /// <summary>
+    /// Re-reads the roster from upstream, then the provider health of the models a chain could name.
+    /// Called at start-up and on a schedule.
+    /// </summary>
     Task<Result<int>> RefreshAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -46,7 +49,8 @@ public interface IChatModelCatalog
 
     /// <summary>
     /// Keeps a model out of every chain until restart, after it answered with something that was not
-    /// an answer — a model the description-based rules failed to recognise as a classifier.
+    /// an answer — a model the description-based rules failed to recognise as a classifier — or refused
+    /// to serve this bot at all, as the free models reserved for agentic harnesses do.
     /// </summary>
     void ReportUnfit(string modelId);
 
@@ -55,8 +59,9 @@ public interface IChatModelCatalog
 
 /// <param name="Source">Where the current roster came from — live, a persisted snapshot, or nothing.</param>
 /// <param name="LearnedUnfitModelIds">
-/// Models excluded at runtime after answering with something that was not an answer. They are
-/// forgotten on restart, so each one is a candidate for <c>AI:OpenRouter:BlockedModelIds</c>.
+/// Models excluded at runtime after answering with something that was not an answer, or refusing to
+/// serve this bot at all. They are forgotten on restart, so each one is a candidate for
+/// <c>AI:OpenRouter:BlockedModelIds</c>.
 /// </param>
 public sealed record AiCatalogStatus(
     int ModelCount,
