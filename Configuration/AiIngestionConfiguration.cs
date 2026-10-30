@@ -24,6 +24,40 @@ public class AiIngestionConfiguration
     public int MaxDocumentExportBytes { get; set; } = 32 * 1024 * 1024;
 
     /// <summary>
+    /// Largest Google Slides deck downloaded, in bytes. A deck past it is indexed from its text export,
+    /// without pictures, speaker notes or slide links.
+    ///
+    /// Its own limit because decks are far heavier than documents and their pictures are the point:
+    /// measured across the library's 41 indexed decks, the median export is 19 MB, 17 are over the 32 MB
+    /// document limit and the largest is 339 MB. Held to the document limit, those 17 would have lost
+    /// every indexed picture on their next re-index. A deck is held in memory while it is read, because
+    /// the PowerPoint reader needs random access.
+    /// </summary>
+    public int MaxDeckExportBytes { get; set; } = 512 * 1024 * 1024;
+
+    /// <summary>
+    /// Days before a source that was deleted or stopped being shared is checked again.
+    ///
+    /// Retried with the failure backoff instead, nine deleted documents took a slot of every third run on
+    /// production, for ever; skipped, a document shared again would never come back. A check a month is
+    /// one cheap request, and the second check that still finds a source deleted removes it from the index.
+    /// </summary>
+    public int UnavailableRecheckDays { get; set; } = 30;
+
+    /// <summary>
+    /// Most sources whose last attempt failed that one run retries. They are taken last, fewest failures
+    /// first, so sources that will probably work are never crowded out by a backlog that will probably not.
+    /// </summary>
+    public int MaxFailingRetriesPerRun { get; set; } = 5;
+
+    /// <summary>
+    /// Days a source may go unlisted by every catalogue before its chunks are removed from the index; 0
+    /// keeps them for ever. A grace period rather than at once, because a library edit can drop a guide
+    /// for a week and put it back, and the catalogue sync that would notice runs only weekly.
+    /// </summary>
+    public int RemovedSourceGraceDays { get; set; } = 30;
+
+    /// <summary>
     /// Longest one fetch of third-party content may take, per attempt. A Google Docs export is by far
     /// the slowest thing the job asks for: Google spends up to a minute building one before it either
     /// arrives or is refused, and at 30 seconds every one of those was abandoned mid-build.

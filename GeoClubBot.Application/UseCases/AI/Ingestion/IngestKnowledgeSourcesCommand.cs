@@ -20,11 +20,24 @@ public sealed record IngestKnowledgeSourcesCommand(
     string? SourceType = null,
     bool Force = false) : ICommand<Result<IngestionReport>>;
 
+/// <param name="Failed">Sources that could not be read for a reason that may pass; retried with backoff.</param>
 /// <param name="BudgetExhausted">True when the run stopped early because the daily allowance ran out.</param>
 /// <param name="RateLimited">
 /// True when the run stopped because the provider was still rate-limiting after its window had been
 /// waited out — a sign something else is spending the same key. Carrying on would record every remaining
 /// source as failed for a reason that has nothing to do with them.
+/// </param>
+/// <param name="Gone">Sources found deleted upstream; checked again after the recheck interval.</param>
+/// <param name="NotPublic">Sources found no longer shared publicly; checked again after the recheck interval.</param>
+/// <param name="TooLarge">Of the skipped, those whose every export was too large to take.</param>
+/// <param name="HostRefused">
+/// Sources left exactly as they were because their host refused a request earlier in the run. Not
+/// attempted: a refusing host says nothing about the guides it serves. Their slots go to the next due
+/// sources of other hosts.
+/// </param>
+/// <param name="Removed">
+/// Sources whose chunks were removed from the index — still gone a recheck later, or unlisted by every
+/// catalogue past the grace period — so answers stop citing links that lead nowhere.
 /// </param>
 public sealed record IngestionReport(
     int Attempted,
@@ -34,7 +47,16 @@ public sealed record IngestionReport(
     int Skipped,
     int ChunksWritten,
     bool BudgetExhausted,
-    bool RateLimited = false);
+    bool RateLimited = false,
+    int Gone = 0,
+    int NotPublic = 0,
+    int TooLarge = 0,
+    int HostRefused = 0,
+    int Removed = 0)
+{
+    /// <summary>Sources that are deleted or no longer shared, together.</summary>
+    public int Unavailable => Gone + NotPublic;
+}
 
 public sealed partial class IngestKnowledgeSourcesHandler(
     IKnowledgeSourceRepository sources,
@@ -55,41 +77,61 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         var settings = ingestionConfiguration.Value;
         var now = DateTimeOffset.UtcNow;
         var limit = Math.Max(1, request.MaxSources ?? settings.MaxSourcesPerRun);
+        var schedule = IngestionSchedule.From(settings);
 
         await knowledgeIndex.EnsureCollectionAsync(cancellationToken).ConfigureAwait(false);
 
-        var due = await sources.ReadDueForIngestAsync(
+        // Read as the run goes rather than as a fixed batch, so that the slots of sources passed over for a
+        // refusing host go to the next sources of other hosts.
+        var due = sources.StreamDueForIngestAsync(
             now,
-            TimeSpan.FromDays(Math.Max(1, settings.ReingestAfterDays)),
-            limit,
+            schedule,
+            // At least one, or a setting of zero would leave every failed source failed for good.
+            Math.Max(1, settings.MaxFailingRetriesPerRun),
+            request.SourceType,
             request.Force,
-            cancellationToken).ConfigureAwait(false);
-
-        if (request.SourceType is { } sourceType)
-        {
-            due = [.. due.Where(source => source.SourceType.Equals(sourceType, StringComparison.OrdinalIgnoreCase))];
-        }
+            cancellationToken);
 
         var report = new Counters();
 
-        foreach (var source in due)
+        // Hosts that refused a request this run. One open circuit used to blame every source after it,
+        // guide sites the breaker had nothing against included, and back each of them off.
+        var refusedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Sources handed to an extractor, a refused one included: the limit bounds the requests a run
+        // makes of the guide hosts, and a source passed over for its host makes none.
+        var handedOver = 0;
+
+        await foreach (var source in due.ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var outcome = await IngestOneAsync(source, request.Force, settings, now, cancellationToken)
+            var host = HostOf(source);
+            if (refusedHosts.Contains(host))
+            {
+                // Left exactly as it was, so it keeps its place at the front of the next run's queue.
+                report.Apply(Outcome.HostRefused);
+                continue;
+            }
+
+            handedOver++;
+            var outcome = await IngestOneAsync(source, request.Force, settings, schedule, now, cancellationToken)
                 .ConfigureAwait(false);
 
             report.Apply(outcome);
 
-            if (outcome.BudgetExhausted)
+            if (outcome.Kind == OutcomeKind.HostRefused)
+            {
+                refusedHosts.Add(host);
+            }
+            else if (outcome.Kind == OutcomeKind.OutOfBudget)
             {
                 // Stop the whole run: every remaining source needs embedding requests we no longer
                 // have, and attempting them would only earn a stream of rate-limit errors.
                 LogBudgetExhausted(logger, report.Attempted);
                 break;
             }
-
-            if (outcome.RateLimited)
+            else if (outcome.RateLimited)
             {
                 // The request layer has already waited out the provider's window once. Still being
                 // limited means the window is being spent elsewhere, and every further source would hit
@@ -97,15 +139,31 @@ public sealed partial class IngestKnowledgeSourcesHandler(
                 LogRateLimited(logger, report.Attempted);
                 break;
             }
+
+            if (handedOver >= limit)
+            {
+                break;
+            }
         }
+
+        report.AddRemoved(await RemoveUnlistedSourcesAsync(request.SourceType, settings, now, cancellationToken)
+            .ConfigureAwait(false));
 
         return report.ToReport();
     }
+
+    /// <summary>
+    /// The host a source is fetched from. The extractors fetch from the host of the source's own link,
+    /// so it is also what a refusal is about; a link that will not parse groups with its own family.
+    /// </summary>
+    private static string HostOf(KnowledgeSource source) =>
+        Uri.TryCreate(source.Url, UriKind.Absolute, out var url) ? url.Host : source.SourceType;
 
     private async Task<Outcome> IngestOneAsync(
         KnowledgeSource source,
         bool force,
         AiIngestionConfiguration settings,
+        KnowledgeSourceSchedule schedule,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -113,7 +171,8 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         if (extractor is null)
         {
             source.MarkSkipped($"No extractor is registered for '{source.SourceType}'.", now);
-            return Outcome.Skipped;
+            LogSourceSkipped(logger, source.SourceType, source.NaturalKey, NoExtractorCode, source.StatusReason!);
+            return Outcome.Skipped(tooLarge: false);
         }
 
         var descriptor = new SourceDescriptor(
@@ -123,23 +182,30 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         var extracted = await extractor.ExtractAsync(descriptor, cancellationToken).ConfigureAwait(false);
         if (extracted.IsFailure)
         {
-            // A validation failure means the source is understood and simply not ingestible — a
-            // listing page, a video. Retrying it nightly would waste the whole run's budget.
-            if (extracted.Error.Type == ErrorType.Validation)
-            {
-                source.MarkSkipped(extracted.Error.Message, now);
-                return Outcome.Skipped;
-            }
-
-            source.MarkFailed(extracted.Error.Message, now);
-            return Outcome.Failed;
+            return await RecordExtractionFailureAsync(source, extracted.Error, schedule, now, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         var document = extracted.Value;
         if (document.Chunks.Count == 0)
         {
             source.MarkSkipped("The source contained no indexable content.", now);
-            return Outcome.Skipped;
+            LogSourceSkipped(logger, source.SourceType, source.NaturalKey, NoContentCode, source.StatusReason!);
+            return Outcome.Skipped(tooLarge: false);
+        }
+
+        if (document.Degraded && source.HoldsIndexedPictures)
+        {
+            // Text read in place of an export that failed this time. Writing it would sweep every
+            // picture indexed from the full export, only for them to be embedded again — at a request
+            // per batch of the same daily allowance — once it answers. What is indexed stays, pictures
+            // still owed their embedding included: writing over them would also clear the debt.
+            source.MarkFailed(
+                "The full export failed and only the text could be read; kept the version already indexed with its pictures.",
+                now);
+            LogSourceFailed(logger, source.SourceType, source.NaturalKey, DegradedCode, source.StatusReason!,
+                source.ConsecutiveFailures);
+            return Outcome.Failed;
         }
 
         var chunks = ContentChunker.Chunk(document.Chunks);
@@ -173,6 +239,8 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             }
 
             source.MarkFailed(written.Error.Message, now);
+            LogSourceFailed(logger, source.SourceType, source.NaturalKey, written.Error.Code, written.Error.Message,
+                source.ConsecutiveFailures);
             return Outcome.Failed;
         }
 
@@ -185,6 +253,113 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         LogIngested(logger, source.SourceType, source.NaturalKey, written.Value.ChunkCount, written.Value.ImageCount);
 
         return Outcome.Ingested(written.Value.ChunkCount, written.Value.RateLimited);
+    }
+
+    /// <summary>
+    /// Records why a source could not be read, by what can be done about it.
+    ///
+    /// Each verdict is logged on its own: a failure used to show up only as a count in the run's summary
+    /// and a redacted HTTP line, which is how ten broken guides went unnoticed night after night.
+    /// </summary>
+    private async Task<Outcome> RecordExtractionFailureAsync(
+        KnowledgeSource source,
+        Error error,
+        KnowledgeSourceSchedule schedule,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        // About the host, not this source: it is left as it was, like a provider rate limit.
+        if (error.Code == SourceExtractionErrorCodes.HostRefused)
+        {
+            LogHostRefused(logger, HostOf(source), source.SourceType, source.NaturalKey, error.Message);
+            return Outcome.HostRefused;
+        }
+
+        switch (error.Type)
+        {
+            // Deleted, or no longer shared: only the owner can change that, so it is neither retried with
+            // backoff nor given up on, but checked again on its own, much longer interval.
+            case ErrorType.NotFound or ErrorType.Forbidden:
+                {
+                    var gone = error.Type == ErrorType.NotFound;
+                    source.MarkUnavailable(error.Message, now);
+
+                    var recheckDays = (int)Math.Round(schedule.UnavailableRecheckInterval.TotalDays);
+                    LogSourceUnavailable(logger, source.SourceType, source.NaturalKey, error.Code, error.Message,
+                        source.ConsecutiveFailures, recheckDays);
+
+                    // Still gone a whole recheck later, so a citation of it now leads nowhere. Only a deletion
+                    // counts: a private document may be shared again, and its link still names its owner.
+                    var removed = gone && source.IsConfirmedUnavailable && source.HoldsIndexedContent;
+                    if (removed)
+                    {
+                        var points = await RemoveFromIndexAsync(source, cancellationToken).ConfigureAwait(false);
+                        LogRemovedGone(logger, source.SourceType, source.NaturalKey, points, source.ConsecutiveFailures);
+                    }
+
+                    return Outcome.Unavailable(gone, removed);
+                }
+
+            // Understood and simply not ingestible — a listing page, an empty album, an export too
+            // large in every form. Retrying it nightly would waste the whole run's budget.
+            case ErrorType.Validation:
+                source.MarkSkipped(error.Message, now);
+                LogSourceSkipped(logger, source.SourceType, source.NaturalKey, error.Code, error.Message);
+                return Outcome.Skipped(tooLarge: error.Code == SourceExtractionErrorCodes.ExportTooLarge);
+
+            default:
+                source.MarkFailed(error.Message, now);
+                LogSourceFailed(logger, source.SourceType, source.NaturalKey, error.Code, error.Message,
+                    source.ConsecutiveFailures);
+                return Outcome.Failed;
+        }
+    }
+
+    /// <summary>
+    /// Removes the chunks of sources no catalogue has listed for the grace period.
+    ///
+    /// A sync tombstones rather than deletes, so a guide dropped from a library for a week keeps its
+    /// chunks. Without this, though, it kept them for ever — answers went on citing guides the library
+    /// had withdrawn, and only a successful re-index ever swept anything.
+    /// </summary>
+    /// <returns>How many sources had their chunks removed.</returns>
+    private async Task<int> RemoveUnlistedSourcesAsync(
+        string? sourceType,
+        AiIngestionConfiguration settings,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (settings.RemovedSourceGraceDays <= 0)
+        {
+            return 0;
+        }
+
+        var unlisted = await sources.ReadRemovedWithIndexedContentAsync(
+            now - TimeSpan.FromDays(settings.RemovedSourceGraceDays),
+            sourceType,
+            cancellationToken).ConfigureAwait(false);
+
+        foreach (var source in unlisted)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var points = await RemoveFromIndexAsync(source, cancellationToken).ConfigureAwait(false);
+            LogRemovedUnlisted(logger, source.SourceType, source.NaturalKey, points, settings.RemovedSourceGraceDays);
+        }
+
+        return unlisted.Count;
+    }
+
+    /// <summary>Removes every chunk of a source from the index, and records that it holds none.</summary>
+    private async Task<int> RemoveFromIndexAsync(KnowledgeSource source, CancellationToken cancellationToken)
+    {
+        // A run id nothing was ever written under, so the sweep finds every point of the source stale.
+        var removed = await knowledgeIndex
+            .SweepAsync(source.SourceType, source.NaturalKey, Guid.NewGuid().ToString("N"), cancellationToken)
+            .ConfigureAwait(false);
+
+        source.MarkIndexedContentRemoved();
+        return removed;
     }
 
     private async Task<Result<WriteResult>> WriteAsync(
@@ -613,25 +788,53 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         }
     }
 
-    private readonly record struct Outcome(
-        bool WasIngested,
-        bool WasUnchanged,
-        bool WasFailed,
-        bool WasSkipped,
-        bool BudgetExhausted,
-        bool RateLimited,
-        int ChunkCount)
-    {
-        public static Outcome Ingested(int chunkCount, bool rateLimited) =>
-            new(true, false, false, false, false, rateLimited, chunkCount);
+    /// <summary>Codes for the run's own verdicts, so every logged verdict carries one like the extractors' do.</summary>
+    private const string NoExtractorCode = "ai.no_extractor";
 
-        public static readonly Outcome Unchanged = new(false, true, false, false, false, false, 0);
-        public static readonly Outcome Failed = new(false, false, true, false, false, false, 0);
-        public static readonly Outcome Skipped = new(false, false, false, true, false, false, 0);
-        public static readonly Outcome OutOfBudget = new(false, false, false, false, true, false, 0);
+    private const string NoContentCode = "ai.no_indexable_content";
+
+    private const string DegradedCode = "ai.export_degraded";
+
+    private enum OutcomeKind
+    {
+        Ingested,
+        Unchanged,
+        Failed,
+        Skipped,
+        Unavailable,
+        OutOfBudget,
 
         /// <summary>Refused by the provider before anything was written; the source is left as it was.</summary>
-        public static readonly Outcome RateLimitedBeforeWriting = new(false, false, false, false, false, true, 0);
+        RateLimitedBeforeWriting,
+
+        /// <summary>Its host refused the request; the source is left as it was.</summary>
+        HostRefused
+    }
+
+    /// <param name="Gone">For an unavailable source, whether it was deleted rather than unshared.</param>
+    /// <param name="TooLarge">For a skipped source, whether every export of it was too large.</param>
+    /// <param name="Removed">Whether the source's chunks were removed from the index.</param>
+    private readonly record struct Outcome(
+        OutcomeKind Kind,
+        int ChunkCount = 0,
+        bool RateLimited = false,
+        bool Gone = false,
+        bool TooLarge = false,
+        bool Removed = false)
+    {
+        public static Outcome Ingested(int chunkCount, bool rateLimited) =>
+            new(OutcomeKind.Ingested, chunkCount, rateLimited);
+
+        public static Outcome Skipped(bool tooLarge) => new(OutcomeKind.Skipped, TooLarge: tooLarge);
+
+        public static Outcome Unavailable(bool gone, bool removed) =>
+            new(OutcomeKind.Unavailable, Gone: gone, Removed: removed);
+
+        public static readonly Outcome Unchanged = new(OutcomeKind.Unchanged);
+        public static readonly Outcome Failed = new(OutcomeKind.Failed);
+        public static readonly Outcome OutOfBudget = new(OutcomeKind.OutOfBudget);
+        public static readonly Outcome RateLimitedBeforeWriting = new(OutcomeKind.RateLimitedBeforeWriting, RateLimited: true);
+        public static readonly Outcome HostRefused = new(OutcomeKind.HostRefused);
     }
 
     private sealed class Counters
@@ -642,6 +845,11 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         private int Unchanged { get; set; }
         private int Failed { get; set; }
         private int Skipped { get; set; }
+        private int TooLarge { get; set; }
+        private int Gone { get; set; }
+        private int NotPublic { get; set; }
+        private int HostRefused { get; set; }
+        private int Removed { get; set; }
         private int Chunks { get; set; }
         private bool BudgetExhausted { get; set; }
         private bool RateLimited { get; set; }
@@ -650,37 +858,89 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         {
             RateLimited = RateLimited || outcome.RateLimited;
 
-            if (outcome.BudgetExhausted)
+            switch (outcome.Kind)
             {
-                BudgetExhausted = true;
-                return;
-            }
+                case OutcomeKind.OutOfBudget:
+                    BudgetExhausted = true;
+                    return;
 
-            // A source the provider refused before anything was written was not really attempted.
-            if (outcome is { RateLimited: true, WasIngested: false })
-            {
-                return;
+                // Neither was really attempted: the provider or the host refused before anything happened.
+                case OutcomeKind.RateLimitedBeforeWriting:
+                    return;
+
+                case OutcomeKind.HostRefused:
+                    HostRefused++;
+                    return;
             }
 
             Attempted++;
 
-            if (outcome.WasIngested)
+            if (outcome.Removed)
             {
-                Ingested++;
-                Chunks += outcome.ChunkCount;
+                Removed++;
             }
 
-            if (outcome.WasUnchanged) { Unchanged++; }
-            if (outcome.WasFailed) { Failed++; }
-            if (outcome.WasSkipped) { Skipped++; }
+            switch (outcome.Kind)
+            {
+                case OutcomeKind.Ingested:
+                    Ingested++;
+                    Chunks += outcome.ChunkCount;
+                    break;
+                case OutcomeKind.Unchanged:
+                    Unchanged++;
+                    break;
+                case OutcomeKind.Failed:
+                    Failed++;
+                    break;
+                case OutcomeKind.Skipped:
+                    Skipped++;
+                    TooLarge += outcome.TooLarge ? 1 : 0;
+                    break;
+                case OutcomeKind.Unavailable when outcome.Gone:
+                    Gone++;
+                    break;
+                case OutcomeKind.Unavailable:
+                    NotPublic++;
+                    break;
+            }
         }
 
+        /// <summary>Sources removed from the index outside any attempt, because no catalogue lists them.</summary>
+        public void AddRemoved(int count) => Removed += count;
+
         public IngestionReport ToReport() =>
-            new(Attempted, Ingested, Unchanged, Failed, Skipped, Chunks, BudgetExhausted, RateLimited);
+            new(Attempted, Ingested, Unchanged, Failed, Skipped, Chunks, BudgetExhausted, RateLimited,
+                Gone, NotPublic, TooLarge, HostRefused, Removed);
     }
 
     [LoggerMessage(LogLevel.Information, "Indexed {SourceType}:{NaturalKey} - {ChunkCount} chunk(s), {ImageCount} image(s).")]
     static partial void LogIngested(ILogger logger, string sourceType, string naturalKey, int chunkCount, int imageCount);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Could not index {SourceType}:{NaturalKey} ({Code}): {Reason} Failure {Failures} in a row; retried with backoff.")]
+    static partial void LogSourceFailed(
+        ILogger logger, string sourceType, string naturalKey, string code, string reason, int failures);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Skipped {SourceType}:{NaturalKey} ({Code}): {Reason} Not retried unless an admin asks with /ai source-retry.")]
+    static partial void LogSourceSkipped(ILogger logger, string sourceType, string naturalKey, string code, string reason);
+
+    [LoggerMessage(LogLevel.Warning,
+        "{SourceType}:{NaturalKey} is unavailable ({Code}): {Reason} Check {Checks} in a row; checked again in {RecheckDays} day(s).")]
+    static partial void LogSourceUnavailable(
+        ILogger logger, string sourceType, string naturalKey, string code, string reason, int checks, int recheckDays);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Removed {Points} point(s) of {SourceType}:{NaturalKey} from the index: it was still gone after {Checks} checks.")]
+    static partial void LogRemovedGone(ILogger logger, string sourceType, string naturalKey, int points, int checks);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Removed {Points} point(s) of {SourceType}:{NaturalKey} from the index: no catalogue has listed it for {GraceDays} day(s).")]
+    static partial void LogRemovedUnlisted(ILogger logger, string sourceType, string naturalKey, int points, int graceDays);
+
+    [LoggerMessage(LogLevel.Warning,
+        "{Host} refused the request for {SourceType}:{NaturalKey}; leaving its sources for a later run ({Reason}).")]
+    static partial void LogHostRefused(ILogger logger, string host, string sourceType, string naturalKey, string reason);
 
     [LoggerMessage(LogLevel.Information,
         "Indexed {ImageCount} chunk(s) without their picture: the format is one the AI provider cannot read.")]

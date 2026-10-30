@@ -90,6 +90,87 @@ public sealed class KnowledgeHitFusionTests
     }
 
     [Fact]
+    public void Fuse_KeepsEveryPictureOfCopiesWithTheSameCaption()
+    {
+        // A slide's caption sits beside each of its pictures — eight on "India Poles > Slide 18" — and
+        // keeping only the best-ranked copy's picture left 72 % of slide pictures impossible to offer.
+        const string caption = "India Poles > Slide 18: concrete poles with a single crossbar.";
+        var first = Picture(caption);
+        var other = Hit("Kerala uses tall poles.");
+        var second = Picture(caption);
+        var third = Picture(caption);
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, first, other, second, third)], limit: 8);
+
+        fused.Should().HaveCount(2);
+        fused[0].Id.Should().Be(first.Id);
+        fused[0].ImageUrl.Should().Be(first.ImageUrl);
+        fused[0].ExtraImageUrls.Should().Equal([second.ImageUrl!, third.ImageUrl!], "best-ranked copy first");
+        fused[0].MergedChunkIds.Should().Equal(second.Id, third.Id);
+        fused[0].ChunkIds.Should().Equal(first.Id, second.Id, third.Id);
+    }
+
+    [Fact]
+    public void Fuse_NeverShowsAPictureFromElsewhere_UnderTheKeptExcerptsTitleAndLink()
+    {
+        // Two decks each have a slide whose only text is "Bollards". Folded in as an extra picture, the
+        // Czech bollard was shown as "[1] Poland … (2/2)", linking to the Poland deck.
+        var poland = Picture("Bollards", sourceUrl: "https://docs.google.com/presentation/d/poland#slide=id.p4",
+            section: "Poland > Slide 4");
+        var czechia = Picture("Bollards", sourceUrl: "https://docs.google.com/presentation/d/czechia#slide=id.p9",
+            section: "Czechia > Slide 9");
+        var sameSlide = Picture("Bollards", sourceUrl: poland.SourceUrl, section: poland.SectionPath!);
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, poland, czechia, sameSlide)], limit: 8).Single();
+
+        fused.Id.Should().Be(poland.Id);
+        fused.ExtraImageUrls.Should().Equal([sameSlide.ImageUrl!], "only a picture of the same slide is shown as this one's");
+        fused.ChunkIds.Should().Equal([poland.Id, sameSlide.Id], "the excerpt does not stand for a picture it dropped");
+    }
+
+    [Fact]
+    public void Fuse_KeepsApartPicturesOfTwoSectionsOfOneGuide()
+    {
+        // A Google Doc has one link for all its sections; "Example:" under Poland and under Czechia are
+        // still two different places.
+        var poland = Picture("Example:", sourceUrl: "https://docs.google.com/document/d/europe", section: "Bollards > Poland");
+        var czechia = Picture("Example:", sourceUrl: poland.SourceUrl, section: "Bollards > Czechia");
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, poland, czechia)], limit: 8).Single();
+
+        fused.ExtraImageUrls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Fuse_KeepsTheIdsOfTheTextCopiesItCollapses_AndAddsNoPictureToText()
+    {
+        var first = Hit("Gen 4 is found in most of North-Central Province.");
+        var copy = Hit("Gen 4 is found in most of North-Central Province.");
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, first, copy)], limit: 8).Single();
+
+        fused.ImageUrl.Should().BeNull();
+        fused.ExtraImageUrls.Should().BeEmpty();
+        fused.ChunkIds.Should().Equal(first.Id, copy.Id);
+    }
+
+    [Fact]
+    public void Fuse_LetsAPictureLeadTheTextItCaptions_AndKeepsTheOtherPictures()
+    {
+        // Prose first, then two pictures with the same text: the excerpt becomes the first picture —
+        // one the model can attach — and brings the second too.
+        var prose = Hit("Snow poles in Finland have one thin white band.");
+        var picture = Picture("Snow poles in Finland have one thin white band.");
+        var another = Picture("Snow poles in Finland have one thin white band.");
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, prose, picture, another)], limit: 8).Single();
+
+        fused.Id.Should().Be(picture.Id);
+        fused.ExtraImageUrls.Should().Equal(another.ImageUrl);
+        fused.ChunkIds.Should().BeEquivalentTo([prose.Id, picture.Id, another.Id]);
+    }
+
+    [Fact]
     public void Fuse_ComparesTextAsAReaderWould()
     {
         var plain = Hit("Khasi pines are mainly found in Meghalaya.");
@@ -122,13 +203,61 @@ public sealed class KnowledgeHitFusionTests
     public void Fuse_ReturnsNothing_ForNoLists() =>
         KnowledgeHitFusion.Fuse([], limit: 8).Should().BeEmpty();
 
+    [Fact]
+    public void Fuse_DemotesAPictureWhoseOnlyTextIsAHeading()
+    {
+        // Five of the eight excerpts offered for "How can I clearly identify Sabah?" were pictures
+        // captioned only "Svalbard — Identifying Svalbard" and the like: the model can say nothing
+        // about them, yet the heading matched the question first.
+        var heading = Picture("Svalbard — Identifying Svalbard", title: "Svalbard — Identifying Svalbard");
+        var sabah = Hit("Sabah has unique parallel pole tops not seen in mainland Malaysia.");
+
+        KnowledgeHitFusion.Fuse([List(1d, heading, sabah)], limit: 8)
+            .Select(hit => hit.Id).Should().Equal(heading.Id, sabah.Id);
+
+        var demoted = KnowledgeHitFusion.Fuse([List(1d, heading, sabah)], limit: 8, headingOnlyPictureWeight: 0.5);
+        demoted.Select(hit => hit.Id).Should().Equal(sabah.Id, heading.Id);
+        demoted[1].Score.Should().BeApproximately((float)(0.5 / 2), 1e-6f);
+    }
+
+    [Fact]
+    public void Fuse_LeavesACaptionedPictureWhereItRanks()
+    {
+        var captioned = Picture("JKR signs in Sabah have a yellow border, unlike the mainland's.");
+        var text = Hit("Sabah has unique parallel pole tops.");
+
+        KnowledgeHitFusion.Fuse([List(1d, captioned, text)], limit: 8, headingOnlyPictureWeight: 0)
+            .Select(hit => hit.Id).Should().Equal(captioned.Id, text.Id);
+    }
+
+    [Theory]
+    [InlineData("Svalbard — Identifying Svalbard", "Svalbard — Identifying Svalbard", "Svalbard > Identifying Svalbard", true)]
+    [InlineData("Identifying Svalbard", "Svalbard — Identifying Svalbard", "Svalbard > Identifying Svalbard", true)]
+    [InlineData("Mongolia — Region-specific clues", "Plonk It", "Mongolia > Region-specific clues", true)]
+    [InlineData("Distribution", "USA Cars", "USA Cars > Distribution", true)]
+    [InlineData("Summary :", "Kazakhstan", "Kazakhstan > Summary :", true)]
+    [InlineData("https://i.imgur.com/AgNVVGk.png", "Mongolia", "Mongolia", true)]
+    [InlineData("The tent with 4 straps covers most of central-northern Mongolia.", "Plonk It", "Mongolia > Region-specific clues", false)]
+    public void IsHeadingOnlyPicture_KnowsACaptionThatSaysNothing(string text, string title, string section, bool expected) =>
+        new KnowledgeHit(Guid.NewGuid(), 0.5f, KnowledgeChunkKind.Image, text, "https://guide", "https://img/x.png",
+                title, "country", section, "Author", 0)
+            .IsHeadingOnlyPicture.Should().Be(expected);
+
+    [Fact]
+    public void IsHeadingOnlyPicture_NeverCallsTextAPicture() =>
+        Hit("Distribution").IsHeadingOnlyPicture.Should().BeFalse("prose is never demoted for being short");
+
     private static WeightedHitList List(double weight, params KnowledgeHit[] hits) => new(hits, weight);
 
     private static KnowledgeHit Hit(string text) =>
         new(Guid.NewGuid(), 0.5f, KnowledgeChunkKind.Text, text, "https://guide/text", ImageUrl: null,
             "Guide", "country", "Guide > Section", "Author", 0);
 
-    private static KnowledgeHit Picture(string text) =>
-        new(Guid.NewGuid(), 0.2f, KnowledgeChunkKind.Image, text, "https://guide/picture", $"https://img/{Guid.NewGuid():N}.png",
-            "Guide", "country", "Guide > Section", "Author", 0);
+    private static KnowledgeHit Picture(
+        string text,
+        string title = "Guide",
+        string sourceUrl = "https://guide/picture",
+        string section = "Guide > Section") =>
+        new(Guid.NewGuid(), 0.2f, KnowledgeChunkKind.Image, text, sourceUrl, $"https://img/{Guid.NewGuid():N}.png",
+            title, "country", section, "Author", 0);
 }

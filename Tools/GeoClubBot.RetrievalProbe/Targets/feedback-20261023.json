@@ -1,0 +1,211 @@
+{
+  // Targets for ai_feedback/ai-feedback-20261023.jsonl (49 rated answers; it holds the 2026-09-27
+  // export too). Keys are words of the question, matched in this order; "match" is what an on-target
+  // excerpt's text contains; "countries" are what the question is about, as the index spells them
+  // (empty: it spans many); "chunks" are excerpts known to answer it, from the feedback triage of
+  // 2026-10-23, matched against an excerpt's source URL and text.
+  "single sideways insulator": {
+    "match": "insulator",
+    "countries": [ "brazil" ],
+    "chunks": [ "brazil#r5UP", "brazil#z5v9" ]
+  },
+  "sideways attached insulators": {
+    "match": "insulator",
+    "countries": [ "brazil" ],
+    "chunks": [ "brazil#z5v9" ]
+  },
+  "round roof tiles": {
+    "match": "roof|tile",
+    "countries": [ "india" ],
+    "chunks": [ "india#cIYN" ]
+  },
+  "front plates": {
+    "match": "front (licen[cs]e )?plate|plates? (on|at) the front|rear plates? only|only (a )?rear",
+    "countries": [ "usa", "united states" ]
+  },
+  "pole supports": {
+    "match": "support",
+    "countries": [ "brazil" ],
+    "chunks": [ "brazil#u4vX" ]
+  },
+  "stubby antenna": {
+    "match": "stubby|short antenna|small antenna|antenna",
+    "countries": []
+  },
+  "gen3 google cars in ecuador": {
+    "match": "gen ?3|antenna|car",
+    "countries": [ "ecuador", "peru" ]
+  },
+  "baja california": {
+    "match": "baja|\\bbcs\\b|peninsula|card[oó]n|vizca[ií]no|boojum|cirio|organ pipe|yucca valida",
+    "countries": [ "mexico" ],
+    "chunks": [ "Organ Pipe, is native to Sonora", "Vizca[ií]no Biosphere" ]
+  },
+  "tree yucca": {
+    "match": "yucca|joshua",
+    "countries": []
+  },
+  "differentiate it from czechia": {
+    "match": "guard ?rail",
+    "countries": [ "czechia", "czech republic", "slovakia" ],
+    "chunks": [ "czechia#xfda", "slovakia#F7is" ]
+  },
+  "snake traps": {
+    "match": "snake|possum|trap",
+    "countries": [ "indonesia" ]
+  },
+  // The two screenshot questions: their Discord links have expired, so a look-alike from another
+  // country stands in, as the real screenshots' own look-alikes came from India, Peru, Sweden, South
+  // Africa and the Netherlands (feedback triage #12, #13).
+  "plant regional in australia": {
+    "match": "plant|tree|grass|bush|brush|shrub|vegetation|eucalypt|spinifex|flora",
+    "countries": [ "australia" ],
+    "chunks": [ "australia#pAMj" ],
+    "screenshot": "https://www.plonkit.net/argentina#HidJ"
+  },
+  "bollard a meta in australia": {
+    "match": "bollard",
+    "countries": [ "australia" ],
+    "screenshot": "https://www.plonkit.net/netherlands#R6It"
+  },
+  "snow poles in scandinavia": {
+    "match": "snow (pole|marker|stake|stick)",
+    "countries": [ "norway", "sweden", "finland", "denmark", "iceland" ],
+    "chunks": [ "finland#7DPm" ]
+  },
+  "snow bollards": {
+    "match": "snow (pole|marker|stake|stick)",
+    "countries": [ "norway", "sweden", "finland", "denmark", "iceland" ],
+    "chunks": [ "finland#7DPm" ]
+  },
+  "kyushu insulator": {
+    "match": "kyushu|insulator",
+    "countries": [ "japan" ]
+  },
+  "grow rice": {
+    "match": "rice|padd(y|ies)",
+    "countries": [ "philippines" ]
+  },
+  "clearly identify sabah": {
+    "match": "sabah",
+    "countries": [ "malaysia" ],
+    "chunks": [ "malaysia#AlbW", "malaysia#ZWP5", "malaysia#4IDp", "malaysia#m7su", "malaysia#tGn7" ]
+  },
+  "mainland lamps in sabah": {
+    "match": "lamp|street ?light",
+    "countries": [ "malaysia" ]
+  },
+  "four band with open tent": {
+    "match": "tent|strap|zipper",
+    "countries": [ "mongolia" ],
+    "chunks": [ "mongolia#62RZ", "mongolia#gdTt" ]
+  },
+  "exact distribution": {
+    "match": "tent|strap|zipper",
+    "countries": [ "mongolia" ],
+    "chunks": [ "mongolia#62RZ", "mongolia#gdTt" ]
+  },
+  "what about corn": {
+    "match": "corn|maize",
+    "countries": [ "philippines" ],
+    "chunks": [ "philippines#9hUv" ]
+  },
+  "sugar cane": {
+    "match": "sugar ?cane",
+    "countries": [ "philippines" ],
+    "chunks": [ "philippines#GaHP" ]
+  },
+  "gen 4 antenna possible in brazil": {
+    "match": "antenna",
+    "countries": [ "brazil" ],
+    "chunks": [ "1HG3hHk_fB0nbFsUosP0kQ9Se3MK-cmCXjRUgya0FkZA/edit#slide=id\\.p7" ]
+  },
+  "khasi": {
+    "match": "khasi|kesiya|benguet",
+    "countries": []
+  },
+  "stop signs": {
+    "match": "all.?way|4.?way|four.?way|stop sign",
+    "countries": [ "usa", "united states" ]
+  },
+  "red soil in malaysia": {
+    "match": "red (soil|dirt|earth)|soil",
+    "countries": [ "malaysia" ]
+  },
+  "thailand vs philippines": {
+    "match": "thai|philippin",
+    "countries": [ "thailand", "philippines" ]
+  },
+  "which region of russia": {
+    "match": "russia|oblast|krai|republic",
+    "countries": [ "russia" ]
+  },
+  "khanty-mansi": {
+    "match": "khanty|yugra|ugra|hmao",
+    "countries": [ "russia" ]
+  },
+  "back of the truck in ghana": {
+    "match": "truck|pick-?up|back of the car|rear of the car|car",
+    "countries": [ "ghana" ]
+  },
+  "gen 4 balkans": {
+    "match": "gen ?4",
+    "countries": [ "albania", "montenegro", "north macedonia", "serbia", "croatia", "slovenia", "bulgaria", "romania", "greece" ]
+  },
+  "pacific northwest pines": {
+    "match": "pine|conifer|spruce|\\bfirs?\\b",
+    "countries": []
+  },
+  "indented poles": {
+    "match": "indent",
+    "countries": [ "south africa" ]
+  },
+  "dashed outer lines": {
+    "match": "dashed|outer line|edge line|side line",
+    "countries": [ "philippines" ]
+  },
+  "pampa": {
+    "match": "pampa",
+    "countries": []
+  },
+  "blue roofs": {
+    "match": "blue roof|roof",
+    "countries": [ "japan" ]
+  },
+  "definitely bengali-assamese": {
+    "match": "bengali|assamese|script",
+    "countries": [ "india", "bangladesh" ]
+  },
+  "is this bengali-assamese": {
+    "match": "bengali|assamese|script",
+    "countries": [ "india", "bangladesh" ]
+  },
+  "tripura": {
+    "match": "tripura|bengali|kokborok",
+    "countries": [ "india" ]
+  },
+  "long antenna possible in russia": {
+    "match": "antenna",
+    "countries": [ "russia" ]
+  },
+  "every country with gen2": {
+    "match": "gen ?2|shit ?cam",
+    "countries": []
+  },
+  "license plates to learn in mexico": {
+    "match": "plate",
+    "countries": [ "mexico" ]
+  },
+  "what cactus is this": {
+    "match": "cact|saguaro|card[oó]n|opuntia|prickly",
+    "countries": []
+  },
+  "lechuguilla": {
+    "match": "lechuguilla",
+    "countries": []
+  },
+  "talas": {
+    "match": "talas",
+    "countries": [ "kyrgyzstan" ]
+  }
+}

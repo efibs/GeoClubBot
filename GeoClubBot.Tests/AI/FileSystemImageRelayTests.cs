@@ -6,6 +6,7 @@ using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using UseCases.OutputPorts.AI;
 using Xunit;
 
 namespace GeoClubBot.Tests.AI;
@@ -240,14 +241,92 @@ public sealed class FileSystemImageRelayTests : IDisposable
             .Should().Be("https://www.plonkit.net/images/x.png");
     }
 
+    [Fact]
+    public async Task CheckPublicReachability_SaysNotConfigured_WhenThereIsNoPublicBase()
+    {
+        var reachability = await Create(publicBaseUrl: null).CheckPublicReachabilityAsync();
+
+        reachability.Status.Should().Be(ImageRelayReachabilityStatus.NotConfigured);
+        reachability.PublicBaseUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CheckPublicReachability_AsksTheHealthEndpointUnderThePublicBase()
+    {
+        var health = new RecordingHandler(HttpStatusCode.OK);
+        var relay = Create(publicBaseUrl: "https://host.tailnet.ts.net/", reachabilityHandler: health);
+
+        var reachability = await relay.CheckPublicReachabilityAsync();
+
+        reachability.Status.Should().Be(ImageRelayReachabilityStatus.Reachable);
+        reachability.PublicBaseUrl.Should().Be("https://host.tailnet.ts.net");
+        reachability.Detail.Should().StartWith("answered in ");
+        health.LastRequestUri.Should().Be(new Uri("https://host.tailnet.ts.net/health"));
+    }
+
+    [Fact]
+    public async Task CheckPublicReachability_IsUnreachable_WhenTheHostAnswersWithAnError()
+    {
+        // A proxy or tunnel in front of a stopped bot still answers, with an error status.
+        var relay = Create(reachabilityHandler: new RecordingHandler(HttpStatusCode.BadGateway));
+
+        var reachability = await relay.CheckPublicReachabilityAsync();
+
+        reachability.Status.Should().Be(ImageRelayReachabilityStatus.Unreachable);
+        reachability.Detail.Should().Be("answered HTTP 502");
+    }
+
+    [Fact]
+    public async Task CheckPublicReachability_IsUnreachable_WhenTheNameDoesNotResolve_WithoutThrowing()
+    {
+        // The 2026-10-22 outage: the public DNS record was gone. The resolver's words are kept, because
+        // they are what tells a lost record apart from the bot being down.
+        var relay = Create(reachabilityHandler: new ThrowingHandler(
+            new HttpRequestException("Name or service not known (host.tailnet.ts.net:443)")));
+
+        var reachability = await relay.CheckPublicReachabilityAsync();
+
+        reachability.Status.Should().Be(ImageRelayReachabilityStatus.Unreachable);
+        reachability.Detail.Should().Be("Name or service not known (host.tailnet.ts.net:443)");
+    }
+
+    [Fact]
+    public async Task CheckPublicReachability_GivesUpAfterItsTimeout()
+    {
+        var relay = Create(reachabilityHandler: new HangingHandler(), reachabilityTimeoutSeconds: 1);
+
+        var reachability = await relay.CheckPublicReachabilityAsync();
+
+        reachability.Status.Should().Be(ImageRelayReachabilityStatus.Unreachable);
+        reachability.Detail.Should().Be("no answer within 1 s");
+    }
+
+    [Fact]
+    public async Task ReadAsync_FindsAnImageByTheNameInItsRelayedUrl()
+    {
+        // The answer path reads the stored name out of whatever URL was indexed and uploads the bytes.
+        var stored = await Create(publicBaseUrl: "https://old-tunnel.trycloudflare.com").StoreAsync(PngBytes, "image/png");
+        RelayedImageUrl.TryReadName(stored.Value, out var name).Should().BeTrue();
+
+        var image = await Create().ReadAsync(name!);
+
+        image.Should().NotBeNull();
+        await using var content = image!.Content;
+        content.Length.Should().Be(PngBytes.Length, "the size decides whether the picture is uploaded");
+    }
+
     private FileSystemImageRelay Create(
         HttpMessageHandler? handler = null,
         string? publicBaseUrl = "https://host.tailnet.ts.net",
-        int maxBytes = 8 * 1024 * 1024)
+        int maxBytes = 8 * 1024 * 1024,
+        HttpMessageHandler? reachabilityHandler = null,
+        int reachabilityTimeoutSeconds = 5)
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(FileSystemImageRelay.HttpClientName)
             .Returns(new HttpClient(handler ?? new StubHandler(HttpStatusCode.OK, PngBytes, "image/png")));
+        factory.CreateClient(FileSystemImageRelay.ReachabilityHttpClientName)
+            .Returns(new HttpClient(reachabilityHandler ?? new RecordingHandler(HttpStatusCode.OK)));
 
         return new FileSystemImageRelay(
             factory,
@@ -256,7 +335,8 @@ public sealed class FileSystemImageRelayTests : IDisposable
                 PublicBaseUrl = publicBaseUrl,
                 Directory = _directory,
                 RelayHosts = ["plonkit.net"],
-                MaxImageBytes = maxBytes
+                MaxImageBytes = maxBytes,
+                ReachabilityTimeoutSeconds = reachabilityTimeoutSeconds
             }),
             NullLogger<FileSystemImageRelay>.Instance);
     }
@@ -316,6 +396,33 @@ public sealed class FileSystemImageRelayTests : IDisposable
             var redirect = new HttpResponseMessage(HttpStatusCode.Found) { RequestMessage = request };
             redirect.Headers.Location = new Uri("https://www.plonkit.net/images/again.png");
             return Task.FromResult(redirect);
+        }
+    }
+
+    private sealed class RecordingHandler(HttpStatusCode status) : HttpMessageHandler
+    {
+        public Uri? LastRequestUri { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequestUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(status) { RequestMessage = request });
+        }
+    }
+
+    private sealed class ThrowingHandler(Exception exception) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromException<HttpResponseMessage>(exception);
+    }
+
+    /// <summary>Never answers, so only the check's own timeout can end the request.</summary>
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException("unreachable");
         }
     }
 

@@ -37,18 +37,14 @@ public sealed class GoogleSheetSourceExtractor(IHttpClientFactory httpClientFact
 
             if (!response.IsSuccessStatusCode)
             {
-                return (int)response.StatusCode is 401 or 403 or 404
-                    ? Error.Validation("ai.document_not_public",
-                        $"This sheet is not publicly readable (HTTP {(int)response.StatusCode}).")
-                    : Error.Unexpected("ai.source_unreachable",
-                        $"Could not fetch the sheet (HTTP {(int)response.StatusCode}).");
+                return SourceFetch.FromStatus(response.StatusCode, "sheet", ForbiddenMeans.NotPublic);
             }
 
             csv = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (SourceFetch.IsFetchFailure(ex, cancellationToken))
         {
-            return Error.Unexpected("ai.source_unreachable", $"Could not fetch the sheet {source.NaturalKey}.");
+            return SourceFetch.FromException(ex, "sheet", ForbiddenMeans.NotPublic);
         }
 
         var rows = CsvReader.Read(csv);

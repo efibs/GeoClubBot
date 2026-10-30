@@ -7,6 +7,10 @@ namespace GeoClubBot.RetrievalProbe;
 /// <param name="Qdrant">Guarded: only reads reach the index (<see cref="ReadOnlyQdrantInterceptor"/>).</param>
 /// <param name="Index">The bot's own index adapter over that guarded client.</param>
 /// <param name="Embeddings">Created on first use, so a command that embeds nothing needs no key.</param>
+/// <param name="PlannerFactory">
+/// Creates the query planner on first use, and returns null — always — unless the probe was started
+/// with <c>--allow-chat</c>: without it no chat request can leave.
+/// </param>
 public sealed record ProbeContext(
     ProbeArguments Arguments,
     ProbeSettings Settings,
@@ -14,8 +18,12 @@ public sealed record ProbeContext(
     QdrantKnowledgeIndex Index,
     Func<EmbeddingCache> Embeddings,
     ProbeReport Report,
-    CancellationToken CancellationToken)
+    CancellationToken CancellationToken,
+    Func<PlannerCache?>? PlannerFactory = null)
 {
+    /// <summary>The query planner, or null when the probe may not send chat requests.</summary>
+    public PlannerCache? Planner() => PlannerFactory?.Invoke();
+
     /// <summary>The rated answers of the export named on the command line, filtered by --rating.</summary>
     public IReadOnlyList<RatedQuestion> ReadRatedQuestions()
     {

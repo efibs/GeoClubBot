@@ -1,0 +1,5 @@
+﻿[11] Where Yucca filifera is recorded in Mexico (GBIF)
+Yucca filifera Chabaud (species).
+Occurrence records in Mexico by state or province: Nuevo León 384, Zacatecas 247, San Luis Potosí 221, Querétaro 127, Guanajuato 115 (1,609 records in Mexico in all).
+These count occurrence records, not plants: they follow how much people observe and collect in a place, and include herbarium specimens, gardens and plantations, so few records do not make the plant rare there and many do not make it wild.
+(source: https://www.gbif.org/species/2775707)

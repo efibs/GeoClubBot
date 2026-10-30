@@ -113,16 +113,84 @@ public sealed class CitationResolverTests
     }
 
     [Fact]
-    public void Resolve_GivesOneNumberToExcerptsFromTheSamePage()
+    public void Resolve_GivesOneNumberToExcerptsFromTheSameSectionOfAPage()
     {
         // Chunks of one Google Doc share a link: "(and duplicate ****)" was a model noticing two
-        // numbers that led to the same place.
-        var offered = new[] { Text(2, "https://docs/california"), Text(5, "https://docs/california") };
+        // numbers that led to the same place, under the same heading.
+        var offered = new[]
+        {
+            new OfferedExcerpt(2, "https://docs/california", "California > Cacti"),
+            new OfferedExcerpt(5, "https://docs/california", "California > Cacti")
+        };
 
         var result = CitationResolver.Resolve("Saguaros grow here [2] (and here [5]).", offered, maxImages: 3);
 
         result.Text.Should().Be("Saguaros grow here [1] (and here [1]).");
         result.Sources.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Resolve_GivesEachSectionOfOneDocumentItsOwnNumber()
+    {
+        // Every text chunk of a Google Doc shares the document's one link. Keyed by the link alone, an
+        // answer naming nine US states cited them all as one "[2] … Counties (33) ->" (2026-10-29).
+        var offered = new[]
+        {
+            new OfferedExcerpt(2, "https://docs/usa", "USA · A Unique USA > Front Plate Requirements"),
+            new OfferedExcerpt(5, "https://docs/usa", "USA · A Unique USA > Counties (33)"),
+            new OfferedExcerpt(7, "https://docs/usa", "USA · A Unique USA > Counties (33)")
+        };
+
+        var result = CitationResolver.Resolve("Front plates [2]. Counties [5], and more counties [7].", offered, maxImages: 3);
+
+        result.Text.Should().Be("Front plates [1]. Counties [2], and more counties [2].");
+        result.Sources.Select(source => source.Excerpt.Label)
+            .Should().Equal("USA · A Unique USA > Front Plate Requirements", "USA · A Unique USA > Counties (33)");
+        result.CitedExcerpts.Select(excerpt => excerpt.Marker).Should().Equal(2, 5, 7);
+    }
+
+    [Theory]
+    // #3 of the 2026-10-29 replay, as the model wrote it.
+    [InlineData("Rounded tiles are common in central India [1].\n\n[1] (picture, usually with a distribution map) shows the tile style.",
+        "Rounded tiles are common in central India [1].\n\n[1] shows the tile style.")]
+    [InlineData("The plate [2] (picture) is yellow.", "The plate [1] is yellow.")]
+    [InlineData("See the slide (3 pictures) [2].", "See the slide [1].")]
+    [InlineData("The map **(picture)** [2].", "The map [1].")]
+    [InlineData("As before [1] (the user saw this as 2).", "As before [1].")]
+    [InlineData("The tip [2], usually with a distribution map, shows it.", "The tip [1] shows it.")]
+    [InlineData("The tip [2] (usually with a distribution map).", "The tip [1].")]
+    public void Resolve_RemovesThePromptsNotesOnAnExcerpt(string answer, string expected)
+    {
+        var offered = new[] { Text(1, "https://guide/1"), Picture(2, "https://guide/2", "https://img/2.png") };
+
+        CitationResolver.Resolve(answer, offered, maxImages: 3).Text.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Resolve_LeavesThePromptsNotesInCodeAlone()
+    {
+        CitationResolver.Resolve("Write `(picture)` for one.", EightTextExcerpts, maxImages: 3).Text
+            .Should().Be("Write `(picture)` for one.");
+    }
+
+    [Theory]
+    // #13 of the 2026-10-29 replay: the model's "([1]–[6])" reached the reader as "([5]–[4])".
+    [InlineData("Clues [3][4][5][6]. Any of the pictured ones ([1]–[6]) will do.",
+        "Clues [1][2][3][4]. Any of the pictured ones [1][2][3][4][5][6] will do.", 6)]
+    [InlineData("Near Arequipa [7]-[8].", "Near Arequipa [1][2].", 2)]
+    [InlineData("Near Arequipa [2] – [4].", "Near Arequipa [1][2][3].", 3)]
+    [InlineData("Backwards [6]—[2], never a range.", "Backwards [1][2], never a range.", 2)]
+    [InlineData("Too wide [1]–[20] to be one.", "Too wide [1] to be one.", 1)]
+    // Each end in emphasis of its own: read as two runs, this came out "Then [2]–[1] are pictured."
+    [InlineData("First [6]. Then **[1]**–**[6]** are pictured.", "First [1]. Then [1][2][3][4][5][6] are pictured.", 6)]
+    [InlineData("First [6]. Then *[1]* – [6] are pictured.", "First [1]. Then [1][2][3][4][5][6] are pictured.", 6)]
+    [InlineData("Pictured: (**[2]**–**[4]**).", "Pictured: [1][2][3].", 3)]
+    public void Resolve_ReadsTwoCitationsJoinedByADash_AsTheRangeTheyMean(string answer, string expected, int sources)
+    {
+        var result = CitationResolver.Resolve(answer, EightTextExcerpts, maxImages: 3);
+
+        result.Text.Should().Be(expected);
+        result.Sources.Should().HaveCount(sources);
     }
 
     [Fact]
@@ -248,6 +316,77 @@ public sealed class CitationResolverTests
     }
 
     [Fact]
+    public void Resolve_AttachesEveryPictureAnExcerptBrings_UnderItsNumber()
+    {
+        // One slide caption sits beside each picture of its slide; citing it once shows them all.
+        var offered = new[]
+        {
+            Text(1, "https://guide/text"),
+            Picture(2, "https://guide/slide", "https://img/1.png", "https://img/2.png", "https://img/3.png")
+        };
+
+        var result = CitationResolver.Resolve("Poles [2], per the guide [1].", offered, maxImages: 6);
+
+        result.Text.Should().Be("Poles [1], per the guide [2].");
+        result.Sources.Should().HaveCount(2, "one excerpt is one source, however many pictures it brings");
+        result.Images.Select(image => (image.Number, image.ImageUrl, image.Position, image.Count)).Should().Equal(
+            (1, "https://img/1.png", 1, 3),
+            (1, "https://img/2.png", 2, 3),
+            (1, "https://img/3.png", 3, 3));
+    }
+
+    [Fact]
+    public void Resolve_ShowsEveryCitedPicturesFirstPicture_BeforeAnyExcerptsSecond()
+    {
+        // An answer citing two pictured excerpts should show both, not three of the first.
+        var offered = new[]
+        {
+            Picture(1, "https://guide/a", "https://img/a1.png", "https://img/a2.png", "https://img/a3.png"),
+            Picture(2, "https://guide/b", "https://img/b1.png", "https://img/b2.png")
+        };
+
+        var result = CitationResolver.Resolve("A [1], B [2].", offered, maxImages: 3);
+
+        result.Images.Select(image => (image.Number, image.ImageUrl, image.Position, image.Count)).Should().Equal(
+            (1, "https://img/a1.png", 1, 2),
+            (1, "https://img/a2.png", 2, 2),
+            (2, "https://img/b1.png", 1, 1));
+    }
+
+    [Fact]
+    public void Resolve_AttachesAPictureTwoExcerptsShare_Once()
+    {
+        var offered = new[]
+        {
+            Picture(1, "https://guide/a", "https://img/a.png", "https://img/shared.png"),
+            Picture(2, "https://guide/b", "https://img/shared.png")
+        };
+
+        var result = CitationResolver.Resolve("A [1], B [2].", offered, maxImages: 6);
+
+        result.Images.Select(image => image.ImageUrl).Should().Equal(["https://img/a.png", "https://img/shared.png"]);
+        result.Images.Select(image => image.Number).Should().Equal([1, 2], "the shared picture goes to the excerpt it leads");
+    }
+
+    [Fact]
+    public void Resolve_NamesTheCitedExcerpts_InTheOrderTheReaderSeesThem()
+    {
+        // What a follow-up is offered again: both chunks behind [2], though they share one line.
+        var offered = new[]
+        {
+            new OfferedExcerpt(1, "https://guide/a", "Guide A"),
+            Text(2, "https://guide/b"),
+            new OfferedExcerpt(3, "https://guide/a", "Guide A"),
+            Text(4, "https://guide/c")
+        };
+
+        var result = CitationResolver.Resolve("C [4], A [1], B [2], A again [3]. Invented [9].", offered, maxImages: 3);
+
+        result.Text.Should().Be("C [1], A [2], B [3], A again [2]. Invented.");
+        result.CitedExcerpts.Select(excerpt => excerpt.Marker).Should().Equal(4, 1, 3, 2);
+    }
+
+    [Fact]
     public void Resolve_LeavesAnAnswerWithoutCitationsUnchanged()
     {
         const string answer = "Blue roofs are not a regional clue in Japan.\n\nThey are mostly temporary tarps.";
@@ -321,6 +460,6 @@ public sealed class CitationResolverTests
     private static OfferedExcerpt Text(int marker, string sourceUrl) =>
         new(marker, sourceUrl, $"Guide {marker}");
 
-    private static OfferedExcerpt Picture(int marker, string sourceUrl, string imageUrl) =>
-        new(marker, sourceUrl, $"Guide {marker}", imageUrl, $"Picture {marker}");
+    private static OfferedExcerpt Picture(int marker, string sourceUrl, string imageUrl, params string[] extraImageUrls) =>
+        new(marker, sourceUrl, $"Guide {marker}", imageUrl, $"Picture {marker}") { ExtraImageUrls = extraImageUrls };
 }

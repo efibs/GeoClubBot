@@ -5,6 +5,25 @@ namespace UseCases.OutputPorts.AI;
 /// <param name="ContentType">Serving the right type matters: providers reject an image sent as octet-stream.</param>
 public sealed record RelayedImageContent(Stream Content, string ContentType);
 
+public enum ImageRelayReachabilityStatus
+{
+    /// <summary>No public base URL is set, so there is nothing to reach.</summary>
+    NotConfigured,
+
+    /// <summary>The public base URL's health endpoint answered with a success status.</summary>
+    Reachable,
+
+    /// <summary>The name did not resolve, the connection failed, the answer was an error, or none came in time.</summary>
+    Unreachable
+}
+
+/// <param name="PublicBaseUrl">The address that was tried; null when none is configured.</param>
+/// <param name="Detail">What happened, for an operator: how long it took, or why it failed.</param>
+public sealed record ImageRelayReachability(
+    ImageRelayReachabilityStatus Status,
+    string? PublicBaseUrl,
+    string? Detail);
+
 /// <summary>
 /// Re-hosts guide images that their own host will not serve to an unattended client.
 ///
@@ -27,8 +46,14 @@ public interface IImageRelay
     /// <summary>Stores bytes that have no public URL of their own, such as an image embedded in a document.</summary>
     Task<Result<string>> StoreAsync(byte[] content, string? contentType, CancellationToken cancellationToken = default);
 
-    /// <summary>Reads a stored image back for serving. Null when the hash is unknown.</summary>
-    Task<RelayedImageContent?> ReadAsync(string hash, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Reads a stored image back by its stored name (<c>{sha256}{extension}</c>, see
+    /// <see cref="RelayedImageUrl.TryReadName"/>). Null when the name is malformed or not on disk.
+    ///
+    /// Used for serving, and for uploading a picture with an answer: an upload carries the bytes, so the
+    /// picture shows even when Discord cannot reach the public URL. The caller disposes the stream.
+    /// </summary>
+    Task<RelayedImageContent?> ReadAsync(string name, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// A relayed image as a <c>data:</c> URL, so the AI provider receives the bytes instead of fetching
@@ -37,7 +62,18 @@ public interface IImageRelay
     ///
     /// Sending the bytes removes the one thing indexing needed this host to be for the provider: reachable
     /// at the moment the job runs. Through a home tunnel in the early morning it intermittently was not,
-    /// and every image in the batch was lost with it. Discord still shows the public URL.
+    /// and every image in the batch was lost with it. Answers do the same for Discord by uploading the file.
     /// </summary>
     Task<string?> ReadAsDataUrlAsync(string imageUrl, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks the public base URL's <c>/health</c> whether this host answers there, with a short timeout.
+    /// Never throws for an unreachable host: it feeds a status line, and a status command that fails is
+    /// worse than one saying "unreachable".
+    ///
+    /// A failure is conclusive; a success proves less. The request leaves from the bot's own host, whose
+    /// resolver may answer for the name privately — MagicDNS does for a tailnet name — even while the
+    /// public record Discord depends on is gone.
+    /// </summary>
+    Task<ImageRelayReachability> CheckPublicReachabilityAsync(CancellationToken cancellationToken = default);
 }

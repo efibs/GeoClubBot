@@ -40,6 +40,15 @@ public class AiFeedbackTurn : BaseEntity
     /// <summary>Guides the answer pointed at. See <see cref="AiConversationTurn.CitedSourceUrls"/>.</summary>
     public List<string> CitedSourceUrls { get; private set; } = [];
 
+    /// <summary>The exact excerpts offered. See <see cref="AiConversationTurn.OfferedChunkIds"/>.</summary>
+    public List<Guid> OfferedChunkIds { get; private set; } = [];
+
+    /// <summary>The exact excerpts cited. See <see cref="AiConversationTurn.CitedChunkIds"/>.</summary>
+    public List<Guid> CitedChunkIds { get; private set; } = [];
+
+    /// <summary>The tool calls behind the answer. See <see cref="AiConversationTurn.ToolCallsJson"/>.</summary>
+    public string? ToolCallsJson { get; private set; }
+
     /// <summary>The original turn's timestamp, so the archive keeps real chronology.</summary>
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
@@ -69,6 +78,9 @@ public class AiFeedbackTurn : BaseEntity
             ModelId = turn.ModelId,
             RetrievedSourceUrls = [.. turn.RetrievedSourceUrls],
             CitedSourceUrls = [.. turn.CitedSourceUrls],
+            OfferedChunkIds = [.. turn.OfferedChunkIds],
+            CitedChunkIds = [.. turn.CitedChunkIds],
+            ToolCallsJson = turn.ToolCallsJson,
             CreatedAtUtc = turn.CreatedAtUtc
         };
     }

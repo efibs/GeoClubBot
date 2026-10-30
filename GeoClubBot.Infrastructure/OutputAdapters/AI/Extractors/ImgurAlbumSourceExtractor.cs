@@ -36,9 +36,10 @@ public sealed partial class ImgurAlbumSourceExtractor(
             var client = httpClientFactory.CreateClient(PlonkItSourceExtractor.HttpClientName);
             payload = await client.GetStringAsync(endpoint, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (SourceFetch.IsFetchFailure(ex, cancellationToken))
         {
-            return Error.Unexpected("ai.source_unreachable", $"Could not fetch the album {source.NaturalKey}.");
+            // GetStringAsync carries the status on the exception: a deleted album answers 404.
+            return SourceFetch.FromException(ex, "album", ForbiddenMeans.HostRefused);
         }
 
         try
@@ -56,13 +57,19 @@ public sealed partial class ImgurAlbumSourceExtractor(
     {
         using var document = JsonDocument.Parse(payload);
 
-        if (!document.RootElement.TryGetProperty("data", out var data)
+        // Each level is checked for being an object first: asked for a property, any other kind of JSON
+        // value throws rather than answering, and the throw would end the whole ingestion run.
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Object
             || !data.TryGetProperty("images", out var images)
             || images.ValueKind != JsonValueKind.Array)
         {
-            // A deleted or private album answers with no image list. Reported as validation so the
-            // caller records it as skipped rather than retrying it nightly forever.
-            return Error.Validation("ai.album_unavailable", "This imgur album has no readable images.");
+            // A deleted or private album answers with no image list — measured: an album id that does not
+            // exist answers 200 with {"data":[],"success":true}, not 404. Reported as gone rather than
+            // skipped: it is checked again rarely, not nightly, and a link that still leads nowhere a
+            // month later is dropped from the index instead of being cited for ever.
+            return Error.NotFound(SourceExtractionErrorCodes.Gone, "This imgur album has no readable images.");
         }
 
         var chunks = new List<ExtractedChunk>();
@@ -90,7 +97,7 @@ public sealed partial class ImgurAlbumSourceExtractor(
         }
 
         return chunks.Count == 0
-            ? Error.Validation("ai.album_unavailable", "This imgur album contains no images.")
+            ? Error.NotFound(SourceExtractionErrorCodes.Gone, "This imgur album contains no images.")
             : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks);
     }
 
