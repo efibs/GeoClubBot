@@ -21,10 +21,11 @@ jobs:
   mutation:
     name: Stryker (Application)
     runs-on: ubuntu-latest
-    # Runs the full suite (unit + Docker-backed integration) so the score reflects the tests
-    # that actually cover the Application handlers. GitHub runners ship Docker, so Testcontainers
-    # works under Stryker just as it does in the integration job. ~few minutes; headroom for growth.
-    timeout-minutes: 60
+    # Only the fast tests run (test-case-filter in stryker-config.json): with the integration tests
+    # every mutant's session booted its own containers, and the growing project ran into this limit
+    # from October on. Stryker writes its report only at the very end, so hitting the limit loses the
+    # whole run; that is why it is several times what a run takes.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -37,7 +38,8 @@ jobs:
         run: dotnet tool restore
 
       - name: Run Stryker
-        run: dotnet stryker
+        # Stryker's default is half the cores, but without containers the work is all CPU.
+        run: dotnet stryker --concurrency "$(nproc)"
 
       - name: Publish mutation report to job summary
         if: always()

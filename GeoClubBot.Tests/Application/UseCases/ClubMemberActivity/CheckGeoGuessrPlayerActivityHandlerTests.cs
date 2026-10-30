@@ -125,6 +125,35 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
     }
 
     [Fact]
+    public async Task Handle_CountsAnEntryMadeAtTheVeryStartOfTheWindow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var lastCheck = now.AddDays(-7);
+        _clubs.ReadForUpdateByIdAsync(ClubId, Arg.Any<CancellationToken>())
+            .Returns(Entities.Club.Create(ClubId, "club", level: 1, latestActivityCheckTime: lastCheck));
+        _activityReader.ReadActivitiesSinceAsync(ClubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .Returns(Enumerable.Range(0, 6).Select(i => ClubActivities.Challenge(UserId, now.AddDays(-6 + i)))
+                .Append(ClubActivities.BoardMission(UserId, lastCheck))
+                .Append(ClubActivities.BoardMission(UserId, now.AddDays(-3)))
+                .ToList());
+
+        var statuses = await CreateHandler().Handle(new CheckGeoGuessrPlayerActivityCommand(ClubId), CancellationToken.None);
+
+        statuses.Should().ContainSingle().Which.TargetAchieved.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Handle_RecordsTheCheckOnTheClub_SoTheNextWindowStartsHere()
+    {
+        var club = Entities.Club.Create(ClubId, "club", level: 1, latestActivityCheckTime: DateTimeOffset.UtcNow.AddDays(-7));
+        _clubs.ReadForUpdateByIdAsync(ClubId, Arg.Any<CancellationToken>()).Returns(club);
+
+        await CreateHandler().Handle(new CheckGeoGuessrPlayerActivityCommand(ClubId), CancellationToken.None);
+
+        club.LatestActivityCheckTime.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
     public async Task Handle_RecordsTheWeeksRuleXpOnTheNewSnapshot()
     {
         var now = DateTimeOffset.UtcNow;

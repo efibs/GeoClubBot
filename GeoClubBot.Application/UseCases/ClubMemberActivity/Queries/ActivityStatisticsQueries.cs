@@ -91,6 +91,12 @@ public sealed class ActivityStatisticsHandlers(
             .Zip(points, (a, b) => a - b)
             .ToList();
 
+        // A single snapshot has no gains yet, and every new member has one after their first check.
+        if (pointDifferences.Count == 0)
+        {
+            return new PlayerStatistics(request.Nickname, earliestTime, 0, 0, 0, 0, 0, 0, 0);
+        }
+
         var numEntries = pointDifferences.Count;
         var averagePoints = pointDifferences.Average();
         var minPoints = pointDifferences.Min();

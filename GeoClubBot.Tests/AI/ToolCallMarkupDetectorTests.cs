@@ -61,4 +61,37 @@ public sealed class ToolCallMarkupDetectorTests
     [Fact]
     public void ReadsANullReply_AsNoCall() =>
         ToolCallMarkupDetector.IsToolCallMarkup(null, AnswerTools.Names).Should().BeFalse();
+
+    private const string Call = "{\"name\": \"search_guides\", \"arguments\": {}}";
+
+    [Theory]
+    [InlineData("{\"tool_name\": \"search_guides\", \"arguments\": {}}")]
+    [InlineData("{\"function\": \"search_guides\", \"arguments\": {}}")]
+    [InlineData("{\"name\": \"search_guides\", \"input\": {}}")]
+    [InlineData("{\"tool_call\": " + Call + "}")]
+    [InlineData("{\"function_call\": " + Call + "}")]
+    [InlineData("[[[" + Call + "]]]")]
+    [InlineData("{\"tool_calls\": {\"tool_calls\": {\"tool_calls\": " + Call + "}}}")]
+    public void RecognisesEveryKeyACallIsWrittenWith_AndWrappersUpToTheirDepth(string reply) =>
+        ToolCallMarkupDetector.IsToolCallMarkup(reply, AnswerTools.Names).Should().BeTrue();
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[" + Call + ", \"and more\"]")]
+    [InlineData("[[[[[" + Call + "]]]]]")]
+    [InlineData("{\"tool_calls\": {\"tool_calls\": {\"tool_calls\": {\"tool_calls\": {\"tool_calls\": " + Call + "}}}}}")]
+    [InlineData("{\"tool_calls\": \"search_guides\", \"arguments\": {}}")]
+    [InlineData("{\"name\": 5, \"arguments\": {}}")]
+    [InlineData("{not json")]
+    [InlineData("```\n\n```")]
+    public void PassesJson_ThatIsNotACallThroughAndThrough(string reply) =>
+        ToolCallMarkupDetector.IsToolCallMarkup(reply, AnswerTools.Names).Should().BeFalse();
+
+    [Fact]
+    public void NeedsToKnowTheTools()
+    {
+        var act = () => ToolCallMarkupDetector.IsToolCallMarkup("x", null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
 }

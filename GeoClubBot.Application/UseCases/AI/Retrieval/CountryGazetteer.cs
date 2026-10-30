@@ -36,6 +36,7 @@ public sealed partial class CountryGazetteer
     /// index spelling any of its names normalises to, so <c>usa</c> and <c>united states</c> become
     /// one country whichever the index happens to hold.
     /// </summary>
+    // Stryker disable once String : lookup data; a test per name would only repeat the table.
     private static readonly (string Country, string[] Names)[] Synonyms =
     [
         // Not "american": "South American" is no question about the United States.
@@ -154,6 +155,7 @@ public sealed partial class CountryGazetteer
     /// Kept to places players name and the index files under their country rather than on their own;
     /// <c>AI:Retrieval:CountryBoost:Aliases</c> adds more.
     /// </summary>
+    // Stryker disable once String : lookup data; a test per name would only repeat the table.
     private static readonly (string Place, string[] Countries)[] Regions =
     [
         // Finland too, as players use the word: "snow poles in Scandinavia" is answered by a Finnish
@@ -189,6 +191,7 @@ public sealed partial class CountryGazetteer
     ];
 
     /// <summary>Country values the index uses for things that are not places.</summary>
+    // Stryker disable once String : lookup data; a test per name would only repeat the table.
     private static readonly HashSet<string> NotPlaces = new(StringComparer.Ordinal) { "spillover countries", "beginners guide" };
 
     private readonly Dictionary<string, CountryMention[]> _byName;

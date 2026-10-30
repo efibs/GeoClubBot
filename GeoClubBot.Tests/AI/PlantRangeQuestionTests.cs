@@ -79,4 +79,114 @@ public sealed class PlantRangeQuestionTests
         PlantRangeQuestion.NamesAskedAbout("where can I find yellow bollards?").Select(name => name.Name)
             .Should().Equal("yellow bollards", "yellow bollard");
     }
+
+    [Theory]
+    [InlineData("this")]
+    [InlineData("that")]
+    [InlineData("these")]
+    [InlineData("those")]
+    [InlineData("it")]
+    [InlineData("them")]
+    [InlineData("they")]
+    [InlineData("one")]
+    [InlineData("ones")]
+    [InlineData("something")]
+    [InlineData("anything")]
+    [InlineData("such")]
+    [InlineData("which")]
+    [InlineData("what")]
+    [InlineData("he")]
+    [InlineData("she")]
+    [InlineData("i")]
+    [InlineData("you")]
+    [InlineData("we")]
+    [InlineData("people")]
+    [InlineData("players")]
+    [InlineData("more")]
+    [InlineData("other")]
+    public void NeverReadsAPointerOrThePersonAsking_AsAName(string word) =>
+        PlantRangeQuestion.NamesAskedAbout($"where can I find {word}?").Should().BeEmpty();
+
+    [Theory]
+    [InlineData("tree")]
+    [InlineData("trees")]
+    [InlineData("plant")]
+    [InlineData("plants")]
+    [InlineData("bush")]
+    [InlineData("bushes")]
+    [InlineData("shrub")]
+    [InlineData("shrubs")]
+    [InlineData("flower")]
+    [InlineData("flowers")]
+    public void DropsAWordThatOnlySaysWhatKindOfPlantItIs(string kind) =>
+        PlantRangeQuestion.NamesAskedAbout($"where can I find kauri {kind}?")[^1]
+            .Should().Be(new PlantRangeName("kauri", ScientificOnly: true));
+
+    [Fact]
+    public void KeepsAKindWord_WhenItIsTheWholeName()
+    {
+        PlantRangeQuestion.NamesAskedAbout("where can I find trees?")
+            .Should().Equal(new PlantRangeName("trees", false), new PlantRangeName("tree", false));
+    }
+
+    [Fact]
+    public void KeepsANameOfSeveralWords_ByAnyName()
+    {
+        PlantRangeQuestion.NamesAskedAbout("where can I find pampas grass?")
+            .Should().Equal(new PlantRangeName("pampas grass", false));
+    }
+
+    [Theory]
+    [InlineData("daisies", "daisy")]
+    [InlineData("pies", "pie")]
+    [InlineData("peaches", "peach")]
+    [InlineData("bushes", "bush")]
+    [InlineData("mosses", "moss")]
+    [InlineData("boxes", "box")]
+    [InlineData("figs", "fig")]
+    public void TriesTheSingular(string written, string singular) =>
+        PlantRangeQuestion.NamesAskedAbout($"where can I find {written}?").Select(name => name.Name)
+            .Should().Equal(written, singular);
+
+    [Theory]
+    [InlineData("moss")]
+    [InlineData("cactus")]
+    [InlineData("iris")]
+    [InlineData("oas")]
+    public void LeavesAWordThatOnlyLooksPlural(string written) =>
+        PlantRangeQuestion.NamesAskedAbout($"where can I find {written}?").Select(name => name.Name)
+            .Should().Equal(written);
+
+    [Theory]
+    [InlineData("where do farmers plant rice?")]
+    [InlineData("where did people cultivate rice")]
+    [InlineData("where does rice grow")]
+    [InlineData("where is rice grown")]
+    [InlineData("where are rice native")]
+    [InlineData("in what countries can you find rice?")]
+    [InlineData("which countries is rice found in?")]
+    [InlineData("what countries does rice grow in?")]
+    [InlineData("which countries are rice native to?")]
+    public void ReadsEachShapeOfTheQuestion(string question) =>
+        PlantRangeQuestion.NamesAskedAbout(question).Select(name => name.Name).Should().Equal("rice");
+
+    [Theory]
+    [InlineData("WHERE CAN I FIND RICE?")]
+    [InlineData("WHERE DO THEY GROW RICE?")]
+    [InlineData("WHERE DOES RICE GROW?")]
+    [InlineData("WHERE IS RICE FOUND?")]
+    [InlineData("WHICH COUNTRIES HAVE RICE?")]
+    [InlineData("WHICH COUNTRIES IS RICE FOUND IN?")]
+    public void ReadsEachShapeInAnyCase(string question) =>
+        PlantRangeQuestion.NamesAskedAbout(question).Should().NotBeEmpty();
+
+    [Theory]
+    [InlineData("can I find rice?")]
+    [InlineData("do they grow rice?")]
+    [InlineData("does rice grow?")]
+    [InlineData("is rice found?")]
+    [InlineData("is rice found in Peru or Chile?")]
+    [InlineData("countries is rice found?")]
+    public void NeedsTheWhereabouts_NotJustTheVerb(string question) =>
+        PlantRangeQuestion.NamesAskedAbout(question).Should().BeEmpty();
 }

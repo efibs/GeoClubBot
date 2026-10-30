@@ -53,6 +53,7 @@ public static class IsoCountries
         + "ZM:Zambia|ZW:Zimbabwe";
 
     /// <summary>Other names for a code, as players and the guide index write them.</summary>
+    // Stryker disable once String : lookup data; a test per name would only repeat the table.
     private static readonly (string Code, string[] Names)[] Aliases =
     [
         ("US", ["usa", "united states of america", "us"]),
