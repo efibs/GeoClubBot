@@ -250,6 +250,7 @@ public sealed class AnsweringStack : IDisposable
     private readonly IKnowledgeIndex _index;
     private readonly IChatModelClient _chat;
     private readonly AnswerToolbox _toolbox;
+    private readonly PlantRangeLookAhead _plantRange;
     private readonly KnowledgeCountryDirectory _countries;
     private readonly QueryPlannerPause _plannerPause;
 
@@ -294,9 +295,11 @@ public sealed class AnsweringStack : IDisposable
         Catalog = new ChatModelCatalog(_chat, _ai, clock, _logging.CreateLogger<ChatModelCatalog>());
         _countries = new KnowledgeCountryDirectory(_index, _retrieval, clock, _logging.CreateLogger<KnowledgeCountryDirectory>());
         _plannerPause = new QueryPlannerPause(clock);
+        // One reader for the tool and the lookup before answering, as the bot's singleton is shared.
+        var speciesReader = new GbifSpeciesRangeReader(clients, _tools, clock, _logging.CreateLogger<GbifSpeciesRangeReader>());
         _toolbox = new AnswerToolbox(
-            _embedder, _index, new GbifSpeciesRangeReader(clients, _tools, clock, _logging.CreateLogger<GbifSpeciesRangeReader>()),
-            _countries, _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
+            _embedder, _index, speciesReader, _countries, _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
+        _plantRange = new PlantRangeLookAhead(speciesReader, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
     }
 
     /// <summary>Shared by every answer, as the bot's singleton is: a model that fails for one is demoted for the next.</summary>
@@ -320,7 +323,7 @@ public sealed class AnsweringStack : IDisposable
         var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
 
         return new AskAiHandler(
-            conversations, budget, _embedder, _index, Catalog, _chat, loop, _countries, _plannerPause,
+            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _countries, _plannerPause,
             _ai, _conversation, _retrieval, clock, _logging.CreateLogger<AskAiHandler>());
     }
 

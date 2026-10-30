@@ -85,6 +85,14 @@ public class AiSpeciesRangeConfiguration
     /// <summary>Offers the tool. Off, the model is told of the other tools only.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// Looks the plant up before the model answers when a question asks where in the world it is found
+    /// ("where can I find Khasi pines?"), and offers its countries as an excerpt. Left to the model, the
+    /// tool was called in none of 49 replayed answers (2026-10-30), Khasi pines included. Needs
+    /// <see cref="Enabled"/>, but not tool calling: it costs no AI request.
+    /// </summary>
+    public bool LookUpWhereQuestions { get; set; } = true;
+
     /// <summary>GBIF's API. Changed only to point tests or a mirror elsewhere.</summary>
     public string BaseUrl { get; set; } = "https://api.gbif.org";
 

@@ -245,7 +245,10 @@ API + Discord (controllers, slash command modules)
   like retrieved ones. `AnswerToolbox` (singleton) never throws: bad arguments become a message to the
   model (`ToolArguments`). species_range is `ISpeciesRangeReader` → `GbifSpeciesRangeReader` (named
   HttpClient `Gbif`, successes cached 24 h). Each tool's "when to call" lives in its description;
-  `AnswerTools.SystemPrompt` holds only what applies to all of them. Ports live in
+  `AnswerTools.SystemPrompt` holds only what applies to all of them. Because the model never called
+  species_range on its own, `PlantRangeLookAhead` (singleton) asks GBIF up front, in parallel with
+  retrieval, when `PlantRangeQuestion` reads a question as "where in the world is X found", and puts the
+  plant's countries first among the excerpts. Ports live in
   `Application/OutputPorts/AI/` (`IChatModelClient`, `IEmbedder`, `IKnowledgeIndex`,
   `ISourceExtractor`), adapters in `Infrastructure/OutputAdapters/AI/`. Conversations are a tree of
   Discord reply edges, so sibling branches stay independent; each answer turn stores the chunk ids it

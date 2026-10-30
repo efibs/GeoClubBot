@@ -152,6 +152,10 @@ public sealed class MediatorTestHost : IDisposable
         // index, embedder and species database, and the loop claims each further call from the budget.
         services.AddSingleton<AnswerToolbox>();
         services.AddScoped<AiAnswerLoop>();
+
+        // Mirrors AiServices: a question asking where a plant is found looks it up before answering,
+        // through the substituted species reader, whose default (failed) result offers nothing.
+        services.AddSingleton<PlantRangeLookAhead>();
     }
 
     private static void RegisterConfigurationOptions(IServiceCollection services, IConfiguration configuration)

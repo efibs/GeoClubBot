@@ -148,6 +148,7 @@ public static class AiServices
         // Singleton for its cache, which is worth keeping across questions.
         services.AddSingleton<ISpeciesRangeReader, GbifSpeciesRangeReader>();
         services.AddSingleton<AnswerToolbox>();
+        services.AddSingleton<PlantRangeLookAhead>();
 
         // Scoped, like the budget repository it claims requests through.
         services.AddScoped<AiAnswerLoop>();

@@ -213,6 +213,34 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
+    public async Task AskAi_OffersWhereAPlantIsRecorded_BeforeTheGuides_WhenTheQuestionAsksWhereItIsFound()
+    {
+        // #25 and #49 of the 2026-10-23 export: offered two guides on India and Vietnam, the answer missed
+        // the other countries, and the model never called the species tool to find them.
+        using var host = CreateHost();
+        var chat = ArrangeProviders(host, answer: "Khasi pines are recorded most in the Philippines, China and Thailand [1].");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Khasi pines grow in Meghalaya.", "https://www.plonkit.net/india#pine")]);
+        var species = host.Mock<ISpeciesRangeReader>();
+        species.ReadAsync(Arg.Any<SpeciesRangeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Error.NotFound("ai.species_not_found", "No such plant."));
+        species.ReadAsync(new SpeciesRangeQuery("Khasi pine", null), Arg.Any<CancellationToken>())
+            .Returns(new SpeciesRange(
+                5285824, "Pinus kesiya Royle ex Gordon", "Pinus kesiya", "SPECIES", MatchedByCommonName: true, FuzzyMatch: false,
+                CountryCode: null, [new("PH", 256), new("CN", 105), new("TH", 87), new("IN", 80)], 1061));
+
+        var before = await ReadTodaysBudgetAsync();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where can I find Khasi pines?"));
+        var after = await ReadTodaysBudgetAsync();
+
+        var prompt = string.Join('\n', chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>()
+            .Single().Messages.Select(message => message.ToPlainText()));
+        prompt.Should().Contain("[1] Where Pinus kesiya is recorded (GBIF)").And.Contain("[2] ");
+        result.Value.Sources.Should().ContainSingle().Which.Url.Should().Be("https://www.gbif.org/species/5285824");
+        (after.Requests - before.Requests).Should().Be(2, "GBIF costs no AI request");
+    }
+
+    [Fact]
     public async Task AskAi_KeepsTheModelsOwnCitations_WhenItDoesCite()
     {
         using var host = CreateHost();

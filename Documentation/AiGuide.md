@@ -124,6 +124,7 @@ worth knowing:
 | `AI:Tools:MaxToolCallsPerRound` | 4 | Calls run per round; more are answered "not run" (1–8) |
 | `AI:Tools:AnswerDeadlineSeconds` | 90 | After this many seconds from the question, no more tools are offered (10–600) |
 | `AI:Tools:SpeciesRange:Enabled` | `true` | The GBIF plant-range tool (free, no key, no AI request) |
+| `AI:Tools:SpeciesRange:LookUpWhereQuestions` | `true` | Look the plant up before answering when a question asks where in the world it is found, rather than waiting for the model to call the tool |
 | `AI:ImageRelay:PublicBaseUrl` | empty | **Required for images from blocked hosts** — see below |
 | `AI:ImageRelay:MaxUploadBytesPerAnswer` | 8 MiB | Bytes of relayed pictures uploaded with one answer; pictures past it are linked. Keep it below the server's upload limit (10 MiB without boosts). 0 links every picture |
 | `AI:ImageRelay:MaxUploadBytesPerPicture` | 8 MiB | Largest single picture uploaded; a bigger one is linked |
@@ -514,6 +515,27 @@ advertised `tools`.
   result is one citable excerpt linking `gbif.org/species/{key}`, and its text says these are
   occurrence records, not abundance.
 
+**Plants are also looked up before the model answers** (`PlantRangeLookAhead`). Left to the model, the
+tool was called in none of the 49 replayed answers on 2026-10-30, through two rewordings of its
+description: given guides on India and Vietnam, the model took them for the answer, and "Khasi pines are
+also found outside of India" stayed the rated complaint. So when a question asks where in the world
+something is found — "where can I find Khasi pines?", "where does agave lechuguilla grow?", "which
+countries have baobabs?" — `PlantRangeQuestion` reads the thing it asks about, and GBIF is asked while
+the question is searched. A plant it can stand behind leads the excerpts found for the question. This
+costs no AI request, needs no tool calling (it works with `AI:Tools:Enabled` off), and a question about
+something else costs only a GBIF read or two.
+- **Names are tried in the forms GBIF knows**: as written, with a binomial's epithet lower-cased
+  ("Agave Lechuguilla" matches the genus *Agave* alone); in the singular ("Khasi pines" is unknown,
+  "Khasi pine" is *Pinus kesiya*); and without a word like "trees". A lone word left that way is taken
+  only by its scientific name: "dragon" is a common name of tarragon.
+- **A question about one place is left to the model and the guides.** Within a country GBIF counts
+  where people recorded a plant, not where it grows: 308 records of sugar cane in the Philippines, 21 in
+  the top province, and none of the top eight in Negros, which grows most of it. Across the world the
+  same counts do say where a plant is: Khasi pine in the Philippines, China, Thailand, India, Vietnam and
+  Myanmar.
+- A taxon with fewer than 25 records is not offered, and the lookup gives up after 6 s. GBIF failing
+  never fails the question.
+
 Tool results are numbered excerpts that continue after the last number, in the prompt's own format.
 Anything already offered is skipped. They are cited, listed and attached like any other excerpt, and
 the list stops at [99], the highest number the citation resolver reads; the model is told when it is
@@ -584,7 +606,8 @@ The judge could not tell them apart. Reading the answers can: tools won clearly 
 every place or comparing two countries (12 Gen 2 and 13 shitcam countries against 2 and 7; a full
 Thailand–Philippines table against "no Philippine markers in these guides"). They lost in 2 of 17,
 where a long prompt led the model to misread an excerpt it already had. `species_range` was not called
-once, not even for the Khasi pine questions, although its description names that case.
+once, not even for the Khasi pine questions, although its description names that case; that is why
+plants are now [looked up before the model answers](#tools-when-the-excerpts-are-not-enough).
 
 ### What goes into a vector
 
@@ -977,8 +1000,9 @@ runs re-embed them.
   it — but a full re-index moves hundreds of megabytes rather than a few. A slide deck's export is a
   median of 19 MB, 339 MB for the largest in the library.
 - **Tools are used less than they could be.** Whether the model calls a tool is its own choice. In the
-  2026-10-30 replay `species_range` was never called, `read_guide` once, and a question about "snake
-  traps" was still answered from the possum-guard tip without a search for the user's words. Tool rounds
+  2026-10-30 replay `species_range` was never called (plants are now looked up before answering
+  instead, for questions about where in the world one is found), `read_guide` once, and a question about
+  "snake traps" was still answered from the possum-guard tip without a search for the user's words. Tool rounds
   also make an answer slower (a median 44 s for answers that used them) and hold one of
   `MaxConcurrentRequests` slots for longer.
 - **A long tool context can be misread.** With 20–30 excerpts in the prompt, the model twice
@@ -1051,6 +1075,8 @@ runs re-embed them.
 | Log: "The day's AI request allowance ran out during tool round N" | A concurrent question took the last requests; the user got the budget message |
 | Log: "The AI provider refused the tools for …" | The provider can't do tool calls for that chain; the question was asked again without them |
 | Log: "GBIF could not be read for '…'" | GBIF was down or slow; the model was told so |
+| Log: "The question asks where … is found: offering GBIF's …" | Informational: a plant was looked up before answering |
+| Log: "Looking up '…' in GBIF took over 6 s" or "GBIF could not be read for '…' before answering" | GBIF was slow or down; the question was answered without it |
 
 `/ai search` is the tool to reach for. It costs a single embedding request instead of the two a full
 question costs, and shows exactly what the model would have been given — which is usually the

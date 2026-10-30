@@ -91,6 +91,7 @@ public sealed partial class AskAiHandler(
     IChatModelCatalog modelCatalog,
     IChatModelClient chatClient,
     AiAnswerLoop answerLoop,
+    PlantRangeLookAhead plantRange,
     KnowledgeCountryDirectory countryDirectory,
     QueryPlannerPause plannerPause,
     IOptions<AiConfiguration> aiConfiguration,
@@ -150,6 +151,9 @@ public sealed partial class AskAiHandler(
         var maxCarried = retrievalConfiguration.Value.MaxCarriedExcerpts;
         var carriedRead = ReadCarriedAsync(context, maxCarried, cancellationToken);
 
+        // Also read while the question is searched: a GBIF lookup costs no request, and never fails it.
+        var plantRead = plantRange.ReadAsync(request.Content, cancellationToken);
+
         // Deliberately not released on later failure: by this point at least one upstream call has
         // usually been made, and over-counting is far safer than a 429 storm from under-counting.
         var hits = await RetrieveAsync(request, context, config, now, cancellationToken).ConfigureAwait(false);
@@ -162,8 +166,14 @@ public sealed partial class AskAiHandler(
             return hits.Error;
         }
 
+        // A plant's countries lead the excerpts found for the question: they answer its "where", while
+        // the guides found beside them cover a country or two (Khasi pines: India and Vietnam only).
+        IReadOnlyList<KnowledgeHit> retrieved = await plantRead.ConfigureAwait(false) is { } plant
+            ? [plant, .. hits.Value]
+            : hits.Value;
+
         var offered = CarriedExcerpts.Combine(
-            await carriedRead.ConfigureAwait(false), hits.Value, maxCarried, context.PreviousCitedChunkIds);
+            await carriedRead.ConfigureAwait(false), retrieved, maxCarried, context.PreviousCitedChunkIds);
 
         var completion = await answerLoop.AnswerAsync(
                 new AnswerRequest(
