@@ -1,8 +1,12 @@
 using FluentAssertions;
+using GeoClubBot.Tests.TestBuilders;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using UseCases.OutputPorts.AI;
 using UseCases.UseCases.AI.Conversations;
+using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.Tools;
 using Utilities;
 using Xunit;
 
@@ -164,6 +168,79 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
+    public async Task AskAi_CreditsEachSectionOfOneDocument_AsALineOfItsOwn_WhenTheModelCitesNothing()
+    {
+        // Credited as they would have been cited: one line per section, not one per link.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Front plates are required in most states.");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                Section("Most states require a front plate.", "A Unique USA > Front Plate Requirements"),
+                Section("Ohio dropped its front plate.", "A Unique USA > Front Plate Requirements"),
+                Section("Counties are listed by state.", "A Unique USA > Counties (33) ->")
+            ]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "which states don't require front plates?"));
+
+        result.Value.Sources.Select(source => (source.Marker, source.Label)).Should().Equal(
+            (null, "USA · A Unique USA > Front Plate Requirements"),
+            (null, "USA · A Unique USA > Counties (33)"));
+
+        static KnowledgeHit Section(string text, string section) =>
+            new(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Text, text, "https://docs.google.com/document/d/usa/edit", ImageUrl: null,
+                "A Unique USA", "usa", section, null, 0);
+    }
+
+    [Fact]
+    public async Task AskAi_TitlesAPictureWithoutATitle_AsTheSourceListNamesIt()
+    {
+        // Every PlonkIt picture comes without a title; its embed read "Guide image" (2026-10-29).
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Rounded tiles are common in central India [1].");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new KnowledgeHit(Guid.NewGuid(), 0.8f, KnowledgeChunkKind.Image, "Rounded roof tiles are common in central India.",
+                    "https://www.plonkit.net/india#cIYN", "https://relay/tiles.png",
+                    null, "india", "India > Regional and state-specific clues", "Plonk It team", 0)
+            ]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where are round roof tiles in India?"));
+
+        result.Value.Images.Should().ContainSingle().Which.Title.Should().Be("India > Regional and state-specific clues");
+        result.Value.Sources.Should().ContainSingle().Which.Label.Should().Be("India > Regional and state-specific clues");
+    }
+
+    [Fact]
+    public async Task AskAi_OffersWhereAPlantIsRecorded_BeforeTheGuides_WhenTheQuestionAsksWhereItIsFound()
+    {
+        // #25 and #49 of the 2026-10-23 export: offered two guides on India and Vietnam, the answer missed
+        // the other countries, and the model never called the species tool to find them.
+        using var host = CreateHost();
+        var chat = ArrangeProviders(host, answer: "Khasi pines are recorded most in the Philippines, China and Thailand [1].");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Khasi pines grow in Meghalaya.", "https://www.plonkit.net/india#pine")]);
+        var species = host.Mock<ISpeciesRangeReader>();
+        species.ReadAsync(Arg.Any<SpeciesRangeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Error.NotFound("ai.species_not_found", "No such plant."));
+        species.ReadAsync(new SpeciesRangeQuery("Khasi pine", null), Arg.Any<CancellationToken>())
+            .Returns(new SpeciesRange(
+                5285824, "Pinus kesiya Royle ex Gordon", "Pinus kesiya", "SPECIES", MatchedByCommonName: true, FuzzyMatch: false,
+                CountryCode: null, [new("PH", 256), new("CN", 105), new("TH", 87), new("IN", 80)], 1061));
+
+        var before = await ReadTodaysBudgetAsync();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where can I find Khasi pines?"));
+        var after = await ReadTodaysBudgetAsync();
+
+        var prompt = string.Join('\n', chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>()
+            .Single().Messages.Select(message => message.ToPlainText()));
+        prompt.Should().Contain("[1] Where Pinus kesiya is recorded (GBIF)").And.Contain("[2] ");
+        result.Value.Sources.Should().ContainSingle().Which.Url.Should().Be("https://www.gbif.org/species/5285824");
+        (after.Requests - before.Requests).Should().Be(2, "GBIF costs no AI request");
+    }
+
+    [Fact]
     public async Task AskAi_KeepsTheModelsOwnCitations_WhenItDoesCite()
     {
         using var host = CreateHost();
@@ -299,7 +376,9 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     [Fact]
     public async Task AskAi_Retries_WhenTheRouterPickedAModelUnfitToAnswer()
     {
-        using var host = CreateHost();
+        // Without tools: the router only ever serves a question asked in one call. A chain for tools
+        // never names it (AskAi_NeverOffersToolsThroughTheRouter).
+        using var host = CreateHost(tools: false);
         ArrangeProviders(host, answer: "unused");
         var catalog = ArrangeChains(host, first: ["a/model", "openrouter/free"], retry: ["d/model"]);
         catalog.IsUnfitToAnswer("nvidia/nemotron-3.5-content-safety:free").Returns(true);
@@ -340,6 +419,56 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
                                                && r.ExcludedModelIds.Contains("a/model")
                                                && r.ExcludedModelIds.Contains("b/model")),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAi_ExcludesAGatedFirstModel_AndRetriesWithOthers()
+    {
+        // inkling on 2026-10-23: 403 "only available on agentic harnesses" to anything but a coding agent.
+        // A plain 403 is a request refused as sent and is never retried; this one is the model's refusal,
+        // the next models answer the same request, and this one never will.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var catalog = ArrangeChains(host, first: ["gated/model", "b/model"], retry: ["c/model"]);
+        ArrangeCompletions(host,
+            Failure(ChatErrorCodes.ModelGated),
+            Success("Bollards in Ghana are white.", "c/model"));
+
+        var before = await ReadTodaysBudgetAsync();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"));
+        var after = await ReadTodaysBudgetAsync();
+
+        result.Value.Text.Should().Be("Bollards in Ghana are white.");
+        catalog.Received(1).ReportUnfit("gated/model");
+        catalog.DidNotReceive().ReportUnfit("b/model");
+        catalog.DidNotReceive().ReportChainOutcome(Arg.Any<IReadOnlyList<string>>(), null);
+        await catalog.Received().ReadChainAsync(
+            Arg.Is<ChatModelRequirements>(r => r.ExcludedModelIds != null
+                                               && r.ExcludedModelIds.Contains("gated/model")
+                                               && r.ExcludedModelIds.Contains("b/model")),
+            Arg.Any<CancellationToken>());
+        (after.Requests - before.Requests).Should().Be(3, "the embedding, the first chain and the retry");
+    }
+
+    [Fact]
+    public async Task AskAi_DemotesOnlyABusyFirstModel_AndRetriesWithOthers()
+    {
+        // gemma on 2026-10-23: a 429 from its provider's pool shared by every free user, not from our key.
+        // Our allowance is fine and the other models are not to blame, so only the head is demoted.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var catalog = ArrangeChains(host, first: ["busy/model", "b/model"], retry: ["c/model"]);
+        ArrangeCompletions(host,
+            Failure(ChatErrorCodes.ModelRateLimited),
+            Success("Bollards in Ghana are white.", "c/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"));
+
+        result.Value.Text.Should().Be("Bollards in Ghana are white.");
+        catalog.Received(1).ReportFailure("busy/model");
+        catalog.DidNotReceive().ReportFailure("b/model");
+        catalog.DidNotReceive().ReportUnfit(Arg.Any<string>());
+        catalog.DidNotReceive().ReportChainOutcome(Arg.Any<IReadOnlyList<string>>(), null);
     }
 
     [Theory]
@@ -521,6 +650,536 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
         stored.Should().Be(4, "all four stored turns belong to one conversation");
     }
 
+    [Fact]
+    public async Task AskAi_SearchesAFollowUpByItsBranch_InTheSameEmbeddingRequest()
+    {
+        // "What about corn?" found the Philippine corn tip 10th by its own words and 1st with the
+        // question before it. Both are searched, and embedded together: a follow-up costs no more
+        // requests than a fresh question.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "answer");
+        var embedder = host.Mock<IEmbedder>();
+
+        var (_, botMessageId, _) = await SeedExchangeAsync(host, "where can I find sugar cane in the Philippines?", "On Negros.");
+        embedder.ClearReceivedCalls();
+        var before = await ReadTodaysBudgetAsync();
+
+        await host.SendAsync(Ask(NewSnowflake(), botMessageId, "What about corn?"));
+
+        var after = await ReadTodaysBudgetAsync();
+        await embedder.Received(1).EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>());
+        EmbeddedTexts(host).Should().Equal(
+            "where can I find sugar cane in the Philippines? What about corn?",
+            "What about corn?");
+
+        var query = LastQuery(host);
+        query.ExtraTextVectors.Should().ContainSingle().Which.Weight.Should().BeLessThan(query.TextWeight,
+            "a follow-up's own words often match nothing on its topic");
+        (after.Requests - before.Requests).Should().Be(2, "one embedding and one answer, as for a fresh question");
+    }
+
+    [Fact]
+    public async Task AskAi_OffersAFollowUpWhatThePreviousAnswerCited_First()
+    {
+        // "Can you please show me an image of the exact distribution?" was answered "I don't have the
+        // actual distribution image": its own search offered one Mongolian excerpt of eight, not the map
+        // the answer before had cited as [1]. Now that answer's cited excerpts lead the follow-up's.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        var copyId = Guid.NewGuid();
+        var map = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Image, "Four straps near Khorgo.",
+            "https://docs.google.com/document/d/mongolia", "https://relay/map.png", "Mongolia Gen 4 Car Meta", "mongolia",
+            "Mongolia Gen 4 Car Meta", null, 0, "gdoc", "mongolia", "p1")
+        {
+            ExtraImageUrls = ["https://relay/map-2.png"],
+            MergedChunkIds = [copyId]
+        };
+        var tents = Hit("Open tents bridge the strap sections.", "https://www.plonkit.net/mongolia#t1");
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([tents, map], [Hit("Mongolian plates.", "https://www.plonkit.net/mongolia#p"), map]);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>()).Returns([map with { Score = 0f }]);
+        var chat = ArrangeCompletions(host,
+            Success("The four-band car is found around Khorgo [2].", "test/model"),
+            Success("Here is the map [1].", "test/model"));
+
+        var firstMessageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(firstMessageId, null, "where does the four band car happen in Gen 4 Mongolia?"));
+
+        first.Value.CitedChunkIds.Should().Equal([map.Id, copyId], "every copy merged into the cited excerpt");
+        first.Value.OfferedChunkIds.Should().Equal(tents.Id, map.Id, copyId);
+        await index.DidNotReceive().ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>());
+
+        var botMessageId = await RecordAsync(host, first.Value, null, "where does the four band car happen?", userId: 55, firstMessageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "Can you please show me an image of the exact distribution?"));
+
+        await index.Received(1).ReadChunksAsync(
+            Arg.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { map.Id, copyId })), Arg.Any<CancellationToken>());
+
+        var prompt = chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Last().Messages[^1].ToPlainText();
+        prompt.Should().Contain("([1] is the excerpt your previous answer cited; the rest were found for this question.)");
+        prompt.Should().Contain("[1] (2 pictures) Mongolia").And.Contain("[2] Eswatini > Identifying").And.NotContain("[3]",
+            "the new search found the map again, and it is offered once, under its carried number");
+
+        followUp.Value.Text.Should().Be("Here is the map [1].");
+        followUp.Value.Images.Select(image => image.ImageUrl).Should().Equal("https://relay/map.png", "https://relay/map-2.png");
+        followUp.Value.CitedChunkIds.Should().Equal(map.Id, copyId);
+
+        await using var db = fixture.CreateDbContext();
+        var stored = await db.AiConversationTurns.AsNoTracking().SingleAsync(turn => turn.DiscordMessageId == botMessageId);
+        stored.CitedChunkIds.Should().Equal(map.Id, copyId);
+        stored.OfferedChunkIds.Should().Equal(tents.Id, map.Id, copyId);
+    }
+
+    [Fact]
+    public async Task AskAi_AnswersAFollowUpFromItsOwnSearch_WhenTheCitedExcerptsCannotBeRead()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "From the search.");
+        var index = host.Mock<IKnowledgeIndex>();
+        var cited = Hit("Sabah lamp posts.", "https://www.plonkit.net/malaysia#s");
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([cited]);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<KnowledgeHit>>(new InvalidOperationException("store down")));
+        var chat = ArrangeCompletions(host, Success("Mainland lamps [1].", "test/model"), Success("From the search [1].", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "mainland lamps in Sabah?"));
+        var botMessageId = await RecordAsync(host, first.Value, null, "mainland lamps in Sabah?", userId: 55, messageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "How can I clearly identify Sabah?"));
+
+        followUp.IsSuccess.Should().BeTrue("the excerpts carried forward improve a follow-up; they are never a reason to fail it");
+        chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Last()
+            .Messages[^1].ToPlainText().Should().NotContain("previous answer cited");
+    }
+
+    [Fact]
+    public async Task AskAi_CarriesNothing_WhenCarryingIsTurnedOff()
+    {
+        using var host = CreateHost(maxCarried: 0);
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([Hit("Sabah lamp posts.", "https://www.plonkit.net/malaysia#s")]);
+        ArrangeCompletions(host, Success("Mainland lamps [1].", "test/model"), Success("Sabah [1].", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "mainland lamps in Sabah?"));
+        var botMessageId = await RecordAsync(host, first.Value, null, "mainland lamps in Sabah?", userId: 55, messageId);
+        await host.SendAsync(Ask(NewSnowflake(), botMessageId, "and Sarawak?"));
+
+        await index.DidNotReceive().ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAi_TellsTheModelWhichNumberTheReaderSawEachCarriedExcerptUnder()
+    {
+        // Both chunks of the Doc were listed to the reader as [1] and the map as [2]; carried, the map is
+        // [3]. "Can you show [2] bigger?" has to lead the model to the map.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        var chunkA = Hit("Four straps near Khorgo.", "https://docs.google.com/document/d/mongolia");
+        var chunkB = Hit("Three straps further east.", "https://docs.google.com/document/d/mongolia");
+        var map = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Image, "Strap map.",
+            "https://www.plonkit.net/mongolia#m", "https://relay/map.png", "Mongolia", "mongolia", "Mongolia > Car metas", null, 0);
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([chunkA, chunkB, map], []);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>()).Returns([chunkA, chunkB, map]);
+        var chat = ArrangeCompletions(host,
+            Success("Four straps [1], three further east [2], see the map [3].", "test/model"),
+            Success("Here it is [3].", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "where are the strap cars?"));
+        first.Value.Text.Should().Be("Four straps [1], three further east [1], see the map [2].");
+        var botMessageId = await RecordAsync(host, first.Value, null, "where are the strap cars?", userId: 55, messageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "can you show [2] bigger?"));
+
+        var prompt = chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Last()
+            .Messages[^1].ToPlainText();
+        prompt.Should().Contain("[3] (picture, usually with a distribution map) Mongolia > Car metas (the user saw this as 2)");
+        followUp.Value.Images.Should().ContainSingle().Which.ImageUrl.Should().Be("https://relay/map.png");
+    }
+
+    [Fact]
+    public async Task AskAi_CreditsWhatAFollowUpFound_NotWhatThePreviousAnswerCited_WhenItCitesNothing()
+    {
+        // The carried excerpts lead a follow-up's list. Credited as its closest matches, an uncited
+        // answer about Indonesia listed the Malaysia guides the answer before it had cited.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        var malaysia = Hit("Malaysian bollards are white with a red band.", "https://www.plonkit.net/malaysia#b1");
+        var indonesia = Hit("Indonesian bollards are black and white.", "https://www.plonkit.net/indonesia#b1");
+        var indonesiaToo = Hit("Indonesian kilometre markers are yellow.", "https://www.plonkit.net/indonesia#k2");
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([malaysia], [indonesia, indonesiaToo]);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>()).Returns([malaysia with { Score = 0f }]);
+        ArrangeCompletions(host,
+            Success("White with a red band [1].", "test/model"),
+            Success("Black and white, mostly.", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "Malaysian bollards?"));
+        var botMessageId = await RecordAsync(host, first.Value, null, "Malaysian bollards?", userId: 55, messageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "what about Indonesia?"));
+
+        followUp.Value.Sources.Should().OnlyContain(source => source.Marker == null);
+        followUp.Value.Sources.Select(source => source.Url).Should().Equal(
+            ["https://www.plonkit.net/indonesia#b1", "https://www.plonkit.net/indonesia#k2"],
+            "the closest matches are what was found for this question, not the guides the previous answer cited");
+        followUp.Value.RetrievedSourceUrls.Should().StartWith("https://www.plonkit.net/malaysia#b1",
+            "the carried excerpt was still offered first");
+    }
+
+    [Fact]
+    public async Task AskAi_CreditsTheCarriedGuides_WhenAnUncitedFollowUpFoundNothingElse()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        var index = host.Mock<IKnowledgeIndex>();
+
+        var malaysia = Hit("Malaysian bollards are white with a red band.", "https://www.plonkit.net/malaysia#b1");
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([malaysia], []);
+        index.ReadChunksAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>()).Returns([malaysia with { Score = 0f }]);
+        ArrangeCompletions(host,
+            Success("White with a red band [1].", "test/model"),
+            Success("As before, white with a red band.", "test/model"));
+
+        var messageId = NewSnowflake();
+        var first = await host.SendAsync(Ask(messageId, null, "Malaysian bollards?"));
+        var botMessageId = await RecordAsync(host, first.Value, null, "Malaysian bollards?", userId: 55, messageId);
+
+        var followUp = await host.SendAsync(Ask(NewSnowflake(), botMessageId, "are you sure?"));
+
+        followUp.Value.Sources.Select(source => source.Url).Should().Equal("https://www.plonkit.net/malaysia#b1");
+    }
+
+    [Fact]
+    public async Task RecordAiTurns_StoresTheToolCallsAnAnswerMade()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Snow poles.", "https://www.plonkit.net/finland#7DPm")]);
+        ArrangeCompletions(host,
+            ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "snow poles"}""")),
+            Success("Finnish snow poles [1].", "test/model"));
+
+        var messageId = NewSnowflake();
+        var answer = await host.SendAsync(Ask(messageId, null, "snow bollards in the Nordics?"));
+        var botMessageId = await RecordAsync(host, answer.Value, null, "snow bollards in the Nordics?", userId: 55, messageId);
+
+        await using var db = fixture.CreateDbContext();
+        var stored = await db.AiConversationTurns.AsNoTracking().SingleAsync(turn => turn.DiscordMessageId == botMessageId);
+        AiToolCallLog.Deserialize(stored.ToolCallsJson).Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new { Round = 1, Tool = AnswerTools.SearchGuides, Outcome = AiToolCallOutcome.NothingNew });
+    }
+
+    [Fact]
+    public async Task AskAi_BoostsTheCountryTheQuestionNames_UnderEverySpellingTheIndexUses()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "answer");
+        host.Mock<IKnowledgeIndex>().ListCountriesAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(["usa", "united states", "brazil"]));
+
+        await host.SendAsync(Ask(NewSnowflake(), null, "which states in the US don't require front plates?"));
+
+        var query = LastQuery(host);
+        query.BoostCountries.Should().BeEquivalentTo(["usa", "united states"]);
+        query.Country.Should().BeNull("the answer path boosts; only /ai search filters");
+    }
+
+    [Fact]
+    public async Task AskAi_PlansTheSearch_ForOneMoreRequest()
+    {
+        using var host = CreateHost(planner: true);
+        ArrangeProviders(host, answer: "Pole supports are absent in Ceará.");
+        var chat = ArrangePlanner(host, Success(
+            """{"question": "Which Brazilian states have poles without supports?", "searches": ["Brazil poles no supports"], "countries": ["Brazil"], "phrases": ["no supports"]}""",
+            "test/model"));
+        host.Mock<IKnowledgeIndex>().ListCountriesAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(["brazil"]));
+
+        var before = await ReadTodaysBudgetAsync();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "which states in Brazil don't do pole supports?"));
+        var after = await ReadTodaysBudgetAsync();
+
+        result.Value.Text.Should().Be("Pole supports are absent in Ceará.");
+        (after.Requests - before.Requests).Should().Be(3, "the embedding, the planner and the answer");
+        await chat.Received(2).CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>());
+
+        EmbeddedTexts(host).Should().Equal(
+            "Which Brazilian states have poles without supports?",
+            "which states in Brazil don't do pole supports?",
+            "Brazil poles no supports");
+
+        var query = LastQuery(host);
+        query.ExtraTextVectors.Should().HaveCount(2);
+        query.BoostCountries.Should().Equal("brazil");
+        query.KeyPhrases.Should().Equal("no supports");
+
+        // Text only, at a low temperature, with its own instruction and the question.
+        var planned = PlannerRequests(chat).Single();
+        planned.Temperature.Should().BeLessThan(0.2);
+        planned.Messages[^1].ToPlainText().Should().Contain("which states in Brazil don't do pole supports?");
+    }
+
+    [Fact]
+    public async Task AskAi_AnswersWithoutAPlan_WhenTheBudgetCannotCoverThePlanner()
+    {
+        await ResetTodaysBudgetAsync();
+
+        // Two requests cover the question; the planner is what is given up, not the question.
+        using var host = CreateHost(dailyBudget: 2, planner: true);
+        ArrangeProviders(host, answer: "answer");
+        var chat = ArrangePlanner(host, Success("""{"question": "never asked"}""", "test/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "first"));
+
+        result.IsSuccess.Should().BeTrue();
+        PlannerRequests(chat).Should().BeEmpty();
+        (await host.SendAsync(Ask(NewSnowflake(), null, "second"))).Error.Code.Should().Be("ai.budget_exhausted");
+    }
+
+    [Fact]
+    public async Task AskAi_StopsPlanning_OnceTheDaysRequestsReachThePlannersShare()
+    {
+        await ResetTodaysBudgetAsync();
+
+        // Half of ten: the first question is planned (2 + 1 = 3), the second would take the day to 6.
+        using var host = CreateHost(dailyBudget: 10, planner: true, plannerSharePercent: 50);
+        ArrangeProviders(host, answer: "answer");
+        var chat = ArrangePlanner(host, Success("""{"question": "Where are Khasi pines found?"}""", "test/model"));
+
+        (await host.SendAsync(Ask(NewSnowflake(), null, "where can I find Khasi pines?"))).IsSuccess.Should().BeTrue();
+        (await host.SendAsync(Ask(NewSnowflake(), null, "and chir pines?"))).IsSuccess.Should().BeTrue();
+
+        PlannerRequests(chat).Should().ContainSingle();
+        (await ReadTodaysBudgetAsync()).Requests.Should().Be(5, "two questions and one plan");
+    }
+
+    [Theory]
+    [InlineData("I'm sorry, I can't help with that.")]
+    [InlineData("User Safety: safe")]
+    public async Task AskAi_SearchesByTheQuestion_WhenThePlannersReplyCannotBeRead(string reply)
+    {
+        using var host = CreateHost(planner: true);
+        ArrangeProviders(host, answer: "answer");
+        ArrangePlanner(host, Success(reply, "test/planner-model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where can I find Khasi pines?"));
+
+        result.IsSuccess.Should().BeTrue();
+        LastQuery(host).ExtraTextVectors.Should().BeEmpty();
+        EmbeddedTexts(host).Should().Equal("where can I find Khasi pines?");
+    }
+
+    [Fact]
+    public async Task AskAi_KeepsAClassifierThatAnsweredThePlanner_OutOfTheAnswersChain()
+    {
+        using var host = CreateHost(planner: true);
+        ArrangeProviders(host, answer: "answer");
+        ArrangePlanner(host, Success("User Safety: safe", "test/classifier"));
+
+        await host.SendAsync(Ask(NewSnowflake(), null, "where can I find Khasi pines?"));
+
+        host.Mock<IChatModelCatalog>().Received(1).ReportUnfit("test/classifier");
+    }
+
+    [Fact]
+    public async Task AskAi_StillAnswers_WhenThePlannerFails_AndBlamesItsModels()
+    {
+        using var host = CreateHost(planner: true);
+        ArrangeProviders(host, answer: "answer");
+        ArrangePlanner(host, Failure(ChatErrorCodes.RequestFailed));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"));
+
+        result.IsSuccess.Should().BeTrue("planning improves a question; it is never a reason for it to fail");
+        result.Value.Text.Should().Be("answer");
+        host.Mock<IChatModelCatalog>().Received().ReportChainOutcome(Arg.Any<IReadOnlyList<string>>(), null);
+    }
+
+    [Fact]
+    public async Task AskAi_StillAnswers_WhenThePlannerThrows()
+    {
+        using var host = CreateHost(planner: true);
+        ArrangeProviders(host, answer: "answer");
+        host.Mock<IChatModelClient>()
+            .CompleteAsync(Arg.Is<AiChatRequest>(request => IsPlanner(request)), Arg.Any<CancellationToken>())
+            .Returns<Task<Result<AiChatResponse>>>(_ => throw new InvalidOperationException("circuit open"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Text.Should().Be("answer");
+    }
+
+    [Fact]
+    public async Task AskAi_StopsWaitingForASlowPlanner_WithoutBlamingItsModels()
+    {
+        using var host = CreateHost(planner: true, plannerTimeoutSeconds: 1);
+        ArrangeProviders(host, answer: "answer");
+        host.Mock<IChatModelClient>()
+            .CompleteAsync(Arg.Is<AiChatRequest>(request => IsPlanner(request)), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return Success("never", "test/model");
+            });
+
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"));
+
+        result.Value.Text.Should().Be("answer");
+        waited.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(15));
+        host.Mock<IChatModelCatalog>().DidNotReceive().ReportChainOutcome(Arg.Any<IReadOnlyList<string>>(), null);
+    }
+
+    [Fact]
+    public async Task AskAi_SkipsThePlannerForAWhile_AfterItTimedOut()
+    {
+        // Behind a slow model every question would wait the planner's whole timeout for nothing:
+        // dots-3-note-preview planned within 20 s for only 11 of 49 replayed questions.
+        var clock = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        using var host = CreateHost(planner: true, plannerTimeoutSeconds: 1, clock: clock);
+        ArrangeProviders(host, answer: "answer");
+        var chat = host.Mock<IChatModelClient>();
+        chat.CompleteAsync(Arg.Is<AiChatRequest>(request => IsPlanner(request)), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return Success("never", "test/model");
+            });
+
+        (await host.SendAsync(Ask(NewSnowflake(), null, "bollards?"))).IsSuccess.Should().BeTrue();
+
+        var before = await ReadTodaysBudgetAsync();
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        (await host.SendAsync(Ask(NewSnowflake(), null, "and road lines?"))).IsSuccess.Should().BeTrue();
+        var after = await ReadTodaysBudgetAsync();
+
+        PlannerRequests(chat).Should().ContainSingle("the planner sits out its pause");
+        (after.Requests - before.Requests).Should().Be(2, "a skipped planner costs nothing");
+        waited.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1), "nothing waited for the planner");
+
+        clock.Now += TimeSpan.FromMinutes(31);
+        (await host.SendAsync(Ask(NewSnowflake(), null, "and poles?"))).IsSuccess.Should().BeTrue();
+
+        PlannerRequests(chat).Should().HaveCount(2, "after the pause the planner is tried again");
+    }
+
+    [Fact]
+    public async Task AskAi_OffersTools_YetAQuestionAnsweredStraightAwayCostsTwoRequests()
+    {
+        using var host = CreateHost();
+        var chat = ArrangeProviders(host, answer: "Ghanaian bollards are white.");
+
+        var before = await ReadTodaysBudgetAsync();
+        (await host.SendAsync(Ask(NewSnowflake(), null, "bollards in Ghana?"))).IsSuccess.Should().BeTrue();
+        var after = await ReadTodaysBudgetAsync();
+
+        var request = chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Single();
+        request.Tools.Should().NotBeNullOrEmpty();
+        request.ModelChain.Should().NotContain("openrouter/free", "the router is never asked with tools");
+        (after.Requests - before.Requests).Should().Be(2, "the embedding and the one call, as before tools");
+    }
+
+    [Fact]
+    public async Task AskAi_ClaimsEachToolRound_AndCitesWhatItFound()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(
+                [Hit("Roads starting with MR…", "https://www.plonkit.net/eswatini#m1jr")],
+                [Hit("MR roads have white signs.", "https://www.plonkit.net/eswatini#k2")]);
+        ArrangeCompletions(host,
+            ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "MR road signs", "country": "Eswatini"}""")),
+            Success("MR roads have white signs [2].", "test/model"));
+
+        var before = await ReadTodaysBudgetAsync();
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "what do MR road signs look like?"));
+        var after = await ReadTodaysBudgetAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        (after.Requests - before.Requests).Should().Be(4, "the question's two, the round's call and its search's embedding");
+        await host.Mock<IEmbedder>().Received(2).EmbedAsync(Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>());
+
+        result.Value.Text.Should().Be("MR roads have white signs [1].");
+        result.Value.Sources.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new { Marker = 1, Url = "https://www.plonkit.net/eswatini#k2" }, "a tool's excerpt is cited like any other");
+        result.Value.RetrievedSourceUrls.Should().Equal(
+            ["https://www.plonkit.net/eswatini#m1jr", "https://www.plonkit.net/eswatini#k2"],
+            "the archive lists what the tools offered after what was retrieved");
+        result.Value.CitedSourceUrls.Should().Equal("https://www.plonkit.net/eswatini#k2");
+        result.Value.ToolCalls.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new { Round = 1, Tool = AnswerTools.SearchGuides, Outcome = AiToolCallOutcome.Answered, NewExcerpts = 1 });
+    }
+
+    [Fact]
+    public async Task AskAi_HasTheModelAnswer_OnceTheAllowanceCannotPayForAnotherRound()
+    {
+        await ResetTodaysBudgetAsync();
+
+        // Two for the question, two for one round: nothing is left for a second.
+        using var host = CreateHost(dailyBudget: 4);
+        ArrangeProviders(host, answer: "unused");
+        var chat = ArrangeCompletions(host,
+            ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "poles"}""")),
+            Success("From what I found.", "test/model"));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "poles?"));
+
+        result.Value.Text.Should().Be("From what I found.");
+        var last = chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Last();
+        last.ToolChoice.Should().Be(AiToolChoice.None);
+        (await ReadTodaysBudgetAsync()).Requests.Should().Be(4);
+    }
+
+    [Fact]
+    public async Task AskAi_RefusesCleanly_WhenAnotherQuestionTakesTheLastRequestsMidAnswer()
+    {
+        await ResetTodaysBudgetAsync();
+
+        using var host = CreateHost(dailyBudget: 4);
+        ArrangeProviders(host, answer: "unused");
+        host.Mock<IChatModelClient>().CompleteAsync(Arg.Any<AiChatRequest>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                // Another question claims the rest of the day's allowance while this one is thinking.
+                await using var db = fixture.CreateDbContext();
+                await new Infrastructure.OutputAdapters.Repositories.EfAiBudgetRepository(db)
+                    .TryReserveRequestsAsync(DateOnly.FromDateTime(DateTime.UtcNow), 2, 4);
+                return ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "poles"}"""));
+            });
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "poles?"));
+
+        result.Error.Code.Should().Be("ai.budget_exhausted", "an answer that cannot be paid for is refused, not left empty");
+        (await ReadTodaysBudgetAsync()).Requests.Should().Be(4, "nothing past the allowance was claimed");
+    }
+
+    [Fact]
+    public async Task AskAi_NeverOffersToolsThroughTheRouter()
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "unused");
+        ArrangeChains(host, first: ["openrouter/free"], retry: []);
+        var chat = ArrangeCompletions(host, Success("An answer.", "some/random-model"));
+
+        (await host.SendAsync(Ask(NewSnowflake(), null, "poles?"))).IsSuccess.Should().BeTrue();
+
+        chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Single()
+            .Tools.Should().BeNull("the router picks a model at random, which may not call tools");
+    }
+
     private async Task ResetTodaysBudgetAsync()
     {
         await using var db = fixture.CreateDbContext();
@@ -573,14 +1232,67 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     private static Result<AiChatResponse> Failure(string code) =>
         Result<AiChatResponse>.Failure(Error.Unexpected(code, "failed"));
 
-    private MediatorTestHost CreateHost(int dailyBudget = 1000, int perUserPerHour = 0) =>
-        new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>
-        {
-            ["AI:Active"] = "true",
-            ["AI:OpenRouter:DailyRequestBudget"] = dailyBudget.ToString(),
-            ["AI:MaxRequestsPerUserPerHour"] = perUserPerHour.ToString(),
-            ["AI:MaxImagesInReply"] = "3"
-        });
+    private static Result<AiChatResponse> ToolCalls(params (string Id, string Name, string Arguments)[] calls) =>
+        Result<AiChatResponse>.Success(new AiChatResponse(
+            string.Empty, "test/model", new AiTokenUsage(10, 5),
+            [.. calls.Select(call => new AiToolCall(call.Id, call.Name, call.Arguments))], "tool_calls"));
+
+    /// <param name="planner">
+    /// Off unless a test is about it: the other tests script the answer's completions one by one, and
+    /// the planner's request would take the first of them. The planner's own tests are above.
+    /// </param>
+    private MediatorTestHost CreateHost(
+        int dailyBudget = 1000,
+        int perUserPerHour = 0,
+        bool planner = false,
+        int plannerTimeoutSeconds = 20,
+        int plannerSharePercent = 100,
+        TimeProvider? clock = null,
+        bool tools = true,
+        int maxCarried = 6) =>
+        new(
+            fixture.ConnectionString,
+            configure: clock is null ? null : services => services.AddSingleton(clock),
+            configurationValues: new Dictionary<string, string?>
+            {
+                ["AI:Active"] = "true",
+                ["AI:OpenRouter:DailyRequestBudget"] = dailyBudget.ToString(),
+                ["AI:MaxRequestsPerUserPerHour"] = perUserPerHour.ToString(),
+                ["AI:MaxImagesInReply"] = "3",
+                ["AI:Retrieval:QueryPlanner:Enabled"] = planner.ToString(),
+                ["AI:Retrieval:QueryPlanner:TimeoutSeconds"] = plannerTimeoutSeconds.ToString(),
+                ["AI:Retrieval:QueryPlanner:MaxDailyBudgetPercent"] = plannerSharePercent.ToString(),
+                ["AI:Tools:Enabled"] = tools.ToString(),
+                ["AI:Retrieval:MaxCarriedExcerpts"] = maxCarried.ToString()
+            });
+
+    /// <summary>Scripts the planner's reply, leaving the answer's as <see cref="ArrangeProviders"/> set it.</summary>
+    private static IChatModelClient ArrangePlanner(MediatorTestHost host, Result<AiChatResponse> reply)
+    {
+        var chat = host.Mock<IChatModelClient>();
+        chat.CompleteAsync(Arg.Is<AiChatRequest>(request => IsPlanner(request)), Arg.Any<CancellationToken>())
+            .Returns(reply);
+        return chat;
+    }
+
+    private static bool IsPlanner(AiChatRequest request) =>
+        request.Messages.Count > 0 && request.Messages[0].ToPlainText() == RetrievalQueryPlanner.SystemPrompt;
+
+    private static IEnumerable<AiChatRequest> PlannerRequests(IChatModelClient chat) =>
+        chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().Where(IsPlanner);
+
+    private static KnowledgeQuery LastQuery(MediatorTestHost host) =>
+        host.Mock<IKnowledgeIndex>().ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<KnowledgeQuery>().Last();
+
+    private static IReadOnlyList<string> EmbeddedTexts(MediatorTestHost host) =>
+    [
+        .. host.Mock<IEmbedder>().ReceivedCalls()
+            .Select(call => call.GetArguments()[0])
+            .OfType<IReadOnlyList<EmbeddingInput>>()
+            .Last()
+            .OfType<TextEmbeddingInput>()
+            .Select(input => input.Text)
+    ];
 
     /// <summary>Scripts the faked provider ports so a question completes without touching the network.</summary>
     private static IChatModelClient ArrangeProviders(MediatorTestHost host, string answer)
@@ -634,7 +1346,8 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
             userMessageId ?? NewSnowflake(), parentId, botMessageId, answer.ConversationId,
             ChannelId: 5, GuildId: 7, userId, BotUserId: 1,
             question, images ?? [], answer.Text, answer.ModelUsed,
-            answer.RetrievedSourceUrls, answer.CitedSourceUrls, EarlierBotMessageIds: [], answer.Depth));
+            answer.RetrievedSourceUrls, answer.CitedSourceUrls, EarlierBotMessageIds: [], answer.Depth,
+            answer.OfferedChunkIds, answer.CitedChunkIds, answer.ToolCalls));
 
         return botMessageId;
     }

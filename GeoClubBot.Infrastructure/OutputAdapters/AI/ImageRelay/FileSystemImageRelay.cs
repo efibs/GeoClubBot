@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using Configuration;
@@ -20,32 +21,8 @@ public sealed partial class FileSystemImageRelay(
     IOptions<AiImageRelayConfiguration> configuration,
     ILogger<FileSystemImageRelay> logger) : IImageRelay
 {
-    /// <summary>Route the relay controller serves; the public URL is this appended to the base.</summary>
-    public const string RoutePrefix = "api/v1/ai/images";
-
     /// <summary>Hops allowed while chasing a redirect chain, before it is treated as a refusal.</summary>
     private const int MaxRedirects = 5;
-
-    /// <summary>
-    /// Only image types are stored. An allowlist rather than a blocklist because these bytes are later
-    /// served back from our own origin, and the type we declare is the type a browser will trust.
-    /// </summary>
-    private static readonly Dictionary<string, string> ExtensionsByContentType = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["image/png"] = ".png",
-        ["image/jpeg"] = ".jpg",
-        ["image/jpg"] = ".jpg",
-        ["image/gif"] = ".gif",
-        ["image/webp"] = ".webp"
-    };
-
-    private static readonly Dictionary<string, string> ContentTypesByExtension = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [".png"] = "image/png",
-        [".jpg"] = "image/jpeg",
-        [".gif"] = "image/gif",
-        [".webp"] = "image/webp"
-    };
 
     public bool IsEnabled => !string.IsNullOrWhiteSpace(configuration.Value.PublicBaseUrl);
 
@@ -142,14 +119,14 @@ public sealed partial class FileSystemImageRelay(
             await File.WriteAllBytesAsync(path, content, cancellationToken).ConfigureAwait(false);
         }
 
-        return $"{settings.PublicBaseUrl!.TrimEnd('/')}/{RoutePrefix}/{hash}{extension}";
+        return RelayedImageUrl.Build(settings.PublicBaseUrl!, $"{hash}{extension}");
     }
 
-    public Task<RelayedImageContent?> ReadAsync(string hash, CancellationToken cancellationToken = default)
+    public Task<RelayedImageContent?> ReadAsync(string name, CancellationToken cancellationToken = default)
     {
         // Anything not exactly a hash plus a known extension is refused before touching the disk, so
         // no caller-supplied text ever reaches a path.
-        if (!TrySplitName(hash, out var digest, out var extension))
+        if (!RelayedImageUrl.TrySplitName(name, out var digest, out var extension))
         {
             return Task.FromResult<RelayedImageContent?>(null);
         }
@@ -162,12 +139,13 @@ public sealed partial class FileSystemImageRelay(
 
         Stream content = File.OpenRead(path);
         return Task.FromResult<RelayedImageContent?>(
-            new RelayedImageContent(content, ContentTypesByExtension[extension]));
+            new RelayedImageContent(content, RelayedImageUrl.ContentTypeFor(extension)!));
     }
 
     public async Task<string?> ReadAsDataUrlAsync(string imageUrl, CancellationToken cancellationToken = default)
     {
-        if (!TryReadRelayedName(imageUrl, out var name) || !TrySplitName(name, out var digest, out var extension))
+        if (!RelayedImageUrl.TryReadName(imageUrl, out var name)
+            || !RelayedImageUrl.TrySplitName(name, out var digest, out var extension))
         {
             return null;
         }
@@ -179,11 +157,76 @@ public sealed partial class FileSystemImageRelay(
         }
 
         var content = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-        return $"data:{ContentTypesByExtension[extension]};base64,{Convert.ToBase64String(content)}";
+        return $"data:{RelayedImageUrl.ContentTypeFor(extension)};base64,{Convert.ToBase64String(content)}";
     }
+
+    public async Task<ImageRelayReachability> CheckPublicReachabilityAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = configuration.Value;
+        if (string.IsNullOrWhiteSpace(settings.PublicBaseUrl))
+        {
+            return new ImageRelayReachability(ImageRelayReachabilityStatus.NotConfigured, null, null);
+        }
+
+        var baseUrl = settings.PublicBaseUrl.Trim().TrimEnd('/');
+        if (!Uri.TryCreate($"{baseUrl}/health", UriKind.Absolute, out var healthUrl)
+            || healthUrl.Scheme is not ("https" or "http"))
+        {
+            return new ImageRelayReachability(ImageRelayReachabilityStatus.Unreachable, baseUrl, "not an http(s) URL");
+        }
+
+        var timeoutSeconds = Math.Max(1, settings.ReachabilityTimeoutSeconds);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            var client = httpClientFactory.CreateClient(ReachabilityHttpClientName);
+            using var response = await client
+                .GetAsync(healthUrl, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
+                .ConfigureAwait(false);
+
+            return response.IsSuccessStatusCode
+                ? new ImageRelayReachability(ImageRelayReachabilityStatus.Reachable, baseUrl,
+                    $"answered in {stopwatch.ElapsedMilliseconds} ms")
+                : new ImageRelayReachability(ImageRelayReachabilityStatus.Unreachable, baseUrl,
+                    $"answered HTTP {(int)response.StatusCode}");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new ImageRelayReachability(ImageRelayReachabilityStatus.Unreachable, baseUrl,
+                $"no answer within {timeoutSeconds} s");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A name that no longer resolves lands here, in the resolver's own words, which is what
+            // tells a lost DNS record apart from the bot being down.
+            LogReachabilityFailed(logger, baseUrl, ex);
+            return new ImageRelayReachability(ImageRelayReachabilityStatus.Unreachable, baseUrl, Describe(ex));
+        }
+    }
+
+    /// <summary>
+    /// The outer message names the host and port ("Name or service not known (host:443)"), except for a
+    /// TLS failure, whose outer message only says to read the inner one.
+    /// </summary>
+    private static string Describe(Exception exception) =>
+        exception.InnerException is { } inner
+        && exception.Message.Contains("inner exception", StringComparison.OrdinalIgnoreCase)
+            ? inner.Message
+            : exception.Message;
 
     /// <summary>Name of the HttpClient used to fetch images, configured with the polite content pipeline.</summary>
     public const string HttpClientName = "AiImageRelay";
+
+    /// <summary>
+    /// Name of the HttpClient that asks the public base URL for its health. Deliberately not
+    /// registered, so it gets the defaults: no resilience pipeline, because a retry would hide exactly
+    /// the failure the check is looking for, and no politeness queue to wait behind.
+    /// </summary>
+    public const string ReachabilityHttpClientName = "AiImageRelayReachability";
 
     private static bool IsRedirect(HttpResponseMessage response) =>
         response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found
@@ -219,9 +262,7 @@ public sealed partial class FileSystemImageRelay(
             return sniffed;
         }
 
-        return contentType is not null && ExtensionsByContentType.TryGetValue(contentType, out var extension)
-            ? extension
-            : null;
+        return RelayedImageUrl.ExtensionFor(contentType);
     }
 
     private static string? SniffExtension(byte[] content)
@@ -248,54 +289,12 @@ public sealed partial class FileSystemImageRelay(
             : null;
     }
 
-    /// <summary>
-    /// Takes the stored name out of a relayed URL. Matched on the route rather than the host, so images
-    /// indexed under an earlier public base URL are still found on disk after the bot's address changes —
-    /// a quick tunnel mints a new one every run. Nothing else in the URL is trusted: the name must still
-    /// pass <see cref="TrySplitName"/> before it can reach a path.
-    /// </summary>
-    private static bool TryReadRelayedName(string imageUrl, out string name)
-    {
-        name = string.Empty;
-
-        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
-        {
-            return false;
-        }
-
-        var marker = $"/{RoutePrefix}/";
-        var start = uri.AbsolutePath.LastIndexOf(marker, StringComparison.Ordinal);
-        if (start < 0)
-        {
-            return false;
-        }
-
-        name = uri.AbsolutePath[(start + marker.Length)..];
-        return name.Length > 0;
-    }
-
-    /// <summary>Splits a served name into its digest and extension, rejecting anything malformed.</summary>
-    private static bool TrySplitName(string name, out string digest, out string extension)
-    {
-        digest = string.Empty;
-        extension = string.Empty;
-
-        var dot = name.LastIndexOf('.');
-        if (dot != 64 || name.Length > 70)
-        {
-            return false;
-        }
-
-        digest = name[..dot];
-        extension = name[dot..];
-
-        return digest.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f')
-               && ContentTypesByExtension.ContainsKey(extension);
-    }
-
     [LoggerMessage(LogLevel.Debug, "Host refused an image fetch for {ImageUrl} (HTTP {StatusCode}); keeping the original link.")]
     static partial void LogRelayRefused(ILogger logger, string imageUrl, int statusCode);
 
     [LoggerMessage(LogLevel.Debug, "Could not relay {ImageUrl}; keeping the original link.")]
     static partial void LogRelayFailed(ILogger logger, string imageUrl, Exception exception);
+
+    [LoggerMessage(LogLevel.Information, "The image relay's public base URL {PublicBaseUrl} did not answer its health check.")]
+    static partial void LogReachabilityFailed(ILogger logger, string publicBaseUrl, Exception exception);
 }

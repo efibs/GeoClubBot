@@ -1,6 +1,7 @@
 using Configuration;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -77,7 +78,7 @@ public sealed class ChatModelCatalogTests
         var (catalog, client, time) = CreateCatalog();
         client.ReadFreeModelsAsync(Arg.Any<CancellationToken>()).Returns(
             Result<IReadOnlyList<ChatModelDescriptor>>.Success(
-                [Model("flaky/model", contextLength: 512_000), Model("steady/model", contextLength: 500_000)]));
+                [Model("flaky/model", totalBillions: 120), Model("steady/model", totalBillions: 100)]));
         await catalog.RefreshAsync();
 
         (await catalog.ReadChainAsync(new ChatModelRequirements()))[0].Should().Be("flaky/model");
@@ -193,6 +194,130 @@ public sealed class ChatModelCatalogTests
             .Should().OnlyContain(candidate => candidate.FailurePenalty == 0);
     }
 
+    [Fact]
+    public async Task Refresh_LeavesOutAModelWhoseProviderIsDown()
+    {
+        // Nemotron 3 Super on 2026-10-23: listed like any other model, its only provider at 0% for the day.
+        var (catalog, client, _) = CreateCatalog();
+        ArrangeHealth(client, ("down/model", 0d), ("up/model", 99d));
+        await RefreshWithAsync(catalog, client, [Model("down/model", totalBillions: 120), Model("up/model", totalBillions: 60)]);
+
+        (await catalog.ReadChainAsync(new ChatModelRequirements())).Should().Equal("up/model", "openrouter/free");
+    }
+
+    [Fact]
+    public async Task Refresh_CountsAModelWhoseHealthCouldNotBeRead_AsHealthy()
+    {
+        // An unreachable health endpoint must never empty the roster.
+        var (catalog, client, _) = CreateCatalog();
+        client.ReadModelHealthAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(
+            Result<ChatModelHealth>.Failure(Error.Unexpected("ai.model_health_unavailable", "boom")));
+        await RefreshWithAsync(catalog, client, [Model("a/model"), Model("b/model")]);
+
+        (await catalog.ReadChainAsync(new ChatModelRequirements())).Should().Equal("a/model", "b/model", "openrouter/free");
+        (await catalog.ReadRankingAsync(new ChatModelRequirements()))
+            .Should().OnlyContain(candidate => candidate.Model.UptimeLastDayPercent == null);
+    }
+
+    [Fact]
+    public async Task Refresh_ReadsTheHealthOfNoMoreModelsThanConfigured_BestRankedFirst()
+    {
+        var (catalog, client, _) = CreateCatalog(healthCheckModelCount: 2);
+        await RefreshWithAsync(catalog, client,
+        [
+            Model("small/model", totalBillions: 10),
+            Model("large/model", totalBillions: 500),
+            Model("medium/model", totalBillions: 100)
+        ]);
+
+        await client.Received(2).ReadModelHealthAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await client.Received(1).ReadModelHealthAsync("large/model", Arg.Any<CancellationToken>());
+        await client.Received(1).ReadModelHealthAsync("medium/model", Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(-3, 0)]
+    [InlineData(500, ChatModelCatalog.MaxHealthChecks)]
+    public async Task Refresh_BoundsTheHealthReads(int configured, int expected)
+    {
+        // Each read is a request through the limiter questions wait behind.
+        var (catalog, client, _) = CreateCatalog(healthCheckModelCount: configured);
+        await RefreshWithAsync(catalog, client,
+            [.. Enumerable.Range(0, 30).Select(index => Model($"model/{index:00}", totalBillions: 10 + index))]);
+
+        await client.Received(expected).ReadModelHealthAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Refresh_KeepsTheLastFigure_UntilHealthHasBeenReadAgain()
+    {
+        var (catalog, client, _) = CreateCatalog();
+        ArrangeHealth(client, ("down/model", 0d));
+        await RefreshWithAsync(catalog, client, [Model("down/model", totalBillions: 120), Model("up/model")]);
+
+        // The second refresh publishes the new roster before it reads health; a question asked meanwhile
+        // must not be offered the model the last read found down.
+        var whileReading = new List<IReadOnlyList<string>>();
+        client.ReadModelHealthAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            whileReading.Add(await catalog.ReadChainAsync(new ChatModelRequirements()));
+            return Result<ChatModelHealth>.Success(new ChatModelHealth(100));
+        });
+        await catalog.RefreshAsync();
+
+        whileReading.Should().NotBeEmpty().And.OnlyContain(chain => !chain.Contains("down/model"));
+        (await catalog.ReadChainAsync(new ChatModelRequirements()))[0].Should().Be("down/model", "it has recovered");
+    }
+
+    [Fact]
+    public async Task AnEnvironmentOverrideThatEmptiesAShippedEntry_DropsIt()
+    {
+        // Lists bind by index, so an override can replace a shipped entry but never remove it: emptying it
+        // is the only way out. Read as a prefix, the empty first entry would match every model before the
+        // second could, and take the preference from the family the operator meant to keep.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AI:OpenRouter:PreferredModelPrefixes:0"] = "dropped/",
+                ["AI:OpenRouter:PreferredModelPrefixes:1"] = "kept/",
+                ["AI:OpenRouter:BlockedModelIds:0"] = "blocked/model"
+            })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                // What AI__OpenRouter__PreferredModelPrefixes__0= and its like bind to.
+                ["AI:OpenRouter:PreferredModelPrefixes:0"] = "",
+                ["AI:OpenRouter:BlockedModelIds:0"] = ""
+            })
+            .Build();
+        var aiConfiguration = configuration.GetSection(AiConfiguration.SectionName).Get<AiConfiguration>()!;
+        aiConfiguration.OpenRouter.FallbackModelId = "openrouter/free";
+
+        var client = Substitute.For<IChatModelClient>();
+        var catalog = new ChatModelCatalog(
+            client, Options.Create(aiConfiguration), new FixedTimeProvider(Start), NullLogger<ChatModelCatalog>.Instance);
+        await RefreshWithAsync(catalog, client,
+        [
+            Model("dropped/model", contextLength: 1_000_000),
+            Model("kept/model"),
+            Model("blocked/model", contextLength: 1_000_000)
+        ]);
+
+        var ranking = await catalog.ReadRankingAsync(new ChatModelRequirements());
+
+        ranking[0].Id.Should().Be("kept/model", "the prefix left in place still outranks larger models");
+        ranking.Select(candidate => candidate.Id).Should().Contain("blocked/model");
+    }
+
+    private static void ArrangeHealth(IChatModelClient client, params (string ModelId, double Uptime)[] figures)
+    {
+        foreach (var (modelId, uptime) in figures)
+        {
+            client.ReadModelHealthAsync(modelId, Arg.Any<CancellationToken>())
+                .Returns(Result<ChatModelHealth>.Success(new ChatModelHealth(uptime)));
+        }
+    }
+
     private static async Task RefreshWithAsync(
         ChatModelCatalog catalog,
         IChatModelClient client,
@@ -205,7 +330,8 @@ public sealed class ChatModelCatalogTests
 
     private static (ChatModelCatalog Catalog, IChatModelClient Client, FixedTimeProvider Time) CreateCatalog(
         int chainLength = 3,
-        List<string>? blocked = null)
+        List<string>? blocked = null,
+        int healthCheckModelCount = 10)
     {
         var client = Substitute.For<IChatModelClient>();
         var time = new FixedTimeProvider(Start);
@@ -216,7 +342,8 @@ public sealed class ChatModelCatalogTests
             {
                 FallbackModelId = "openrouter/free",
                 ChainLength = chainLength,
-                BlockedModelIds = blocked ?? []
+                BlockedModelIds = blocked ?? [],
+                HealthCheckModelCount = healthCheckModelCount
             }
         });
 
@@ -228,7 +355,8 @@ public sealed class ChatModelCatalogTests
         int contextLength = 64_000,
         bool supportsImageInput = false,
         bool producesTextOnly = true,
-        bool isGuardrail = false) =>
+        bool isGuardrail = false,
+        double? totalBillions = null) =>
         new(
             id,
             id,
@@ -240,7 +368,8 @@ public sealed class ChatModelCatalogTests
             SupportsStructuredOutputs: false,
             isGuardrail,
             Start.AddDays(-60),
-            ExpiresAt: null);
+            ExpiresAt: null,
+            totalBillions);
 
     /// <summary>
     /// TimeProvider is abstract with a virtual GetUtcNow, so a controllable clock needs no extra

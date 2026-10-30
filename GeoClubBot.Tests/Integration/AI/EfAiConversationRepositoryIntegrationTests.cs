@@ -47,6 +47,31 @@ public sealed class EfAiConversationRepositoryIntegrationTests(PostgresFixture f
     }
 
     [Fact]
+    public async Task AddTurn_RoundTripsTheExcerptsAnAnswerWasOfferedAndCited_AndItsToolCalls()
+    {
+        var messageId = NewSnowflake();
+        var (offered, cited) = (Guid.NewGuid(), Guid.NewGuid());
+        const string toolCalls = """[{"round":1,"tool":"search_guides","outcome":"Answered"}]""";
+
+        await using (var db = fixture.CreateDbContext())
+        {
+            new EfAiConversationRepository(db).AddTurn(AiConversationTurn.CreateAssistantTurn(
+                messageId, NewSnowflake(), conversationId: messageId, channelId: 5, guildId: 7, botUserId: 1,
+                "Near Khorgo [1].", "test/model", null, null, null, depth: 1, Now,
+                offeredChunkIds: [offered, cited], citedChunkIds: [cited], toolCallsJson: toolCalls));
+
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var stored = await new EfAiConversationRepository(read).ReadByMessageIdAsync(messageId);
+
+        stored!.OfferedChunkIds.Should().Equal(offered, cited);
+        stored.CitedChunkIds.Should().Equal(cited);
+        stored.ToolCallsJson.Should().Be(toolCalls);
+    }
+
+    [Fact]
     public async Task ReadConversation_ReturnsOnlyThatTree()
     {
         var mine = NewSnowflake();

@@ -25,6 +25,27 @@ namespace UseCases.OutputPorts.AI;
 /// When the provider has announced a retirement date. Free models frequently carry one, which is the
 /// main reason a hardcoded model id rots.
 /// </param>
+/// <param name="TotalParametersBillions">
+/// Parameter count in billions, or <c>null</c> when neither the id, the name nor the provider's prose
+/// states it. Size is the best quality signal the roster offers. Asked the same grounded question in
+/// October 2026, the 550B Nemotron Ultra answered concisely and said what the guides did not cover,
+/// while the 30B Nemotron Lightning, 3B of it active, spent its whole 4,096-token allowance reasoning
+/// and returned nothing at all.
+/// </param>
+/// <param name="ActiveParametersBillions">
+/// Parameters active per token, for a mixture-of-experts model. <c>null</c> for a dense model, or when
+/// the provider does not say.
+/// </param>
+/// <param name="IsCodingSpecialist">
+/// Whether the provider describes the model as built for coding agents. Those are tuned to edit code
+/// and drive terminals, not to explain things in prose — which is all this bot ever asks of a model.
+/// </param>
+/// <param name="UptimeLastDayPercent">
+/// Share of requests the model's best provider endpoint served over the last day, or <c>null</c> when
+/// it has not been measured. Read separately from the roster, which says nothing about health: on
+/// 2026-10-23 Nemotron 3 Super was listed like any other model while its only provider had served 0%
+/// of the day's requests.
+/// </param>
 public sealed record ChatModelDescriptor(
     string Id,
     string Name,
@@ -36,4 +57,25 @@ public sealed record ChatModelDescriptor(
     bool SupportsStructuredOutputs,
     bool IsGuardrail,
     DateTimeOffset? CreatedAt,
-    DateTimeOffset? ExpiresAt);
+    DateTimeOffset? ExpiresAt,
+    double? TotalParametersBillions = null,
+    double? ActiveParametersBillions = null,
+    bool IsCodingSpecialist = false,
+    double? UptimeLastDayPercent = null)
+{
+    /// <summary>
+    /// One number to compare a dense model with a mixture of experts: the geometric mean of total and
+    /// active parameters, a common rule of thumb for what a sparse model performs like. A 550B model
+    /// running 55B per token compares with a dense 174B one, not with either figure alone. A dense
+    /// model is its total. A model that states only its active count has no effective size: that count is
+    /// only a floor, and a 30B mixture of experts running 3B per token, credited with the 3B, would fall
+    /// below the selector's size bar although it compares with a dense 9.5B model. Unknown is held to no
+    /// bar and ranks in the middle.
+    /// </summary>
+    public double? EffectiveParametersBillions => (TotalParametersBillions, ActiveParametersBillions) switch
+    {
+        ({ } total, { } active) when total > 0 && active > 0 => Math.Sqrt(total * active),
+        ({ } total, null) when total > 0 => total,
+        _ => null
+    };
+}

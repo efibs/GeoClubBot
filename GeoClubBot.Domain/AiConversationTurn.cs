@@ -64,6 +64,29 @@ public class AiConversationTurn : BaseEntity
     public List<string> CitedSourceUrls { get; private set; } = [];
 
     /// <summary>
+    /// The index chunks behind every excerpt offered for this answer, in the order they were numbered,
+    /// the copies merged into an excerpt included. Unlike <see cref="RetrievedSourceUrls"/> these name
+    /// the exact excerpt rather than its page, so an exported answer can be replayed against what it
+    /// was actually shown. A tool's result that was never in the index (a species range) has an id too.
+    /// </summary>
+    public List<Guid> OfferedChunkIds { get; private set; } = [];
+
+    /// <summary>
+    /// The chunks behind the excerpts the answer cited, in the order it numbered them. A follow-up is
+    /// offered them again first, because "that picture" or "source 3" means one of them — and a fresh
+    /// search for the follow-up's words does not reliably find it (the Mongolia map the previous answer
+    /// had cited as [1] was not among the excerpts its "show me the distribution" follow-up got).
+    /// </summary>
+    public List<Guid> CitedChunkIds { get; private set; } = [];
+
+    /// <summary>
+    /// The tool calls the model made on the way to this answer, as JSON; null when it answered in one
+    /// call. Stored as written rather than as columns, because it is only ever read back whole: beside a
+    /// rating, to see what the model searched for.
+    /// </summary>
+    public string? ToolCallsJson { get; private set; }
+
+    /// <summary>
     /// The earlier messages of an answer that was split across several, on assistant turns. The turn
     /// itself is keyed by the last message — that is the one a reply attaches to — so without these
     /// a reaction on the first part of a long answer would resolve to nothing at all.
@@ -100,6 +123,9 @@ public class AiConversationTurn : BaseEntity
             retrievedSourceUrls: null, citedSourceUrls: null, chunkMessageIds: null, depth, createdAtUtc);
     }
 
+    /// <param name="offeredChunkIds">See <see cref="OfferedChunkIds"/>.</param>
+    /// <param name="citedChunkIds">See <see cref="CitedChunkIds"/>.</param>
+    /// <param name="toolCallsJson">See <see cref="ToolCallsJson"/>; blank is stored as none.</param>
     public static AiConversationTurn CreateAssistantTurn(
         ulong discordMessageId,
         ulong parentDiscordMessageId,
@@ -113,10 +139,21 @@ public class AiConversationTurn : BaseEntity
         IEnumerable<string>? citedSourceUrls,
         IEnumerable<ulong>? chunkMessageIds,
         int depth,
-        DateTimeOffset createdAtUtc) =>
-        Create(discordMessageId, parentDiscordMessageId, conversationId, channelId, guildId,
+        DateTimeOffset createdAtUtc,
+        IEnumerable<Guid>? offeredChunkIds = null,
+        IEnumerable<Guid>? citedChunkIds = null,
+        string? toolCallsJson = null)
+    {
+        var turn = Create(discordMessageId, parentDiscordMessageId, conversationId, channelId, guildId,
             botUserId, AiTurnRole.Assistant, content, [], modelId,
             retrievedSourceUrls, citedSourceUrls, chunkMessageIds, depth, createdAtUtc);
+
+        turn.OfferedChunkIds = offeredChunkIds?.ToList() ?? [];
+        turn.CitedChunkIds = citedChunkIds?.ToList() ?? [];
+        turn.ToolCallsJson = string.IsNullOrWhiteSpace(toolCallsJson) ? null : toolCallsJson;
+
+        return turn;
+    }
 
     private static AiConversationTurn Create(
         ulong discordMessageId,

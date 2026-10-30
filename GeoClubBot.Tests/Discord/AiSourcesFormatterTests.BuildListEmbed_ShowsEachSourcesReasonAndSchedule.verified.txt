@@ -1,0 +1,15 @@
+﻿Title: 📚 Guide sources — needing a look
+Description:
+🚫 **[Pakistan bollards](https://example.org/gdoc/1Vcun64ZzIAE4tGyj7jL2jncjzRWokChomnMQ3-gUYTw)** · `gdoc:1Vcun64ZzIAE4tGyj7jL2jncjzRWokChomnMQ3-gUYTw`
+> This document no longer exists (HTTP 410).
+unreadable on 1 check(s) in a row · last tried <t:1792731600:R> · next <t:1795323600:R>
+
+⏭️ **[Greece](https://example.org/rmrg/greece)** · `rmrg:greece`
+> This page carries no guide content.
+last tried <t:1792731600:R> · not retried unless queued again
+
+⚠️ **[Tunisia](https://example.org/plonkit/tunisia)** · `plonkit:tunisia`
+> Could not fetch this guide page (HTTP 503).
+3 failure(s) in a row · last tried <t:1792731600:R> · due now
+
+Fixed upstream, or by an update? `/ai source-retry` queues them again.

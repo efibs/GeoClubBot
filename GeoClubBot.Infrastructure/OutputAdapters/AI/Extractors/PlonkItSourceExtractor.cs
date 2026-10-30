@@ -87,9 +87,9 @@ public sealed partial class PlonkItSourceExtractor(
             var client = httpClientFactory.CreateClient(HttpClientName);
             html = await client.GetStringAsync(source.Url, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (SourceFetch.IsFetchFailure(ex, cancellationToken))
         {
-            return Error.Unexpected("ai.source_unreachable", $"Could not fetch {source.Url}.");
+            return SourceFetch.FromException(ex, "guide page", ForbiddenMeans.HostRefused);
         }
 
         if (!TryReadPayload(html, out var payload))
@@ -149,15 +149,23 @@ public sealed partial class PlonkItSourceExtractor(
                 ? stepTitleElement.GetString()
                 : null;
 
-            var sectionPath = string.IsNullOrWhiteSpace(stepTitle)
-                ? title ?? source.NaturalKey
-                : $"{title ?? source.NaturalKey} > {stepTitle}";
+            // Headings never carry over from one step to the next: each step opens under its own title.
+            var headings = new HeadingTrail();
 
             if (step.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in items.EnumerateArray())
                 {
-                    var chunk = ReadItem(item, stepIndex, sectionPath, stepTitle, title, source);
+                    var kind = item.TryGetProperty("kind", out var kindElement) ? kindElement.GetString() : null;
+                    if (headings.TryFollow(kind, item))
+                    {
+                        continue;
+                    }
+
+                    var context = new ItemContext(
+                        stepIndex, title ?? source.NaturalKey, title, stepTitle, headings.Heading, headings.Subheading);
+
+                    var chunk = ReadItem(item, kind, context);
                     if (chunk is not null)
                     {
                         chunks.Add(chunk);
@@ -171,13 +179,7 @@ public sealed partial class PlonkItSourceExtractor(
         return new ExtractedDocument(title, updatedAt, chunks);
     }
 
-    private static ExtractedChunk? ReadItem(
-        JsonElement item,
-        int stepIndex,
-        string sectionPath,
-        string? stepTitle,
-        string? guideTitle,
-        SourceDescriptor source)
+    private static ExtractedChunk? ReadItem(JsonElement item, string? kind, ItemContext context)
     {
         if (!item.TryGetProperty("id", out var idElement) || idElement.GetString() is not { } itemId)
         {
@@ -185,26 +187,56 @@ public sealed partial class PlonkItSourceExtractor(
         }
 
         // The site's own per-item id: stable across edits, which is what keeps re-ingest idempotent.
-        var localKey = $"{stepIndex}/{itemId}";
-        var kind = item.TryGetProperty("kind", out var kindElement) ? kindElement.GetString() : null;
+        // Every kind shares the one scheme, so an item the extractor learns to read later simply gains
+        // a key of its own and nothing already indexed moves.
+        var localKey = $"{context.StepIndex}/{itemId}";
 
-        if (string.Equals(kind, "centeredImage", StringComparison.Ordinal))
+        switch (kind)
         {
-            var imageUrl = ResolveImageUrl(item.TryGetProperty("imageUrl", out var url) ? url.GetString() : null);
-            if (imageUrl is null)
-            {
-                return null;
-            }
+            case "centeredImage":
+                {
+                    var imageUrl = ResolveImageUrl(ReadString(item, "imageUrl"));
+                    if (imageUrl is null)
+                    {
+                        return null;
+                    }
 
-            // A standalone image has no caption of its own, so it inherits the section heading as its
-            // text. Without that it would carry no text vector at all and be unreachable by a written
-            // question — which is how most questions arrive.
-            return new ExtractedChunk(
-                localKey,
-                sectionPath,
-                BuildFallbackCaption(guideTitle, stepTitle),
-                imageUrl,
-                Anchor: itemId);
+                    // A standalone image has no caption of its own, so it is given one. Without that it
+                    // would carry no text vector at all and be unreachable by a written question — which
+                    // is how most questions arrive.
+                    var caption = context.OpensTheGuide ? BuildSummaryCaption(context.Guide) : context.FallbackCaption;
+                    return new ExtractedChunk(localKey, context.SectionPath, caption, imageUrl, Anchor: itemId);
+                }
+
+            case "centeredImageWithCaption":
+                {
+                    // The guide's own caption, which the tips' shape keeps under "data" and this one keeps
+                    // on the item itself. Measured on 138 guides: 37 such pictures, none of them read before.
+                    var imageUrl = ReadImageUrl(item);
+                    var caption = ReadText(item);
+                    if (imageUrl is null && caption.Length == 0)
+                    {
+                        return null;
+                    }
+
+                    return new ExtractedChunk(
+                        localKey,
+                        context.SectionPath,
+                        caption.Length > 0 ? caption : context.FallbackCaption,
+                        imageUrl,
+                        Anchor: itemId);
+                }
+
+            case "text" or "centeredText" or "notes":
+                {
+                    // Prose between the tips: what a section covers, what a map's colours mean ("roads
+                    // highlighted in red will only have that car"), which clues a neighbour shares. Indexed
+                    // as text on its own, because no picture belongs to it.
+                    var text = ReadText(item);
+                    return text.Length == 0
+                        ? null
+                        : new ExtractedChunk(localKey, context.SectionPath, text, Anchor: itemId);
+                }
         }
 
         if (!item.TryGetProperty("data", out var data))
@@ -212,12 +244,10 @@ public sealed partial class PlonkItSourceExtractor(
             return null;
         }
 
-        var text = ReadText(data);
-        var tipImageUrl = data.TryGetProperty("image", out var image)
-            ? ResolveImageUrl(image.TryGetProperty("imageUrl", out var tipUrl) ? tipUrl.GetString() : null)
-            : null;
+        var tipText = ReadText(data);
+        var tipImageUrl = ReadImageUrl(data);
 
-        if (string.IsNullOrWhiteSpace(text) && tipImageUrl is null)
+        if (tipText.Length == 0 && tipImageUrl is null)
         {
             return null;
         }
@@ -226,23 +256,34 @@ public sealed partial class PlonkItSourceExtractor(
         // them together is what lets a written question reach the picture.
         return new ExtractedChunk(
             localKey,
-            sectionPath,
-            string.IsNullOrWhiteSpace(text) ? BuildFallbackCaption(guideTitle, stepTitle) : text,
+            context.SectionPath,
+            tipText.Length == 0 ? context.FallbackCaption : tipText,
             tipImageUrl,
             Anchor: itemId);
     }
 
-    private static string ReadText(JsonElement data)
+    /// <summary>
+    /// The text of a tip's data or of a prose item. The payload stores it as an array of paragraphs on
+    /// tips, text and notes items, and as one string on centred text and picture captions.
+    /// </summary>
+    private static string ReadText(JsonElement owner)
     {
-        if (!data.TryGetProperty("text", out var text) || text.ValueKind != JsonValueKind.Array)
+        if (!owner.TryGetProperty("text", out var text))
         {
             return string.Empty;
         }
 
-        var builder = new StringBuilder();
-        foreach (var line in text.EnumerateArray())
+        IEnumerable<string?> paragraphs = text.ValueKind switch
         {
-            var value = line.GetString();
+            JsonValueKind.Array => text.EnumerateArray()
+                .Select(line => line.ValueKind == JsonValueKind.String ? line.GetString() : null),
+            JsonValueKind.String => [text.GetString()],
+            _ => []
+        };
+
+        var builder = new StringBuilder();
+        foreach (var value in paragraphs)
+        {
             if (string.IsNullOrWhiteSpace(value))
             {
                 continue;
@@ -261,6 +302,17 @@ public sealed partial class PlonkItSourceExtractor(
         return builder.ToString();
     }
 
+    /// <summary>The picture of a tip's data or of a captioned picture: both nest it under "image".</summary>
+    private static string? ReadImageUrl(JsonElement owner) =>
+        owner.TryGetProperty("image", out var image) && image.ValueKind == JsonValueKind.Object
+            ? ResolveImageUrl(ReadString(image, "imageUrl"))
+            : null;
+
+    private static string? ReadString(JsonElement owner, string property) =>
+        owner.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
     /// <summary>
     /// A link's target, unlike its text, says nothing a question would: a quarter of the guide's items
     /// link example locations and species pages, and in those the URLs are a fifth of the characters —
@@ -273,8 +325,21 @@ public sealed partial class PlonkItSourceExtractor(
     [GeneratedRegex(@"\[([^\]]+)\]\(\s*https?://[^)\s]+\s*\)", RegexOptions.CultureInvariant)]
     private static partial Regex MarkdownLink();
 
-    private static string BuildFallbackCaption(string? guideTitle, string? stepTitle) =>
-        string.Join(" — ", new[] { guideTitle, stepTitle }.Where(part => !string.IsNullOrWhiteSpace(part)));
+    /// <summary>The "Step 1.2 -" a heading may open with.</summary>
+    [GeneratedRegex(@"^\s*step\s*\d+(?:\.\d+)*\s*[-–—:.]?\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex StepNumber();
+
+    /// <summary>
+    /// The caption of the picture a country guide opens with: a summary infographic of the whole guide,
+    /// in 137 of the 138 guides measured (all but the beginners' guide). It used to be captioned with
+    /// nothing but the guide and step titles ("Tunisia — Identifying Tunisia"), which only repeats the
+    /// header every chunk of the guide already carries and says nothing about what the picture is — so
+    /// a question asking for an overview had nothing to match. Worded to say what the picture is without
+    /// naming a clue type: the keyword topic classifier would otherwise label an overview of every clue
+    /// with whichever single topic it happened to match first.
+    /// </summary>
+    private static string BuildSummaryCaption(string guide) =>
+        $"{guide} summary infographic: an overview of the most important clues in the guide, shown together in one picture.";
 
     /// <summary>Image paths in the payload are site-relative.</summary>
     private static string? ResolveImageUrl(string? imageUrl) =>
@@ -347,4 +412,81 @@ public sealed partial class PlonkItSourceExtractor(
 
     [LoggerMessage(LogLevel.Warning, "Could not parse the PlonkIt guide {Slug}.")]
     static partial void LogParseFailed(ILogger logger, string slug, Exception exception);
+
+    /// <summary>Where an item sits in the guide: what its section path and any fallback caption are made of.</summary>
+    /// <param name="Guide">The guide's title, or its slug when the payload names none.</param>
+    /// <param name="GuideTitle">The guide's title as published; captions never fall back to the slug.</param>
+    private sealed record ItemContext(
+        int StepIndex,
+        string Guide,
+        string? GuideTitle,
+        string? StepTitle,
+        string? Heading,
+        string? Subheading)
+    {
+        public string SectionPath => JoinPresent(" > ", Guide, StepTitle, Heading, Subheading);
+
+        public string FallbackCaption => JoinPresent(" — ", GuideTitle, StepTitle, Heading, Subheading);
+
+        /// <summary>The first step, before any heading: where every guide puts its summary infographic.</summary>
+        public bool OpensTheGuide => StepIndex == 0 && Heading is null && Subheading is null;
+
+        private static string JoinPresent(string separator, params string?[] parts) =>
+            string.Join(separator, parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    /// <summary>
+    /// The divider and subsection headings in effect at the current item of a step.
+    ///
+    /// They are the guide's topical headings — "Car metas", "Bollards", "Landscape" — and were ignored
+    /// until measured: 1,892 of 5,276 tips (36%) sit under one, and a source's own topical heading is the
+    /// largest single influence on retrieval that the embedding header has (see EmbeddingTextBuilder).
+    ///
+    /// The guides nest the two kinds both ways round. Kyrgyzstan puts dividers ("EM-04") beneath a
+    /// subsection ("Roads"); the United States puts subsections ("Poles") beneath a divider
+    /// ("Infrastructure"). So whichever kind a step uses first is taken as its outer level and the other
+    /// as the level beneath it. Of the 473 steps in the 138 guides measured, 6 use both kinds; every
+    /// other step uses one or none, and one kind is simply a single level. An untitled heading ends the
+    /// one before it.
+    /// </summary>
+    private sealed class HeadingTrail
+    {
+        private string? _outerKind;
+
+        public string? Heading { get; private set; }
+
+        public string? Subheading { get; private set; }
+
+        /// <summary>Takes in the item when it is a heading, and says so, so it is not read as content.</summary>
+        public bool TryFollow(string? kind, JsonElement item)
+        {
+            if (kind is not ("divider" or "subsection"))
+            {
+                return false;
+            }
+
+            // "Step 1.2 - US & Canada" is how a few guides number the parts of their first step (17 of
+            // the 272 headings measured). The number is position, not subject — the kind of filler the
+            // embedding header measurably loses by — so only "US & Canada" is kept.
+            var title = StepNumber().Replace(ReadString(item, "title") ?? string.Empty, string.Empty).Trim();
+            if (title.Length == 0)
+            {
+                title = null;
+            }
+
+            _outerKind ??= kind;
+
+            if (string.Equals(kind, _outerKind, StringComparison.Ordinal))
+            {
+                Heading = title;
+                Subheading = null;
+            }
+            else
+            {
+                Subheading = title;
+            }
+
+            return true;
+        }
+    }
 }

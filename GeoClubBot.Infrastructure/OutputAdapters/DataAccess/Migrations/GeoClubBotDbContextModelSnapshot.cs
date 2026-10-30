@@ -94,6 +94,10 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .IsRequired()
                         .HasColumnType("numeric(20,0)[]");
 
+                    b.PrimitiveCollection<List<Guid>>("CitedChunkIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
                     b.PrimitiveCollection<List<string>>("CitedSourceUrls")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -126,6 +130,10 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.PrimitiveCollection<List<Guid>>("OfferedChunkIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
                     b.Property<decimal?>("ParentDiscordMessageId")
                         .HasColumnType("numeric(20,0)");
 
@@ -137,6 +145,9 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ToolCallsJson")
+                        .HasColumnType("text");
 
                     b.HasKey("TurnId");
 
@@ -179,6 +190,10 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.Property<decimal>("AuthorDiscordUserId")
                         .HasColumnType("numeric(20,0)");
 
+                    b.PrimitiveCollection<List<Guid>>("CitedChunkIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
                     b.PrimitiveCollection<List<string>>("CitedSourceUrls")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -205,6 +220,10 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.PrimitiveCollection<List<Guid>>("OfferedChunkIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
                     b.Property<int>("Ordinal")
                         .HasColumnType("integer");
 
@@ -216,6 +235,9 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ToolCallsJson")
+                        .HasColumnType("text");
 
                     b.HasKey("FeedbackTurnId");
 
