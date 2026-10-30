@@ -72,11 +72,13 @@ public sealed partial class RecordMissionClaimsHandler(
         var updated = 0;
         foreach (var tile in board.AllTiles)
         {
-            if (tile is not { ClaimedBy: { } userId, ClaimedAt: { } claimedAt })
+            if (tile is not { ClaimedBy: not null, ClaimedAt: not null })
             {
                 continue;
             }
 
+            var userId = tile.ClaimedBy;
+            var claimedAt = tile.ClaimedAt.Value;
             var completedAt = tile.Completed ? tile.CompletedAt : null;
             if (recorded.TryGetValue(tile.MissionId, out var claim))
             {

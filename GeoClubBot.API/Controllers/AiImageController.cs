@@ -1,4 +1,3 @@
-using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -17,7 +16,7 @@ namespace GeoClubBot.Controllers;
 /// caller-supplied text ever reaches a file path.
 /// </summary>
 [ApiController]
-[Route(FileSystemImageRelay.RoutePrefix)]
+[Route(RelayedImageUrl.RoutePrefix)]
 [AllowAnonymous]
 public class AiImageController(IImageRelay imageRelay) : ControllerBase
 {

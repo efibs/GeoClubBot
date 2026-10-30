@@ -301,10 +301,14 @@ public sealed class ChatModelSelectorTests
     [Fact]
     public void Rank_DemotesAModelCarryingAFailurePenalty()
     {
-        var roster = new[] { Model("flaky/model", contextLength: 512_000), Model("steady/model", contextLength: 500_000) };
+        var roster = new[]
+        {
+            Model("flaky/model", contextLength: 512_000, totalBillions: 120),
+            Model("steady/model", contextLength: 512_000, totalBillions: 100)
+        };
 
         var withoutPenalty = ChatModelSelector.Rank(roster, new ChatModelRequirements(), Options(), null, Now);
-        withoutPenalty[0].Id.Should().Be("flaky/model", "it wins on context before any failures are recorded");
+        withoutPenalty[0].Id.Should().Be("flaky/model", "it wins on size before any failures are recorded");
 
         var withPenalty = ChatModelSelector.Rank(
             roster,
@@ -434,6 +438,292 @@ public sealed class ChatModelSelectorTests
         ChatModelSelector.IsUnfitToAnswer("good/model", Model("good/model", 64_000), Options()).Should().BeFalse();
     }
 
+    [Fact]
+    public void Rank_PutsTheLargerModelFirst_WhateverItsContext()
+    {
+        // Asked the same grounded question on 2026-10-23, the 550B Nemotron Ultra gave the best answer of
+        // the day and the 30B Nemotron Lightning none at all. Both offered a 1M window.
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("small/model", contextLength: 1_000_000, totalBillions: 30, activeBillions: 3),
+                Model("large/model", contextLength: 131_072, totalBillions: 550, activeBillions: 55)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking.Select(candidate => candidate.Id).Should().Equal("large/model", "small/model");
+    }
+
+    [Fact]
+    public void Rank_ComparesAMixtureOfExpertsWithADenseModel_ByEffectiveSize()
+    {
+        // 550B total with 55B active performs like a dense model of about 174B, not like either figure.
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("moe/model", 256_000, totalBillions: 550, activeBillions: 55),
+                Model("dense/model", 256_000, totalBillions: 200)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking[0].Id.Should().Be("dense/model");
+        ranking[1].Model.EffectiveParametersBillions.Should().BeApproximately(173.9, 0.1);
+    }
+
+    [Fact]
+    public void Rank_LeavesOutModelsBelowTheSizeBar_ButNotAModelWhoseSizeNobodyStates()
+    {
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("tiny/model", 256_000, totalBillions: 2.6),
+                Model("sparse/model", 256_000, totalBillions: 30, activeBillions: 2),
+                Model("unstated/model", 256_000),
+                Model("big/model", 256_000, totalBillions: 120)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        // √(30 × 2) ≈ 7.7B: a 30B model that runs 2B per token is held to the bar like a 7.7B one.
+        ranking.Select(candidate => candidate.Id).Should().Equal("big/model", "unstated/model");
+    }
+
+    [Fact]
+    public void Rank_DoesNotHoldAModelThatStatesOnlyItsActiveCount_ToTheSizeBar()
+    {
+        // 3B active says nothing about the total: a 30B mixture of experts running 3B per token compares
+        // with a dense 9.5B model, and crediting it with the 3B alone would have left it out.
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("active-only/model", 256_000, activeBillions: 3),
+                Model("big/model", 256_000, totalBillions: 120)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking.Select(candidate => candidate.Id).Should().Contain("active-only/model");
+        ranking.Single(candidate => candidate.Id == "active-only/model").Model.EffectiveParametersBillions
+            .Should().BeNull("an active count alone is a floor, not a size");
+    }
+
+    [Fact]
+    public void Rank_DropsTheSizeBar_WhenNoModelThatCouldServeTheRequestClearsIt()
+    {
+        // A picture only small models can read is still better answered by the best of them than by the
+        // router, which would pick among exactly those at random.
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("small/vision", 256_000, supportsImageInput: true, totalBillions: 4),
+                Model("smaller/vision", 256_000, supportsImageInput: true, totalBillions: 2),
+                Model("big/text", 256_000, totalBillions: 120)
+            ],
+            new ChatModelRequirements(NeedsImageInput: true),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking.Select(candidate => candidate.Id).Should().Equal("small/vision", "smaller/vision");
+    }
+
+    [Fact]
+    public void Rank_LeavesOutAModelWhoseProviderServedTooLittle_ButNotAnUnmeasuredOne()
+    {
+        // On 2026-10-23 the roster listed Nemotron 3 Super like any other model; its only provider had
+        // served 0% of the day's requests.
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("down/model", 256_000, totalBillions: 120, uptimePercent: 0),
+                Model("flaky/model", 256_000, totalBillions: 120, uptimePercent: 13),
+                Model("unmeasured/model", 256_000, totalBillions: 60),
+                Model("healthy/model", 256_000, totalBillions: 30, uptimePercent: 91)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking.Select(candidate => candidate.Id).Should().Equal("unmeasured/model", "healthy/model");
+    }
+
+    [Fact]
+    public void SelectChain_TurnsToTheRouter_RatherThanToTheSmallOrTheDown_OnceTheQualifiedModelsWereTried()
+    {
+        // The bar is dropped only when nothing could serve the request at all. A retry after the qualified
+        // models failed must not fall to LFM 2.6B, or to a model whose provider is serving nothing.
+        var roster = new[]
+        {
+            Model("good/model", 256_000, totalBillions: 120, uptimePercent: 99),
+            Model("tiny/model", 256_000, totalBillions: 2.6, uptimePercent: 100),
+            Model("down/model", 256_000, totalBillions: 120, uptimePercent: 0)
+        };
+
+        var retry = ChatModelSelector.SelectChain(
+            roster,
+            new ChatModelRequirements(ExcludedModelIds: new HashSet<string> { "good/model" }),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        retry.Should().Equal(Fallback);
+    }
+
+    [Fact]
+    public void Rank_OrdersThePreferredPrefixes_ByTheirPositionInTheList()
+    {
+        // Every match used to earn the same bonus, so the list's order said nothing and the raw score
+        // decided between two preferred families.
+        var options = Options() with { PreferredModelPrefixes = ["nvidia/nemotron-3-ultra", "nvidia/"] };
+
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("nvidia/nemotron-3.5-super-vl:free", 256_000, totalBillions: 120, activeBillions: 12),
+                Model("nvidia/nemotron-3-ultra-550b-a55b:free", 256_000, totalBillions: 8),
+                Model("other/huge", 256_000, totalBillions: 1000)
+            ],
+            new ChatModelRequirements(),
+            options,
+            failurePenalties: null,
+            Now);
+
+        // Ultra matches both prefixes and keeps the earlier one's standing, though it scores lowest here.
+        ranking.Select(candidate => candidate.Id).Should().Equal(
+            "nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3.5-super-vl:free", "other/huge");
+        ranking.Take(2).Should().OnlyContain(candidate => candidate.IsPreferred);
+    }
+
+    [Theory]
+    // One failure: still ahead of the family listed after it.
+    [InlineData(0.35, "first/model", "second/model", "other/model")]
+    // Two: behind it, still ahead of the families nobody listed.
+    [InlineData(0.7, "second/model", "first/model", "other/model")]
+    // Fully penalised: on its raw score, as a single flat bonus used to leave it.
+    [InlineData(1.0, "second/model", "other/model", "first/model")]
+    public void Rank_LetsFailuresOutweighAPreference_InProportion(double penalty, string first, string second, string third)
+    {
+        // Two prefixes put the first one two steps up. Charged at face value, no penalty could outweigh
+        // that, and a preferred head failing every question would stay the head for every question.
+        var options = Options() with { PreferredModelPrefixes = ["first/", "second/"] };
+
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("first/model", 256_000, totalBillions: 100),
+                Model("second/model", 256_000, totalBillions: 100),
+                Model("other/model", 256_000, totalBillions: 120)
+            ],
+            new ChatModelRequirements(),
+            options,
+            new Dictionary<string, double> { ["first/model"] = penalty },
+            Now);
+
+        ranking.Select(candidate => candidate.Id).Should().Equal(first, second, third);
+    }
+
+    [Fact]
+    public void Rank_PutsACodingSpecialistBelowAGeneralModel_EvenALittleSmallerOne()
+    {
+        // Tuned to edit code and drive terminals; this bot only ever asks for an explanation in prose.
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("poolside/laguna-s-2.1:free", 256_000, totalBillions: 118, activeBillions: 8, isCodingSpecialist: true),
+                Model("acme/general-20b:free", 256_000, totalBillions: 20)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking.Select(candidate => candidate.Id).Should().Equal("acme/general-20b:free", "poolside/laguna-s-2.1:free");
+        ranking[1].Demotion.Should().BeGreaterThan(0);
+    }
+
+    [Theory]
+    [InlineData("nvidia/nemotron-3.5-lightning:free", true)]
+    [InlineData("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", true)]
+    [InlineData("acme/model-mini:free", true)]
+    [InlineData("google/gemini-2.5-flash:free", true)]
+    [InlineData("minimax/minimax-m2:free", false)]
+    [InlineData("acme/flashlight:free", false)]
+    public void Rank_DemotesAFamilysSmallMembers_NamedAsSuch(string id, bool demoted)
+    {
+        // Whole words only: MiniMax is not a "mini" model.
+        var ranking = ChatModelSelector.Rank(
+            [Model(id, 256_000, totalBillions: 30)], new ChatModelRequirements(), Options(), null, Now);
+
+        (ranking.Single().Demotion > 0).Should().Be(demoted);
+    }
+
+    [Fact]
+    public void Rank_NoLongerRewardsStructuredOutputs_WhichTheBotNeverUses()
+    {
+        // The reward is what put a model refusing every request ahead of the best model on the roster.
+        var ranking = ChatModelSelector.Rank(
+            [
+                Model("structured/model", 256_000, totalBillions: 30) with { SupportsStructuredOutputs = true },
+                Model("plain/model", 256_000, totalBillions: 30)
+            ],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking[0].Score.Should().Be(ranking[1].Score);
+    }
+
+    [Fact]
+    public void Rank_StopsRewardingContext_PastWhatAQuestionCanUse()
+    {
+        var ranking = ChatModelSelector.Rank(
+            [Model("a/model", 131_072), Model("b/model", 1_000_000), Model("c/model", 32_768)],
+            new ChatModelRequirements(),
+            Options(),
+            failurePenalties: null,
+            Now);
+
+        ranking.Single(candidate => candidate.Id == "a/model").Score
+            .Should().Be(ranking.Single(candidate => candidate.Id == "b/model").Score);
+        ranking[^1].Id.Should().Be("c/model");
+    }
+
+    [Fact]
+    public void SelectHealthCheckCandidates_TakesTheHeadsOfTheTextAndVisionRankings_InTurn()
+    {
+        var roster = new[]
+        {
+            Model("text/a", 256_000, totalBillions: 500),
+            Model("text/b", 256_000, totalBillions: 400),
+            Model("text/c", 256_000, totalBillions: 300),
+            Model("vision/a", 256_000, supportsImageInput: true, totalBillions: 100),
+            Model("vision/b", 256_000, supportsImageInput: true, totalBillions: 50),
+            Model("tiny/model", 256_000, totalBillions: 1)
+        };
+
+        ChatModelSelector.SelectHealthCheckCandidates(roster, Options(), 8_192, Now, limit: 4)
+            .Should().Equal("text/a", "vision/a", "text/b", "vision/b");
+
+        ChatModelSelector.SelectHealthCheckCandidates(roster, Options(), 8_192, Now, limit: 0).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void SelectHealthCheckCandidates_ChecksAgainAModelLastFoundDown()
+    {
+        // A model the last check found unhealthy is exactly the one worth checking again.
+        var roster = new[]
+        {
+            Model("recovered/model", 256_000, totalBillions: 500, uptimePercent: 0),
+            Model("other/model", 256_000, totalBillions: 100, uptimePercent: 100)
+        };
+
+        ChatModelSelector.SelectHealthCheckCandidates(roster, Options(), 8_192, Now, limit: 1)
+            .Should().Equal("recovered/model");
+    }
+
     private static ChatModelDescriptor Model(
         string id,
         int contextLength,
@@ -442,7 +732,11 @@ public sealed class ChatModelSelectorTests
         DateTimeOffset? expiresAt = null,
         DateTimeOffset? createdAt = null,
         bool producesTextOnly = true,
-        bool isGuardrail = false) =>
+        bool isGuardrail = false,
+        double? totalBillions = null,
+        double? activeBillions = null,
+        bool isCodingSpecialist = false,
+        double? uptimePercent = null) =>
         new(
             id,
             id,
@@ -454,5 +748,9 @@ public sealed class ChatModelSelectorTests
             SupportsStructuredOutputs: false,
             isGuardrail,
             createdAt ?? Now.AddDays(-60),
-            expiresAt);
+            expiresAt,
+            totalBillions,
+            activeBillions,
+            isCodingSpecialist,
+            uptimePercent);
 }

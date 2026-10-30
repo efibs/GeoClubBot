@@ -19,6 +19,10 @@ public sealed record ChatModelRequirements(
 /// </summary>
 public sealed record ChatModelSelectionOptions
 {
+    /// <summary>
+    /// Families to put first, best first: a model matching an earlier prefix outranks one matching a
+    /// later prefix, and both outrank every model matching none.
+    /// </summary>
     public IReadOnlyList<string> PreferredModelPrefixes { get; init; } = [];
 
     public IReadOnlySet<string> BlockedModelIds { get; init; } = new HashSet<string>();
@@ -39,4 +43,17 @@ public sealed record ChatModelSelectionOptions
 
     /// <summary>Models retiring sooner than this are excluded outright.</summary>
     public TimeSpan ExpiryHorizon { get; init; } = TimeSpan.FromHours(48);
+
+    /// <summary>
+    /// Models known to be smaller than this, in billions of effective parameters, are left out — unless
+    /// no model that could serve the request, tried or not, clears this bar and
+    /// <see cref="MinUptimePercent"/> together. A model whose size nobody states is not held to it.
+    /// </summary>
+    public double MinEffectiveParametersBillions { get; init; } = 8d;
+
+    /// <summary>
+    /// Models whose best provider served less than this share of the last day's requests, in percent,
+    /// are left out on the same terms as the size bar. A model never measured counts as healthy.
+    /// </summary>
+    public double MinUptimePercent { get; init; } = 50d;
 }

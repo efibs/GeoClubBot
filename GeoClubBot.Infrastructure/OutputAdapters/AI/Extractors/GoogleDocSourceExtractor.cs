@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
+using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Ingestion;
 using Utilities;
 
@@ -24,7 +25,9 @@ namespace Infrastructure.OutputAdapters.AI.Extractors;
 ///
 /// That gap also has no upper bound worth trusting. One library document exports 332 MB, and Google
 /// refuses to build an export larger still, answering 413 after the best part of a minute. Either way
-/// the text export is what gets indexed instead — a few kilobytes, and everything the model reads.
+/// the text export is what gets indexed instead — a few kilobytes, and everything the model reads. The
+/// same goes for an archive that times out or fails on Google's side, except that the result is marked
+/// degraded: the pictures are missing this time only.
 /// </summary>
 public sealed partial class GoogleDocSourceExtractor(
     IHttpClientFactory httpClientFactory,
@@ -35,7 +38,16 @@ public sealed partial class GoogleDocSourceExtractor(
     /// <summary>A line this short, standing alone between blanks, is treated as a heading.</summary>
     private const int MaxHeadingLength = 80;
 
+    /// <summary>
+    /// Heading elements a document needs before they alone mark its sections. One or two are often a
+    /// title styled as a heading above sections in bold, whose names only the shape of a line gives
+    /// away; reading such a document by its styles would lose every section name in it.
+    /// </summary>
+    private const int MinStyledHeadings = 3;
+
     private static readonly string[] BlockElements = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "li"];
+
+    private static readonly HashSet<string> HeadingElements = new(StringComparer.OrdinalIgnoreCase) { "h1", "h2", "h3", "h4", "h5", "h6" };
 
     public string SourceType => SourceLinkClassifier.GoogleDoc;
 
@@ -52,44 +64,77 @@ public sealed partial class GoogleDocSourceExtractor(
         // afterwards; without a relay their bytes have nowhere to live.
         var wantsImages = imageRelay.IsEnabled && settings.EmbedImages;
 
+        // Set when the text stands in for an archive that failed for a reason that may not recur, so
+        // the caller can keep a fuller copy it already holds rather than trade it for this one.
+        Error? archiveFailure = null;
+
         if (wantsImages)
         {
             var archive = await FetchAsync(source, "zip", settings, cancellationToken).ConfigureAwait(false);
 
             if (archive.IsSuccess)
             {
-                return Document(
-                    await ReadArchiveAsync(archive.Value, source, cancellationToken).ConfigureAwait(false), source);
+                await using (archive.Value.ConfigureAwait(false))
+                {
+                    return Document(
+                        await ReadArchiveAsync(archive.Value, source, cancellationToken).ConfigureAwait(false),
+                        source);
+                }
             }
 
-            if (archive.Error.Code != ExportTooLargeCode)
+            if (archive.Error.Code == SourceExtractionErrorCodes.ExportTooLarge)
             {
+                // The text is most of the value and costs kilobytes, so an export too big to take is
+                // worth falling back on rather than giving up: these are guides of a few pages whose
+                // embedded images happen to be enormous. Measured at 332 MB for one of them, against
+                // around 10 KB of text.
+                LogExportTooLarge(logger, source.NaturalKey);
+            }
+            else if (archive.Error.Code == SourceExtractionErrorCodes.Unreachable)
+            {
+                // Timed out, or failed on Google's side. The text export is a separate and far lighter
+                // build that usually still answers, and without it a document whose archive never
+                // finishes in time would never be indexed at all.
+                LogArchiveUnavailable(logger, source.NaturalKey, archive.Error.Message);
+                archiveFailure = archive.Error;
+            }
+            else
+            {
+                // Deleted, private or a refusing host: the text export would be refused the same way.
                 return archive.Error;
             }
-
-            // The text is most of the value and costs kilobytes, so an export too big to take is
-            // worth falling back on rather than giving up: these are guides of a few pages whose
-            // embedded images happen to be enormous. Measured at 332 MB for one of them, against
-            // around 10 KB of text.
-            LogExportTooLarge(logger, source.NaturalKey);
         }
 
         var text = await FetchAsync(source, "txt", settings, cancellationToken).ConfigureAwait(false);
+        if (text.IsFailure)
+        {
+            return text.Error;
+        }
 
-        return text.IsFailure
-            ? text.Error
-            : Document(ParseText(System.Text.Encoding.UTF8.GetString(text.Value), source), source);
+        await using (text.Value.ConfigureAwait(false))
+        {
+            return Document(ParseTextExport(ReadUtf8(text.Value), DefaultSection(source)), source, archiveFailure);
+        }
     }
 
-    private static Result<ExtractedDocument> Document(List<ExtractedChunk> chunks, SourceDescriptor source) =>
+    /// <param name="archiveFailure">
+    /// Why the archive could not be read, when the text stands in for it for a reason that may not recur.
+    /// The document is then marked degraded — and text with nothing in it settles nothing: a document of
+    /// pictures has no text to speak of, and skipping it as empty would end it for good, pictures indexed
+    /// included, over one timeout. That failure is reported instead, so the document is retried with backoff.
+    /// </param>
+    private static Result<ExtractedDocument> Document(
+        List<ExtractedChunk> chunks,
+        SourceDescriptor source,
+        Error? archiveFailure = null) =>
         chunks.Count == 0
-            ? Error.Validation("ai.document_empty", "This document has no readable text.")
-            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks);
+            ? archiveFailure ?? Error.Validation("ai.document_empty", "This document has no readable text.")
+            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks, Degraded: archiveFailure is not null);
 
     /// <summary>
     /// Downloads one export, refusing to hold more of it than <see cref="AiIngestionConfiguration.MaxDocumentExportBytes"/>.
     /// </summary>
-    private async Task<Result<byte[]>> FetchAsync(
+    private async Task<Result<MemoryStream>> FetchAsync(
         SourceDescriptor source,
         string format,
         AiIngestionConfiguration settings,
@@ -114,80 +159,34 @@ public sealed partial class GoogleDocSourceExtractor(
 
             if (!response.IsSuccessStatusCode)
             {
-                // A document that is not publicly shared answers 401/403 and will keep doing so, so it
-                // is reported as validation and recorded as skipped rather than retried nightly.
-                return (int)response.StatusCode switch
-                {
-                    401 or 403 or 404 => Error.Validation("ai.document_not_public",
-                        $"This document is not publicly readable (HTTP {(int)response.StatusCode})."),
-
-                    // Google spends the best part of a minute building an export it then refuses.
-                    413 => Error.Validation(ExportTooLargeCode,
-                        "Google refused to export this document (HTTP 413); it is too large."),
-
-                    _ => Error.Unexpected("ai.source_unreachable",
-                        $"Could not fetch the document (HTTP {(int)response.StatusCode}).")
-                };
+                return SourceFetch.FromStatus(response.StatusCode, "document", ForbiddenMeans.NotPublic);
             }
 
-            return await ReadCappedAsync(response, settings.MaxDocumentExportBytes, bounded.Token)
+            return await SourceFetch.ReadCappedAsync(response, settings.MaxDocumentExportBytes, "document", bounded.Token)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (SourceFetch.IsFetchFailure(ex, cancellationToken))
         {
             LogFetchFailed(logger, source.NaturalKey, ex);
-            return Error.Unexpected("ai.source_unreachable", $"Could not fetch the document {source.NaturalKey}.");
+            return SourceFetch.FromException(ex, "document", ForbiddenMeans.NotPublic);
         }
     }
 
-    /// <summary>
-    /// Reads the body, giving up once it passes <paramref name="maxBytes"/>.
-    ///
-    /// The export arrives chunked, so its size is never announced and a header check would let it
-    /// through: the only way to find out is to read until it is too much. Buffering the lot is what
-    /// this avoids — one guide's export is a third of a gigabyte, in one array, in a container with a
-    /// memory limit.
-    /// </summary>
-    private static async Task<Result<byte[]>> ReadCappedAsync(
-        HttpResponseMessage response,
-        int maxBytes,
-        CancellationToken cancellationToken)
-    {
-        await using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-        using var buffer = new MemoryStream();
-        var window = new byte[81920];
-
-        int read;
-        while ((read = await content.ReadAsync(window, cancellationToken).ConfigureAwait(false)) > 0)
-        {
-            if (buffer.Length + read > maxBytes)
-            {
-                return Error.Validation(ExportTooLargeCode,
-                    $"This document's export is larger than the {maxBytes} byte limit.");
-            }
-
-            await buffer.WriteAsync(window.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
-        }
-
-        return buffer.ToArray();
-    }
-
-    /// <summary>An export too big to take. Distinguished because the text export is still worth asking for.</summary>
-    private const string ExportTooLargeCode = "ai.export_too_large";
+    private static string ReadUtf8(MemoryStream body) =>
+        System.Text.Encoding.UTF8.GetString(body.GetBuffer(), 0, (int)body.Length);
 
     /// <summary>
     /// Reads the zip export: the document's HTML plus its images as separate entries, so each image
     /// can be stored and captioned with the text it sits in.
     /// </summary>
     private async Task<List<ExtractedChunk>> ReadArchiveAsync(
-        byte[] payload,
+        MemoryStream payload,
         SourceDescriptor source,
         CancellationToken cancellationToken)
     {
         try
         {
-            using var archive = new ZipArchive(new MemoryStream(payload), ZipArchiveMode.Read);
+            using var archive = new ZipArchive(payload, ZipArchiveMode.Read, leaveOpen: true);
 
             var htmlEntry = archive.Entries.FirstOrDefault(entry =>
                 entry.FullName.EndsWith(".html", StringComparison.OrdinalIgnoreCase));
@@ -221,6 +220,10 @@ public sealed partial class GoogleDocSourceExtractor(
         var blocks = document.DocumentNode.SelectNodes(
             string.Join(" | ", BlockElements.Select(element => $"//body//{element}")));
 
+        // A document whose author used heading styles says where its sections are, and nothing else is
+        // guessed to be one. Only a document without them is read by the shape of its lines.
+        var styled = (blocks?.Count(block => HeadingElements.Contains(block.Name)) ?? 0) >= MinStyledHeadings;
+
         var chunks = new List<ExtractedChunk>();
         var section = DefaultSection(source);
         var textIndex = 0;
@@ -234,9 +237,11 @@ public sealed partial class GoogleDocSourceExtractor(
             var text = HtmlText.Decode(block.InnerText ?? string.Empty).Trim();
             var images = block.SelectNodes(".//img") ?? Enumerable.Empty<HtmlNode>();
 
+            var isHeading = text.Length > 0 && IsHeading(block, text, styled);
+
             if (text.Length > 0)
             {
-                if (LooksLikeHeading(text))
+                if (isHeading)
                 {
                     section = $"{DefaultSection(source)} > {text}";
                 }
@@ -260,7 +265,7 @@ public sealed partial class GoogleDocSourceExtractor(
                 // Captioned from the paragraph the image sits in, falling back to the previous one.
                 // Images here are frequently the actual answer, and a written question reaches them
                 // only through this text.
-                var caption = text.Length > 0 && !LooksLikeHeading(text) ? text : lastText;
+                var caption = text.Length > 0 && !isHeading ? text : lastText;
 
                 chunks.Add(new ExtractedChunk(
                     $"img{imageIndex++}",
@@ -309,14 +314,19 @@ public sealed partial class GoogleDocSourceExtractor(
         return stored.IsSuccess ? stored.Value : null;
     }
 
-    private static List<ExtractedChunk> ParseText(string text, SourceDescriptor source)
+    /// <summary>
+    /// Splits a plain-text export into paragraph chunks under the headings it can recognise. Shared
+    /// with the Slides extractor, whose text export is the same shape.
+    /// </summary>
+    /// <param name="defaultSection">The section path for text before the first heading, and the root of every other.</param>
+    internal static List<ExtractedChunk> ParseTextExport(string text, string defaultSection)
     {
         var paragraphs = text
             .ReplaceLineEndings("\n")
             .Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         var chunks = new List<ExtractedChunk>();
-        var section = DefaultSection(source);
+        var section = defaultSection;
         var index = 0;
 
         foreach (var paragraph in paragraphs)
@@ -325,7 +335,7 @@ public sealed partial class GoogleDocSourceExtractor(
             {
                 // Tracked so each chunk carries where in the document it came from; that path is
                 // shown in citations and folded into the embedding text.
-                section = $"{DefaultSection(source)} > {paragraph}";
+                section = $"{defaultSection} > {paragraph}";
                 continue;
             }
 
@@ -341,20 +351,61 @@ public sealed partial class GoogleDocSourceExtractor(
         source.Title ?? source.Country ?? "Document";
 
     /// <summary>
-    /// Heuristic: the exports lose heading markup, so a heading is recognised by shape — short,
-    /// standing alone, and not punctuated like a sentence. Wrong guesses only affect the section
-    /// label, never whether content is indexed.
+    /// Whether a block of the archive's HTML is a heading: a heading element, unless it is a credit, a
+    /// URL or has no words (<see cref="SectionLabel.IsNeverAHeading"/>) — never for its length or its
+    /// case, since its author chose to make it one, and a heading lost files every chunk under it under
+    /// the heading before; and in a document that does not mark its sections with heading elements
+    /// (<paramref name="styled"/>), also a line shaped like one that is neither a list item nor nothing
+    /// but a link. "Counties (33) ->" and "You can view the flags in more detail here" were links, and
+    /// became the section of every chunk after them.
+    /// </summary>
+    private static bool IsHeading(HtmlNode block, string text, bool styled) =>
+        HeadingElements.Contains(block.Name)
+            ? !SectionLabel.IsNeverAHeading(text)
+            : !styled
+              && !string.Equals(block.Name, "li", StringComparison.OrdinalIgnoreCase)
+              && LooksLikeHeading(text)
+              && !IsOnlyALink(block, text);
+
+    /// <summary>Whether the block's words are all inside links, arrows and spacing aside.</summary>
+    private static bool IsOnlyALink(HtmlNode block, string text)
+    {
+        var links = block.SelectNodes(".//a[@href]");
+        if (links is null)
+        {
+            return false;
+        }
+
+        var linked = string.Concat(links.Select(link => HtmlText.Decode(link.InnerText ?? string.Empty)));
+        return LettersAndDigits(linked).Length > 0 && LettersAndDigits(linked) == LettersAndDigits(text);
+    }
+
+    private static string LettersAndDigits(string text) => string.Concat(text.Where(char.IsLetterOrDigit));
+
+    /// <summary>
+    /// Heuristic: the text export loses heading markup, so a heading is recognised by shape — short,
+    /// standing alone, and not punctuated like a sentence — and by not being one of the lines that are
+    /// shaped like one but are not (<see cref="SectionLabel.IsNotAHeading"/>): credits, URLs, filler,
+    /// captions, or a line ending in an arrow. Those headed the answers of the 2026-10-29 replay as
+    /// "Image credit to PlonkIt", "@bagaboiebailey", "Research by Yaron", "________________". Wrong
+    /// guesses only affect the section label, never whether content is indexed.
     /// </summary>
     private static bool LooksLikeHeading(string paragraph) =>
         paragraph.Length <= MaxHeadingLength
         && !paragraph.Contains('\n')
         && !paragraph.EndsWith('.')
         && !paragraph.EndsWith(',')
-        && !paragraph.EndsWith(':');
+        && !paragraph.EndsWith(':')
+        && !SectionLabel.EndsWithArrow(paragraph)
+        && !SectionLabel.IsNotAHeading(paragraph);
 
     [LoggerMessage(LogLevel.Information,
         "The export of Google document {DocumentId} is too large to take; indexing its text without images.")]
     static partial void LogExportTooLarge(ILogger logger, string documentId);
+
+    [LoggerMessage(LogLevel.Warning,
+        "The archive export of Google document {DocumentId} failed ({Reason}); indexing its text without images.")]
+    static partial void LogArchiveUnavailable(ILogger logger, string documentId, string reason);
 
     [LoggerMessage(LogLevel.Warning, "Could not fetch the Google document {DocumentId}.")]
     static partial void LogFetchFailed(ILogger logger, string documentId, Exception exception);

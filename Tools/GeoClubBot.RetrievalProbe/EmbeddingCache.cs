@@ -21,6 +21,18 @@ public sealed class EmbeddingCache(
     Func<int>? requestsSent = null,
     IDisposable? owned = null) : IDisposable
 {
+    /// <summary>
+    /// Texts per embedding request. Small, because the free embedding endpoint answers a slow request
+    /// with a 504: on 2026-10-25 every request of 16 questions timed out for an hour while requests of
+    /// four went through.
+    /// </summary>
+    private const int SliceSize = 8;
+
+    /// <summary>Requests made for one slice before the run gives up; the slices before it stay cached.</summary>
+    private const int MaxAttemptsPerSlice = 3;
+
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(10);
+
     private readonly Dictionary<string, float[]> _vectors = Load(path);
 
     /// <summary>
@@ -58,26 +70,50 @@ public sealed class EmbeddingCache(
             .Where(text => !_vectors.ContainsKey(Key(text)))
             .ToList();
 
-        if (missing.Count > 0)
+        // Embedded and saved a slice at a time. The provider answers a large request with a 504 often
+        // enough that one failure must not throw away every vector the slices before it paid for.
+        foreach (var slice in missing.Chunk(SliceSize))
         {
-            var embedded = await embedder
-                .EmbedAsync([.. missing.Select(text => (EmbeddingInput)new TextEmbeddingInput(text))], cancellationToken)
-                .ConfigureAwait(false);
+            var embedded = await EmbedSliceAsync(slice, cancellationToken).ConfigureAwait(false);
 
-            if (embedded.IsFailure)
+            for (var index = 0; index < slice.Length; index++)
             {
-                throw new ProbeException($"The questions could not be embedded: {embedded.Error.Message}");
-            }
-
-            for (var index = 0; index < missing.Count; index++)
-            {
-                _vectors[Key(missing[index])] = embedded.Value[index].ToArray();
+                _vectors[Key(slice[index])] = embedded[index].ToArray();
             }
 
             await File.WriteAllTextAsync(path, JsonSerializer.Serialize(_vectors), cancellationToken).ConfigureAwait(false);
         }
 
         return [.. texts.Select(text => _vectors[Key(text)])];
+    }
+
+    /// <summary>
+    /// One slice, asked for again after a failure. The free endpoint fails a request now and then — a
+    /// 504, or an "input_type is required" 400 from one of its backends that the next request does not
+    /// reach — and the bot's own resilience pipeline, which retries, is not part of the probe. Each
+    /// attempt is a request, so only a few are made.
+    /// </summary>
+    private async Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedSliceAsync(string[] slice, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var embedded = await embedder
+                .EmbedAsync([.. slice.Select(text => (EmbeddingInput)new TextEmbeddingInput(text))], cancellationToken)
+                .ConfigureAwait(false);
+
+            if (embedded.IsSuccess)
+            {
+                return embedded.Value;
+            }
+
+            if (attempt >= MaxAttemptsPerSlice)
+            {
+                throw new ProbeException($"The questions could not be embedded: {embedded.Error.Message}");
+            }
+
+            Console.Error.WriteLine($"Embedding failed ({embedded.Error.Message}); asking again.");
+            await Task.Delay(RetryDelay, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public void Dispose() => owned?.Dispose();

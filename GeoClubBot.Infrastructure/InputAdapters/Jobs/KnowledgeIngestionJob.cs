@@ -39,6 +39,11 @@ public partial class KnowledgeIngestionJob(
                 LogCompleted(logger, report.Attempted, report.Ingested, report.Unchanged,
                     report.Failed, report.Skipped, report.ChunksWritten);
 
+                // By kind of trouble, because each calls for something different: a deleted guide for
+                // nothing (it is rechecked, then dropped), a refusing host for patience, a failure for a
+                // look at the warnings above. One "failed" count was all ten dead links ever showed.
+                LogBreakdown(logger, report.Gone, report.NotPublic, report.TooLarge, report.HostRefused, report.Removed);
+
                 if (report.BudgetExhausted)
                 {
                     LogBudgetExhausted(logger);
@@ -59,6 +64,10 @@ public partial class KnowledgeIngestionJob(
     [LoggerMessage(LogLevel.Information,
         "Ingestion run: {Attempted} attempted, {Ingested} indexed, {Unchanged} unchanged, {Failed} failed, {Skipped} skipped, {Chunks} chunk(s) written.")]
     static partial void LogCompleted(ILogger logger, int attempted, int ingested, int unchanged, int failed, int skipped, int chunks);
+
+    [LoggerMessage(LogLevel.Information,
+        "Ingestion run, by kind: {Gone} deleted upstream, {NotPublic} no longer shared, {TooLarge} too large to export, {HostRefused} left for a later run because their site refused requests, {Removed} removed from the index.")]
+    static partial void LogBreakdown(ILogger logger, int gone, int notPublic, int tooLarge, int hostRefused, int removed);
 
     [LoggerMessage(LogLevel.Warning, "Ingestion stopped early: the daily AI request allowance is spent.")]
     static partial void LogBudgetExhausted(ILogger<KnowledgeIngestionJob> logger);

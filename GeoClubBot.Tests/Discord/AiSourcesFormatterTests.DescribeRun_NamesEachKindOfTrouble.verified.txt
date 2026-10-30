@@ -1,0 +1,9 @@
+﻿Indexed **2** source(s), **40** chunk(s).
+Unchanged: 1 · Failed: 1 · Skipped: 1
+Unavailable: 7 (6 deleted, 1 not shared) — checked again after `AI:Ingestion:UnavailableRecheckDays`.
+Too large to export in any form: 1.
+Removed from the index: 2 (still deleted, or no longer listed).
+
+⚠️ Left 3 source(s) for a later run: their site refused requests (rate limit or open circuit).
+
+Which ones, and why: `/ai sources`.

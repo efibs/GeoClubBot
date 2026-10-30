@@ -71,7 +71,8 @@ public sealed class ActivityStatusCalculatorTests
         Dictionary<string, ClubMemberHistoryEntry>? newHistory = null,
         IEnumerable<ExcuseProjection>? excuses = null,
         ActivityRules? rules = null,
-        int maxNumStrikes = 3) =>
+        int maxNumStrikes = 3,
+        TimeSpan? gracePeriod = null) =>
         CreateCalculator().ExecuteAsync(
             [apiMember],
             [new LatestHistoryEntryProjection(apiMember.UserId, Xp: 1000, Timestamp: Week.From)],
@@ -80,7 +81,7 @@ public sealed class ActivityStatusCalculatorTests
             new Dictionary<string, List<ClubActivityEntry>> { [apiMember.UserId] = entries },
             Week,
             rules ?? ClubRules,
-            gracePeriod: TimeSpan.FromDays(2),
+            gracePeriod: gracePeriod ?? TimeSpan.FromDays(2),
             maxNumStrikes: maxNumStrikes,
             CancellationToken.None);
 
@@ -153,6 +154,51 @@ public sealed class ActivityStatusCalculatorTests
     }
 
     [Fact]
+    public async Task Execute_ForgivesTheWholeWeek_InsideTheGracePeriod_EvenWhenHalfOfItWasPlayable()
+    {
+        // Half a week in the club would owe 3 streak days and a mission without the grace period.
+        var member = ArrangeMember(joinedAt: Now.AddDays(-3.5));
+
+        var statuses = await ExecuteAsync(member, [], gracePeriod: TimeSpan.FromDays(5));
+
+        statuses[0].TargetAchieved.Should().BeTrue();
+        statuses[0].RequirementResults.Should().OnlyContain(r => r.Target == 0);
+        statuses[0].IndividualTargetReason.Should().Be("New member, Joined in grace period");
+        _strikes.DidNotReceive().CreateStrike(Arg.Any<ClubMemberStrike>());
+    }
+
+    [Fact]
+    public async Task Execute_EndsTheGracePeriod_ExactlyWhenItIsOver()
+    {
+        var member = ArrangeMember(joinedAt: Now.AddDays(-3.5));
+
+        var statuses = await ExecuteAsync(member, [], gracePeriod: Now - member.JoinedAt);
+
+        statuses[0].TargetAchieved.Should().BeFalse();
+        statuses[0].RequirementResults.Select(r => r.Target).Should().Equal(3, 1);
+        statuses[0].IndividualTargetReason.Should().Be("New member");
+    }
+
+    [Fact]
+    public async Task Execute_GivesNoReason_ForAMemberOwingTheFullWeek()
+    {
+        var statuses = await ExecuteAsync(ArrangeMember(), Entries(streakDays: 6, boardMissions: 2));
+
+        statuses[0].IndividualTargetReason.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Execute_NamesEveryReason_ForTheScaledTargets()
+    {
+        var member = ArrangeMember(joinedAt: Now.AddDays(-5));
+        var excuses = new[] { new ExcuseProjection(member.UserId, Now.AddDays(-2), Now.AddDays(-1)) };
+
+        var statuses = await ExecuteAsync(member, Entries(streakDays: 6, boardMissions: 2), excuses: excuses);
+
+        statuses[0].IndividualTargetReason.Should().Be("New member, Excused");
+    }
+
+    [Fact]
     public async Task Execute_ScalesTheTargets_ForAnExcusedMember()
     {
         var member = ArrangeMember();
@@ -202,6 +248,37 @@ public sealed class ActivityStatusCalculatorTests
 
         statuses[0].NumStrikes.Should().Be(4);
         statuses[0].IsOutOfStrikes.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(1, 2, false)]
+    [InlineData(2, 3, false)]
+    [InlineData(3, 4, true)]
+    public async Task Execute_KicksOnlyPastTheMaximumNumberOfStrikes(int strikesBefore, int strikesAfter, bool outOfStrikes)
+    {
+        var member = ArrangeMember();
+        _strikes.ReadActiveStrikeCountsByMemberUserIdsAsync(
+                Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, int> { ["user-1"] = strikesBefore });
+
+        var statuses = await ExecuteAsync(member, [], maxNumStrikes: 3);
+
+        statuses[0].NumStrikes.Should().Be(strikesAfter);
+        statuses[0].IsOutOfStrikes.Should().Be(outOfStrikes);
+    }
+
+    [Fact]
+    public async Task Execute_LeavesTheStrikesAlone_ForAMemberWhoMetTheTargets()
+    {
+        var member = ArrangeMember();
+        _strikes.ReadActiveStrikeCountsByMemberUserIdsAsync(
+                Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, int> { ["user-1"] = 3 });
+
+        var statuses = await ExecuteAsync(member, Entries(streakDays: 6, boardMissions: 2), maxNumStrikes: 3);
+
+        statuses[0].NumStrikes.Should().Be(3);
+        statuses[0].IsOutOfStrikes.Should().BeFalse();
     }
 
     [Fact]

@@ -92,17 +92,80 @@ public sealed class RetrievalProbeIntegrationTests(QdrantFixture fixture) : IDis
     }
 
     [Fact]
-    public async Task Compare_CountsEveryWeightingSideBySide()
+    public async Task Compare_CountsEachStepOfTheRetrieval_SideBySide()
     {
         var collection = await SeedAsync();
         var export = WriteExport("where can I find Khasi pines?", offered: [], cited: []);
         var targets = Path.Combine(_workDirectory, "targets.json");
-        await File.WriteAllTextAsync(targets, """{ "khasi": "khasi" }""");
+        await File.WriteAllTextAsync(targets, """{ "khasi": { "match": "khasi", "countries": [], "chunks": ["india#khasi"] } }""");
 
         var report = await RunAsync(collection, "compare", export, "--targets", targets);
 
-        report.Should().Contain("| question | shipped | pixels ×1 | pixels ×0.5 | pixels ×0.25 | pixels ×0 | approximate |");
-        report.Should().Contain("| **total** |");
+        report.Should().Contain("| question | before | +context | +countries | +headings | +planner | +planner, 10 | +planner, 12 | shipped |");
+        report.Should().Contain("| **on-target** | **2** of 3 (67 %) |", "both Khasi chunks, of the three the index holds");
+        report.Should().Contain("| **target excerpts offered** | **1** of 1 |");
+        report.Should().Contain("| where can I find Khasi pines? | `india#khasi` | **1** |");
+        report.Should().Contain("The planner was not asked (pass --allow-chat)",
+            "without the flag no chat request may leave, and the report says what that means for the numbers");
+    }
+
+    [Fact]
+    public async Task Compare_TakesVariantsFromAFile_IncludingThoseTheBotFixesInCode()
+    {
+        var collection = await SeedAsync();
+        var export = WriteExport("where can I find Khasi pines?", offered: [], cited: []);
+        var variants = Path.Combine(_workDirectory, "variants.json");
+        await File.WriteAllTextAsync(variants, """
+            { "shipped": {}, "no pixels": { "pixels": 0 }, "approximate": { "approximate": true } }
+            """);
+
+        var report = await RunAsync(collection, "compare", export, "--variants", variants);
+
+        report.Should().Contain("| question | shipped | no pixels | approximate |");
+        report.Should().Contain("question → pixels ×0");
+        report.Should().Contain("approximate search");
+        report.Should().Contain("| where can I find Khasi pines? | 3 | 3 | 3 |", "without a target, every excerpt offered is counted");
+    }
+
+    [Fact]
+    public async Task Replay_LeavesTheGuidesCarriedFromTheAnswerBefore_OutOfTheComparison()
+    {
+        // The follow-up was offered the Uganda guide its parent cited, first and without a search. Read
+        // as retrieval, it showed up as "no longer offered", and the answer as one whose search changed.
+        var collection = await SeedAsync();
+        var export = WriteExport(
+            "and in Vietnam?",
+            offered:
+            [
+                "https://www.plonkit.net/uganda#cited-before", "https://www.plonkit.net/india#khasi",
+                "https://www.plonkit.net/vietnam#vietnam", "https://www.plonkit.net/uganda#forest"
+            ],
+            cited: [],
+            before: ("where can I find Khasi pines?", "Mainly Meghalaya [1]."),
+            citedBefore: ["https://www.plonkit.net/uganda#cited-before"]);
+
+        var report = await RunAsync(collection, "replay", export);
+
+        report.Should().Contain("1 of them carried from the answer before it rather than searched for.");
+        report.Should().NotContain("No longer offered");
+        report.Should().Contain("- Answers offered different guides now than when they were rated: 0 of 1");
+    }
+
+    [Fact]
+    public async Task Replay_SearchesAFollowUpWithItsBranch_AndSaysSo()
+    {
+        var collection = await SeedAsync();
+        var export = WriteExport(
+            "and in Vietnam?",
+            offered: [],
+            cited: [],
+            before: ("where can I find Khasi pines?", "Mainly Meghalaya [1]."));
+
+        var report = await RunAsync(collection, "replay", export);
+
+        report.Should().Contain("## 👎 and in Vietnam?");
+        report.Should().Contain("_Searched by conversation «where can I find Khasi pines? and in Vietnam?», question «and in Vietnam?» ×0.5");
+        report.Should().Contain("within vietnam", "the follow-up names a country the index holds");
     }
 
     [Fact]
@@ -172,15 +235,33 @@ public sealed class RetrievalProbeIntegrationTests(QdrantFixture fixture) : IDis
         return collection;
     }
 
-    private string WriteExport(string question, IReadOnlyList<string> offered, IReadOnlyList<string> cited)
+    /// <param name="before">An earlier question and its answer, making <paramref name="question"/> a follow-up.</param>
+    /// <param name="citedBefore">The guides that earlier answer cited, carried into the rated one.</param>
+    private string WriteExport(
+        string question,
+        IReadOnlyList<string> offered,
+        IReadOnlyList<string> cited,
+        (string Question, string Answer)? before = null,
+        IReadOnlyList<string>? citedBefore = null)
     {
+        var turns = new List<AiFeedbackTurnRecord>();
+        if (before is { } earlier)
+        {
+            turns.Add(new AiFeedbackTurnRecord(turns.Count, "user", 42, earlier.Question, [], null, DateTimeOffset.UtcNow));
+            turns.Add(new AiFeedbackTurnRecord(turns.Count, "assistant", 1, earlier.Answer, [], "test/model", DateTimeOffset.UtcNow)
+            {
+                CitedChunkIds = citedBefore is null ? null : [Guid.NewGuid()],
+                CitedSourceUrls = citedBefore
+            });
+        }
+
+        turns.Add(new AiFeedbackTurnRecord(turns.Count, "user", 42, question, [], null, DateTimeOffset.UtcNow));
+        turns.Add(new AiFeedbackTurnRecord(turns.Count, "assistant", 1, "Mainly Meghalaya [1].", [], "test/model", DateTimeOffset.UtcNow));
+
         var record = new AiFeedbackRecord(
-            Guid.NewGuid(), "negative", "Khasi pines grow in Vietnam too.", 1, 2, 3, 4, 5, "test/model", 1,
+            Guid.NewGuid(), "negative", "Khasi pines grow in Vietnam too.", 1, 2, 3, 4, 5, "test/model", turns.Count / 2,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            [
-                new AiFeedbackTurnRecord(0, "user", 42, question, [], null, DateTimeOffset.UtcNow),
-                new AiFeedbackTurnRecord(1, "assistant", 1, "Mainly Meghalaya [1].", [], "test/model", DateTimeOffset.UtcNow)
-            ],
+            turns,
             offered,
             cited);
 

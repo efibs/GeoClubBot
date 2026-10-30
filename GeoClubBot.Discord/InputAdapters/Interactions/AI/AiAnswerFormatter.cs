@@ -5,10 +5,18 @@ using UseCases.UseCases.AI.Conversations;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
 
 /// <param name="MessageChunks">Answer split to Discord's per-message limit; post in order.</param>
-public sealed record AiAnswerRendering(IReadOnlyList<string> MessageChunks, IReadOnlyList<Embed> Embeds);
+/// <param name="Embeds">The pictures, posted beneath the final chunk.</param>
+/// <param name="Uploads">
+/// Files the final chunk must carry, because its embeds refer to them by name. Embeds posted without
+/// them show a broken picture, so the two travel together.
+/// </param>
+public sealed record AiAnswerRendering(
+    IReadOnlyList<string> MessageChunks,
+    IReadOnlyList<Embed> Embeds,
+    IReadOnlyList<AiAnswerUpload> Uploads);
 
 /// <summary>
-/// Turns an answer into the messages and embeds Discord will actually show.
+/// Turns an answer into the messages, embeds and uploads Discord will actually show.
 ///
 /// Pure, so the layout is snapshot-tested rather than eyeballed in a live server.
 /// </summary>
@@ -16,13 +24,14 @@ public static class AiAnswerFormatter
 {
     private const int DiscordMessageLimit = 2000;
 
-    /// <summary>Discord renders at most ten embeds per message.</summary>
-    private const int MaxEmbeds = 10;
-
     /// <summary>Discord rejects an embed whose title is longer, and a guide's section path can be.</summary>
     private const int MaxEmbedTitleLength = 256;
 
-    public static AiAnswerRendering Render(AiAnswer answer)
+    /// <param name="pictures">
+    /// How each picture is delivered, from <see cref="AiAnswerPicturePlanner"/>. An uploaded one keeps
+    /// its numbered, linked embed; only the image inside it points at the attachment.
+    /// </param>
+    public static AiAnswerRendering Render(AiAnswer answer, AiAnswerPicturePlan pictures)
     {
         var body = answer.Text.Trim();
         if (body.Length == 0)
@@ -35,21 +44,44 @@ public static class AiAnswerFormatter
 
         var chunks = full.SplitAtCharWithLimit("\n", DiscordMessageLimit).ToList();
 
-        var embeds = answer.Images
-            .Take(MaxEmbeds)
-            .Select(image => new EmbedBuilder()
-                .WithImageUrl(image.ImageUrl)
-                // Linking the embed to its source makes every shown image a citation rather than a
-                // decoration, and credits the guide it came from.
-                .WithUrl(image.SourceUrl)
-                // Numbered like the prose, so "[2]" in a sentence leads to the picture that shows it.
-                .WithTitle(Truncate(
-                    $"[{image.Marker}] {(string.IsNullOrWhiteSpace(image.Title) ? "Guide image" : image.Title)}",
-                    MaxEmbedTitleLength))
-                .Build())
+        var shown = new AiAnswerPicturePlan(
+            [.. pictures.Pictures.Take(AiAnswerPicturePlanner.MaxPicturesPerMessage)]);
+
+        var embeds = shown.Pictures
+            .GroupBy(picture => picture.Image.SourceUrl, StringComparer.Ordinal)
+            .SelectMany(gallery =>
+            {
+                var title = BuildTitle([.. gallery.Select(picture => picture.Image)]);
+                return gallery.Select(picture => new EmbedBuilder()
+                    .WithImageUrl(picture.EmbedImageUrl)
+                    // Linking the embed to its source makes every shown image a citation rather than a
+                    // decoration, and credits the guide it came from.
+                    .WithUrl(picture.Image.SourceUrl)
+                    // Numbered like the prose, so "[2]" in a sentence leads to the picture that shows it.
+                    .WithTitle(title)
+                    .Build());
+            })
             .ToList();
 
-        return new AiAnswerRendering(chunks, embeds);
+        return new AiAnswerRendering(chunks, embeds, shown.Uploads);
+    }
+
+    /// <summary>
+    /// The title of every embed linking to one source: "[2] Title", "[2] Title (3 pictures)" when it
+    /// shows several, "[1][3] Title (2 pictures)" when several cited excerpts share the link.
+    ///
+    /// Discord shows embeds sharing a link as one, under the first one's title, with all their pictures
+    /// in a grid. So they are posted together, and each carries the title of the whole group: a
+    /// position like "(1/3)" would head a grid of three, and the "(2/3)" and "(3/3)" it promises never
+    /// appear. The count is kept when a long title is cut.
+    /// </summary>
+    private static string BuildTitle(IReadOnlyList<AiAnswerImage> gallery)
+    {
+        var name = gallery.Select(image => image.Title).FirstOrDefault(title => !string.IsNullOrWhiteSpace(title)) ?? "Guide image";
+        var markers = string.Concat(gallery.Select(image => image.Marker).Distinct().Order().Select(marker => $"[{marker}]"));
+        var count = gallery.Count > 1 ? $" ({gallery.Count} pictures)" : string.Empty;
+
+        return Truncate($"{markers} {name}", MaxEmbedTitleLength - count.Length) + count;
     }
 
     /// <summary>

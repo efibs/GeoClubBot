@@ -5,9 +5,13 @@
     "test-projects": [
       "GeoClubBot.Tests/GeoClubBot.Tests.csproj"
     ],
+    "test-case-filter": "Category!=Integration",
     "mutation-level": "Standard",
     "ignore-methods": [
-      "ConfigureAwait"
+      "Log*"
+    ],
+    "ignore-mutations": [
+      "Boolean"
     ],
     "reporters": [
       "html",

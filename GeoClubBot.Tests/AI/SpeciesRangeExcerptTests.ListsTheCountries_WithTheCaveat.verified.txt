@@ -1,0 +1,5 @@
+﻿[11] Where Pinus kesiya is recorded (GBIF)
+Pinus kesiya Royle ex Gordon (species). Found by its common name "khasi pine".
+Occurrence records by country: Philippines 256, China 105, Thailand 87, India 80, Vietnam 66, Myanmar 60, Madagascar 36, Indonesia 25, Brazil 19, Laos 14 (1,061 records in all).
+These count occurrence records, not plants: they follow how much people observe and collect in a place, and include herbarium specimens, gardens and plantations, so few records do not make the plant rare there and many do not make it wild.
+(source: https://www.gbif.org/species/5285824)

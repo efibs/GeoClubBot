@@ -19,8 +19,16 @@ public sealed record WeightedHitList(IReadOnlyList<KnowledgeHit> Hits, double We
 /// Excerpts with the same text are collapsed into one. The same sentence reaches the index several
 /// times — two authors' copies of a region guide, a paragraph captioning each of the pictures it sits
 /// beside — and replayed against the beta testers' questions, copies took 21 of 144 top-8 slots that
-/// other guides could have filled. When the copies differ only in that one carries a picture, the
-/// picture survives: the model still gets something it can attach.
+/// other guides could have filled. The copies' pictures are not collapsed with them: the kept excerpt
+/// carries every one (<see cref="KnowledgeHit.ExtraImageUrls"/>), and the copies' ids. A Google Slides
+/// caption sits beside each picture of its slide — eight of them on "India Poles > Slide 18" — and
+/// keeping only the first had left 3,389 of the index's 4,738 slide pictures (72 %) impossible to offer.
+///
+/// Only a copy from the same place adds its picture: the same link and the same section, as the
+/// pictures of one slide are. Matching text proves nothing more than that — two decks' slides captioned
+/// only "Bollards" — and an extra picture is shown under the kept excerpt's title, link and number, so a
+/// Czech bollard would be presented as the Polish one. A picture from elsewhere is left out, as every
+/// copy's picture was before extra pictures were kept, and so is its id: the excerpt does not stand for it.
 ///
 /// Pure, so the arithmetic is tested rather than inferred from a store's behaviour.
 /// </summary>
@@ -32,7 +40,15 @@ public static partial class KnowledgeHitFusion
     /// </summary>
     public const int RankConstant = 2;
 
-    public static IReadOnlyList<KnowledgeHit> Fuse(IReadOnlyList<WeightedHitList> lists, int limit)
+    /// <param name="headingOnlyPictureWeight">
+    /// Multiplies the score of a picture whose only text is a heading
+    /// (<see cref="KnowledgeHit.IsHeadingOnlyPicture"/>): the model can say nothing about one, yet a
+    /// heading like "Distribution" matches many a question. One leaves them where they rank.
+    /// </param>
+    public static IReadOnlyList<KnowledgeHit> Fuse(
+        IReadOnlyList<WeightedHitList> lists,
+        int limit,
+        double headingOnlyPictureWeight = 1d)
     {
         ArgumentNullException.ThrowIfNull(lists);
 
@@ -56,6 +72,17 @@ public static partial class KnowledgeHitFusion
             }
         }
 
+        if (headingOnlyPictureWeight < 1d)
+        {
+            foreach (var (id, hit) in hits)
+            {
+                if (hit.IsHeadingOnlyPicture)
+                {
+                    scores[id] *= Math.Max(0d, headingOnlyPictureWeight);
+                }
+            }
+        }
+
         var fused = new List<KnowledgeHit>();
         var slotByText = new Dictionary<string, int>(StringComparer.Ordinal);
 
@@ -66,13 +93,9 @@ public static partial class KnowledgeHitFusion
 
             if (slotByText.TryGetValue(key, out var slot))
             {
-                // A copy of something already offered. Only worth anything if it brings a picture the
-                // kept copy lacks; then it takes the kept copy's place, keeping that copy's rank.
-                if (fused[slot].ImageUrl is null && hit.ImageUrl is not null)
-                {
-                    fused[slot] = hit with { Score = fused[slot].Score };
-                }
-
+                // A copy of something already offered: one excerpt, in the place the better copy
+                // earned, and every picture either of them carries.
+                fused[slot] = Merge(fused[slot], hit);
                 continue;
             }
 
@@ -87,6 +110,49 @@ public static partial class KnowledgeHitFusion
 
         return fused;
     }
+
+    /// <summary>
+    /// <paramref name="kept"/> with <paramref name="copy"/> folded in. A copy bringing the first picture
+    /// takes the kept copy's place, so the excerpt is one the model can attach — it is then shown under
+    /// the copy's own title and link. A copy from the same place bringing another picture adds it; one
+    /// from elsewhere is dropped (<see cref="IsSamePlace"/>). The excerpt keeps the better copy's score,
+    /// and the id of every copy it stands for.
+    /// </summary>
+    private static KnowledgeHit Merge(KnowledgeHit kept, KnowledgeHit copy)
+    {
+        if (kept.ImageUrl is not null && copy.ImageUrl is not null && !IsSamePlace(kept, copy))
+        {
+            return kept;
+        }
+
+        var ids = kept.ChunkIds.Concat(copy.ChunkIds).Distinct().ToList();
+
+        if (kept.ImageUrl is null)
+        {
+            var lead = copy.ImageUrl is null ? kept : copy with { Score = kept.Score };
+            return lead with { MergedChunkIds = [.. ids.Where(id => id != lead.Id)] };
+        }
+
+        var pictures = new[] { kept.ImageUrl }
+            .Concat(kept.ExtraImageUrls)
+            .Concat(copy.ImageUrl is null ? [] : [copy.ImageUrl, .. copy.ExtraImageUrls])
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        return kept with
+        {
+            ExtraImageUrls = [.. pictures.Skip(1)],
+            MergedChunkIds = [.. ids.Where(id => id != kept.Id)]
+        };
+    }
+
+    /// <summary>
+    /// Whether two chunks come from the same place in the same guide: one link and one section, as the
+    /// pictures beside one slide's caption do. Only then is one's picture shown as the other's.
+    /// </summary>
+    private static bool IsSamePlace(KnowledgeHit one, KnowledgeHit other) =>
+        string.Equals(one.SourceUrl, other.SourceUrl, StringComparison.Ordinal)
+        && string.Equals(one.SectionPath, other.SectionPath, StringComparison.Ordinal);
 
     /// <summary>
     /// The text as a reader would compare it: case, emphasis, link targets and spacing ignored. An

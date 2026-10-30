@@ -27,6 +27,13 @@ public sealed record ConversationContext(
     public static readonly ConversationContext Empty = new([], false, -1, null);
 
     public bool IsNewConversation => Turns.Count == 0;
+
+    /// <summary>
+    /// The index chunks the answer being replied to cited, in the order it numbered them; empty for a
+    /// fresh question, or when that answer cited nothing. A follow-up is offered them again, because
+    /// "that picture" or "source 3" means one of them.
+    /// </summary>
+    public IReadOnlyList<Guid> PreviousCitedChunkIds { get; init; } = [];
 }
 
 /// <summary>
@@ -86,7 +93,11 @@ public static class ConversationContextBuilder
         var (trimmed, wasTrimmed) = ApplyLimits(path, limits);
 
         return new ConversationContext(
-            BuildViews(trimmed, limits.MaxImagesInContext), wasTrimmed, parent.Depth, parent.ConversationId);
+            BuildViews(trimmed, limits.MaxImagesInContext), wasTrimmed, parent.Depth, parent.ConversationId)
+        {
+            // Only the answer replied to: what an earlier one cited is carried only if that answer cited it again.
+            PreviousCitedChunkIds = parent.Role == AiTurnRole.Assistant ? [.. parent.CitedChunkIds] : []
+        };
     }
 
     /// <summary>
@@ -143,8 +154,10 @@ public static class ConversationContextBuilder
 
             path.Add(current);
 
-            if (current.ParentDiscordMessageId is not { } parentId
-                || !byMessageId.TryGetValue(parentId, out var parent))
+            var parent = current.ParentDiscordMessageId is { } parentId
+                ? byMessageId.GetValueOrDefault(parentId)
+                : null;
+            if (parent is null)
             {
                 // Root reached, or a link into turns we no longer store. Either way the walk is done;
                 // a partial prefix is still useful history.

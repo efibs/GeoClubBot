@@ -83,6 +83,65 @@ public sealed class DailyChallengeHandlerTests : IDisposable
             .And.Contain(m => m.Contains("Next challenges"));
     }
 
+    [Fact]
+    public async Task Handle_PostsThePodiumAndThePlacesBelowIt_ForEachDifficulty()
+    {
+        ArrangeActiveChallenges((Hard, 2, "old-hard"), (Easy, 1, "old-easy"));
+        _client.ReadHighscoresAsync("old-hard", Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>())
+            .Returns(Highscores("a", "b", "c", "d", "e"));
+
+        await HandleAsync();
+
+        var nl = Environment.NewLine;
+        _postedMessages[0].Should().Be(
+            $"# :trophy: The results are in! :trophy: \n## Hard{nl}" +
+            $":first_place:nick-a (5000 points, 1000km){nl}" +
+            $":second_place:nick-b (5000 points, 1000km){nl}" +
+            $":third_place:nick-c (5000 points, 1000km){nl}" +
+            $"4. nick-d (5000 points, 1000km){nl}" +
+            "5. nick-e (5000 points, 1000km)");
+        _postedMessages[1].Should().Be($"\n## Easy{nl}No one participated :frowning2: ");
+    }
+
+    [Fact]
+    public async Task Handle_LinksEveryNewChallenge()
+    {
+        await HandleAsync();
+
+        _postedMessages.Should().ContainSingle().Which.Should().Be(
+            "# :dart: Next challenges :dart:" +
+            "\n - [Hard (Hard map)](https://www.geoguessr.com/challenge/new-token)" +
+            "\n - [Easy (Easy map)](https://www.geoguessr.com/challenge/new-token)");
+    }
+
+    [Fact]
+    public async Task Handle_MarksTheDifficultyThatCouldNotBeCreated_InsteadOfLinkingNothing()
+    {
+        _client.CreateChallengeAsync(Arg.Is<PostChallengeRequestDto>(r => r.Map == MapIdOf(Hard)), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("boom"));
+
+        await HandleAsync();
+
+        _postedMessages.Should().ContainSingle().Which.Should().Be(
+            "# :dart: Next challenges :dart:" +
+            "\n - Hard: ERROR" +
+            "\n - [Easy (Easy map)](https://www.geoguessr.com/challenge/new-token)");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public async Task Handle_TreatsAChallengeWithoutAToken_AsNotCreated(string token)
+    {
+        _client.CreateChallengeAsync(Arg.Any<PostChallengeRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(new PostChallengeResponseDto { Token = token });
+
+        await HandleAsync();
+
+        _postedMessages.Should().NotContain(m => m.Contains("geoguessr.com/challenge/"));
+        _challenges.DidNotReceiveWithAnyArgs().AddLatestClubChallengeLinks(default!);
+    }
+
     // ---- Phase 1 (reward) fails -------------------------------------------
 
     [Fact]

@@ -71,19 +71,31 @@ and per payload index, and the default limit is exhausted part-way through a run
   Tests that set the static `ConfiguredCronJobAttribute.Config` share the non-parallel
   `ConfiguredCronJobCollection`.
 - **Snapshot** (`Discord/*FormatterTests`, `Application/UseCases/CountryChallenges/CountryChallengeMessagesTests`,
-  fast): `Verify.Xunit` captures whole rendered messages
+  `AI/SpeciesRangeExcerptTests`, fast): `Verify.Xunit` captures whole rendered messages
   into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
   the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
   is gitignored.
-- **Mutation** (`stryker-config.json`, manual/nightly): `dotnet stryker` mutates the Application
-  project and runs the full suite to measure how effectively tests catch bugs. Not on the PR gate
-  (see `.github/workflows/mutation.yml`); `break: 0` so it reports without failing. Run locally with
-  `dotnet tool restore && dotnet stryker`.
+- **Mutation** (`stryker-config.json`, weekly/manual): `dotnet stryker` mutates the Application
+  project to measure how effectively tests catch bugs. Not on the PR gate (see
+  `.github/workflows/mutation.yml`); `break: 0` so it reports without failing. Run locally with
+  `dotnet tool restore && dotnet stryker`. It runs the fast tests only (`test-case-filter`), because
+  every mutant's session would otherwise boot its own containers, and Stryker writes its report only at
+  the very end, so a run cut off by the job timeout leaves nothing. Code only integration tests reach
+  therefore shows as *NoCoverage*: the score is a floor. `ignore-methods` holds `Log*` (all logging is
+  `[LoggerMessage]` partials) and must not hold `ConfigureAwait`: Stryker matches whole call chains, which
+  would exempt every awaited statement and everything inside it. The `Boolean` mutator is ignored instead,
+  to drop the `ConfigureAwait(false)` flips. `Safe Mode! … remove all mutations in X` in the log means one
+  mutant of `X` did not compile and the whole method went unmeasured, usually a local that is only
+  definitely assigned thanks to a `continue` or `break`; give it an initial value or read it outside a
+  pattern. Static lookup tables opt out one by one with `// Stryker disable once String`; the comment
+  covers only the member it precedes, however long that is.
 - **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
   (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
   chunk keys must stay stable or every re-ingest duplicates instead of updating; the AI citation
-  resolver, whose numbers must run 1..k and all lead somewhere; the retrieval fusion, which must never
-  offer the same text twice; the country pool rotation, where every round must be a permutation of the
+  resolver, whose numbers must run 1..k and all lead somewhere, ranges and copied prompt notes included;
+  the retrieval fusion, which must never offer the same text twice nor show a picture under another
+  guide's link; the guide-source schedule, whose next attempt shown is exactly when the queue takes the
+  source; the country pool rotation, where every round must be a permutation of the
   pool; the leaderboard ranking, where ties share a rank) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
@@ -129,8 +141,21 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- replay ai_feedback/<expo
 ```
 
 `replay` shows what each question is offered and where every excerpt came from. `compare` counts
-alternative fusion weights; `grep` answers "is it in the index at all?"; `similarity` tries a re-worded
-chunk. It reaches production Qdrant over an SSH tunnel to the gRPC port, only ever reads (a gRPC
+alternative fusion weights (`--targets`, `--variants` of `AI:Retrieval` settings, `--allow-chat` to let
+the query planner's chat requests out); `grep` answers "is it in the index at all?"; `similarity` tries
+a re-worded chunk.
+
+`answer` goes one step further and asks every rated question again through the bot's real answering
+code (`AskAiHandler`, the read-only index, the live roster, the tool loop, GBIF), with
+`GeoClubBot.API/appsettings.json` plus `--set AI:…=…` overrides, and reports each new answer as Discord
+would post it beside the rated one. It needs `--allow-chat` and costs what the bot's answers cost (2–6
+requests each); answers are cached per record, settings and bot build, so a rerun resumes. `--judge`
+has a free model compare old and new answers — pick `--judge-model` from another family than the
+answering model, and read the answers too:
+
+```bash
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- answer ai_feedback/<export>.jsonl --allow-chat --judge --out ai_feedback/eval/answer.md
+``` It reaches production Qdrant over an SSH tunnel to the gRPC port, only ever reads (a gRPC
 allow-list, tested against a real Qdrant), and caches the question embeddings it pays for — see
 [`Tools/GeoClubBot.RetrievalProbe/README.md`](Tools/GeoClubBot.RetrievalProbe/README.md).
 
@@ -218,25 +243,69 @@ API + Discord (controllers, slash command modules)
   averages (report, dashboard leaderboard, swap suggestions, MVP) use it, falling back to the raw XP
   difference for older snapshots. Kind names in config are validated at start-up.
 - **Result type**: Use cases return `Result<T>` / `Error` (`Utilities/Result.cs`) instead of throwing for expected failures. `Error.Type` (`ErrorType.NotFound`, `Validation`, `Conflict`, `Forbidden`, `Unauthorized`, `Unexpected`) is mapped to HTTP status codes by the `ResultExtensions` middleware in `GeoClubBot.API/Middleware/`.
-- **AI assistant** (optional, `AI:Active`): retrieval-then-generation rather than tool-calling, because
-  requiring tool support would exclude most free models. Ports live in `Application/OutputPorts/AI/`
-  (`IChatModelClient`, `IEmbedder`, `IKnowledgeIndex`, `ISourceExtractor`), adapters in
-  `Infrastructure/OutputAdapters/AI/`. Conversations are a tree of Discord reply edges, so sibling
-  branches stay independent. Chat services and the vector index are registered **even when the feature
+- **AI assistant** (optional, `AI:Active`): retrieval first, then optional tool calls. The question goes
+  out with its retrieved excerpts and three tools declared — `search_guides`, `read_guide`,
+  `species_range` (`Application/UseCases/AI/Tools/`). The loop is `AiAnswerLoop` (scoped): tools only on
+  a tool-capable chain without the fallback router, one embedding per round's searches, each further
+  call claimed from `IAiBudgetRepository` before it is made, at most `AI:Tools:MaxToolRounds` (2)
+  rounds, then a call with `tool_choice: none` plus an "answer now" user message. A reply that writes a
+  tool call as text (`ToolCallMarkupDetector`, `ai.tool_call_markup`) is never posted: it goes to the
+  no-tools rescue (every excerpt gathered, single-shot prompt), as does a failed later call. Tool
+  excerpts go into `ExcerptLedger` (capped at [99], what `CitationResolver` reads), so they are cited
+  like retrieved ones. `AnswerToolbox` (singleton) never throws: bad arguments become a message to the
+  model (`ToolArguments`). species_range is `ISpeciesRangeReader` → `GbifSpeciesRangeReader` (named
+  HttpClient `Gbif`, successes cached 24 h). Each tool's "when to call" lives in its description;
+  `AnswerTools.SystemPrompt` holds only what applies to all of them. Because the model never called
+  species_range on its own, `PlantRangeLookAhead` (singleton) asks GBIF up front, in parallel with
+  retrieval, when `PlantRangeQuestion` reads a question as "where in the world is X found", and puts the
+  plant's countries first among the excerpts. Ports live in
+  `Application/OutputPorts/AI/` (`IChatModelClient`, `IEmbedder`, `IKnowledgeIndex`,
+  `ISourceExtractor`), adapters in `Infrastructure/OutputAdapters/AI/`. Conversations are a tree of
+  Discord reply edges, so sibling branches stay independent; each answer turn stores the chunk ids it
+  was offered and cited and its tool calls, and a follow-up is re-offered the excerpts its parent cited
+  first (`CarriedExcerpts`, read back by id). Chat services and the vector index are registered **even when the feature
   is off** — MediatR's assembly scan picks up every Application handler regardless, so the container
   must be able to construct their dependencies or start-up validation fails. Guide images from hosts
   that refuse unattended clients are copied during indexing and served from
   `/api/v1/ai/images/{hash}` — content-addressed, anonymous, and strictly not a proxy — but are sent
-  to the embedder **inline**, so indexing never depends on the provider reaching this host. In the
+  to the embedder **inline**, so indexing never depends on the provider reaching this host. Answers
+  likewise **upload** relayed pictures found on disk (`AiAnswerPicturePlanner`, pure; embeds point at
+  `attachment://` files; at most 10, with per-answer and per-picture caps; a failed upload falls back to
+  links) instead of linking them. A relayed link still shown (file missing, over a cap) is rebased onto
+  the current `PublicBaseUrl` (`RelayedImageUrl.Rebase`). The relay route and URL parsing live in
+  `RelayedImageUrl` (Application/OutputPorts/AI), shared by the relay, `AiImageController` and the
+  Discord side; keep them off `IImageRelay`, whose substitute in the integration host would answer `""`. In the
   OpenRouter resilience pipeline, retry must stay *outside* the rate limiter (every attempt takes a
   token); `OpenRouterResiliencePipelineTests` pins this. The fallback router `openrouter/free` picks a
   **random** free model (safety classifiers and 2B models included) and cannot exclude any, so chains
   reach it only when too few vetted models qualify; every answer is screened
-  (`GuardrailVerdictDetector`, `IChatModelCatalog.IsUnfitToAnswer`) and a failed or unusable first
-  chain is retried once against untried models. Model citations are rewritten by `CitationResolver`
-  into one `[n]` numbering, pictures included. Retrieval fuses its per-vector searches client-side
-  (`KnowledgeHitFusion`: weighted RRF plus collapsing of identical texts) because Qdrant 1.15 cannot
-  weight RRF; the weights were measured on production — see the guide before changing them. Answers
+  (`GuardrailVerdictDetector`, `IChatModelCatalog.IsUnfitToAnswer`, `ToolCallMarkupDetector`) and a
+  failed or unusable first chain is retried once against untried models. The ranking
+  (`ChatModelSelector`) leads with effective model size, √(total × active), parsed by
+  `ModelParameterCountParser`; it drops models below `MinEffectiveParametersBillions` and models whose
+  provider uptime (public `/models/{id}/endpoints`, read through the separate `OpenRouterHealth` client
+  with no circuit breaker) is below `MinProviderUptimePercent`. `OpenRouterFailureClassifier` reads
+  error bodies: a 403 "agentic harness" on the head is `ModelGated` (excluded until restart), an
+  upstream shared-pool 429 is `ModelRateLimited` (head demoted, never waited out). Model citations are
+  rewritten by `CitationResolver` into one `[n]` numbering, pictures included; text is numbered per link
+  **and** section label (`KeyOf`), labels are cleaned at answer time by `SectionLabel` (which the Docs
+  extractor also uses to reject non-headings), and `CarriedExcerpts` recovers the reader's numbers by the
+  same rule. Retrieval fuses its per-vector searches client-side
+  (`KnowledgeHitFusion`: weighted RRF plus collapsing of identical texts, a copy's picture kept only from
+  the same link and section) because Qdrant 1.15 cannot weight RRF; the weights were measured on
+  production — see the guide before changing them. Retrieval follows the conversation:
+  `RetrievalQueryComposer` (Application/UseCases/AI/Retrieval/) searches a follow-up by its branch too,
+  all wordings in one embedding request; countries named (matched by `CountryGazetteer` against the
+  index's country names, cached by the singleton `KnowledgeCountryDirectory`) are a soft boost through
+  country-filtered twin lists, while `KnowledgeQuery.Country` stays `/ai search`'s hard filter. The
+  optional query planner (`RetrievalQueryPlanner`, `AI:Retrieval:QueryPlanner`, **off** by default,
+  paused after a timeout by the singleton `QueryPlannerPause`) costs one chat request. Ingestion
+  classifies fetch failures through `SourceFetch` (codes in `SourceExtractionErrorCodes`): 404/410 and
+  Google's 401/403 become `KnowledgeSourceStatus.Unavailable`, rechecked after
+  `AI:Ingestion:UnavailableRecheckDays` (a second "gone" sweeps the chunks); a guide site's 401/403, a
+  429 or an open circuit (`HostRefusedRequestException`) leave the source untouched and skip that host
+  for the run. The schedule lives in one place, `KnowledgeSource.NextAttemptAtUtc`, read by the queue
+  and `/ai sources`; `/ai source-retry` re-queues. Answers
   can be rated (👍/👎 reaction, or a message context menu for a written comment); a rated conversation
   is **copied** into `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep
   never touches — that copy is the only permanently stored conversation. See
@@ -286,6 +355,8 @@ API + Discord (controllers, slash command modules)
 - **Discord** (Discord.Net 3.20.1): bot token, slash commands, role/channel management
 - **OpenRouter** (optional): chat *and* embeddings for the AI assistant, with the free model chosen
   automatically from whatever is available that day. The only external AI dependency.
+- **GBIF** (optional, `AI:Tools:SpeciesRange`): the free public species/occurrence API, no key;
+  read-only GETs for the `species_range` tool.
 - **Qdrant** (optional): vector store for indexed guide content, using named `text`/`image` vectors
   merged with reciprocal-rank fusion. Both are gated behind the `AI:Active` flag — see
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md), which also explains the free-tier request

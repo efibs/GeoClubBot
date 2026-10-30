@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Threading.RateLimiting;
+using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
 using Polly.Telemetry;
@@ -136,17 +137,67 @@ internal static class ResiliencePipelines
     /// innermost, so it measures the request rather than time spent queueing for a token or waiting out a
     /// 429. The whole call is bounded by the HttpClient's own timeout.
     /// </summary>
-    /// <param name="requestsPerMinute">Should stay just under the provider's ceiling (20/min for free models).</param>
+    /// <param name="rateLimiter">
+    /// The key's limiter, from <see cref="CreateOpenRouterRateLimiter"/>. Shared with the health pipeline,
+    /// so the two together stay within the budget.
+    /// </param>
     public static void AddOpenRouterResiliencePipeline(
         ResiliencePipelineBuilder<HttpResponseMessage> builder,
-        int requestsPerMinute,
+        RateLimiter rateLimiter,
         TimeSpan attemptTimeout) =>
         ConfigureOpenRouterPipeline(
             builder,
-            new TokenBucketRateLimiter(CreateOpenRouterRateLimiterOptions(requestsPerMinute)),
+            rateLimiter,
             attemptTimeout,
             OpenRouterRetryBaseDelay,
             TimeProvider.System);
+
+    /// <summary>
+    /// Pipeline for the provider health reads a catalog refresh makes: the key's rate limiter and an
+    /// attempt timeout, and nothing else.
+    ///
+    /// No circuit breaker, because one shared with chat counted these reads: a refresh makes up to twenty
+    /// in a row, so an endpoints route failing on its own — while chat answered — could open the circuit
+    /// by itself and fail every question for two minutes. Even ignored by that breaker's predicate, they
+    /// would have counted as successes, diluting the failures it exists to see and closing it from
+    /// half-open while chat still failed. No retry, because a failed read only leaves a model unmeasured,
+    /// which the selector treats as healthy: a retry would spend tokens questions wait for, on a figure
+    /// nothing depends on. One request per read is what the configuration promises.
+    /// </summary>
+    /// <param name="rateLimiter">The same limiter the chat pipeline uses, so health reads queue with questions.</param>
+    public static void AddOpenRouterHealthResiliencePipeline(
+        ResiliencePipelineBuilder<HttpResponseMessage> builder,
+        RateLimiter rateLimiter,
+        TimeSpan attemptTimeout) =>
+        builder
+            .AddRateLimiter(rateLimiter)
+            .AddTimeout(attemptTimeout);
+
+    /// <summary>
+    /// Pipeline for the species-range tool's reads of GBIF: one quick retry and an attempt timeout.
+    ///
+    /// Light on purpose. The model is waiting on the answer while this runs, and a failed read only
+    /// tells it the database is unavailable, so one retry after half a second covers a dropped
+    /// connection without making a struggling service hold the answer up. No circuit breaker or rate
+    /// limiter: a question makes at most a few reads, and GBIF asks nothing of anonymous readers.
+    /// </summary>
+    public static void AddGbifResiliencePipeline(ResiliencePipelineBuilder<HttpResponseMessage> builder, TimeSpan attemptTimeout) =>
+        builder
+            .AddRetry(new HttpRetryStrategyOptions
+            {
+                MaxRetryAttempts = 1,
+                Delay = TimeSpan.FromMilliseconds(500),
+                BackoffType = DelayBackoffType.Constant,
+                ShouldRetryAfterHeader = false
+            })
+            .AddTimeout(attemptTimeout);
+
+    /// <summary>
+    /// The one limiter every request on the OpenRouter key waits for, whichever pipeline sends it.
+    /// </summary>
+    /// <param name="requestsPerMinute">Should stay just under the provider's ceiling (20/min for free models).</param>
+    public static RateLimiter CreateOpenRouterRateLimiter(int requestsPerMinute) =>
+        new TokenBucketRateLimiter(CreateOpenRouterRateLimiterOptions(requestsPerMinute));
 
     /// <summary>The pipeline with its moving parts supplied, so tests can drive it without waiting in real time.</summary>
     internal static void ConfigureOpenRouterPipeline(
@@ -163,12 +214,13 @@ internal static class ResiliencePipelines
             MaxRetryAttempts = 2,
             Delay = retryBaseDelay,
             BackoffType = DelayBackoffType.Exponential,
-            ShouldHandle = args => ValueTask.FromResult(
-                args.Outcome.Result?.StatusCode == HttpStatusCode.TooManyRequests
+            ShouldHandle = async args =>
+                args.Outcome.Result is { StatusCode: HttpStatusCode.TooManyRequests } limited
                     // The window turns over once. Still limited after waiting it out means something
                     // else is spending the same key, and waiting a second minute would only stall.
                     ? args.AttemptNumber == 0
-                    : HttpClientResiliencePredicates.IsTransient(args.Outcome)),
+                      && !await IsUpstreamChatRateLimitAsync(limited, args.Context.CancellationToken).ConfigureAwait(false)
+                    : HttpClientResiliencePredicates.IsTransient(args.Outcome),
             DelayGenerator = args => ValueTask.FromResult(
                 args.Outcome.Result is { } response ? ComputeRetryDelay(response, clock.GetUtcNow()) : null)
         };
@@ -261,4 +313,25 @@ internal static class ResiliencePipelines
 
     private static TimeSpan ClampRateLimitWait(TimeSpan wait) =>
         wait < TimeSpan.Zero ? TimeSpan.Zero : wait > MaxRateLimitWait ? MaxRateLimitWait : wait;
+
+    /// <summary>
+    /// Whether a chat completion's 429 came from the head model's upstream provider running out of the
+    /// capacity it shares among free users, rather than from our key's window.
+    ///
+    /// Waiting our window out cannot fix that, and the wait is what made it costly: a minute spent on
+    /// one busy model put the attempt past the caller's patience, so the question failed instead of
+    /// being retried against other models — on 2026-10-23 Gemma 4 answered every call with this 429
+    /// while Nemotron Ultra and Super VL answered at once. Embeddings keep the wait, having no other
+    /// model to turn to. The body is buffered by reading it, so the client still reads it afterwards.
+    /// </summary>
+    private static async Task<bool> IsUpstreamChatRateLimitAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.RequestMessage?.RequestUri?.AbsolutePath.EndsWith("/chat/completions", StringComparison.OrdinalIgnoreCase) != true)
+        {
+            return false;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return OpenRouterFailureClassifier.IsUpstreamRateLimit(body);
+    }
 }
