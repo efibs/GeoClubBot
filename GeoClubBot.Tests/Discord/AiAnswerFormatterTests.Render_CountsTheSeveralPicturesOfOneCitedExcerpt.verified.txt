@@ -1,0 +1,28 @@
+﻿--- message 1 ---
+Gen 4 with an antenna is common around Boa Vista [1], and in Rondônia [2].
+
+-# [1] 🖼️ [Brazil · Brazilian Poles Lite > Slide 7](https://docs.google.com/presentation/d/brazil/edit#slide=id.p7)
+-# [2] 🖼️ [Brazil > Car metas](https://www.plonkit.net/brazil#l5MR)
+-# via nvidia/nemotron-3-ultra-550b-a55b:free
+--- embed ---
+Title: [1] Brazilian Poles Lite (3 pictures)
+Image: attachment://picture-1-1.png
+Url:   https://docs.google.com/presentation/d/brazil/edit#slide=id.p7
+--- embed ---
+Title: [1] Brazilian Poles Lite (3 pictures)
+Image: attachment://picture-1-2.png
+Url:   https://docs.google.com/presentation/d/brazil/edit#slide=id.p7
+--- embed ---
+Title: [1] Brazilian Poles Lite (3 pictures)
+Image: https://i.imgur.com/roraima.png
+Url:   https://docs.google.com/presentation/d/brazil/edit#slide=id.p7
+--- embed ---
+Title: [2] Brazil
+Image: https://i.imgur.com/rondonia.png
+Url:   https://www.plonkit.net/brazil#l5MR
+--- upload ---
+File:   picture-1-1.png
+Stored: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.png (200000 bytes)
+--- upload ---
+File:   picture-1-2.png
+Stored: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.png (300000 bytes)

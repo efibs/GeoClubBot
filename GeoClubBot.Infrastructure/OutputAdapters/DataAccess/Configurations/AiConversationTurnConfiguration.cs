@@ -39,6 +39,10 @@ public class AiConversationTurnConfiguration : IEntityTypeConfiguration<AiConver
         builder.Property(x => x.ModelId)
             .HasMaxLength(StringLengthConstants.AiModelIdMaxLength);
 
+        // JSON the application writes and only ever reads back whole, so plain text rather than jsonb:
+        // nothing queries inside it.
+        builder.Property(x => x.ToolCallsJson).HasColumnType("text");
+
         // Stored as text so the value is readable in the database and survives an enum reordering.
         builder.Property(x => x.Role)
             .HasConversion<string>()

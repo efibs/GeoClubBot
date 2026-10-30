@@ -8,7 +8,29 @@ public enum KnowledgeSourceStatus
     /// <summary>Fetching or parsing failed; retried with backoff.</summary>
     Failed,
     /// <summary>Deliberately not ingestible, e.g. a video or a link behind authentication.</summary>
-    Skipped
+    Skipped,
+
+    /// <summary>
+    /// Could not be read for a reason only its owner can undo: deleted, or no longer shared publicly.
+    ///
+    /// Neither a failure nor a skip. Retried with the failure backoff, a deleted document took a slot
+    /// of every third run forever (nine of them, on production, every one answering 410); skipped, a
+    /// document that is shared again never came back. So it is checked again rarely, on its own
+    /// interval, and recovers on its own when the owner restores it.
+    /// </summary>
+    Unavailable
+}
+
+/// <summary>
+/// When sources come due again. Passed in rather than held by the entity because both intervals are
+/// operator settings.
+/// </summary>
+/// <param name="ReingestInterval">How long an indexed source is left alone before it is checked for changes.</param>
+/// <param name="UnavailableRecheckInterval">How long an unavailable source is left alone before it is checked again.</param>
+public readonly record struct KnowledgeSourceSchedule(TimeSpan ReingestInterval, TimeSpan UnavailableRecheckInterval)
+{
+    /// <summary>The recheck interval used when the caller names none.</summary>
+    public static readonly TimeSpan DefaultUnavailableRecheckInterval = TimeSpan.FromDays(30);
 }
 
 public enum KnowledgeSourceOrigin
@@ -30,6 +52,13 @@ public class KnowledgeSource : BaseEntity
 {
     /// <summary>Retry backoff doubles per consecutive failure up to this many doublings (~64 hours).</summary>
     private const int MaxBackoffDoublings = 6;
+
+    /// <summary>
+    /// Checks in a row that must find a source unreadable before its indexed content is dropped. One
+    /// is not enough: a document that is briefly unshared, or a guide page that vanishes for an
+    /// afternoon, would lose everything indexed from it. Two checks a recheck interval apart is.
+    /// </summary>
+    private const int UnavailableChecksBeforeRemoval = 2;
 
     /// <summary>
     /// Failure reasons come from exception messages and can be arbitrarily long, so they are clamped
@@ -67,7 +96,7 @@ public class KnowledgeSource : BaseEntity
 
     public KnowledgeSourceStatus Status { get; private set; }
 
-    /// <summary>Why the source is failed or skipped, shown to admins.</summary>
+    /// <summary>Why the source is failed, skipped or unavailable, shown to admins.</summary>
     public string? StatusReason { get; private set; }
 
     /// <summary>Hash of the last successfully ingested content, so unchanged sources are skipped.</summary>
@@ -80,6 +109,11 @@ public class KnowledgeSource : BaseEntity
 
     public DateTimeOffset? LastIngestedAtUtc { get; private set; }
 
+    /// <summary>
+    /// Attempts in a row that did not index the source. For an <see cref="KnowledgeSourceStatus.Unavailable"/>
+    /// source it counts only the checks in a row that found it unreadable, starting again at one when
+    /// it becomes unavailable, so it reads as "how many rechecks has this been gone for".
+    /// </summary>
     public int ConsecutiveFailures { get; private set; }
 
     public int ChunkCount { get; private set; }
@@ -211,6 +245,80 @@ public class KnowledgeSource : BaseEntity
         LastAttemptedAtUtc = nowUtc;
     }
 
+    /// <summary>
+    /// Records a source its owner has deleted or stopped sharing. It is checked again after the
+    /// schedule's recheck interval rather than retried with backoff, and comes back by itself once it
+    /// can be read again.
+    /// </summary>
+    public void MarkUnavailable(string reason, DateTimeOffset nowUtc)
+    {
+        // Counted afresh on entry, so the count means checks in a row that found it unreadable — which
+        // is what deciding to drop its indexed content needs, not failures of any kind before it.
+        ConsecutiveFailures = Status == KnowledgeSourceStatus.Unavailable ? ConsecutiveFailures + 1 : 1;
+        Status = KnowledgeSourceStatus.Unavailable;
+        StatusReason = Truncate(reason);
+        LastAttemptedAtUtc = nowUtc;
+    }
+
+    /// <summary>
+    /// Whether this source has been found unreadable often enough in a row that what is indexed from it
+    /// should go: an answer citing it would send the reader to a dead link.
+    /// </summary>
+    public bool IsConfirmedUnavailable =>
+        Status == KnowledgeSourceStatus.Unavailable && ConsecutiveFailures >= UnavailableChecksBeforeRemoval;
+
+    /// <summary>Whether the vector index may still hold chunks of this source.</summary>
+    public bool HoldsIndexedContent => ContentHash is not null || ChunkCount > 0 || ImageCount > 0;
+
+    /// <summary>
+    /// Whether the index holds pictures of this source: embedded ones, or ones still owed their embedding.
+    /// The second kind counts too, because their chunks are written — only the image vectors are missing —
+    /// and a source whose every picture was postponed has an <see cref="ImageCount"/> of zero.
+    /// </summary>
+    public bool HoldsIndexedPictures => ImageCount > 0 || ImagesDeferred;
+
+    /// <summary>
+    /// Records that this source's chunks were removed from the index. The content hash goes with them,
+    /// so a source that comes back is written in full rather than judged unchanged against chunks that
+    /// no longer exist.
+    /// </summary>
+    public void MarkIndexedContentRemoved()
+    {
+        ContentHash = null;
+        ChunkCount = 0;
+        ImageCount = 0;
+        ImagesDeferred = false;
+    }
+
+    /// <summary>
+    /// Whether the last attempt went wrong. Such sources are retried last in a run and only a few at a
+    /// time, so a handful of dead links cannot crowd out work that will succeed.
+    /// </summary>
+    public bool IsRetrying => ConsecutiveFailures > 0;
+
+    /// <summary>
+    /// Puts a failed, unavailable or skipped source back in the queue at once, for an operator who knows
+    /// something has changed — an extractor fixed after a site redesign, a document shared again.
+    ///
+    /// Without it nothing could bring a skipped source back: skipping is meant to be permanent, and a
+    /// guide site that changed its markup had every guide skipped as "not a guide page".
+    /// </summary>
+    /// <returns>Whether the source was queued; false when it was not in one of those states.</returns>
+    public bool RequestRetry()
+    {
+        if (Status is not (KnowledgeSourceStatus.Failed or KnowledgeSourceStatus.Unavailable or KnowledgeSourceStatus.Skipped))
+        {
+            return false;
+        }
+
+        // The previous verdict stays readable until the retry replaces it, so an admin listing the queue
+        // can still see why it was there.
+        StatusReason = Truncate($"Queued again by an admin; was {Status}: {StatusReason}");
+        Status = KnowledgeSourceStatus.Pending;
+        ConsecutiveFailures = 0;
+        return true;
+    }
+
     /// <summary>Records an attempt that found nothing new, so re-ingest cadence still advances.</summary>
     public void MarkUnchanged(DateTimeOffset nowUtc)
     {
@@ -228,27 +336,47 @@ public class KnowledgeSource : BaseEntity
     /// Whether this source is worth attempting now. Failures back off exponentially so a permanently
     /// broken link cannot consume a run's whole budget every night.
     /// </summary>
-    public bool IsDueForIngest(DateTimeOffset nowUtc, TimeSpan reingestInterval)
+    public bool IsDueForIngest(DateTimeOffset nowUtc, TimeSpan reingestInterval) =>
+        IsDueForIngest(nowUtc,
+            new KnowledgeSourceSchedule(reingestInterval, KnowledgeSourceSchedule.DefaultUnavailableRecheckInterval));
+
+    /// <inheritdoc cref="IsDueForIngest(DateTimeOffset, TimeSpan)"/>
+    public bool IsDueForIngest(DateTimeOffset nowUtc, KnowledgeSourceSchedule schedule) =>
+        NextAttemptAtUtc(schedule) is { } next && next <= nowUtc;
+
+    /// <summary>
+    /// When this source next comes due, or null when it never does by itself — skipped, disabled, or no
+    /// longer listed by any catalogue. A time in the past means it is due now.
+    ///
+    /// The one place the schedule is decided: the due test is derived from it, so what an admin is
+    /// shown as the next attempt cannot drift from what the queue actually does.
+    /// </summary>
+    public DateTimeOffset? NextAttemptAtUtc(KnowledgeSourceSchedule schedule)
     {
         if (!Enabled || Status == KnowledgeSourceStatus.Skipped || RemovedFromSyncAtUtc is not null)
         {
-            return false;
+            return null;
         }
 
-        if (LastAttemptedAtUtc is not { } lastAttempt)
+        // Never attempted, or put back in the queue by an admin.
+        if (Status == KnowledgeSourceStatus.Pending || LastAttemptedAtUtc is not { } lastAttempt)
         {
-            return true;
+            return DateTimeOffset.MinValue;
+        }
+
+        if (Status == KnowledgeSourceStatus.Unavailable)
+        {
+            return lastAttempt + schedule.UnavailableRecheckInterval;
         }
 
         if (ConsecutiveFailures > 0)
         {
-            var backoff = TimeSpan.FromHours(Math.Pow(2, Math.Min(ConsecutiveFailures, MaxBackoffDoublings)));
-            return nowUtc - lastAttempt >= backoff;
+            return lastAttempt + TimeSpan.FromHours(Math.Pow(2, Math.Min(ConsecutiveFailures, MaxBackoffDoublings)));
         }
 
         // Postponed images make the source incomplete, so it goes back in the queue at once instead
         // of waiting weeks for its pictures.
-        return ImagesDeferred || nowUtc - lastAttempt >= reingestInterval;
+        return ImagesDeferred ? lastAttempt : lastAttempt + schedule.ReingestInterval;
     }
 
     private static string Truncate(string reason) =>

@@ -278,11 +278,14 @@ There is no command for this — just **@-mention the bot** in a message:
 
 You can attach a screenshot to your message and ask about that instead. The bot replies in the
 channel (not privately, so everyone can learn from the answer), cites the guides it used, and attaches
-any guide images it relied on.
+any guide images it relied on. When the guides it found first only answer part of your question, it
+may search them again or look up where a plant grows before answering, which can take up to a minute.
+Anything it adds from general knowledge rather than the guides starts with "Not from the guides:".
 
 ### Asking a follow-up
 **Reply to the bot's answer** and ask your next question. You don't need to mention it again — it
-picks up where the conversation left off.
+picks up where the conversation left off, including the guides and pictures its answer cited, so
+"show me [2] bigger" or "what about Indonesia?" work.
 
 Several people can reply to the same answer at once. Each reply starts its own branch of the
 conversation, so your follow-ups and someone else's never get mixed together. If you reply to
@@ -317,7 +320,9 @@ on a topic.
 ### `/ai status`
 Shows which AI models are currently available, how much of the guide library is indexed, and how much
 of today's request allowance is left. Models excluded at runtime for answering with something that is
-not an answer are listed too, until the bot restarts.
+not an answer are listed too, until the bot restarts. It also says whether the bot's public picture
+address answers (**Picture links**). Pictures the bot has on disk are uploaded with answers and show
+either way; only linked ones depend on it.
 
 No parameters.
 
@@ -330,6 +335,14 @@ These require the **Administrator** permission:
 
 - `/ai sync-sources` — refresh the catalogue of known guide sources.
 - `/ai ingest` — index a batch of guides now. Parameters: `count`, `source-type`, `force`.
+- `/ai sources` — guide sources that failed, were skipped or are unavailable (deleted or no longer
+  shared), with the reason, how many times in a row it happened, and when each will be tried next.
+  Parameters: `status` (needing a look / failed / skipped / unavailable / pending / no longer listed),
+  `source-type`.
+- `/ai source-retry` — queue failed, skipped or unavailable guide sources to be tried again, e.g. after
+  a site's extractor was fixed or a document was shared again. Parameters: `key` (a source key,
+  `type:key` as `/ai sources` shows it, or its link) or `source-type` (every such source of that type);
+  one of the two is required.
 - `/ai feedback` — how answers have been rated: totals, a split by model, and recent comments.
   Parameter: `days` (0 counts everything).
 - `/ai feedback-export` — download the rated conversations as a JSONL file, for working out what to

@@ -34,6 +34,9 @@ public class AiFeedbackTurnConfiguration : IEntityTypeConfiguration<AiFeedbackTu
 
         builder.Property(x => x.ModelId).HasMaxLength(StringLengthConstants.AiModelIdMaxLength);
 
+        // Copied as written from the turn; see AiConversationTurnConfiguration.
+        builder.Property(x => x.ToolCallsJson).HasColumnType("text");
+
         // Stored as text so the value is readable in the database and survives an enum reordering.
         builder.Property(x => x.Role)
             .HasConversion<string>()

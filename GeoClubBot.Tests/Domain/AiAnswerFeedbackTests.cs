@@ -68,6 +68,22 @@ public sealed class AiAnswerFeedbackTests
 
         feedback.Turns[^1].RetrievedSourceUrls.Should().Equal("https://plonkit.net/ghana", "https://plonkit.net/togo");
         feedback.Turns[^1].CitedSourceUrls.Should().Equal("https://plonkit.net/ghana");
+        feedback.Turns[^1].OfferedChunkIds.Should().Equal(Offered, Cited);
+        feedback.Turns[^1].CitedChunkIds.Should().Equal(Cited);
+        feedback.Turns[^1].ToolCallsJson.Should().Be(ToolCalls, "what the model searched for is read beside the rating");
+        feedback.Turns[0].OfferedChunkIds.Should().BeEmpty("a question is offered nothing");
+        feedback.Turns[0].ToolCallsJson.Should().BeNull();
+    }
+
+    [Fact]
+    public void CreateAssistantTurn_StoresABlankToolLogAsNone()
+    {
+        var turn = AiConversationTurn.CreateAssistantTurn(1, 2, 3, 4, null, Bot, "answer", null, null, null, null, 1, Now,
+            toolCallsJson: "  ");
+
+        turn.ToolCallsJson.Should().BeNull();
+        turn.OfferedChunkIds.Should().BeEmpty();
+        turn.CitedChunkIds.Should().BeEmpty();
     }
 
     [Fact]
@@ -161,5 +177,12 @@ public sealed class AiAnswerFeedbackTests
             Bot, content, modelId: "test/model",
             retrievedSourceUrls: ["https://plonkit.net/ghana", "https://plonkit.net/togo"],
             citedSourceUrls: ["https://plonkit.net/ghana"],
-            chunkMessageIds: null, depth: 1, at);
+            chunkMessageIds: null, depth: 1, at,
+            offeredChunkIds: [Offered, Cited],
+            citedChunkIds: [Cited],
+            toolCallsJson: ToolCalls);
+
+    private static readonly Guid Offered = Guid.Parse("8e1d3b0a-0000-0000-0000-000000000001");
+    private static readonly Guid Cited = Guid.Parse("8e1d3b0a-0000-0000-0000-000000000002");
+    private const string ToolCalls = """[{"round":1,"tool":"search_guides"}]""";
 }

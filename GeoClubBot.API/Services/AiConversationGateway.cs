@@ -1,10 +1,12 @@
 using Configuration;
 using Discord;
+using Discord.Net;
 using Discord.WebSocket;
 using GeoClubBot.Discord.InputAdapters.Interactions.AI;
 using GeoClubBot.Discord.Services;
 using MediatR;
 using Microsoft.Extensions.Options;
+using UseCases.OutputPorts.AI;
 using UseCases.UseCases.AI;
 using UseCases.UseCases.AI.Conversations;
 using Utilities;
@@ -24,6 +26,8 @@ public sealed partial class AiConversationGateway(
     IServiceScopeFactory scopeFactory,
     IOptions<AiConfiguration> configuration,
     IOptions<AiFeedbackConfiguration> feedbackConfiguration,
+    IImageRelay imageRelay,
+    IOptions<AiImageRelayConfiguration> imageRelayConfiguration,
     ILogger<AiConversationGateway> logger) : IHostedService
 {
     /// <summary>
@@ -168,15 +172,16 @@ public sealed partial class AiConversationGateway(
             return;
         }
 
-        var rendering = AiAnswerFormatter.Render(result.Value);
-        var posted = await PostAsync(message, rendering).ConfigureAwait(false);
+        var posted = await PostAsync(message, result.Value, imageRelay, imageRelayConfiguration.Value, logger)
+            .ConfigureAwait(false);
 
         await mediator.Send(new RecordAiTurnsCommand(
             message.Id, parentMessageId, posted.LastMessageId, result.Value.ConversationId,
             message.Channel.Id, guildId, message.Author.Id, client.CurrentUser.Id,
             content, attachments, result.Value.Text, result.Value.ModelUsed,
             result.Value.RetrievedSourceUrls, result.Value.CitedSourceUrls,
-            posted.EarlierMessageIds, result.Value.Depth))
+            posted.EarlierMessageIds, result.Value.Depth,
+            result.Value.OfferedChunkIds, result.Value.CitedChunkIds, result.Value.ToolCalls))
             .ConfigureAwait(false);
 
         // Strictly after the turn is recorded. Offering the affordance before the answer is
@@ -213,36 +218,189 @@ public sealed partial class AiConversationGateway(
     /// Posts the answer, replying each chunk to the previous one. The previous implementation sent
     /// continuation chunks as plain channel messages, so a long answer's tail was not a reply and the
     /// message a user would naturally reply to was not the one holding the conversation.
+    ///
+    /// Relayed pictures are uploaded with the final chunk instead of linked (see
+    /// <see cref="AiAnswerPicturePlanner"/> for why), and every file opened for that is closed again
+    /// whichever way the post goes.
     /// </summary>
-    private static async Task<PostedAnswer> PostAsync(SocketUserMessage message, AiAnswerRendering rendering)
+    internal static async Task<PostedAnswer> PostAsync(
+        IUserMessage question,
+        AiAnswer answer,
+        IImageRelay imageRelay,
+        AiImageRelayConfiguration relaySettings,
+        ILogger logger)
     {
-        IUserMessage replyTarget = message;
-        IUserMessage? lastMessage = null;
-        var lastMessageId = message.Id;
-        var earlierMessageIds = new List<ulong>();
+        var files = new Dictionary<string, RelayedImageContent>(StringComparer.Ordinal);
 
-        for (var index = 0; index < rendering.MessageChunks.Count; index++)
+        try
         {
-            var isLast = index == rendering.MessageChunks.Count - 1;
+            await OpenStoredPicturesAsync(answer.Images, imageRelay, files, logger).ConfigureAwait(false);
 
-            var posted = await replyTarget.ReplyAsync(
-                rendering.MessageChunks[index],
-                // Guide images ride on the final chunk so they appear beneath the whole answer.
-                embeds: isLast && rendering.Embeds.Count > 0 ? [.. rendering.Embeds] : null,
-                // Nothing the model writes may ping anyone.
-                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            var plan = AiAnswerPicturePlanner.Plan(
+                answer.Images,
+                files.ToDictionary(
+                    file => file.Key,
+                    file => new StoredPicture(
+                        file.Value.ContentType,
+                        file.Value.Content.CanSeek ? file.Value.Content.Length : null),
+                    StringComparer.Ordinal),
+                relaySettings);
+            LogLinkedPictures(plan, logger);
 
-            if (lastMessage is not null)
+            var rendering = AiAnswerFormatter.Render(answer, plan);
+
+            IUserMessage replyTarget = question;
+            IUserMessage? lastMessage = null;
+            var lastMessageId = question.Id;
+            var earlierMessageIds = new List<ulong>();
+
+            for (var index = 0; index < rendering.MessageChunks.Count; index++)
             {
-                earlierMessageIds.Add(lastMessage.Id);
+                var chunk = rendering.MessageChunks[index];
+
+                // Guide images ride on the final chunk so they appear beneath the whole answer.
+                var posted = index < rendering.MessageChunks.Count - 1
+                    ? await ReplyWithEmbedsAsync(replyTarget, chunk, embeds: []).ConfigureAwait(false)
+                    : await PostFinalChunkAsync(
+                        replyTarget, chunk, rendering, files,
+                        () => AiAnswerFormatter.Render(answer, plan.WithoutUploads()).Embeds,
+                        logger).ConfigureAwait(false);
+
+                if (lastMessage is not null)
+                {
+                    earlierMessageIds.Add(lastMessage.Id);
+                }
+
+                replyTarget = posted;
+                lastMessage = posted;
+                lastMessageId = posted.Id;
             }
 
-            replyTarget = posted;
-            lastMessage = posted;
-            lastMessageId = posted.Id;
+            return new PostedAnswer(lastMessageId, lastMessage, earlierMessageIds);
+        }
+        finally
+        {
+            foreach (var file in files.Values)
+            {
+                await file.Content.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads the relayed pictures from disk. One that cannot be read is treated like one that is not
+    /// there: it is linked instead, and the answer still goes out.
+    /// </summary>
+    private static async Task OpenStoredPicturesAsync(
+        IReadOnlyList<AiAnswerImage> images,
+        IImageRelay imageRelay,
+        Dictionary<string, RelayedImageContent> files,
+        ILogger logger)
+    {
+        foreach (var name in AiAnswerPicturePlanner.RelayedNames(images))
+        {
+            try
+            {
+                if (await imageRelay.ReadAsync(name).ConfigureAwait(false) is { } content)
+                {
+                    files[name] = content;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                LogPictureUnreadable(logger, name, exception);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The final chunk, carrying the pictures. With files to upload it is sent through the channel,
+    /// because Discord.Net's <c>ReplyAsync</c> takes no attachments; the message reference keeps it a reply.
+    /// </summary>
+    private static async Task<IUserMessage> PostFinalChunkAsync(
+        IUserMessage replyTarget,
+        string text,
+        AiAnswerRendering rendering,
+        IReadOnlyDictionary<string, RelayedImageContent> files,
+        Func<IReadOnlyList<Embed>> linkedEmbeds,
+        ILogger logger)
+    {
+        if (rendering.Uploads.Count == 0)
+        {
+            return await ReplyWithEmbedsAsync(replyTarget, text, rendering.Embeds).ConfigureAwait(false);
         }
 
-        return new PostedAnswer(lastMessageId, lastMessage, earlierMessageIds);
+        var attachments = rendering.Uploads
+            .Select(upload => new FileAttachment(files[upload.StoredName].Content, upload.FileName))
+            .ToList();
+
+        try
+        {
+            return await replyTarget.Channel.SendFilesAsync(
+                attachments,
+                text,
+                embeds: [.. rendering.Embeds],
+                // Nothing the model writes may ping anyone.
+                allowedMentions: AllowedMentions.None,
+                messageReference: new MessageReference(replyTarget.Id)).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (IsFailedUpload(exception))
+        {
+            // A failed upload must not cost the answer. Linked pictures may still show; an answer that
+            // never arrives shows nothing, and leaves no message a follow-up could reply to.
+            LogUploadFailed(logger, replyTarget.Id, rendering.Uploads.Count, exception);
+            return await ReplyWithEmbedsAsync(replyTarget, text, linkedEmbeds()).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Whether an upload failed in a way a plain reply with linked pictures very likely would not.
+    ///
+    /// Discord.Net throws <see cref="HttpException"/> only for an error status (over a server's upload
+    /// limit, no Attach Files permission). Everything that goes wrong while the multipart request is being
+    /// sent leaves its request queue unchanged: a reset connection or TLS failure
+    /// (<see cref="HttpRequestException"/>), its <c>HttpClient</c>'s default 100 s timeout
+    /// (<see cref="TaskCanceledException"/>), a picture's file failing mid-read (<see cref="IOException"/>).
+    /// A file over the guild's upload limit is refused before sending with
+    /// <see cref="ArgumentOutOfRangeException"/>. <see cref="PostAsync"/> takes no cancellation token,
+    /// so a cancellation here can only be the transport giving up; if the client is shutting down, the
+    /// fallback reply fails the same way and that failure surfaces.
+    ///
+    /// A transport failure after Discord already stored the message would post the answer twice. That
+    /// is the lesser harm: a missing answer cannot be continued by reply.
+    /// </summary>
+    private static bool IsFailedUpload(Exception exception) =>
+        exception is HttpException
+            or HttpRequestException
+            or IOException
+            or ArgumentOutOfRangeException
+            or OperationCanceledException;
+
+    private static Task<IUserMessage> ReplyWithEmbedsAsync(IUserMessage replyTarget, string text, IReadOnlyList<Embed> embeds) =>
+        replyTarget.ReplyAsync(
+            text,
+            embeds: embeds.Count > 0 ? [.. embeds] : null,
+            // Nothing the model writes may ping anyone.
+            allowedMentions: AllowedMentions.None);
+
+    /// <summary>
+    /// A relayed picture that is linked rather than uploaded may not show, so each one is logged. A
+    /// missing file is a warning: the relay directory is meant to be a volume that outlives redeploys.
+    /// </summary>
+    private static void LogLinkedPictures(AiAnswerPicturePlan plan, ILogger logger)
+    {
+        foreach (var picture in plan.Pictures)
+        {
+            switch (picture.Delivery)
+            {
+                case AiAnswerPictureDelivery.FileMissing:
+                    LogPictureFileMissing(logger, picture.Image.Marker, picture.LinkUrl);
+                    break;
+                case AiAnswerPictureDelivery.TooLarge or AiAnswerPictureDelivery.OverAllowance:
+                    LogPictureNotUploaded(logger, picture.Image.Marker, picture.Delivery, picture.LinkUrl);
+                    break;
+            }
+        }
     }
 
     /// <param name="EarlierMessageIds">
@@ -250,7 +408,7 @@ public sealed partial class AiConversationGateway(
     /// attaches to — so these are stored alongside it to keep a reaction on an earlier part of a long
     /// answer from resolving to nothing.
     /// </param>
-    private sealed record PostedAnswer(
+    internal sealed record PostedAnswer(
         ulong LastMessageId,
         IUserMessage? LastMessage,
         IReadOnlyList<ulong> EarlierMessageIds);
@@ -330,4 +488,16 @@ public sealed partial class AiConversationGateway(
 
     [LoggerMessage(LogLevel.Debug, "Could not add the feedback reactions to answer {MessageId}.")]
     static partial void LogFeedbackPromptFailed(ILogger logger, ulong messageId, Exception exception);
+
+    [LoggerMessage(LogLevel.Warning, "Relayed picture {Name} could not be read; linking it instead.")]
+    static partial void LogPictureUnreadable(ILogger logger, string name, Exception exception);
+
+    [LoggerMessage(LogLevel.Warning, "Relayed picture [{Marker}] is not on disk; linking {LinkUrl}, which shows only if Discord can reach it.")]
+    static partial void LogPictureFileMissing(ILogger logger, int marker, string linkUrl);
+
+    [LoggerMessage(LogLevel.Debug, "Relayed picture [{Marker}] was not uploaded ({Delivery}); linking {LinkUrl}.")]
+    static partial void LogPictureNotUploaded(ILogger logger, int marker, AiAnswerPictureDelivery delivery, string linkUrl);
+
+    [LoggerMessage(LogLevel.Warning, "Uploading {Count} picture(s) in reply to {MessageId} failed; posted the answer with linked pictures instead.")]
+    static partial void LogUploadFailed(ILogger logger, ulong messageId, int count, Exception exception);
 }

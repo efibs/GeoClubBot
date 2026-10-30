@@ -22,8 +22,9 @@ public sealed class OpenRouterModelDto
     public string? Name { get; set; }
 
     /// <summary>
-    /// Prose written by the provider. Read only to recognise guardrail models, which declare exactly
-    /// the same shape as a chat model and can be told apart no other way.
+    /// Prose written by the provider. Read to recognise guardrail models and coding specialists, which
+    /// declare exactly the same shape as a chat model and can be told apart no other way, and for the
+    /// parameter counts many ids leave out ("16B active parameters out of 280B total").
     /// </summary>
     [JsonPropertyName("description")]
     public string? Description { get; set; }
@@ -72,6 +73,39 @@ public sealed class OpenRouterPricingDto
 
     [JsonPropertyName("completion")]
     public string? Completion { get; set; }
+}
+
+/// <summary>
+/// <c>GET /api/v1/models/{author}/{slug}/endpoints</c>: one model and every provider endpoint serving
+/// it. Public and free — no key, no chat allowance — which is what makes reading it on every catalog
+/// refresh affordable.
+/// </summary>
+public sealed class OpenRouterModelEndpointsResponseDto
+{
+    [JsonPropertyName("data")]
+    public OpenRouterModelEndpointsDto? Data { get; set; }
+}
+
+public sealed class OpenRouterModelEndpointsDto
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; set; }
+
+    [JsonPropertyName("endpoints")]
+    public List<OpenRouterEndpointDto>? Endpoints { get; set; }
+}
+
+public sealed class OpenRouterEndpointDto
+{
+    [JsonPropertyName("provider_name")]
+    public string? ProviderName { get; set; }
+
+    /// <summary>
+    /// Percent of the last day's requests the endpoint served. Free models usually have exactly one
+    /// endpoint, so this is how healthy the model is. Absent for an endpoint with no traffic to measure.
+    /// </summary>
+    [JsonPropertyName("uptime_last_1d")]
+    public double? UptimeLastDay { get; set; }
 }
 
 public sealed class OpenRouterTopProviderDto

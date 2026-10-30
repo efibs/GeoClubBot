@@ -23,26 +23,6 @@ public sealed class ProbeReport
 /// <summary>How the reports describe an excerpt.</summary>
 public static class HitDescriptions
 {
-    /// <summary>
-    /// A picture whose only text is its guide's title or section heading: what an extractor falls
-    /// back to for a picture with no caption. The model can say nothing about one.
-    /// </summary>
-    public static bool IsCaptionOnly(KnowledgeHit hit)
-    {
-        if (hit.Kind != KnowledgeChunkKind.Image)
-        {
-            return false;
-        }
-
-        var text = Collapse(hit.Text);
-        return text.Length < 25
-               || text.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(text, hit.Title, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(text, hit.SectionPath, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(text.Replace(" — ", " > ", StringComparison.Ordinal), hit.SectionPath,
-                   StringComparison.OrdinalIgnoreCase);
-    }
-
     /// <summary>A guide name a reader recognises, linked to the excerpt's source.</summary>
     public static string GuideLink(KnowledgeHit hit)
     {

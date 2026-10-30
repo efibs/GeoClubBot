@@ -132,6 +132,19 @@ public static class DependencyInjectionExtensions
         services.AddOptions<AiImageRelayConfiguration>()
             .Bind(config.GetSection(AiImageRelayConfiguration.SectionName));
 
+        // Validated at start-up although the feature is optional: every value has a working default, so
+        // one out of range is a typo worth failing on whether or not the feature is on.
+        services.AddOptions<AiRetrievalConfiguration>()
+            .Bind(config.GetSection(AiRetrievalConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // Validated for the same reason: every value has a working default.
+        services.AddOptions<AiToolsConfiguration>()
+            .Bind(config.GetSection(AiToolsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         // Discord channel logging is optional (gated by ChannelId), so the section is bound
         // without start-up validation — absent the section the sink simply stays disabled.
         services.AddOptions<DiscordLoggingConfiguration>()
