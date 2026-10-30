@@ -175,8 +175,8 @@ public static partial class PlantRangeQuestion
             + @"(?:found|grown|growing|common|native|located|planted|seen|recorded|distributed)\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
 
-        // "which countries have X", "in what countries can I find X"
-        new(@"\b(?:which|what)\s+countries\s+(?:\S+\s+){0,3}?(?:find|see|spot|have|has|grow|grows)\s+" + Thing + ThingEnds,
+        // "which countries have X", "in what countries can I find X"; "what countries does X grow in" is the next one's.
+        new(@"\b(?:which|what)\s+countries\s+(?:\S+\s+){0,3}?(?:find|see|spot|have|has|grow|grows)\s+(?!in\b)" + Thing + ThingEnds,
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
 
         // "which countries is X found in", "what countries does X grow in"

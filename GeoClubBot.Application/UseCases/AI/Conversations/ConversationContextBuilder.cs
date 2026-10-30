@@ -154,8 +154,10 @@ public static class ConversationContextBuilder
 
             path.Add(current);
 
-            if (current.ParentDiscordMessageId is not { } parentId
-                || !byMessageId.TryGetValue(parentId, out var parent))
+            var parent = current.ParentDiscordMessageId is { } parentId
+                ? byMessageId.GetValueOrDefault(parentId)
+                : null;
+            if (parent is null)
             {
                 // Root reached, or a link into turns we no longer store. Either way the walk is done;
                 // a partial prefix is still useful history.

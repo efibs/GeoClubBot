@@ -98,7 +98,8 @@ public sealed class PreviewCountryChallengesHandler(
                 continue;
             }
 
-            List<ClubChallengeResultPlayer> players;
+            // Never read as it is: lets the mutants that remove the catch's continue compile, so they get tested.
+            List<ClubChallengeResultPlayer> players = [];
             try
             {
                 var queryParams = new ReadHighscoresQueryParams { Limit = results.HighscoreLimit, MinRounds = MinRounds };

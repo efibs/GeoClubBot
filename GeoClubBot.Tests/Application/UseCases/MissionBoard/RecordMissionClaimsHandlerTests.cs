@@ -74,6 +74,56 @@ public sealed class RecordMissionClaimsHandlerTests
     }
 
     [Fact]
+    public async Task Handle_StepsOverAFreeMission_ToTheClaimedOnesAfterIt()
+    {
+        // A failure here would be swallowed by the per-club catch, so only the claim itself shows it.
+        _boardReader.ReadCurrentAsync(_clubA, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, Tile(index: 0), Tile(index: 1, claimedBy: "alice"))));
+
+        await CreateHandler().Handle(new RecordMissionClaimsCommand(), CancellationToken.None);
+
+        _added.Should().ContainSingle(c => c.UserId == "alice");
+    }
+
+    [Fact]
+    public async Task Handle_SkipsAMissionWithoutAClaimTime()
+    {
+        _boardReader.ReadCurrentAsync(_clubA, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, Tile(claimedBy: "alice") with { ClaimedAt = null }, Tile(index: 1, claimedBy: "bob"))));
+
+        await CreateHandler().Handle(new RecordMissionClaimsCommand(), CancellationToken.None);
+
+        _added.Should().ContainSingle(c => c.UserId == "bob");
+    }
+
+    [Fact]
+    public async Task Handle_IgnoresACompletionTime_OnAMissionThatIsNotCompleted()
+    {
+        var tile = Tile(claimedBy: "alice", completed: true) with { Completed = false };
+        _boardReader.ReadCurrentAsync(_clubA, Arg.Any<CancellationToken>()).Returns(Week(Board(1, tile)));
+
+        await CreateHandler().Handle(new RecordMissionClaimsCommand(), CancellationToken.None);
+
+        _added.Should().ContainSingle().Which.CompletedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_TakesOverANewClaimant_OnARecordedMission()
+    {
+        var claimedAt = PeriodStart.AddHours(2);
+        var tile = Tile(claimedBy: "bob", claimedAt: claimedAt);
+        var recorded = MissionClaim.Create(_clubA, PeriodStart, PeriodStart.AddDays(7), tile.MissionId, "alice", claimedAt.AddHours(-1), null);
+        _claims.ReadForUpdateByPeriodAsync(_clubA, PeriodStart, Arg.Any<CancellationToken>()).Returns([recorded]);
+        _boardReader.ReadCurrentAsync(_clubA, Arg.Any<CancellationToken>()).Returns(Week(Board(1, tile)));
+
+        await CreateHandler().Handle(new RecordMissionClaimsCommand(), CancellationToken.None);
+
+        recorded.UserId.Should().Be("bob");
+        recorded.ClaimedAt.Should().Be(claimedAt);
+        _added.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Handle_UpdatesARecordedClaim_OnceTheMissionIsCompleted()
     {
         var claimedAt = PeriodStart.AddHours(2);
@@ -110,6 +160,28 @@ public sealed class RecordMissionClaimsHandlerTests
 
         _added.Should().ContainSingle(c => c.ClubId == _clubB);
         await _claims.Received(1).DeleteClaimedBeforeAsync(Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_StopsAtACancellation_InsteadOfTreatingItAsAClubFailure()
+    {
+        _boardReader.ReadPreviousAsync(_clubA, Arg.Any<CancellationToken>()).ThrowsAsync(new OperationCanceledException());
+
+        var act = () => CreateHandler().Handle(new RecordMissionClaimsCommand(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        await _boardReader.DidNotReceive().ReadPreviousAsync(_clubB, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_DeletesOnlyClaimsOlderThanTheRetention()
+    {
+        await CreateHandler().Handle(new RecordMissionClaimsCommand(), CancellationToken.None);
+
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
+        await _claims.Received(1).DeleteClaimedBeforeAsync(
+            Arg.Is<DateTimeOffset>(d => d > cutoff.AddMinutes(-1) && d <= cutoff),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

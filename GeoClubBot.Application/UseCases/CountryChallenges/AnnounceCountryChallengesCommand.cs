@@ -134,7 +134,8 @@ public sealed partial class AnnounceCountryChallengesHandler(
 
             foreach (var country in countries)
             {
-                string challengeId;
+                // Never read as it is: lets the mutants that remove the catch's continue compile, so they get tested.
+                var challengeId = string.Empty;
                 try
                 {
                     challengeId = await CreateChallengeAsync(client, country, cancellationToken).ConfigureAwait(false);

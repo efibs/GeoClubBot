@@ -46,7 +46,7 @@ public sealed class RenderPlayerActivityHandler(
         if (member is not null)
         {
             playersHistoryEntries = playersHistoryEntries
-                .Prepend(ClubMemberHistoryEntry.Create(member.UserId, member.ClubId!.Value, 0, member.JoinedAt))
+                .Prepend(ClubMemberHistoryEntry.Create(member.UserId, member.ClubId ?? clubId.Value, 0, member.JoinedAt))
                 .ToList();
         }
 

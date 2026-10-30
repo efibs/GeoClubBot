@@ -128,6 +128,139 @@ public sealed class ContentChunkerTests
     public void Chunk_HandlesAnEmptyDocument() =>
         ContentChunker.Chunk([], Options).Should().BeEmpty();
 
+    private static readonly ChunkingOptions Tight = new()
+    {
+        TargetCharacters = 15,
+        MaxCharacters = 20,
+        MinCharacters = 0,
+        OverlapCharacters = 0
+    };
+
+    private static string Of(char letter, int count) => new(letter, count);
+
+    private static IReadOnlyList<string> Parts(string text, ChunkingOptions? options = null) =>
+        ContentChunker.Chunk([Text("a", text)], options ?? Tight).Select(chunk => chunk.Text).ToList();
+
+    [Fact]
+    public void Chunk_JoinsParagraphsWithABlankLine_WhileTheyFitTheTarget()
+    {
+        var result = ContentChunker.Chunk([Text("a", "aaaaa\n\nbbbbb\n\ncccccccccc\n\ndddddddddd")], Tight);
+
+        result.Select(chunk => chunk.Text).Should().Equal("aaaaa\n\nbbbbb", "cccccccccc", "dddddddddd");
+        result.Select(chunk => chunk.LocalKey).Should().Equal("a#0", "a#1", "a#2");
+    }
+
+    [Fact]
+    public void Chunk_FillsTheTargetExactly()
+    {
+        var options = Tight with { TargetCharacters = 10 };
+
+        Parts("aaaaa\n\nbbbbb\n\ncccccccccc", options).Should().Equal("aaaaa\n\nbbbbb", "cccccccccc");
+    }
+
+    [Fact]
+    public void Chunk_TrimsEachParagraph()
+    {
+        Parts("  aaaaaaaaaaaaaaa  \n\n   bbbbbbbbbbbbbbb  ").Should().Equal(Of('a', 15), Of('b', 15));
+    }
+
+    [Fact]
+    public void Chunk_CarriesTheTailOfThePreviousPart_IntoTheNext()
+    {
+        var parts = Parts("aaaaaaab\n\ncccccccc\n\ndddddddd", Tight with { TargetCharacters = 10, OverlapCharacters = 3 });
+
+        parts[0].Should().Be("aaaaaaab");
+        parts[1].Should().StartWith("aab\n\n").And.EndWith("cccccccc");
+    }
+
+    [Fact]
+    public void Chunk_CarriesAShortPreviousPartWhole()
+    {
+        var parts = Parts("aaaaaaab\n\ncccccccc\n\ndddddddd", Tight with { TargetCharacters = 10, OverlapCharacters = 100 });
+
+        parts[1].Should().StartWith("aaaaaaab\n\n");
+    }
+
+    [Fact]
+    public void Chunk_CarriesNothing_WithoutAnOverlap()
+    {
+        Parts("aaaaaaaa\n\ncccccccc\n\ndddddddd", Tight with { TargetCharacters = 10 })
+            .Should().Equal("aaaaaaaa", "cccccccc", "dddddddd");
+    }
+
+    [Fact]
+    public void Chunk_KeepsTextOfExactlyTheMaximumWhole()
+    {
+        var result = ContentChunker.Chunk([Text("a", Of('x', 20))], Tight);
+
+        result.Should().ContainSingle().Which.LocalKey.Should().Be("a");
+    }
+
+    [Fact]
+    public void Chunk_CutsAParagraphOverTheMaximumByLength_InOrder()
+    {
+        Parts("aaaaa\n\n" + Of('x', 25) + "\n\nbbbbb").Should().Equal("aaaaa", Of('x', 20), Of('x', 5), "bbbbb");
+    }
+
+    [Fact]
+    public void Chunk_LeavesNoEmptyPart_WhenAParagraphIsAnExactMultipleOfTheMaximum()
+    {
+        Parts(Of('x', 40)).Should().Equal(Of('x', 20), Of('x', 20));
+    }
+
+    [Fact]
+    public void Chunk_TreatsAParagraphOfExactlyTheMaximumLikeAnyOther()
+    {
+        var parts = Parts(Of('a', 20) + "\n\nbbbbb", Tight with { OverlapCharacters = 3 });
+
+        parts[1].Should().StartWith("aaa\n\n");
+    }
+
+    [Fact]
+    public void Chunk_MergesARunOfFragments_UnderTheFirstKey()
+    {
+        var options = Tight with { MinCharacters = 8 };
+
+        var result = ContentChunker.Chunk([Text("a", "aa"), Text("b", "bb"), Text("c", "cc"), Text("d", Of('d', 9))], options);
+
+        // Merging stops once the minimum is reached, so the long chunk stays on its own.
+        result.Select(chunk => chunk.Text).Should().Equal("aa\n\nbb\n\ncc", Of('d', 9));
+        result[0].LocalKey.Should().Be("a");
+    }
+
+    [Fact]
+    public void Chunk_LeavesAChunkOfExactlyTheMinimum_UnmergedWithTheNext()
+    {
+        var options = Tight with { MinCharacters = 5 };
+
+        ContentChunker.Chunk([Text("a", "aaaaa"), Text("b", "bbbbb")], options).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Chunk_MergesUpToExactlyTheMaximum_ButNotPastIt()
+    {
+        var options = Tight with { MinCharacters = 8 };
+
+        ContentChunker.Chunk([Text("a", "aaaaa"), Text("b", Of('b', 15))], options).Should().ContainSingle();
+        ContentChunker.Chunk([Text("a", "aaaaa"), Text("b", Of('b', 16))], options).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Chunk_NeverMergesIntoAPicture()
+    {
+        var options = Tight with { MinCharacters = 8 };
+
+        ContentChunker.Chunk([Text("a", "aa"), Image("b", "caption", "https://img/1.png")], options).Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Chunk_NeedsChunks()
+    {
+        var act = () => ContentChunker.Chunk(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
     private static ExtractedChunk Text(string key, string text, string section = "Guide > Section") =>
         new(key, section, text);
 

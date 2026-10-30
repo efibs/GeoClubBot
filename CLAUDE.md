@@ -75,10 +75,20 @@ and per payload index, and the default limit is exhausted part-way through a run
   into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
   the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
   is gitignored.
-- **Mutation** (`stryker-config.json`, manual/nightly): `dotnet stryker` mutates the Application
-  project and runs the full suite to measure how effectively tests catch bugs. Not on the PR gate
-  (see `.github/workflows/mutation.yml`); `break: 0` so it reports without failing. Run locally with
-  `dotnet tool restore && dotnet stryker`.
+- **Mutation** (`stryker-config.json`, weekly/manual): `dotnet stryker` mutates the Application
+  project to measure how effectively tests catch bugs. Not on the PR gate (see
+  `.github/workflows/mutation.yml`); `break: 0` so it reports without failing. Run locally with
+  `dotnet tool restore && dotnet stryker`. It runs the fast tests only (`test-case-filter`), because
+  every mutant's session would otherwise boot its own containers, and Stryker writes its report only at
+  the very end, so a run cut off by the job timeout leaves nothing. Code only integration tests reach
+  therefore shows as *NoCoverage*: the score is a floor. `ignore-methods` holds `Log*` (all logging is
+  `[LoggerMessage]` partials) and must not hold `ConfigureAwait`: Stryker matches whole call chains, which
+  would exempt every awaited statement and everything inside it. The `Boolean` mutator is ignored instead,
+  to drop the `ConfigureAwait(false)` flips. `Safe Mode! … remove all mutations in X` in the log means one
+  mutant of `X` did not compile and the whole method went unmeasured, usually a local that is only
+  definitely assigned thanks to a `continue` or `break`; give it an initial value or read it outside a
+  pattern. Static lookup tables opt out one by one with `// Stryker disable once String`; the comment
+  covers only the member it precedes, however long that is.
 - **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
   (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
   chunk keys must stay stable or every re-ingest duplicates instead of updating; the AI citation
