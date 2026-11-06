@@ -128,6 +128,23 @@ async function loadClub(id){
       </div><button class="btn btn-primary btn-sm mt-2" onclick="saveClub('${c.clubId}')">Save</button></div>
     </div></div>`;
 
+  // GeoGuessr's club socket: every member, club and board change on this page is also pushed to the
+  // bot as GeoGuessr would. Dropping the connection shows the bot reconnect and read the club again.
+  html+=`<div class="card"><div class="card-header">Socket <span class="badge ${d.socket.live?'bg-success':'bg-secondary'}">${d.socket.live?'bot connected':'no bot connected'}</span></div><div class="card-body">
+    <p class="text-muted small mb-2">Changes on this page are pushed to the bot over the club's socket (joins, leaves, club updates, board changes).</p>
+    <div class="btn-group btn-group-sm mb-2 flex-wrap">
+      <button class="btn btn-outline-secondary" onclick="dropSocket('${c.clubId}')">Drop connection</button>
+      <button class="btn btn-outline-secondary" onclick="dropSocket('${c.clubId}',1012)">Server restart (1012)</button>
+      <button class="btn btn-outline-warning" onclick="dropSocket('${c.clubId}',4100)">Superseded (4100)</button>
+      <button class="btn btn-outline-warning" onclick="dropSocket('${c.clubId}',4200)">Client outdated (4200)</button>
+      <button class="btn btn-outline-danger" onclick="dropSocket('${c.clubId}',1001,'Unauthorized')">Token rejected (1001)</button>
+    </div>
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3"><label class="form-label">Code</label><input class="form-control form-control-sm" id="sf-code" value="ClubMemberJoined"/></div>
+      <div class="col-md-7"><label class="form-label">Payload JSON (empty for none)</label><input class="form-control form-control-sm" id="sf-payload" value='{"user":{"userId":"no-nick"}}'/></div>
+      <div class="col-md-2"><button class="btn btn-primary btn-sm" onclick="sendSocketFrame('${c.clubId}')">Send frame</button></div>
+    </div></div></div>`;
+
   // Members
   html+=`<div class="card"><div class="card-header">Members (${d.members.length})</div><div class="card-body">
     <table class="table table-sm"><thead><tr><th>Nick</th><th>User ID</th><th>XP</th><th>Weekly XP</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead><tbody>`;
@@ -215,6 +232,12 @@ async function saveClub(id){
   loadClub(id);
 }
 async function incrLevel(id){await post('/clubs/'+id+'/level');loadClub(id)}
+async function dropSocket(id,code,reason){
+  const q=new URLSearchParams();if(code)q.set('code',code);if(reason)q.set('reason',reason);
+  const r=await post(`/clubs/${id}/socket/drop?${q}`);alert(`Dropped ${r.dropped} connection(s).`);loadClub(id)}
+async function sendSocketFrame(id){
+  await post(`/clubs/${id}/socket/frame`,{code:document.getElementById('sf-code').value,payload:document.getElementById('sf-payload').value});
+  alert('Sent.')}
 // GeoGuessr's activity types, as observed on the live feed - see Tools/GeoClubBot.ApiProbe/README.md.
 const ACTIVITY_KINDS={1:{label:'Legacy daily mission',xp:20},2:{label:'Legacy weekly mission',xp:1000},3:{label:'Club challenge',xp:0},4:{label:'Daily challenge / duel',xp:20},5:{label:'Board mission',xp:20},6:{label:'Board-clear bonus',xp:100}};
 function activityKindLabel(t){return t==null?'(untyped)':(ACTIVITY_KINDS[t]?.label ?? `Type ${t}`)}
