@@ -92,6 +92,12 @@ public class GeoGuessrConfiguration : IValidatableObject
             {
                 yield return new ValidationResult($"Club {club.ClubId} has an empty NcfaToken.");
             }
+
+            if (club.SocketPollWhileDisconnected <= TimeSpan.Zero)
+            {
+                yield return new ValidationResult(
+                    $"Club {club.ClubId}: {nameof(GeoGuessrClubEntry.SocketPollWhileDisconnected)} must be positive.");
+            }
         }
     }
 }
