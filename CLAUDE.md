@@ -240,6 +240,13 @@ API + Discord (controllers, slash command modules)
   default) moves channels where they belong, recreates missing ones and rewrites permissions that differ
   from `PrivateChannelAccessPolicy`; it is how the old single category was migrated. Tests use
   `TestDoubles/FakeDiscordChannels`, which `MediatorTestHost` registers by default.
+- **GeoGuessr club socket** (`GeoGuessrSocket:Enabled`, on): one WebSocket per club with its own token,
+  topic `club:<id>`; joins/leaves are applied from the pushed payload (fallback: full roster sync),
+  `ClubUpdated` level/name, board updates record claims. Batched 10 s by `ClubEventBatcher`, planned by
+  the pure `ClubEventPlanner`, applied by `ApplyClubEventsCommand`. Every membership writer holds
+  `IClubMemberSyncGate` from roster read to save. The club frames were read from GeoGuessr's client
+  code, not observed — verify with the API probe's `socket` command. See
+  [`Documentation/GeoGuessrSocket.md`](Documentation/GeoGuessrSocket.md).
 - **Club applications** (optional, `ClubApplicationNotifications:Enabled`): `CheckClubApplicationsCommand`
   polls `GET /v4/clubs/{id}/applications` with each club's own token (GeoGuessr answers **404** unless that
   account has `ManageApplications`) and posts new applicants to one channel, pinging only the configured role.
