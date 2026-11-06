@@ -1,26 +1,20 @@
-using Configuration;
 using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
-using UseCases.OutputPorts.Discord;
-using UseCases.OutputPorts.Repositories;
 using Utilities;
 
 namespace UseCases.UseCases.MemberPrivateChannels;
 
 /// <summary>
-/// Brings an archived private channel back: out of the archive category, renamed to the member's
-/// current nickname, retention clock cleared. Used when someone rejoins a club or re-links.
+/// Brings an archived private channel back: into a category of the member's club, renamed to the
+/// member's current nickname, permissions re-applied, retention clock cleared. Used when someone
+/// rejoins a club or re-links.
 /// </summary>
 public sealed record RestoreMemberPrivateChannelCommand(ClubMember? ClubMember) : ICommand<Result>;
 
 public sealed partial class RestoreMemberPrivateChannelHandler(
-    IDiscordTextChannelAccess discordTextChannelAccess,
-    IDiscordMessageAccess discordMessageAccess,
-    IClubMemberRepository clubMembers,
-    IOptions<MemberPrivateChannelsConfiguration> memberPrivateChannelsOptions,
+    MemberPrivateChannelManager manager,
     ILogger<RestoreMemberPrivateChannelHandler> logger)
     : IRequestHandler<RestoreMemberPrivateChannelCommand, Result>
 {
@@ -37,42 +31,18 @@ public sealed partial class RestoreMemberPrivateChannelHandler(
 
         LogRestoringPrivateChannel(logger, clubMember.User.Nickname);
 
-        // Nickname changes are skipped while the member is in no club, so the name can be stale by
-        // the time they come back. Renaming here is the cheapest place to catch up.
-        var channel = new TextChannel(clubMember.PrivateTextChannelId.Value)
+        var result = await PrivateChannelPlacementLock.RunAsync(async () =>
         {
-            Name = MemberPrivateChannelName.For(clubMember.User.Nickname),
-            CategoryId = memberPrivateChannelsOptions.Value.CategoryId
-        };
+            var placement = await manager.LoadAsync(cancellationToken).ConfigureAwait(false);
+            return await manager.RestoreAsync(placement, clubMember, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
 
-        var moved = await discordTextChannelAccess
-            .UpdateTextChannelAsync(channel, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!moved)
+        if (result.IsSuccess)
         {
-            return Error.Unexpected(
-                "member_private_channel.restore_failed",
-                "The Discord channel could not be moved out of the archive category.");
+            LogPrivateChannelRestored(logger, clubMember.User.Nickname, clubMember.PrivateTextChannelId.Value);
         }
 
-        var trackedMember = await clubMembers
-            .ReadForUpdateByUserIdAsync(clubMember.UserId, cancellationToken)
-            .ConfigureAwait(false);
-        trackedMember?.RestorePrivateTextChannel();
-
-        if (clubMember.User.DiscordUserId is not null)
-        {
-            await discordMessageAccess
-                .SendMessageAsync(
-                    $"Welcome back <@{clubMember.User.DiscordUserId.Value}>! Your private channel is active again.",
-                    clubMember.PrivateTextChannelId.Value,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        LogPrivateChannelRestored(logger, clubMember.User.Nickname, clubMember.PrivateTextChannelId.Value);
-        return Result.Success();
+        return result;
     }
 
     [LoggerMessage(LogLevel.Information, "Restoring archived private text channel for club member '{clubMemberNickname}'...")]

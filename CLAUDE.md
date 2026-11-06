@@ -227,6 +227,19 @@ API + Discord (controllers, slash command modules)
   habits. Claims count when they were *claimed* within the period; the open claim is shown whenever it was
   made, so reads reach one board week further back. Shown in the activity embeds, the dashboard and — with
   `ActivityChecker:MissionCompletionSlowestN` — the weekly report. History starts at deployment.
+- **Member private channels**: each linked club member gets a channel only they, the bot and
+  `MemberPrivateChannels:AdminRoleIds` (plus Administrators) can see. Discord caps a category at 50
+  channels, so the bot creates categories **per club** itself (`{club} – Private`, then `… 2`) once one
+  holds `MaxChannelsPerCategory` (45), remembered in `MemberPrivateChannelCategories` (not found by name);
+  a club's category header is visible to its club role and the admin roles. Empty overflow categories
+  (number ≥ 2) are deleted. A club switch moves the channel; a leave archives it into `ArchiveCategoryId`,
+  and a full archive deletes the longest-archived channel. Everything that picks a category goes through
+  `MemberPrivateChannelManager` under `PrivateChannelPlacementLock` (not re-entrant — a holder never sends
+  another locking command), on one REST-read `PrivateChannelPlacement`. `ReconcileMemberPrivateChannelsCommand`
+  (after the start-up sync when `ReconcileOnStartup`, and `/private-channels-admin reconcile`, dry run by
+  default) moves channels where they belong, recreates missing ones and rewrites permissions that differ
+  from `PrivateChannelAccessPolicy`; it is how the old single category was migrated. Tests use
+  `TestDoubles/FakeDiscordChannels`, which `MediatorTestHost` registers by default.
 - **Club applications** (optional, `ClubApplicationNotifications:Enabled`): `CheckClubApplicationsCommand`
   polls `GET /v4/clubs/{id}/applications` with each club's own token (GeoGuessr answers **404** unless that
   account has `ManageApplications`) and posts new applicants to one channel, pinging only the configured role.

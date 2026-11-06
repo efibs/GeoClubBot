@@ -4,6 +4,7 @@ using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 using UseCases.UseCases.ClubMemberActivity.Rules;
+using UseCases.UseCases.MemberPrivateChannels;
 
 namespace GeoClubBot.DependencyInjection.Modules;
 
@@ -30,6 +31,9 @@ public static class ClubMembersModule
         services.AddTransient<ActivityStatusCalculator>();
         services.AddTransient<ActivityAverageXpRollupStep>();
         services.AddTransient<MissionCompletionReportStep>();
+
+        // The private-channel handlers share the category placement logic; it is not a MediatR handler.
+        services.AddScoped<MemberPrivateChannelManager>();
 
         // The weekly rules name activity kinds in configuration; a typo fails start-up rather than
         // the next weekly check.
