@@ -4,7 +4,7 @@ namespace UseCases.UseCases.Club;
 
 /// <summary>
 /// In-memory cache of the last-observed level for each configured club. Lives as a
-/// singleton so the change-detection in <see cref="CheckClubLevelCommand"/> survives across
+/// singleton so the change-detection in <see cref="ApplyClubLevelCommand"/> survives across
 /// scoped handler invocations.
 /// </summary>
 public interface IClubLevelTracker
@@ -17,4 +17,10 @@ public interface IClubLevelTracker
     int? TryGet(Guid clubId);
 
     void Set(Guid clubId, int level);
+
+    /// <summary>
+    /// Exclusive access to one club's level, held across compare, save and announcement, so the
+    /// scheduled check and a pushed level change can't both announce the same level-up.
+    /// </summary>
+    Task<IDisposable> AcquireAsync(Guid clubId, CancellationToken cancellationToken = default);
 }

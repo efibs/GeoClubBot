@@ -22,6 +22,7 @@ public sealed class CheckClubLevelHandlerTests
     private readonly IGeoGuessrClient _secondClient = Substitute.For<IGeoGuessrClient>();
     private readonly IClubRepository _clubs = Substitute.For<IClubRepository>();
     private readonly ISender _sender = Substitute.For<ISender>();
+    private readonly ISender _scopedSender = Substitute.For<ISender>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IClubEventNotifier _notifier = Substitute.For<IClubEventNotifier>();
     private readonly ClubLevelTracker _tracker = new();
@@ -43,14 +44,18 @@ public sealed class CheckClubLevelHandlerTests
             config.WithClub(club, isMain: false);
         }
 
-        var scopes = TestScopes.Serving(services => services
-            .AddSingleton(_sender)
-            .AddSingleton(_clubs)
-            .AddSingleton(_unitOfWork)
-            .AddSingleton(_notifier));
+        // The check reads the level and hands it on; the real ApplyClubLevelHandler acts on it, so
+        // these tests cover the whole scheduled path.
+        var apply = new ApplyClubLevelHandler(
+            _clubs, _tracker, _sender, _unitOfWork, [_notifier], config.BuildOptions(),
+            NullLogger<ApplyClubLevelHandler>.Instance);
+        _scopedSender.Send(Arg.Any<ApplyClubLevelCommand>(), Arg.Any<CancellationToken>())
+            .Returns(call => apply.Handle(call.Arg<ApplyClubLevelCommand>(), call.Arg<CancellationToken>()));
+
+        var scopes = TestScopes.Serving(services => services.AddSingleton(_scopedSender));
 
         return new CheckClubLevelHandler(
-            _clientFactory, _clubs, _tracker, scopes, config.BuildOptions(), NullLogger<CheckClubLevelHandler>.Instance);
+            _clientFactory, scopes, config.BuildOptions(), NullLogger<CheckClubLevelHandler>.Instance);
     }
 
     private void ClubReportsLevel(IGeoGuessrClient client, Guid clubId, int level) =>
@@ -168,5 +173,17 @@ public sealed class CheckClubLevelHandlerTests
         // Both were already known at these levels, so nothing looks like a change.
         await _sender.DidNotReceiveWithAnyArgs().Send(default(SetClubLevelStatusCommand)!, default);
         _tracker.TryGet(SecondClub).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task OneClub_IsTheOnlyOneRead_WhenTheCommandNamesIt()
+    {
+        _tracker.Set(SecondClub, 1);
+        ClubReportsLevel(_secondClient, SecondClub, 1);
+
+        await CreateHandler(SecondClub).Handle(new CheckClubLevelCommand(SecondClub), CancellationToken.None);
+
+        await _mainClient.DidNotReceiveWithAnyArgs().ReadClubAsync(default, default);
+        await _secondClient.Received(1).ReadClubAsync(SecondClub, Arg.Any<CancellationToken>());
     }
 }

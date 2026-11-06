@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GeoClubBot.Tests.TestBuilders;
+using GeoClubBot.Tests.TestDoubles;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -25,6 +26,7 @@ public sealed class SyncClubsHandlerTests
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
 
+    private readonly RecordingClubMemberSyncGate _gate = new();
     private IReadOnlyList<ClubMemberSyncSnapshot>? _saved;
 
     public SyncClubsHandlerTests()
@@ -56,7 +58,7 @@ public sealed class SyncClubsHandlerTests
             .AddSingleton(_members)
             .AddSingleton(_unitOfWork));
 
-        return new SyncClubsHandler(_clientFactory, scopes, _rootSender, config.BuildOptions())
+        return new SyncClubsHandler(_clientFactory, scopes, _rootSender, _gate, config.BuildOptions())
             .Handle(new SyncClubsCommand(), CancellationToken.None);
     }
 
@@ -156,5 +158,28 @@ public sealed class SyncClubsHandlerTests
 
         _saved!.Select(s => s.UserId).Should().BeEquivalentTo("a", "b");
         await _rootSender.Received(1).Send(Arg.Any<SaveClubMembersCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HoldsTheMemberSyncGate_FromTheRosterReadUntilTheSave()
+    {
+        var heldDuringRead = false;
+        var heldDuringSave = false;
+        _mainClient.ReadClubAsync(MainClub, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            heldDuringRead = _gate.IsHeld;
+            return GeoGuessrDtos.Club(MainClub, 7, "Main");
+        });
+        _rootSender.Send(Arg.Any<SaveClubMembersCommand>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            heldDuringSave = _gate.IsHeld;
+            return Unit.Value;
+        });
+
+        await HandleAsync();
+
+        heldDuringRead.Should().BeTrue();
+        heldDuringSave.Should().BeTrue();
+        _gate.IsHeld.Should().BeFalse();
     }
 }

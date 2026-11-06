@@ -10,16 +10,27 @@ using UseCases.UseCases.ClubMembers;
 
 namespace UseCases.UseCases.Club;
 
+/// <summary>
+/// Reads every configured club from GeoGuessr and brings the stored clubs and memberships in line:
+/// members missing from a club's roster leave it, new ones join, and someone found in another
+/// configured club switches. Always all clubs at once, because only then is a leave from one club
+/// recognised as half of a switch.
+/// </summary>
 public sealed record SyncClubsCommand : ICommand;
 
 public sealed class SyncClubsHandler(
     IGeoGuessrClientFactory geoGuessrClientFactory,
     IServiceScopeFactory scopeFactory,
     ISender mediator,
+    IClubMemberSyncGate memberSyncGate,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig) : IRequestHandler<SyncClubsCommand, Unit>
 {
     public async Task<Unit> Handle(SyncClubsCommand request, CancellationToken cancellationToken)
     {
+        // Held from before the rosters are read until the save (and its member events) is done, so a
+        // push event applied in between can't be overwritten by this older read.
+        await using var gate = await memberSyncGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+
         var mainClubId = geoGuessrConfig.Value.MainClub.ClubId;
 
         var perClubSnapshots = await Task.WhenAll(geoGuessrConfig.Value.Clubs.Select(async configClub =>
