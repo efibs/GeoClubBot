@@ -24,6 +24,14 @@
         <ProjectReference Include="..\Tools\GeoClubBot.RetrievalProbe\GeoClubBot.RetrievalProbe.csproj" />
     </ItemGroup>
 
+    <!-- The API probe's guards, compiled in rather than referenced: a ProjectReference would copy the
+         probe's appsettings.Local.json, which holds a real _ncfa token, into the test output. Both
+         files are self-contained. -->
+    <ItemGroup>
+        <Compile Include="..\Tools\GeoClubBot.ApiProbe\ReadOnlySocketGuard.cs" Link="Tools\ApiProbe\ReadOnlySocketGuard.cs" />
+        <Compile Include="..\Tools\GeoClubBot.ApiProbe\TokenRedactor.cs" Link="Tools\ApiProbe\TokenRedactor.cs" />
+    </ItemGroup>
+
     <ItemGroup>
         <!-- Captured upstream payloads, so extractor/adapter tests parse real shapes without network. -->
         <Content Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
