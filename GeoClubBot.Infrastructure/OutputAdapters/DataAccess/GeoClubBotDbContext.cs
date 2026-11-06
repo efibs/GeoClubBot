@@ -41,6 +41,8 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<MissionClaim> MissionClaims { get; set; }
 
+    public DbSet<MemberPrivateChannelCategory> MemberPrivateChannelCategories { get; set; }
+
     public DbSet<ClubApplicationNotification> ClubApplicationNotifications { get; set; }
 
     public DbSet<AiDailyBudget> AiDailyBudgets { get; set; }

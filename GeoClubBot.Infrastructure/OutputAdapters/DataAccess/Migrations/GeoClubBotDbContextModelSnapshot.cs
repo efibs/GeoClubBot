@@ -18,7 +18,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.13")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -795,6 +795,25 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("KnowledgeSources");
                 });
 
+            modelBuilder.Entity("Entities.MemberPrivateChannelCategory", b =>
+                {
+                    b.Property<decimal>("CategoryId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("integer");
+
+                    b.HasKey("CategoryId");
+
+                    b.HasIndex("ClubId", "Index")
+                        .IsUnique();
+
+                    b.ToTable("MemberPrivateChannelCategories");
+                });
+
             modelBuilder.Entity("Entities.MissionBoardAlert", b =>
                 {
                     b.Property<int>("Id")
@@ -939,6 +958,15 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .WithMany()
                         .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Entities.MemberPrivateChannelCategory", b =>
+                {
+                    b.HasOne("Entities.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Entities.AiAnswerFeedback", b =>

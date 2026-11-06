@@ -26,6 +26,7 @@ public static class PersistenceModule
         services.AddTransient<IStrikesRepository, EfStrikesRepository>();
         services.AddTransient<IExcusesRepository, EfExcusesRepository>();
         services.AddTransient<IClubMemberRepository, EfClubMemberRepository>();
+        services.AddTransient<IMemberPrivateChannelCategoryRepository, EfMemberPrivateChannelCategoryRepository>();
         services.AddTransient<IGeoGuessrUserRepository, EfGeoGuessrUserRepository>();
         services.AddTransient<IAccountLinkingRequestRepository, EfAccountLinkingRequestRepository>();
         services.AddTransient<IClubChallengeRepository, EfClubChallengeRepository>();

@@ -55,6 +55,11 @@ Examples in use:
 | `member_private_channel.delete_failed` | `DeleteMemberPrivateChannelCommand` | `Unexpected` |
 | `member_private_channel.archive_failed` | `ArchiveMemberPrivateChannelCommand` | `Unexpected` |
 | `member_private_channel.restore_failed` | `RestoreMemberPrivateChannelCommand` | `Unexpected` |
+| `member_private_channel.move_failed` | `MoveMemberPrivateChannelToClubCommand` | `Unexpected` |
+| `member_private_channel.create_failed` | `CreateMemberPrivateChannelCommand`, reconcile | `Unexpected` |
+| `member_private_channel.category_create_failed` | create / restore / move, reconcile | `Unexpected` |
+| `member_private_channel.archive_full` | `ArchiveMemberPrivateChannelCommand`, reconcile | `Conflict` |
+| `member_private_channel.not_eligible` / `.not_in_club` | create / restore / move | `Validation` |
 
 Rules:
 

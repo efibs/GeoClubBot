@@ -1,5 +1,6 @@
 using Configuration;
 using FluentValidation;
+using GeoClubBot.Tests.TestDoubles;
 using Infrastructure.OutputAdapters.DataAccess;
 using Infrastructure.OutputAdapters.Repositories;
 using MediatR;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using UseCases.Behaviors;
+using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
@@ -19,6 +21,7 @@ using UseCases.UseCases.AI.Tools;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
+using UseCases.UseCases.MemberPrivateChannels;
 
 namespace GeoClubBot.Tests.Integration.UseCases;
 
@@ -73,6 +76,9 @@ public sealed class MediatorTestHost : IDisposable
         RegisterPersistence(services);
         RegisterInternalApplicationServices(services);
         RegisterConfigurationOptions(services, configuration);
+        // Channel placement counts and moves channels, which a substitute can't model: an in-memory
+        // server stands in for it (Mock<IDiscordTextChannelAccess>() returns it, as a FakeDiscordChannels).
+        services.AddSingleton<IDiscordTextChannelAccess, FakeDiscordChannels>();
         RegisterExternalPortSubstitutes(services, applicationAssembly);
 
         configure?.Invoke(services);
@@ -156,6 +162,9 @@ public sealed class MediatorTestHost : IDisposable
         // Mirrors AiServices: a question asking where a plant is found looks it up before answering,
         // through the substituted species reader, whose default (failed) result offers nothing.
         services.AddSingleton<PlantRangeLookAhead>();
+
+        // Mirrors ClubMembersModule: the private-channel handlers share the category placement logic.
+        services.AddScoped<MemberPrivateChannelManager>();
     }
 
     private static void RegisterConfigurationOptions(IServiceCollection services, IConfiguration configuration)

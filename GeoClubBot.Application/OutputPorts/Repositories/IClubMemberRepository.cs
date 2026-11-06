@@ -27,5 +27,12 @@ public interface IClubMemberRepository
     Task<List<ClubMember>> ReadMembersWithExpiredArchivedPrivateChannelsAsync(DateTimeOffset threshold,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Members in no club whose private channel is archived, the longest-archived first: the order in
+    /// which channels make room when the archive category is full.
+    /// </summary>
+    Task<List<ClubMember>> ReadMembersWithArchivedPrivateChannelsOldestFirstAsync(
+        CancellationToken cancellationToken = default);
+
     Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync(CancellationToken cancellationToken = default);
 }

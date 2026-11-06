@@ -1,5 +1,6 @@
 using Entities;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.SelfRoles;
@@ -18,14 +19,17 @@ public sealed class SelfRolesUseCaseIntegrationTests(PostgresFixture fixture)
 {
     private const ulong SelfRolesChannelId = 123456UL;
 
+    // The host's default channel port is an in-memory server; these tests stub single calls instead.
     private MediatorTestHost CreateHost() =>
-        new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>
-        {
-            ["SelfRoles:TextChannelId"] = SelfRolesChannelId.ToString(),
-            ["SelfRoles:Roles:0:RoleId"] = "99",
-            ["SelfRoles:Roles:0:RoleEmoji"] = "X",
-            ["SelfRoles:Roles:0:RoleDescription"] = "A role",
-        });
+        new(fixture.ConnectionString,
+            services => services.AddSingleton(Substitute.For<IDiscordTextChannelAccess>()),
+            configurationValues: new Dictionary<string, string?>
+            {
+                ["SelfRoles:TextChannelId"] = SelfRolesChannelId.ToString(),
+                ["SelfRoles:Roles:0:RoleId"] = "99",
+                ["SelfRoles:Roles:0:RoleEmoji"] = "X",
+                ["SelfRoles:Roles:0:RoleDescription"] = "A role",
+            });
 
     [Fact]
     public async Task UpdateSelfRolesMessage_SendsANewMessage_WhenNonePreviouslyExists()
