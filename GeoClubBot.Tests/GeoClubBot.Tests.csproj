@@ -42,6 +42,7 @@
         <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
         <PackageReference Include="Verify.Xunit" Version="31.12.5" />
         <PackageReference Include="CsCheck" Version="5.0.0" />
+        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
     </ItemGroup>
 
 </Project>

@@ -65,6 +65,21 @@ public class ArchitectureTests
     }
 
     [Fact]
+    public void Application_should_not_hold_sockets()
+    {
+        // GeoGuessr's club socket is an input adapter: the Application layer only sees the events it
+        // decodes (ClubPushEvent), never the connection.
+        var result = Types.InAssembly(ApplicationAssembly)
+            .ShouldNot()
+            .HaveDependencyOn("System.Net.WebSockets")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(
+            "socket handling belongs to Infrastructure, but these types violate it: {0}",
+            FailingTypes(result));
+    }
+
+    [Fact]
     public void Application_should_not_depend_on_ai_vendor_libraries()
     {
         // The previous AI implementation leaked its vendor SDK across the layers, which is a large
