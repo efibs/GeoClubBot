@@ -22,6 +22,7 @@ public sealed partial class GeoGuessrSocketService(
     ClubEventBatcher batcher,
     IGeoGuessrSocketConnector connector,
     SocketFrameReports reports,
+    ClubChatChannels chats,
     IOptions<GeoGuessrSocketConfiguration> socketOptions,
     IOptions<GeoGuessrConfiguration> geoGuessrOptions,
     TimeProvider timeProvider,
@@ -41,7 +42,7 @@ public sealed partial class GeoGuessrSocketService(
                 if (club.GetUseSocket(socket))
                 {
                     var supervisor = new ClubSocketSupervisor(
-                        club, connector, batcher, reports, socket, timeProvider,
+                        club, connector, batcher, reports, chats, socket, timeProvider,
                         loggerFactory.CreateLogger<ClubSocketSupervisor>());
                     loops.Add(supervisor.RunAsync(stoppingToken));
                 }

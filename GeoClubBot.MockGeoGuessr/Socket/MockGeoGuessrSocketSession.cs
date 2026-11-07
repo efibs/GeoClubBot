@@ -18,9 +18,15 @@ public sealed class MockGeoGuessrSocketSession(MockClubSocketHub hub) : IGeoGues
     {
         using var document = JsonDocument.Parse(frame);
         var root = document.RootElement;
-        if (root.TryGetProperty("code", out var code) && code.GetString() == "Subscribe")
+        var topic = root.TryGetProperty("topic", out var topicElement) ? topicElement.GetString() : null;
+        switch (root.TryGetProperty("code", out var code) ? code.GetString() : null)
         {
-            hub.Subscribe(this, root.TryGetProperty("topic", out var topic) ? topic.GetString() : null);
+            case "Subscribe":
+                hub.Subscribe(this, topic);
+                break;
+            case "ChatMessage":
+                hub.ReceiveChat(topic, root.TryGetProperty("payload", out var payload) ? payload.GetString() : null);
+                break;
         }
 
         // HeartBeat: the real server doesn't answer it either.

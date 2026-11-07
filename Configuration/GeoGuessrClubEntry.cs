@@ -40,6 +40,12 @@ public class GeoGuessrClubEntry
     public bool? NotifyApplications { get; set; }
 
     /// <summary>
+    /// Whether Discord messages can be forwarded into this club's chat (see <see cref="ClubChatForwardingConfiguration"/>).
+    /// Defaults to true.
+    /// </summary>
+    public bool? ForwardChat { get; set; }
+
+    /// <summary>
     /// Whether this club's events are received over GeoGuessr's socket (see <see cref="GeoGuessrSocketConfiguration"/>).
     /// Defaults to true; off, the club is refreshed every <see cref="GetSocketPollWhileDisconnected"/> instead.
     /// </summary>

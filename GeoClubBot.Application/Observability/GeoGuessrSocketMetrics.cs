@@ -29,6 +29,11 @@ public static class GeoGuessrSocketMetrics
         unit: "{batch}",
         description: "Batches of GeoGuessr socket events applied.");
 
+    public static readonly Counter<long> ChatForwards = HandlerMetrics.Meter.CreateCounter<long>(
+        name: "geoclubbot.geoguessr_socket.chat_forwards",
+        unit: "{forward}",
+        description: "Discord messages forwarded into a club's chat, by outcome and whether the live socket carried them.");
+
     public static readonly UpDownCounter<long> LiveClubs = HandlerMetrics.Meter.CreateUpDownCounter<long>(
         name: "geoclubbot.geoguessr_socket.live_clubs",
         unit: "{club}",

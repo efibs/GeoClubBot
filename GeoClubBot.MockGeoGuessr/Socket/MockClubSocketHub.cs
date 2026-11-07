@@ -58,8 +58,7 @@ public sealed class MockClubSocketHub(MockGeoGuessrDataStore store)
 
     internal void Subscribe(MockGeoGuessrSocketSession session, string? topic)
     {
-        var known = topic is not null && topic.StartsWith("club:", StringComparison.Ordinal)
-                    && Guid.TryParse(topic["club:".Length..], out var clubId) && store.Clubs.ContainsKey(clubId);
+        var known = (ClubOf(topic, ClubTopicPrefix) ?? ClubOf(topic, ChatTopicPrefix)) is { } clubId && store.Clubs.ContainsKey(clubId);
         if (known)
         {
             session.AddTopic(topic!);
@@ -70,6 +69,55 @@ public sealed class MockClubSocketHub(MockGeoGuessrDataStore store)
             session.Deliver(Frame("SubscribeDenied", topic, null));
         }
     }
+
+    /// <summary>
+    /// A message written into a club's chat: stored as GeoGuessr would (cut at 300 characters) and,
+    /// unless the club's echoes are dropped, sent back to every socket on the chat's topic.
+    /// </summary>
+    internal void ReceiveChat(string? topic, string? text)
+    {
+        if (ClubOf(topic, ChatTopicPrefix) is not { } clubId || !store.Clubs.ContainsKey(clubId) || string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        var stored = text.Length > MaxChatLength ? text[..MaxChatLength] : text;
+        var echoed = !store.ChatEchoesDropped.GetValueOrDefault(clubId);
+        var message = new MockChatMessage(Guid.NewGuid().ToString("N")[..10], stored, DateTimeOffset.UtcNow, echoed);
+        store.ClubChats.GetOrAdd(clubId, _ => new ConcurrentQueue<MockChatMessage>()).Enqueue(message);
+        if (!echoed)
+        {
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            id = message.Id,
+            payloadType = "Text",
+            textPayload = message.Text,
+            sourceType = "User",
+            sourceId = "mock-bot-account",
+            recipientId = clubId.ToString("D"),
+            sentAt = message.SentAt,
+            roomId = clubId.ToString("D"),
+        }, PayloadOptions);
+        var frame = Frame("ChatMessage", topic, payload);
+        foreach (var session in _sessions.Keys.Where(s => s.IsSubscribedTo(topic!)))
+        {
+            session.Deliver(frame);
+        }
+    }
+
+    private const string ClubTopicPrefix = "club:";
+    private const string ChatTopicPrefix = "chat:Club:TextMessages:";
+
+    /// <summary>GeoGuessr silently cuts a chat message here.</summary>
+    private const int MaxChatLength = 300;
+
+    private static Guid? ClubOf(string? topic, string prefix) =>
+        topic is not null && topic.StartsWith(prefix, StringComparison.Ordinal) && Guid.TryParse(topic[prefix.Length..], out var clubId)
+            ? clubId
+            : null;
 
     internal void Remove(MockGeoGuessrSocketSession session) => _sessions.TryRemove(session, out _);
 

@@ -16,6 +16,9 @@ public abstract record DecodedClubFrame
 
     public sealed record SubscribeDenied(string? Topic) : DecodedClubFrame;
 
+    /// <summary>A message in the club's chat, whoever wrote it: the bot's own confirm a forward.</summary>
+    public sealed record ChatMessage(string Text, string? MessageId, string? SenderId) : DecodedClubFrame;
+
     /// <summary>A known frame the bot has no use for, or one about another topic.</summary>
     public sealed record Ignored(string Code) : DecodedClubFrame;
 
@@ -41,6 +44,7 @@ public static class ClubFrameDecoder
     public const string MemberLeft = "ClubMemberLeft";
     public const string ClubUpdated = "ClubUpdated";
     public const string MissionBoardUpdated = "ClubMissionBoardUpdated";
+    public const string ChatMessageCode = "ChatMessage";
 
     /// <summary>Codes the site's client handles that the bot has no use for.</summary>
     private static readonly FrozenSet<string> IgnoredCodes = FrozenSet.ToFrozenSet(
@@ -78,6 +82,8 @@ public static class ClubFrameDecoder
                 case MemberJoined or MemberLeft or ClubUpdated or MissionBoardUpdated
                     when !string.Equals(topic, SocketTopics.Club(clubId), StringComparison.OrdinalIgnoreCase):
                     return new DecodedClubFrame.Ignored(code);
+                case ChatMessageCode when string.Equals(topic, SocketTopics.ClubChat(clubId), StringComparison.OrdinalIgnoreCase):
+                    return DecodeChatMessage(root);
             }
 
             var order = new PushOrder(ReadTimestamp(root), 0);
@@ -97,6 +103,24 @@ public static class ClubFrameDecoder
         {
             return new DecodedClubFrame.Malformed();
         }
+    }
+
+    /// <summary>
+    /// The payload is a chat message: <c>{id, payloadType, textPayload, sourceType, sourceId,
+    /// recipientId, sentAt, roomId}</c>, as observed for direct messages. One without text (a poll,
+    /// a picture) is of no use to the bot.
+    /// </summary>
+    private static DecodedClubFrame DecodeChatMessage(JsonElement root)
+    {
+        using var payload = ReadPayload(root);
+        if (payload?.RootElement is { ValueKind: JsonValueKind.Object } message
+            && message.TryGetProperty("textPayload", out var text) && text.ValueKind == JsonValueKind.String
+            && text.GetString() is { } body)
+        {
+            return new DecodedClubFrame.ChatMessage(body, ReadString(message, "id"), ReadString(message, "sourceId"));
+        }
+
+        return new DecodedClubFrame.Ignored(ChatMessageCode);
     }
 
     /// <summary>The payload is an item of <c>/v4/clubs/{id}/members</c>: the bot needs its user's id and nick, its XP and when they joined.</summary>

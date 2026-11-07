@@ -19,6 +19,7 @@ using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
 using UseCases.UseCases.Club;
+using UseCases.UseCases.ClubChatForwarding;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 using UseCases.UseCases.ClubMembers;
@@ -167,6 +168,9 @@ public sealed class MediatorTestHost : IDisposable
 
         // Mirrors ClubMembersModule: the private-channel handlers share the category placement logic.
         services.AddScoped<MemberPrivateChannelManager>();
+
+        // Mirrors GeoGuessrSocketModule: the club chat forward's form and send share who may forward where.
+        services.AddScoped<ClubChatForwardingAccess>();
     }
 
     private static void RegisterConfigurationOptions(IServiceCollection services, IConfiguration configuration)

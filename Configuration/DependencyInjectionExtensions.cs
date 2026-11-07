@@ -78,6 +78,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<ClubChatForwardingConfiguration>()
+            .Bind(config.GetSection(ClubChatForwardingConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<SwapSuggestionsConfiguration>()
             .Bind(config.GetSection(SwapSuggestionsConfiguration.SectionName))
             .ValidateDataAnnotations()

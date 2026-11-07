@@ -42,6 +42,12 @@ public class MockGeoGuessrDataStore
     /// </summary>
     public ConcurrentDictionary<Guid, ConcurrentDictionary<string, ClubMemberUserDto>> ClubApplications { get; } = new();
 
+    /// <summary>Messages written into each club's chat over the socket, oldest first, as GeoGuessr stored them.</summary>
+    public ConcurrentDictionary<Guid, ConcurrentQueue<MockChatMessage>> ClubChats { get; } = new();
+
+    /// <summary>Clubs whose chat stores messages without echoing them back, to try out an unconfirmed forward.</summary>
+    public ConcurrentDictionary<Guid, bool> ChatEchoesDropped { get; } = new();
+
     /// <summary>
     /// Weekly mission boards indexed by ClubId, created on first use.
     /// </summary>
@@ -101,3 +107,6 @@ public class MockGeoGuessrDataStore
         });
     }
 }
+
+/// <param name="Echoed">Whether it was sent back to the subscribed sockets, which is what confirms a forward.</param>
+public sealed record MockChatMessage(string Id, string Text, DateTimeOffset SentAt, bool Echoed);

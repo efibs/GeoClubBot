@@ -19,4 +19,15 @@ public class DiscordDiscordMemberPermissionAccess(
 
         return Task.FromResult(user?.GuildPermissions.Administrator == true);
     }
+
+    public Task<bool> IsAdministratorOrHasAnyRoleAsync(ulong discordUserId, IReadOnlyCollection<ulong> roleIds, CancellationToken cancellationToken = default)
+    {
+        var user = client.GetGuild(config.Value.ServerId)?.GetUser(discordUserId);
+        if (user is null)
+        {
+            return Task.FromResult(false);
+        }
+
+        return Task.FromResult(user.GuildPermissions.Administrator || user.Roles.Any(role => roleIds.Contains(role.Id)));
+    }
 }

@@ -30,6 +30,7 @@ public sealed partial class ClubSocketSupervisor(
     IGeoGuessrSocketConnector connector,
     IClubEventSink sink,
     SocketFrameReports reports,
+    ClubChatChannels chats,
     GeoGuessrSocketConfiguration options,
     TimeProvider timeProvider,
     ILogger<ClubSocketSupervisor> logger)
@@ -118,12 +119,14 @@ public sealed partial class ClubSocketSupervisor(
             Report(state);
             MarkCovered(connected: true);
             GeoGuessrSocketMetrics.LiveClubs.Add(1);
+            var chat = chats.Attach(club.ClubId, session);
             try
             {
                 denied = await ReadUntilClosedAsync(session, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
+                chat.Dispose();
                 GeoGuessrSocketMetrics.LiveClubs.Add(-1);
                 MarkCovered(connected: false);
             }
@@ -202,8 +205,26 @@ public sealed partial class ClubSocketSupervisor(
     /// <returns>Whether the frame was GeoGuessr refusing the club's topic.</returns>
     private bool Handle(string frame)
     {
-        switch (ClubFrameDecoder.Decode(frame, club.ClubId))
+        var decoded = ClubFrameDecoder.Decode(frame, club.ClubId);
+        switch (decoded)
         {
+            // The chat topic is only subscribed while forwarding; its answers concern the forward, not the club's socket.
+            case DecodedClubFrame.ChatMessage:
+                RecordFrame(ClubFrameDecoder.ChatMessageCode, "chat");
+                chats.Offer(club.ClubId, decoded);
+                return false;
+
+            case DecodedClubFrame.Subscribed chatSubscribed when IsChatTopic(chatSubscribed.Topic):
+                RecordFrame("Subscribed", "chat");
+                chats.Offer(club.ClubId, decoded);
+                return false;
+
+            case DecodedClubFrame.SubscribeDenied chatDenied when IsChatTopic(chatDenied.Topic):
+                RecordFrame("SubscribeDenied", "chat");
+                LogChatDenied(club.ClubId);
+                chats.Offer(club.ClubId, decoded);
+                return false;
+
             case DecodedClubFrame.Push push:
                 RecordFrame(push.Code, push.PayloadUnusable ? "fallback" : "event");
                 if (push.FieldSet is { } fields && reports.FirstTime($"fields:{push.Code}:{fields}"))
@@ -255,6 +276,9 @@ public sealed partial class ClubSocketSupervisor(
                 return false;
         }
     }
+
+    private bool IsChatTopic(string? topic) =>
+        string.Equals(topic, SocketTopics.ClubChat(club.ClubId), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// While the club has no live socket, asks for a refresh whenever it went a whole interval
@@ -431,6 +455,9 @@ public sealed partial class ClubSocketSupervisor(
         "GeoGuessr refused the socket topic of club {ClubId}: its NcfaToken probably belongs to an account outside the club. " +
         "Retrying in {Delay}.")]
     partial void LogSubscribeDenied(Guid clubId, TimeSpan delay);
+
+    [LoggerMessage(LogLevel.Warning, "GeoGuessr refused the chat of club {ClubId} to its account; forwards to it fail.")]
+    partial void LogChatDenied(Guid clubId);
 
     [LoggerMessage(LogLevel.Information,
         "GeoGuessr's socket for club {ClubId} is back (down since {Since:u}); the club is read again for what was missed.")]

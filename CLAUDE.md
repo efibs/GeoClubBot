@@ -71,7 +71,7 @@ and per payload index, and the default limit is exhausted part-way through a run
   Tests that set the static `ConfiguredCronJobAttribute.Config` share the non-parallel
   `ConfiguredCronJobCollection`.
 - **Snapshot** (`Discord/*FormatterTests`, `Application/UseCases/CountryChallenges/CountryChallengeMessagesTests`,
-  `AI/SpeciesRangeExcerptTests`, fast): `Verify.Xunit` captures whole rendered messages
+  `AI/SpeciesRangeExcerptTests`, `Application/UseCases/ClubChatForwarding/DiscordTextFlattenerTests`, fast): `Verify.Xunit` captures whole rendered messages
   into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
   the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
   is gitignored.
@@ -95,7 +95,8 @@ and per payload index, and the default limit is exhausted part-way through a run
   resolver, whose numbers must run 1..k and all lead somewhere, ranges and copied prompt notes included;
   the retrieval fusion, which must never offer the same text twice nor show a picture under another
   guide's link; the guide-source schedule, whose next attempt shown is exactly when the queue takes the
-  source; the country pool rotation, where every round must be a permutation of the
+  source; the club chat splitter, whose parts never pass GeoGuessr's limit and lose nothing; the
+  country pool rotation, where every round must be a permutation of the
   pool; the leaderboard ranking, where ties share a rank) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
@@ -247,6 +248,15 @@ API + Discord (controllers, slash command modules)
   `IClubMemberSyncGate` from roster read to save. The club frames were read from GeoGuessr's client
   code, not observed — verify with the API probe's `socket` command. See
   [`Documentation/GeoGuessrSocket.md`](Documentation/GeoGuessrSocket.md).
+- **Club chat forwarding** (optional, `ClubChatForwarding:Enabled`): the message command "📢 Send to club
+  chat" (hidden from non-administrators; `AdminRoleIds` re-checked in `ClubChatForwardingAccess`) opens a
+  form built per message with `ModalBuilder`: the text as plain text (`DiscordTextFlattener`, pure) put
+  into `Template`, a checkbox per club (`ForwardChat: false` leaves a club out), how many messages it
+  takes and earlier forwards of the message (`ClubChatForwards`). GeoGuessr cuts chat messages to 300
+  characters, so `ClubChatTextSplitter` numbers parts `(1/n)`. The send is a `ChatMessage` frame on
+  `chat:Club:TextMessages:<clubId>` with the club's own token, on its live socket (`ClubChatChannels`)
+  or a connection of its own; each part waits for GeoGuessr's echo and nothing is ever resent. The club
+  topic is unverified live. See [`Documentation/GeoGuessrSocket.md`](Documentation/GeoGuessrSocket.md).
 - **Club applications** (optional, `ClubApplicationNotifications:Enabled`): `CheckClubApplicationsCommand`
   polls `GET /v4/clubs/{id}/applications` with each club's own token (GeoGuessr answers **404** unless that
   account has `ManageApplications`) and posts new applicants to one channel, pinging only the configured role.
