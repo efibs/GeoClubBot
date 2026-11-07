@@ -18,6 +18,7 @@ public sealed class ReadOrSyncClubMemberHandler(
     IClubMemberRepository members,
     IGeoGuessrClientFactory geoGuessrClientFactory,
     ISender mediator,
+    IClubMemberSyncGate memberSyncGate,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
     : IRequestHandler<ReadOrSyncClubMemberByNicknameQuery, Result<ClubMember>>,
       IRequestHandler<ReadOrSyncClubMemberByUserIdQuery, Result<ClubMember>>
@@ -46,6 +47,16 @@ public sealed class ReadOrSyncClubMemberHandler(
         CancellationToken cancellationToken)
     {
         var clubMember = await retriever(lookupValue, cancellationToken).ConfigureAwait(false);
+        if (clubMember is not null)
+        {
+            return clubMember;
+        }
+
+        // A miss reads the rosters and saves what it finds, like every other membership writer, so it
+        // waits its turn; another writer may have stored the member meanwhile, hence the second look.
+        await using var gate = await memberSyncGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+
+        clubMember = await retriever(lookupValue, cancellationToken).ConfigureAwait(false);
         if (clubMember is not null)
         {
             return clubMember;

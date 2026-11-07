@@ -4,6 +4,7 @@ using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 using UseCases.UseCases.ClubMemberActivity.Rules;
+using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.MemberPrivateChannels;
 
 namespace GeoClubBot.DependencyInjection.Modules;
@@ -24,6 +25,10 @@ public static class ClubMembersModule
         // same channel. IActivityReportPublishGate serializes the publish region so one club's
         // messages never interleave with another's, so it must be a singleton shared across scopes.
         services.AddSingleton<IActivityReportPublishGate, ActivityReportPublishGate>();
+
+        // Every membership writer (roster sync, activity check, member lookup, socket push events)
+        // takes this one gate, so it must be a singleton shared across scopes.
+        services.AddSingleton<IClubMemberSyncGate, ClubMemberSyncGate>();
 
         // CheckGeoGuessrPlayerActivityHandler delegates work to three step classes; they
         // are not MediatR handlers, so they need explicit DI registration.

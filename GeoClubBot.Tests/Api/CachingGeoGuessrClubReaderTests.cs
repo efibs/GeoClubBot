@@ -149,4 +149,16 @@ public sealed class CachingGeoGuessrClubReaderTests
 
         await read.Should().ThrowAsync<OperationCanceledException>();
     }
+
+    [Fact]
+    public async Task InvalidatingTheClub_MakesTheNextReadFetchItAgain()
+    {
+        _client.ReadClubAsync(ClubId, Arg.Any<CancellationToken>()).Returns(Club());
+        await CreateReader().ReadClubAsync(ClubId);
+
+        new GeoGuessrCacheInvalidator(_cache).InvalidateClub(ClubId);
+        await CreateReader().ReadClubAsync(ClubId);
+
+        await _client.Received(2).ReadClubAsync(ClubId, Arg.Any<CancellationToken>());
+    }
 }

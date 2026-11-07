@@ -13,21 +13,27 @@ namespace UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
 /// </summary>
 public sealed class ActivityCheckSyncStep(
     IGeoGuessrClientFactory geoGuessrClientFactory,
-    ISender mediator)
+    ISender mediator,
+    IClubMemberSyncGate memberSyncGate)
 {
     public async Task<List<ClubMember>> ExecuteAsync(Guid clubId, CancellationToken cancellationToken)
     {
         await mediator.Send(new CheckStrikeDecayCommand(), cancellationToken).ConfigureAwait(false);
 
-        var client = geoGuessrClientFactory.CreateClient(clubId);
-        var response = await client.ReadClubMembersAsync(clubId, cancellationToken).ConfigureAwait(false);
-        var members = ClubMemberAssembler.AssembleEntities(response, clubId);
+        // From the roster read to the end of the save, so a leave pushed in between isn't undone by
+        // this older roster.
+        await using (await memberSyncGate.AcquireAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var client = geoGuessrClientFactory.CreateClient(clubId);
+            var response = await client.ReadClubMembersAsync(clubId, cancellationToken).ConfigureAwait(false);
+            var members = ClubMemberAssembler.AssembleEntities(response, clubId);
 
-        var snapshots = members
-            .Select(m => new ClubMemberSyncSnapshot(m.UserId, m.User.Nickname, clubId, m.Xp, m.JoinedAt))
-            .ToList();
-        await mediator.Send(new SaveClubMembersCommand(snapshots), cancellationToken).ConfigureAwait(false);
+            var snapshots = members
+                .Select(m => new ClubMemberSyncSnapshot(m.UserId, m.User.Nickname, clubId, m.Xp, m.JoinedAt))
+                .ToList();
+            await mediator.Send(new SaveClubMembersCommand(snapshots), cancellationToken).ConfigureAwait(false);
 
-        return members;
+            return members;
+        }
     }
 }

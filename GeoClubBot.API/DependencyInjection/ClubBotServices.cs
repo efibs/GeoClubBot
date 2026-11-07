@@ -20,6 +20,7 @@ public static class ClubBotServices
 
         services.AddPersistenceModule(configuration);
         services.AddDiscordAdaptersModule();
+        services.AddGeoGuessrSocketModule();
         services.AddDiscordActivityModule();
         services.AddGeoGuessrIntegrationModule();
         services.AddRenderingModule();

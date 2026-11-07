@@ -1,6 +1,7 @@
 using Entities;
 using FluentAssertions;
 using GeoClubBot.Tests.TestBuilders;
+using GeoClubBot.Tests.TestDoubles;
 using MediatR;
 using NSubstitute;
 using UseCases.OutputPorts.GeoGuessr;
@@ -19,6 +20,7 @@ public sealed class ReadOrSyncClubMemberHandlerTests
     private readonly IGeoGuessrClientFactory _clientFactory = Substitute.For<IGeoGuessrClientFactory>();
     private readonly IGeoGuessrClient _client = Substitute.For<IGeoGuessrClient>();
     private readonly ISender _mediator = Substitute.For<ISender>();
+    private readonly RecordingClubMemberSyncGate _gate = new();
 
     public ReadOrSyncClubMemberHandlerTests()
     {
@@ -28,7 +30,7 @@ public sealed class ReadOrSyncClubMemberHandlerTests
     private ReadOrSyncClubMemberHandler CreateHandler()
     {
         var config = new GeoGuessrConfigurationBuilder().WithClub(ClubId).BuildOptions();
-        return new ReadOrSyncClubMemberHandler(_members, _clientFactory, _mediator, config);
+        return new ReadOrSyncClubMemberHandler(_members, _clientFactory, _mediator, _gate, config);
     }
 
     [Fact]
@@ -65,6 +67,51 @@ public sealed class ReadOrSyncClubMemberHandlerTests
         await _mediator.Received(1).Send(
             Arg.Is<SaveClubMembersCommand>(c => c!.Snapshots.Count == 1 && c.Snapshots[0].UserId == "user-1"),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ByUserId_TakesTheMemberSyncGate_OnlyOnAMiss()
+    {
+        var existing = new ClubMemberBuilder().WithUserId("user-1").InClub(ClubId).Build();
+        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns(existing);
+
+        await CreateHandler().Handle(new ReadOrSyncClubMemberByUserIdQuery("user-1"), CancellationToken.None);
+
+        _gate.Acquisitions.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ByUserId_ReturnsTheMemberAnotherWriterStored_WhileItWaitedForTheGate()
+    {
+        var storedMeanwhile = new ClubMemberBuilder().WithUserId("user-1").InClub(ClubId).Build();
+        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>())
+            .Returns((ClubMember?)null, storedMeanwhile);
+
+        var result = await CreateHandler().Handle(
+            new ReadOrSyncClubMemberByUserIdQuery("user-1"), CancellationToken.None);
+
+        result.Value.Should().BeSameAs(storedMeanwhile);
+        await _client.DidNotReceiveWithAnyArgs().ReadClubMembersAsync(default, default);
+    }
+
+    [Fact]
+    public async Task ByUserId_HoldsTheMemberSyncGate_AcrossTheRosterReadAndTheSave()
+    {
+        bool? heldDuringRead = null, heldDuringSave = null;
+        _members.ReadClubMemberByUserIdAsync("user-1", Arg.Any<CancellationToken>()).Returns((ClubMember?)null);
+        _client.ReadClubMembersAsync(ClubId, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            heldDuringRead = _gate.IsHeld;
+            return new List<ClubMemberDto> { BuildApiMember("user-1", "Player1", 500, DateTimeOffset.UtcNow) };
+        });
+        _mediator.Send(Arg.Any<SaveClubMembersCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => { heldDuringSave = _gate.IsHeld; return Unit.Value; });
+
+        await CreateHandler().Handle(new ReadOrSyncClubMemberByUserIdQuery("user-1"), CancellationToken.None);
+
+        heldDuringRead.Should().BeTrue();
+        heldDuringSave.Should().BeTrue();
+        _gate.IsHeld.Should().BeFalse();
     }
 
     [Fact]

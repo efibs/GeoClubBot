@@ -29,9 +29,13 @@ The probe is pointed at real accounts, so it must never write. Three independent
    before hitting the network if the method is not `GET`/`HEAD`, or if the request has a body.
 3. **No verb in the CLI.** Every command is a hand-written GET. The `raw` escape hatch takes a
    *path*, never a method or a payload.
+4. **`ReadOnlySocketGuard`.** The `socket` command sends nothing but what this allows: a subscription
+   to a `club:<guid>` topic and the site's `{"code":"HeartBeat"}`. Chat messages, reactions, other
+   topics — anything that would act in the club — throw before they reach the socket.
 
 The `_ncfa` token is never printed: all output goes through `TokenRedactor`, which mirrors the
-bot's own `GeoClubBot.Discord/Logging/LogRedactor.cs`.
+bot's own `GeoClubBot.Discord/Logging/LogRedactor.cs`, and also blanks the `accessToken` every
+socket frame carries.
 
 ## Setting up your token
 
@@ -83,6 +87,7 @@ dotnet run --project Tools/GeoClubBot.ApiProbe -- <command> [options]
 | `club` | `GET /v4/clubs/{club}` |
 | `user <userId>` | `GET /v3/users/{userId}` |
 | `raw <path>` | `GET https://www.geoguessr.com/api<path>` — for undocumented endpoints |
+| `socket` | Listens on `wss://api.geoguessr.com/ws` to `club:{club}` — see [Verifying the club socket](#verifying-the-club-socket) |
 
 | Option | Meaning |
 |---|---|
@@ -91,6 +96,8 @@ dotnet run --project Tools/GeoClubBot.ApiProbe -- <command> [options]
 | `--pages <n>` | Pages to follow for `activities` (default 1) |
 | `--out <file>` | Also write everything to a file |
 | `--no-census` | Raw JSON only, skip the field summary |
+| `--minutes <n>` | How long `socket` listens (default: until Ctrl+C) |
+| `--client-version <v>` | The site's build id `socket` connects with (default `web-1.8700-39ce1da`, as `GeoGuessrSocket:ClientVersion`) |
 
 `GEOGUESSR_API_BASE_URL` overrides the host, so the probe can be aimed at a stand-in (a throwaway
 server while working on the probe itself) instead of the live API. The solution's
@@ -183,6 +190,35 @@ Notes on types 1–4, which the bot depended on before the board:
 The bot maps these in `GeoClubBot.Domain/ClubXpActivityKind.cs`, applied by
 `GeoClubBot.Application/OutputPorts/GeoGuessr/ClubActivityKindClassifier.cs`. If a new type shows
 up here, add it in those two places.
+
+## Verifying the club socket
+
+The bot holds GeoGuessr's WebSocket for every club (`GeoGuessrSocket` in `appsettings.json`, see
+`Documentation/GeoGuessrSocket.md`). The club frames it acts on were read from GeoGuessr's client
+code, not observed, so this command exists to observe them:
+
+```bash
+dotnet run --project Tools/GeoClubBot.ApiProbe -- socket --minutes 30 --out ~/socket-capture.txt
+```
+
+Use a token of an account **in the club** (`--club` must be that club). While it listens, make
+things happen: someone joins or leaves, a mission is claimed or completed, an admin edits the
+club's description. Each frame is printed as received, then a field census per code. Compare it with
+what the bot's decoder (`ClubFrameDecoder`) expects:
+
+| Code | The bot needs |
+|---|---|
+| `ClubMemberJoined` | `user.userId`, `user.nick`, `xp`, `joinedAt` |
+| `ClubMemberLeft` | `userId` |
+| `ClubUpdated` | `level` and/or `name` when they changed (anything else is ignored) |
+| `ClubMissionBoardUpdated` | nothing |
+
+If a payload differs, the bot falls back to re-reading the roster and logs one warning per code;
+`GeoGuessrSocket:UsePayloads=false` makes that the rule until the decoder is fixed. Presence frames
+(`ClubMemberCameOnline`/`WentOffline`) are the quickest proof that the subscription works.
+
+The connection coexists with the account's browser sessions, but treat a run as an action on the
+account all the same. `GEOGUESSR_SOCKET_URL` points it at another server.
 
 ## Adding an endpoint
 

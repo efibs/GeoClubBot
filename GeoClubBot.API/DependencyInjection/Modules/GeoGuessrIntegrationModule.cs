@@ -15,6 +15,9 @@ public static class GeoGuessrIntegrationModule
         services.AddTransient<IClubMissionBoardReader, CachingClubMissionBoardReader>();
         services.AddTransient<IGeoGuessrClubReader, CachingGeoGuessrClubReader>();
 
+        // Lets a push from GeoGuessr's socket drop the cached board or club it has made stale.
+        services.AddSingleton<IGeoGuessrCacheInvalidator, GeoGuessrCacheInvalidator>();
+
         return services;
     }
 }

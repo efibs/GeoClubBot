@@ -28,6 +28,9 @@ public record UpdateClubRequest(string? Name = null, int? Level = null, int? Xp 
     int? GlobalXpRank = null, int? TotalClubs = null, int? TotalXp = null);
 public record AddMemberRequest(string UserId);
 public record MoveMemberRequest(Guid TargetClubId);
+
+/// <summary>A frame for the club's socket topic; <see cref="Payload"/> is its payload's JSON, or empty for none.</summary>
+public record SocketFrameRequest(string Code, string? Payload = null);
 // Type mirrors GeoGuessr's activity type (see AddActivityRequest); a negative Amount means
 // "use the reward that type carries on the real API".
 public record AddXpRequest(int Amount = -1, int Type = 4);

@@ -21,6 +21,7 @@ using UseCases.UseCases.AI.Tools;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
+using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.MemberPrivateChannels;
 
 namespace GeoClubBot.Tests.Integration.UseCases;
@@ -142,6 +143,7 @@ public sealed class MediatorTestHost : IDisposable
 
         services.AddSingleton<IClubLevelTracker, ClubLevelTracker>();
         services.AddSingleton<IActivityReportPublishGate, ActivityReportPublishGate>();
+        services.AddSingleton<IClubMemberSyncGate, ClubMemberSyncGate>();
         services.AddTransient<ActivityCheckSyncStep>();
         services.AddTransient<ActivityStatusCalculator>();
         services.AddTransient<ActivityAverageXpRollupStep>();

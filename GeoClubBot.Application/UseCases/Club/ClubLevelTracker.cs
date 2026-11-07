@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using UseCases.OutputPorts.Repositories;
+using Utilities;
 
 namespace UseCases.UseCases.Club;
 
@@ -7,6 +8,7 @@ public sealed class ClubLevelTracker : IClubLevelTracker
 {
     private readonly ConcurrentDictionary<Guid, int> _lastLevels = new();
     private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly KeyedAsyncLock<Guid> _clubLocks = new();
     private bool _initialized;
 
     public async Task EnsureInitializedAsync(IClubRepository clubs, IEnumerable<Guid> clubIds, CancellationToken cancellationToken = default)
@@ -38,4 +40,7 @@ public sealed class ClubLevelTracker : IClubLevelTracker
         _lastLevels.TryGetValue(clubId, out var v) ? v : null;
 
     public void Set(Guid clubId, int level) => _lastLevels[clubId] = level;
+
+    public Task<IDisposable> AcquireAsync(Guid clubId, CancellationToken cancellationToken = default) =>
+        _clubLocks.AcquireAsync(clubId, cancellationToken);
 }
