@@ -73,7 +73,8 @@ public sealed class GeoGuessrClubChatSenderTests
         var session = _connector.Next();
         session.EchoUpTo = 1;
 
-        var delivery = await Sender().SendAsync(ClubId, ["(1/3) a", "(2/3) b", "(3/3) c"], TimeSpan.FromMilliseconds(300));
+        // The timeout is the wait for each echo, so it must leave the echoed part room on a busy runner.
+        var delivery = await Sender().SendAsync(ClubId, ["(1/3) a", "(2/3) b", "(3/3) c"], Timeout);
 
         delivery.Status.Should().Be(ClubChatDeliveryStatus.Unconfirmed);
         delivery.PartsSent.Should().Be(2);
@@ -118,7 +119,8 @@ public sealed class GeoGuessrClubChatSenderTests
         var session = _connector.Next();
         session.AcknowledgeSubscription = false;
 
-        var delivery = await Sender().SendAsync(ClubId, ["a"], TimeSpan.FromMilliseconds(300));
+        // The same timeout bounds the unanswered subscription and then the echo, which must arrive in it.
+        var delivery = await Sender().SendAsync(ClubId, ["a"], Timeout);
 
         delivery.Status.Should().Be(ClubChatDeliveryStatus.Confirmed);
     }
