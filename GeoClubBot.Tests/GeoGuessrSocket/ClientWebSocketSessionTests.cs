@@ -142,13 +142,21 @@ public sealed class ClientWebSocketSessionTests
     [Fact]
     public async Task AConnectionDroppedWithoutClosing_IsATransportFailure()
     {
-        await using var server = await FakeGeoGuessrSocketServer.StartAsync((context, socket) =>
+        await using var server = await FakeGeoGuessrSocketServer.StartAsync(async (context, socket) =>
         {
-            socket?.Abort();
-            return Task.CompletedTask;
+            if (socket is null)
+            {
+                return;
+            }
+
+            // Dropped only once the client is connected: aborting straight after accepting can reset
+            // the connection before the client has read the handshake, which fails the connect instead.
+            await socket.ReceiveAsync(new byte[64], CancellationToken.None);
+            socket.Abort();
         });
 
         await using var session = await Connector(server.SocketUrl).ConnectAsync(Club, false, CancellationToken.None);
+        await session.SendAsync("""{"code":"HeartBeat"}""", CancellationToken.None);
         await ReadAllAsync(session);
 
         session.Closure!.Code.Should().BeNull();
