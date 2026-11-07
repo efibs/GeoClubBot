@@ -20,6 +20,13 @@ public class ComponentIds
     public const string AiFeedbackCommentTextInputId =
         "ai-feedback-comment-input";
 
+    public const string ClubChatForwardModalId =
+        "club-chat-forward-modal";
+    public const string ClubChatForwardTextInputId =
+        "club-chat-forward-text";
+    public const string ClubChatForwardClubsInputId =
+        "club-chat-forward-clubs";
+
     public const string RevokeAllStrikesModalId =
         "revoke-all-strikes-modal";
     public const string RevokeAllStrikesConfirmTextInputId =

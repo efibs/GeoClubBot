@@ -68,8 +68,18 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<GeoGuessrSocketConfiguration>()
+            .Bind(config.GetSection(GeoGuessrSocketConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<ClubApplicationNotificationsConfiguration>()
             .Bind(config.GetSection(ClubApplicationNotificationsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<ClubChatForwardingConfiguration>()
+            .Bind(config.GetSection(ClubChatForwardingConfiguration.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
 

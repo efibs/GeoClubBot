@@ -71,7 +71,7 @@ and per payload index, and the default limit is exhausted part-way through a run
   Tests that set the static `ConfiguredCronJobAttribute.Config` share the non-parallel
   `ConfiguredCronJobCollection`.
 - **Snapshot** (`Discord/*FormatterTests`, `Application/UseCases/CountryChallenges/CountryChallengeMessagesTests`,
-  `AI/SpeciesRangeExcerptTests`, fast): `Verify.Xunit` captures whole rendered messages
+  `AI/SpeciesRangeExcerptTests`, `Application/UseCases/ClubChatForwarding/DiscordTextFlattenerTests`, fast): `Verify.Xunit` captures whole rendered messages
   into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
   the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
   is gitignored.
@@ -95,7 +95,8 @@ and per payload index, and the default limit is exhausted part-way through a run
   resolver, whose numbers must run 1..k and all lead somewhere, ranges and copied prompt notes included;
   the retrieval fusion, which must never offer the same text twice nor show a picture under another
   guide's link; the guide-source schedule, whose next attempt shown is exactly when the queue takes the
-  source; the country pool rotation, where every round must be a permutation of the
+  source; the club chat splitter, whose parts never pass GeoGuessr's limit and lose nothing; the
+  country pool rotation, where every round must be a permutation of the
   pool; the leaderboard ranking, where ties share a rank) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
@@ -227,6 +228,35 @@ API + Discord (controllers, slash command modules)
   habits. Claims count when they were *claimed* within the period; the open claim is shown whenever it was
   made, so reads reach one board week further back. Shown in the activity embeds, the dashboard and — with
   `ActivityChecker:MissionCompletionSlowestN` — the weekly report. History starts at deployment.
+- **Member private channels**: each linked club member gets a channel only they, the bot and
+  `MemberPrivateChannels:AdminRoleIds` (plus Administrators) can see. Discord caps a category at 50
+  channels, so the bot creates categories **per club** itself (`{club} – Private`, then `… 2`) once one
+  holds `MaxChannelsPerCategory` (45), remembered in `MemberPrivateChannelCategories` (not found by name);
+  a club's category header is visible to its club role and the admin roles. Empty overflow categories
+  (number ≥ 2) are deleted. A club switch moves the channel; a leave archives it into `ArchiveCategoryId`,
+  and a full archive deletes the longest-archived channel. Everything that picks a category goes through
+  `MemberPrivateChannelManager` under `PrivateChannelPlacementLock` (not re-entrant — a holder never sends
+  another locking command), on one REST-read `PrivateChannelPlacement`. `ReconcileMemberPrivateChannelsCommand`
+  (after the start-up sync when `ReconcileOnStartup`, and `/private-channels-admin reconcile`, dry run by
+  default) moves channels where they belong, recreates missing ones and rewrites permissions that differ
+  from `PrivateChannelAccessPolicy`; it is how the old single category was migrated. Tests use
+  `TestDoubles/FakeDiscordChannels`, which `MediatorTestHost` registers by default.
+- **GeoGuessr club socket** (`GeoGuessrSocket:Enabled`, on): one WebSocket per club with its own token,
+  topic `club:<id>`; joins/leaves are applied from the pushed payload (fallback: full roster sync),
+  `ClubUpdated` level/name, board updates record claims. Batched 10 s by `ClubEventBatcher`, planned by
+  the pure `ClubEventPlanner`, applied by `ApplyClubEventsCommand`. Every membership writer holds
+  `IClubMemberSyncGate` from roster read to save. The club frames were read from GeoGuessr's client
+  code, not observed — verify with the API probe's `socket` command. See
+  [`Documentation/GeoGuessrSocket.md`](Documentation/GeoGuessrSocket.md).
+- **Club chat forwarding** (optional, `ClubChatForwarding:Enabled`): the message command "📢 Send to club
+  chat" (hidden from non-administrators; `AdminRoleIds` re-checked in `ClubChatForwardingAccess`) opens a
+  form built per message with `ModalBuilder`: the text as plain text (`DiscordTextFlattener`, pure) put
+  into `Template`, a checkbox per club (`ForwardChat: false` leaves a club out), how many messages it
+  takes and earlier forwards of the message (`ClubChatForwards`). GeoGuessr cuts chat messages to 300
+  characters, so `ClubChatTextSplitter` numbers parts `(1/n)`. The send is a `ChatMessage` frame on
+  `chat:Club:TextMessages:<clubId>` with the club's own token, on its live socket (`ClubChatChannels`)
+  or a connection of its own; each part waits for GeoGuessr's echo and nothing is ever resent. The club
+  topic is unverified live. See [`Documentation/GeoGuessrSocket.md`](Documentation/GeoGuessrSocket.md).
 - **Club applications** (optional, `ClubApplicationNotifications:Enabled`): `CheckClubApplicationsCommand`
   polls `GET /v4/clubs/{id}/applications` with each club's own token (GeoGuessr answers **404** unless that
   account has `ManageApplications`) and posts new applicants to one channel, pinging only the configured role.

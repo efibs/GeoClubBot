@@ -101,6 +101,20 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .ConfigureAwait(false);
     }
 
+    public async Task<List<ClubMember>> ReadMembersWithArchivedPrivateChannelsOldestFirstAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await dbContext.ClubMembers
+            .AsNoTracking()
+            .Include(m => m.User)
+            .Where(m => m.ClubId == null
+                        && m.PrivateTextChannelId != null
+                        && m.PrivateTextChannelArchivedAt != null)
+            .OrderBy(m => m.PrivateTextChannelArchivedAt)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<int> DeleteClubMembersWithoutHistoryAndStrikesAsync(CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers

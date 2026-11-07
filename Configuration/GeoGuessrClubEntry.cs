@@ -39,6 +39,21 @@ public class GeoGuessrClubEntry
     /// </summary>
     public bool? NotifyApplications { get; set; }
 
+    /// <summary>
+    /// Whether Discord messages can be forwarded into this club's chat (see <see cref="ClubChatForwardingConfiguration"/>).
+    /// Defaults to true.
+    /// </summary>
+    public bool? ForwardChat { get; set; }
+
+    /// <summary>
+    /// Whether this club's events are received over GeoGuessr's socket (see <see cref="GeoGuessrSocketConfiguration"/>).
+    /// Defaults to true; off, the club is refreshed every <see cref="GetSocketPollWhileDisconnected"/> instead.
+    /// </summary>
+    public bool? UseSocket { get; set; }
+
+    /// <summary>Overrides <see cref="GeoGuessrSocketConfiguration.PollWhileDisconnected"/> for this club.</summary>
+    public TimeSpan? SocketPollWhileDisconnected { get; set; }
+
     public int? GracePeriodDays { get; set; }
 
     public int? MaxNumStrikes { get; set; }
@@ -63,6 +78,11 @@ public class GeoGuessrClubEntry
 
     public Dictionary<string, int> GetRuleXpMaxCountedPerWeek(ActivityCheckerConfiguration defaults) =>
         Merge(defaults.RuleXp.MaxCountedPerWeek, RuleXpMaxCountedPerWeek);
+
+    public bool GetUseSocket(GeoGuessrSocketConfiguration defaults) => defaults.Enabled && UseSocket != false;
+
+    public TimeSpan GetSocketPollWhileDisconnected(GeoGuessrSocketConfiguration defaults) =>
+        SocketPollWhileDisconnected ?? defaults.PollWhileDisconnected;
 
     public int GetGracePeriodDays(ActivityCheckerConfiguration defaults) => GracePeriodDays ?? defaults.GracePeriodDays;
 

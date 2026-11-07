@@ -11,6 +11,7 @@ using UseCases.OutputPorts.Notifications;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMemberActivity;
 using UseCases.UseCases.ClubMemberActivity.ActivityCheckPhases;
+using UseCases.UseCases.ClubMembers;
 using Xunit;
 
 namespace GeoClubBot.Tests.Application.UseCases.ClubMemberActivity;
@@ -268,7 +269,7 @@ public sealed class CheckGeoGuessrPlayerActivityHandlerTests
         };
 
         return new CheckGeoGuessrPlayerActivityHandler(
-            new ActivityCheckSyncStep(_clientFactory, _mediator),
+            new ActivityCheckSyncStep(_clientFactory, _mediator, new ClubMemberSyncGate()),
             new ActivityStatusCalculator(_strikes, _clubMembers, NullLogger<ActivityStatusCalculator>.Instance),
             new ActivityAverageXpRollupStep(_mediator, _messageSender),
             new MissionCompletionReportStep(

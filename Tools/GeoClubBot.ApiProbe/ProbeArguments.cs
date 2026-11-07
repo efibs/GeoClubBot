@@ -8,7 +8,9 @@ public sealed record ProbeArguments(
     int Limit,
     int Pages,
     string? OutputPath,
-    bool NoCensus)
+    bool NoCensus,
+    int? Minutes = null,
+    string? ClientVersion = null)
 {
     public static ProbeArguments? Parse(string[] args)
     {
@@ -24,6 +26,8 @@ public sealed record ProbeArguments(
         var pages = 1;
         string? outputPath = null;
         var noCensus = false;
+        int? minutes = null;
+        string? clientVersion = null;
 
         for (var i = 1; i < args.Length; i++)
         {
@@ -70,6 +74,25 @@ public sealed record ProbeArguments(
                     noCensus = true;
                     break;
 
+                case "--minutes":
+                    if (!TryTakeValue(args, ref i, out var minutesText) || !int.TryParse(minutesText, out var parsedMinutes) || parsedMinutes <= 0)
+                    {
+                        Console.Error.WriteLine("--minutes needs a positive integer.");
+                        return null;
+                    }
+
+                    minutes = parsedMinutes;
+                    break;
+
+                case "--client-version":
+                    if (!TryTakeValue(args, ref i, out clientVersion) || string.IsNullOrWhiteSpace(clientVersion))
+                    {
+                        Console.Error.WriteLine("--client-version needs the site's build id, e.g. web-1.8700-39ce1da.");
+                        return null;
+                    }
+
+                    break;
+
                 default:
                     if (args[i].StartsWith("--", StringComparison.Ordinal))
                     {
@@ -82,7 +105,7 @@ public sealed record ProbeArguments(
             }
         }
 
-        return new ProbeArguments(command, target, clubId, limit, pages, outputPath, noCensus);
+        return new ProbeArguments(command, target, clubId, limit, pages, outputPath, noCensus, minutes, clientVersion);
     }
 
     public static void PrintUsage() =>
@@ -102,6 +125,7 @@ public sealed record ProbeArguments(
               club                  GET /v4/clubs/{club}
               user <userId>         GET /v3/users/{userId}
               raw <path>            GET https://www.geoguessr.com/api<path>
+              socket                Listen on GeoGuessr's socket to club:{club} (sends only Subscribe + HeartBeat)
 
             Options:
               --club <guid>         Club to target (default: GEOGUESSR_CLUB_ID / appsettings.Local.json)
@@ -109,12 +133,15 @@ public sealed record ProbeArguments(
               --pages <n>           Pages to follow for 'activities' (default 1)
               --out <file>          Also write the output to a file
               --no-census           Print raw JSON only, skip the field summary
+              --minutes <n>         How long 'socket' listens (default: until Ctrl+C)
+              --client-version <v>  The site's build id 'socket' reports (default web-1.8700-39ce1da)
 
             Credentials:
               GEOGUESSR_NCFA_TOKEN environment variable, or appsettings.Local.json beside the
               project. See README.md.
 
-            This tool only ever issues GET requests - see README.md, "Read-only by construction".
+            This tool only ever issues GET requests, and on the socket only subscribes and sends the
+            heartbeat - see README.md, "Read-only by construction".
             """);
 
     private static bool TryTakeValue(string[] args, ref int index, out string? value)

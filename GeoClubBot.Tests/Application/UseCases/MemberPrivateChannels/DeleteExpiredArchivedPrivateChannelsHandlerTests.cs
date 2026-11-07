@@ -101,7 +101,6 @@ public sealed class DeleteExpiredArchivedPrivateChannelsHandlerTests
     {
         var options = Options.Create(new MemberPrivateChannelsConfiguration
         {
-            CategoryId = 1UL,
             Description = "Private channel",
             ArchiveCategoryId = 2UL,
             ArchiveKeepTimeSpan = keep,

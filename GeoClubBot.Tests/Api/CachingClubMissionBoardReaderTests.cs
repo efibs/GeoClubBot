@@ -113,4 +113,20 @@ public sealed class CachingClubMissionBoardReaderTests
 
         (await CreateReader().ReadPreviousAsync(ClubId)).Should().BeNull();
     }
+
+    [Fact]
+    public async Task InvalidatingTheCurrentBoard_MakesTheNextReadFetchIt_ButKeepsThePreviousWeekCached()
+    {
+        _client.ReadClubMissionBoardAsync(Arg.Any<CancellationToken>()).Returns(Snapshot());
+        _client.ReadPreviousClubMissionBoardAsync(Arg.Any<CancellationToken>()).Returns(Snapshot());
+        await CreateReader().ReadCurrentAsync(ClubId);
+        await CreateReader().ReadPreviousAsync(ClubId);
+
+        new GeoGuessrCacheInvalidator(_cache).InvalidateCurrentMissionBoard(ClubId);
+        await CreateReader().ReadCurrentAsync(ClubId);
+        await CreateReader().ReadPreviousAsync(ClubId);
+
+        await _client.Received(2).ReadClubMissionBoardAsync(Arg.Any<CancellationToken>());
+        await _client.Received(1).ReadPreviousClubMissionBoardAsync(Arg.Any<CancellationToken>());
+    }
 }

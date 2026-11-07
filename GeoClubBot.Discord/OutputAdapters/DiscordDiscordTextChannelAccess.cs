@@ -11,95 +11,153 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
     : IDiscordTextChannelAccess
 {
     public async Task<ulong?> CreatePrivateTextChannelAsync(ulong categoryId, string name, string description,
-        IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds,
-        CancellationToken cancellationToken = default)
+        IReadOnlyCollection<ChannelAccess> access, CancellationToken cancellationToken = default)
     {
-        // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
 
-        // Create the text channel
         var createdTextChannel = await guild.CreateTextChannelAsync(name, options =>
         {
-            // Set to text channel
-            options.ChannelType = ChannelType.Text;
-
-            // Set the category id
             options.CategoryId = categoryId;
-
-            // Set the description
             options.Topic = description;
 
-            // Get the overwrites
-            var overwrites = GetOverwrites(guild, allowedDiscordUserIds, allowedRoleIds);
-
-            // Set to private
-            options.PermissionOverwrites = overwrites;
-        }).ConfigureAwait(false);
+            // Set explicitly rather than synced from the category, so the channel stays private to
+            // exactly these people wherever it is moved later.
+            options.PermissionOverwrites = ToOverwrites(access);
+        }, Request(cancellationToken)).ConfigureAwait(false);
 
         return createdTextChannel?.Id;
     }
 
-    public async Task<bool> UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default)
+    public async Task<ulong?> CreateCategoryAsync(string name, IReadOnlyCollection<ChannelAccess> access,
+        CancellationToken cancellationToken = default)
     {
-        // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
 
-        // Get the text channel
-        var textChannel = guild.GetTextChannel(newTextChannel.Id);
+        var category = await guild.CreateCategoryChannelAsync(name,
+                options => options.PermissionOverwrites = ToOverwrites(access),
+                Request(cancellationToken))
+            .ConfigureAwait(false);
 
-        // If the text channel was not found
-        if (textChannel == null)
+        return category?.Id;
+    }
+
+    public async Task<GuildChannelLayout> ReadChannelLayoutAsync(CancellationToken cancellationToken = default)
+    {
+        var serverId = config.Value.ServerId;
+
+        // REST rather than the gateway cache: a channel created or moved a moment ago must already be
+        // counted in its new category, or two quick creates could both pick a category with one free slot.
+        var guild = await client.Rest
+                        .GetGuildAsync(serverId, Request(cancellationToken))
+                        .ConfigureAwait(false)
+                    ?? throw new InvalidOperationException($"Discord server {serverId} was not found.");
+
+        var channels = await guild
+            .GetChannelsAsync(Request(cancellationToken))
+            .ConfigureAwait(false);
+
+        var infos = channels
+            .Select(c => new GuildChannelInfo(
+                c.Id,
+                (c as INestedChannel)?.CategoryId,
+                c is ICategoryChannel,
+                c.PermissionOverwrites.Select(ToAccess).ToList()))
+            .ToList();
+
+        return new GuildChannelLayout(guild.EveryoneRole.Id, client.CurrentUser.Id, infos);
+    }
+
+    public async Task<bool> SetChannelAccessAsync(ulong channelId, IReadOnlyCollection<ChannelAccess> access,
+        CancellationToken cancellationToken = default)
+    {
+        var guild = client.GetGuild(config.Value.ServerId);
+
+        // Text channels and categories alike.
+        var channel = guild.GetChannel(channelId);
+
+        if (channel == null)
         {
-            // Nothing to do
             return false;
         }
 
-        // Update the text channel
+        await channel
+            .ModifyAsync(options => options.PermissionOverwrites = ToOverwrites(access), Request(cancellationToken))
+            .ConfigureAwait(false);
+
+        return true;
+    }
+
+    public async Task<bool> UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default)
+    {
+        var guild = client.GetGuild(config.Value.ServerId);
+        var textChannel = guild.GetTextChannel(newTextChannel.Id);
+
+        if (textChannel == null)
+        {
+            return false;
+        }
+
+        // Discord allows only two renames of a channel per ten minutes and makes the third wait, so a
+        // name that is already right is not sent again.
+        var rename = string.IsNullOrWhiteSpace(newTextChannel.Name) == false
+                     && string.Equals(textChannel.Name, newTextChannel.Name, StringComparison.Ordinal) == false;
+        var retopic = string.IsNullOrWhiteSpace(newTextChannel.Description) == false;
+        var move = newTextChannel.CategoryId is not null && textChannel.CategoryId != newTextChannel.CategoryId;
+
+        if (!rename && !retopic && !move)
+        {
+            return true;
+        }
+
         await textChannel.ModifyAsync(options =>
         {
-            // If a name is given
-            if (string.IsNullOrWhiteSpace(newTextChannel.Name) == false)
+            if (rename)
             {
-                // Update the name
                 options.Name = newTextChannel.Name;
             }
 
-            // If a description is given
-            if (string.IsNullOrWhiteSpace(newTextChannel.Description) == false)
+            if (retopic)
             {
-                // Update the topic
                 options.Topic = newTextChannel.Description;
             }
 
-            // If a category is given
-            if (newTextChannel.CategoryId is not null)
+            if (move)
             {
-                // Move the channel into it. Explicit permission overwrites survive the move, so a
-                // private channel stays private to the same people.
-                options.CategoryId = newTextChannel.CategoryId.Value;
+                // Explicit permission overwrites survive the move (the channel isn't synced to the
+                // category), so a private channel stays private to the same people.
+                options.CategoryId = newTextChannel.CategoryId!.Value;
             }
-        }).ConfigureAwait(false);
+        }, Request(cancellationToken)).ConfigureAwait(false);
 
         return true;
     }
 
     public async Task<bool> DeleteTextChannelAsync(ulong textChannelId, CancellationToken cancellationToken = default)
     {
-        // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
-
-        // Get the text channel
         var textChannel = guild.GetTextChannel(textChannelId);
 
-        // If the text channel was not found
         if (textChannel == null)
         {
-            // Nothing to do
             return false;
         }
 
-        // Delete the text channel
-        await textChannel.DeleteAsync().ConfigureAwait(false);
+        await textChannel.DeleteAsync(Request(cancellationToken)).ConfigureAwait(false);
+
+        return true;
+    }
+
+    public async Task<bool> DeleteCategoryAsync(ulong categoryId, CancellationToken cancellationToken = default)
+    {
+        var guild = client.GetGuild(config.Value.ServerId);
+        var category = guild.GetCategoryChannel(categoryId);
+
+        if (category == null)
+        {
+            return false;
+        }
+
+        await category.DeleteAsync(Request(cancellationToken)).ConfigureAwait(false);
 
         return true;
     }
@@ -107,26 +165,19 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
     public async Task<ulong?> ReadLastMessageOfUserAsync(ulong userId, ulong channelId, int numMessageSearchlimit,
         CancellationToken cancellationToken = default)
     {
-        // Get the guild
         var guild = client.GetGuild(config.Value.ServerId);
-
-        // Get the text channel
         var textChannel = guild.GetTextChannel(channelId);
 
-        // If the text channel was not found
         if (textChannel == null)
         {
-            // Nothing to do
             return null;
         }
 
-        // Read the messages from the text channel
         var messages = await textChannel
             .GetMessagesAsync(numMessageSearchlimit)
             .FlattenAsync()
             .ConfigureAwait(false);
 
-        // Get the latest message of the user
         var latestMessage = messages
             .Where(m => m.Author.Id == userId)
             .OrderByDescending(m => m.Timestamp)
@@ -135,37 +186,39 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
         return latestMessage?.Id;
     }
 
-    private List<Overwrite> GetOverwrites(SocketGuild guild, IEnumerable<ulong>? allowedDiscordUserIds,
-        IEnumerable<ulong>? allowedRoleIds)
-    {
-        // Get the overwrites for the allowed users
-        var allowedUsersOverwrites = allowedDiscordUserIds?
-            .Select(uId => new Overwrite(uId,
-                PermissionTarget.User,
-                new OverwritePermissions(viewChannel: PermValue.Allow)))
-            .ToList() ?? [];
+    private static RequestOptions Request(CancellationToken cancellationToken) =>
+        new() { CancelToken = cancellationToken };
 
-        // Get the allowed role overwrites
-        var allowedRolesOverwrites = allowedRoleIds?
-            .Select(rId => new Overwrite(rId,
-                PermissionTarget.Role,
-                new OverwritePermissions(viewChannel: PermValue.Allow)))
-            .ToList() ?? [];
+    private static List<Overwrite> ToOverwrites(IEnumerable<ChannelAccess> access) =>
+        access
+            .Select(a => new Overwrite(
+                a.TargetId,
+                a.Target == ChannelAccessTarget.Role ? PermissionTarget.Role : PermissionTarget.User,
+                new OverwritePermissions(ToBits(a.Allow), ToBits(a.Deny))))
+            .ToList();
 
-        // Get the final overwrite
-        var textChannelOverwrites = new List<Overwrite>
-        {
-            new(guild.EveryoneRole.Id, PermissionTarget.Role,
-                new OverwritePermissions(viewChannel: PermValue.Deny)),
-            new()
-        };
+    private static ChannelAccess ToAccess(Overwrite overwrite) =>
+        new(overwrite.TargetId,
+            overwrite.TargetType == PermissionTarget.Role ? ChannelAccessTarget.Role : ChannelAccessTarget.User,
+            FromBits(overwrite.Permissions.AllowValue),
+            FromBits(overwrite.Permissions.DenyValue));
 
-        // Append the user overwrites
-        textChannelOverwrites.AddRange(allowedUsersOverwrites);
+    private static readonly (ChannelRights Right, ChannelPermission Permission)[] RightMap =
+    [
+        (ChannelRights.View, ChannelPermission.ViewChannel),
+        (ChannelRights.SendMessages, ChannelPermission.SendMessages),
+        (ChannelRights.ReadMessageHistory, ChannelPermission.ReadMessageHistory)
+    ];
 
-        // Append the role overwrites
-        textChannelOverwrites.AddRange(allowedRolesOverwrites);
+    private static ulong ToBits(ChannelRights rights) =>
+        RightMap
+            .Where(m => rights.HasFlag(m.Right))
+            .Aggregate(0UL, (bits, m) => bits | (ulong)m.Permission);
 
-        return textChannelOverwrites;
-    }
+    // Bits outside the map are dropped: the bot only manages the rights it names, so an extra right an
+    // admin granted by hand is neither reported as a difference nor kept when the bot rewrites the overwrites.
+    private static ChannelRights FromBits(ulong bits) =>
+        RightMap
+            .Where(m => (bits & (ulong)m.Permission) != 0)
+            .Aggregate(ChannelRights.None, (rights, m) => rights | m.Right);
 }

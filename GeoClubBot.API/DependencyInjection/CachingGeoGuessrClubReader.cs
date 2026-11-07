@@ -24,9 +24,12 @@ public partial class CachingGeoGuessrClubReader(
 {
     private const string CacheName = "geoguessr_clubs";
 
+    /// <summary>The cache key of a club; shared with <see cref="GeoGuessrCacheInvalidator"/>.</summary>
+    internal static string CacheKey(Guid clubId) => $"GeoGuessrClub:{clubId}";
+
     public async Task<GeoGuessrClubSnapshot?> ReadClubAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
-        var cacheKey = $"GeoGuessrClub:{clubId}";
+        var cacheKey = CacheKey(clubId);
 
         if (cache.TryGetValue<GeoGuessrClubSnapshot>(cacheKey, out var cached) && cached is not null)
         {

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GeoClubBot.Tests.TestDoubles;
 using MediatR;
 using NSubstitute;
 using UseCases.OutputPorts.GeoGuessr;
@@ -31,7 +32,7 @@ public sealed class ActivityCheckSyncStepTests
                 BuildApiMember("user-1", "Player1", xp: 1000, DateTimeOffset.UtcNow.AddMonths(-6))
             });
 
-        var step = new ActivityCheckSyncStep(_clientFactory, _mediator);
+        var step = new ActivityCheckSyncStep(_clientFactory, _mediator, new ClubMemberSyncGate());
 
         var members = await step.ExecuteAsync(ClubId, CancellationToken.None);
 
@@ -41,6 +42,29 @@ public sealed class ActivityCheckSyncStepTests
         await _mediator.Received(1).Send(
             Arg.Is<SaveClubMembersCommand>(c => c!.Snapshots.Count == 1 && c.Snapshots[0].UserId == "user-1"),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Execute_HoldsTheMemberSyncGate_AroundTheRosterReadAndTheSave_ButNotTheStrikeDecay()
+    {
+        var gate = new RecordingClubMemberSyncGate();
+        bool? heldDuringDecay = null, heldDuringRead = null, heldDuringSave = null;
+        _mediator.Send(Arg.Any<CheckStrikeDecayCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => { heldDuringDecay = gate.IsHeld; return Unit.Value; });
+        _client.ReadClubMembersAsync(ClubId, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            heldDuringRead = gate.IsHeld;
+            return new List<ClubMemberDto>();
+        });
+        _mediator.Send(Arg.Any<SaveClubMembersCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => { heldDuringSave = gate.IsHeld; return Unit.Value; });
+
+        await new ActivityCheckSyncStep(_clientFactory, _mediator, gate).ExecuteAsync(ClubId, CancellationToken.None);
+
+        heldDuringDecay.Should().BeFalse();
+        heldDuringRead.Should().BeTrue();
+        heldDuringSave.Should().BeTrue();
+        gate.IsHeld.Should().BeFalse();
     }
 
     private static ClubMemberDto BuildApiMember(string userId, string nickname, int xp, DateTimeOffset joinedAt) =>

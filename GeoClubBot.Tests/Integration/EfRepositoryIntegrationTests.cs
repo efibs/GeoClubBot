@@ -446,6 +446,29 @@ public sealed class EfRepositoryIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task ClubChatForwards_AreReadPerMessage_OldestFirst()
+    {
+        var clubId = Guid.NewGuid();
+        var messageId = (ulong)Random.Shared.NextInt64(1, long.MaxValue);
+        var at = new DateTimeOffset(2026, 11, 7, 12, 0, 0, TimeSpan.Zero);
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            var repo = new EfClubChatForwardRepository(seed);
+            repo.Add(ClubChatForward.Create(messageId, clubId, 7, at.AddMinutes(5), 2, 2, 1));
+            repo.Add(ClubChatForward.Create(messageId, clubId, 8, at, 1, 1, 1));
+            repo.Add(ClubChatForward.Create(messageId + 1, clubId, 7, at, 1, 1, 1));
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var forwards = await new EfClubChatForwardRepository(read).ReadByMessageAsync(messageId);
+
+        forwards.Select(f => (f.ForwardedByDiscordUserId, f.ForwardedAt, f.PartCount, f.PartsConfirmed))
+            .Should().Equal((8UL, at, 1, 1), (7UL, at.AddMinutes(5), 2, 1));
+    }
+
+    [Fact]
     public async Task HistoryEntry_RoundTripsTheRecordedInterval()
     {
         var clubId = Guid.NewGuid();

@@ -18,7 +18,7 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.13")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -317,6 +317,42 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("LatestClubChallengeLinks");
+                });
+
+            modelBuilder.Entity("Entities.ClubChatForward", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("DiscordMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<DateTimeOffset>("ForwardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("ForwardedByDiscordUserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<int>("PartCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PartsConfirmed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PartsSent")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DiscordMessageId", "ClubId");
+
+                    b.ToTable("ClubChatForwards");
                 });
 
             modelBuilder.Entity("Entities.ClubMember", b =>
@@ -795,6 +831,25 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("KnowledgeSources");
                 });
 
+            modelBuilder.Entity("Entities.MemberPrivateChannelCategory", b =>
+                {
+                    b.Property<decimal>("CategoryId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("integer");
+
+                    b.HasKey("CategoryId");
+
+                    b.HasIndex("ClubId", "Index")
+                        .IsUnique();
+
+                    b.ToTable("MemberPrivateChannelCategories");
+                });
+
             modelBuilder.Entity("Entities.MissionBoardAlert", b =>
                 {
                     b.Property<int>("Id")
@@ -939,6 +994,15 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .WithMany()
                         .HasForeignKey("PostId")
                         .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Entities.MemberPrivateChannelCategory", b =>
+                {
+                    b.HasOne("Entities.Club", null)
+                        .WithMany()
+                        .HasForeignKey("ClubId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Entities.AiAnswerFeedback", b =>

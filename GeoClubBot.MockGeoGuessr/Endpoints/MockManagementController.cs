@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using GeoClubBot.MockGeoGuessr.DataStore;
+using GeoClubBot.MockGeoGuessr.Socket;
 using Microsoft.AspNetCore.Mvc;
 using Quartz;
 using UseCases.OutputPorts.GeoGuessr;
@@ -8,7 +9,10 @@ namespace GeoClubBot.MockGeoGuessr.Endpoints;
 
 [ApiController]
 [Route("mock/api")]
-public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFactory schedulerFactory) : ControllerBase
+public class MockManagementController(
+    MockGeoGuessrDataStore store,
+    ISchedulerFactory schedulerFactory,
+    MockClubSocketHub socket) : ControllerBase
 {
     [HttpGet("state")]
     public IActionResult GetState()
@@ -85,7 +89,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             },
             members,
             activities,
-            applications
+            applications,
+            socket = new { live = socket.IsLive(clubId) }
         });
     }
 
@@ -103,6 +108,16 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (req.GlobalXpRank.HasValue) club.Stats.GlobalXpRank = req.GlobalXpRank.Value;
         if (req.TotalClubs.HasValue) club.Stats.TotalClubs = req.TotalClubs.Value;
         if (req.TotalXp.HasValue) club.Stats.TotalXp = req.TotalXp.Value;
+
+        // GeoGuessr pushes a partial club: only what changed.
+        var changed = new Dictionary<string, object?>();
+        if (req.Name is not null) changed["name"] = club.Name;
+        if (req.Level.HasValue) changed["level"] = club.Level;
+        if (req.Xp.HasValue) changed["xp"] = club.Xp;
+        if (req.MaxMemberCount.HasValue) changed["maxMemberCount"] = club.MaxMemberCount;
+        if (req.Tag is not null) changed["tag"] = club.Tag;
+        if (req.Description is not null) changed["description"] = club.Description;
+        if (changed.Count > 0) socket.Publish(clubId, "ClubUpdated", changed);
         return Ok();
     }
 
@@ -112,6 +127,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (!store.Clubs.TryGetValue(clubId, out var club))
             return NotFound();
         club.Level++;
+        socket.Publish(clubId, "ClubUpdated", new { level = club.Level });
         return Ok(new { club.Level });
     }
 
@@ -121,7 +137,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
         if (!store.Users.TryGetValue(req.UserId, out var user))
             return NotFound("User not found");
         var members = store.ClubMembers.GetOrAdd(clubId, _ => new ConcurrentDictionary<string, ClubMemberDto>());
-        members[user.Id] = new ClubMemberDto
+        var member = new ClubMemberDto
         {
             User = ToClubUser(user),
             Role = 0,
@@ -131,6 +147,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             WeeklyXp = 0,
             LastActive = null
         };
+        members[user.Id] = member;
+        socket.Publish(clubId, "ClubMemberJoined", member);
         return Ok();
     }
 
@@ -170,8 +188,8 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     [HttpDelete("clubs/{clubId:guid}/members/{userId}")]
     public IActionResult RemoveMember(Guid clubId, string userId)
     {
-        if (store.ClubMembers.TryGetValue(clubId, out var members))
-            members.TryRemove(userId, out _);
+        if (store.ClubMembers.TryGetValue(clubId, out var members) && members.TryRemove(userId, out _))
+            socket.Publish(clubId, "ClubMemberLeft", new { userId });
         return Ok();
     }
 
@@ -184,9 +202,14 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             return NotFound("Member not found");
         member.Xp = 0;
         member.WeeklyXp = 0;
+        member.JoinedAt = DateTimeOffset.UtcNow;
         var target =
             store.ClubMembers.GetOrAdd(req.TargetClubId, _ => new ConcurrentDictionary<string, ClubMemberDto>());
         target[userId] = member;
+
+        // Two clubs, two sockets: GeoGuessr reports a switch as a leave and a join.
+        socket.Publish(clubId, "ClubMemberLeft", new { userId });
+        socket.Publish(req.TargetClubId, "ClubMemberJoined", member);
         return Ok();
     }
 
@@ -212,7 +235,12 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             return NotFound("Member not found");
         if (req.Xp.HasValue) member.Xp = req.Xp.Value;
         if (req.WeeklyXp.HasValue) member.WeeklyXp = req.WeeklyXp.Value;
-        if (req.Role.HasValue) member.Role = req.Role.Value;
+        if (req.Role.HasValue)
+        {
+            member.Role = req.Role.Value;
+            socket.Publish(clubId, "ClubMemberRoleChanged", new { userId, roleId = member.Role.ToString() });
+        }
+
         return Ok();
     }
 
@@ -522,16 +550,17 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     public IActionResult ResetBoard(Guid clubId)
     {
         store.GetMissionBoard(clubId).Reset(DateTimeOffset.UtcNow);
+        socket.Publish(clubId, "ClubMissionBoardUpdated", null);
         return Ok();
     }
 
     [HttpPost("clubs/{clubId:guid}/board/claim")]
     public IActionResult ClaimMission(Guid clubId, [FromBody] ClaimMissionRequest req) =>
-        BoardAction(() => Ok(store.GetMissionBoard(clubId).Claim(req.UserId, req.MissionId)));
+        BoardAction(clubId, () => Ok(store.GetMissionBoard(clubId).Claim(req.UserId, req.MissionId)));
 
     [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/request-help")]
     public IActionResult RequestHelp(Guid clubId, Guid missionId) =>
-        BoardAction(() =>
+        BoardAction(clubId, () =>
         {
             store.GetMissionBoard(clubId).RequestHelp(missionId);
             return Ok();
@@ -539,7 +568,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
 
     [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/help")]
     public IActionResult HelpMission(Guid clubId, Guid missionId, [FromBody] HelpMissionRequest req) =>
-        BoardAction(() =>
+        BoardAction(clubId, () =>
         {
             store.GetMissionBoard(clubId).AddHelper(missionId, req.UserId);
             return Ok();
@@ -547,7 +576,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
 
     [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/progress")]
     public IActionResult SetMissionProgress(Guid clubId, Guid missionId, [FromBody] MissionProgressRequest req) =>
-        BoardAction(() =>
+        BoardAction(clubId, () =>
         {
             store.GetMissionBoard(clubId).SetProgress(missionId, req.Progress);
             return Ok();
@@ -556,7 +585,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     /// <summary>Moves a mission's claim (and help request) back in time, to make it look stuck.</summary>
     [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/backdate")]
     public IActionResult BackdateMission(Guid clubId, Guid missionId, [FromBody] BackdateMissionRequest req) =>
-        BoardAction(() =>
+        BoardAction(clubId, () =>
         {
             store.GetMissionBoard(clubId).Backdate(missionId, TimeSpan.FromHours(req.Hours));
             return Ok();
@@ -568,7 +597,7 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
     /// </summary>
     [HttpPost("clubs/{clubId:guid}/board/{missionId:guid}/complete")]
     public IActionResult CompleteMission(Guid clubId, Guid missionId) =>
-        BoardAction(() =>
+        BoardAction(clubId, () =>
         {
             var entries = store.GetMissionBoard(clubId).Complete(missionId);
             foreach (var (userId, xp, type) in entries)
@@ -584,15 +613,60 @@ public class MockManagementController(MockGeoGuessrDataStore store, ISchedulerFa
             return Ok(entries.Select(e => new { e.UserId, e.Xp, e.Type }));
         });
 
-    private IActionResult BoardAction(Func<IActionResult> action)
+    /// <summary>Runs a board action and, if it changed the board, pushes the payload-less update GeoGuessr sends.</summary>
+    private IActionResult BoardAction(Guid clubId, Func<IActionResult> action)
     {
         try
         {
-            return action();
+            var result = action();
+            socket.Publish(clubId, "ClubMissionBoardUpdated", null);
+            return result;
         }
         catch (InvalidOperationException ex)
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Ends the club's socket sessions: with a close code (1012 restart, 4100 superseded, 4200 outdated,
+    /// 1001 + "Unauthorized"), or with none for a dropped connection.
+    /// </summary>
+    [HttpPost("clubs/{clubId:guid}/socket/drop")]
+    public IActionResult DropSocket(Guid clubId, [FromQuery] int? code, [FromQuery] string? reason) =>
+        Ok(new { dropped = socket.Drop(clubId, code, reason) });
+
+    /// <summary>Sends any frame on the club's topic, e.g. a payload the bot can't use.</summary>
+    [HttpPost("clubs/{clubId:guid}/socket/frame")]
+    public IActionResult SendSocketFrame(Guid clubId, [FromBody] SocketFrameRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Code))
+            return BadRequest("A code is required.");
+        socket.PublishRaw(clubId, req.Code, string.IsNullOrWhiteSpace(req.Payload) ? null : req.Payload);
+        return Ok();
+    }
+
+    /// <summary>What was written into the club's chat over the socket, newest first.</summary>
+    [HttpGet("clubs/{clubId:guid}/chat")]
+    public IActionResult GetChat(Guid clubId) =>
+        Ok(new
+        {
+            echoesDropped = store.ChatEchoesDropped.GetValueOrDefault(clubId),
+            messages = store.ClubChats.TryGetValue(clubId, out var chat) ? chat.Reverse().ToList() : [],
+        });
+
+    /// <summary>Stops (or resumes) echoing the club's chat messages, so a forward is left unconfirmed.</summary>
+    [HttpPost("clubs/{clubId:guid}/chat/echoes")]
+    public IActionResult SetChatEchoes(Guid clubId, [FromQuery] bool drop)
+    {
+        store.ChatEchoesDropped[clubId] = drop;
+        return Ok();
+    }
+
+    [HttpDelete("clubs/{clubId:guid}/chat")]
+    public IActionResult ClearChat(Guid clubId)
+    {
+        store.ClubChats.TryRemove(clubId, out _);
+        return Ok();
     }
 }

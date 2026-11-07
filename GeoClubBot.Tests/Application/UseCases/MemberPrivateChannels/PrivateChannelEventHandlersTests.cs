@@ -356,4 +356,65 @@ public sealed class PrivateChannelEventHandlersTests
 
         await RenameAsync(_renamed);
     }
+
+    // ---- Club switch --------------------------------------------------------
+
+    private static readonly Guid OtherClubId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+
+    private readonly PlayerSwitchedClubsEvent _switched = new(UserId, Nickname, DiscordUserId, ClubId, OtherClubId);
+
+    private Task SwitchAsync(PlayerSwitchedClubsEvent notification) =>
+        new HandlePlayerSwitchedClubsForPrivateChannelUseCase(_mediator, _members,
+                NullLogger<HandlePlayerSwitchedClubsForPrivateChannelUseCase>.Instance)
+            .Handle(notification, CancellationToken.None);
+
+    [Fact]
+    public async Task Switch_MovesALiveChannelToTheNewClub()
+    {
+        _mediator.Send(Arg.Any<MoveMemberPrivateChannelToClubCommand>(), Arg.Any<CancellationToken>()).Returns(Result<bool>.Success(true));
+        var member = StoredMember(ChannelId, clubId: OtherClubId);
+
+        await SwitchAsync(_switched);
+
+        await _mediator.Received(1).Send(
+            Arg.Is<MoveMemberPrivateChannelToClubCommand>(c => c.ClubMember == member), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Switch_RestoresAnArchivedChannel()
+    {
+        StoredMember(ChannelId, DateTimeOffset.UtcNow, clubId: OtherClubId);
+
+        await SwitchAsync(_switched);
+
+        await _mediator.Received(1).Send(Arg.Any<RestoreMemberPrivateChannelCommand>(), Arg.Any<CancellationToken>());
+        await _mediator.DidNotReceive().Send(Arg.Any<MoveMemberPrivateChannelToClubCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Switch_CreatesAMissingChannel()
+    {
+        StoredMember(clubId: OtherClubId);
+
+        await SwitchAsync(_switched);
+
+        await _mediator.Received(1).Send(Arg.Any<CreateMemberPrivateChannelCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Switch_OfAnUnlinkedPlayer_DoesNothing()
+    {
+        await SwitchAsync(_switched with { DiscordUserId = null });
+
+        _members.ReceivedCalls().Should().BeEmpty();
+        _mediator.ReceivedCalls().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Switch_NeverThrows()
+    {
+        TheRepositoryIsDown();
+
+        await SwitchAsync(_switched);
+    }
 }

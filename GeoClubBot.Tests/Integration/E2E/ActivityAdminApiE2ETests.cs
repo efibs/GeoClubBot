@@ -453,6 +453,10 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
     {
         public Task<bool> IsAdministratorAsync(ulong discordUserId, CancellationToken cancellationToken = default) =>
             Task.FromResult(discordUserId == adminDiscordId);
+
+        public Task<bool> IsAdministratorOrHasAnyRoleAsync(ulong discordUserId, IReadOnlyCollection<ulong> roleIds,
+            CancellationToken cancellationToken = default) =>
+            IsAdministratorAsync(discordUserId, cancellationToken);
     }
 
     private sealed class StubGeoGuessrActivityReader : IGeoGuessrActivityReader
@@ -487,8 +491,20 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
     private sealed class StubTextChannelAccess : IDiscordTextChannelAccess
     {
         public Task<ulong?> CreatePrivateTextChannelAsync(ulong categoryId, string name, string description,
-            IEnumerable<ulong>? allowedDiscordUserIds, IEnumerable<ulong>? allowedRoleIds,
+            IReadOnlyCollection<ChannelAccess> access, CancellationToken cancellationToken = default) =>
+            Task.FromResult<ulong?>(null);
+
+        public Task<ulong?> CreateCategoryAsync(string name, IReadOnlyCollection<ChannelAccess> access,
             CancellationToken cancellationToken = default) => Task.FromResult<ulong?>(null);
+
+        public Task<GuildChannelLayout> ReadChannelLayoutAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new GuildChannelLayout(1, 2, []));
+
+        public Task<bool> SetChannelAccessAsync(ulong channelId, IReadOnlyCollection<ChannelAccess> access,
+            CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+        public Task<bool> DeleteCategoryAsync(ulong categoryId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
 
         public Task<bool> UpdateTextChannelAsync(TextChannel newTextChannel, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);

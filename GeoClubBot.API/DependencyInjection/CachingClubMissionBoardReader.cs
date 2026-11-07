@@ -27,12 +27,18 @@ public partial class CachingClubMissionBoardReader(
 {
     private const string CacheName = "geoguessr_mission_boards";
 
+    internal const string Current = "current";
+    internal const string Previous = "previous";
+
+    /// <summary>The cache key of one of a club's boards; shared with <see cref="GeoGuessrCacheInvalidator"/>.</summary>
+    internal static string CacheKey(Guid clubId, string which) => $"GeoGuessrMissionBoard:{clubId}:{which}";
+
     public Task<ClubMissionBoardWeek?> ReadCurrentAsync(Guid clubId, CancellationToken cancellationToken = default) =>
-        ReadCachedAsync(clubId, "current",
+        ReadCachedAsync(clubId, Current,
             async (client, ct) => await client.ReadClubMissionBoardAsync(ct).ConfigureAwait(false), cancellationToken);
 
     public Task<ClubMissionBoardWeek?> ReadPreviousAsync(Guid clubId, CancellationToken cancellationToken = default) =>
-        ReadCachedAsync(clubId, "previous",
+        ReadCachedAsync(clubId, Previous,
             (client, ct) => client.ReadPreviousClubMissionBoardAsync(ct), cancellationToken);
 
     private async Task<ClubMissionBoardWeek?> ReadCachedAsync(
@@ -41,7 +47,7 @@ public partial class CachingClubMissionBoardReader(
         Func<IGeoGuessrClient, CancellationToken, Task<ClubMissionBoardSnapshotDto?>> read,
         CancellationToken cancellationToken)
     {
-        var cacheKey = $"GeoGuessrMissionBoard:{clubId}:{which}";
+        var cacheKey = CacheKey(clubId, which);
 
         if (cache.TryGetValue<ClubMissionBoardWeek?>(cacheKey, out var cached))
         {

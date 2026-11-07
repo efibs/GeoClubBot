@@ -1,6 +1,8 @@
 using Configuration;
 using Entities;
 using FluentAssertions;
+using GeoClubBot.Tests.TestBuilders;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -21,6 +23,7 @@ public sealed class RecordMissionClaimsHandlerTests
 {
     private readonly IClubMissionBoardReader _boardReader = Substitute.For<IClubMissionBoardReader>();
     private readonly IMissionClaimRepository _claims = Substitute.For<IMissionClaimRepository>();
+    private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly Guid _clubA = Guid.NewGuid();
     private readonly Guid _clubB = Guid.NewGuid();
     private readonly List<MissionClaim> _added = [];
@@ -36,6 +39,7 @@ public sealed class RecordMissionClaimsHandlerTests
         new(
             _boardReader,
             _claims,
+            TestScopes.Serving(services => services.AddSingleton(_claims).AddSingleton(_unitOfWork)),
             Options.Create(new MissionClaimTrackingConfiguration { Schedule = "0 0 * ? * * *", Enabled = enabled, Retention = TimeSpan.FromDays(30) }),
             Options.Create(new GeoGuessrConfiguration
             {
@@ -191,5 +195,56 @@ public sealed class RecordMissionClaimsHandlerTests
 
         await _boardReader.DidNotReceiveWithAnyArgs().ReadCurrentAsync(default);
         await _claims.DidNotReceiveWithAnyArgs().DeleteClaimedBeforeAsync(default);
+    }
+
+    [Fact]
+    public async Task Handle_SavesEachClubOnItsOwn()
+    {
+        _boardReader.ReadCurrentAsync(_clubA, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, Tile(claimedBy: "alice"))));
+
+        await CreateHandler().Handle(new RecordMissionClaimsCommand(), CancellationToken.None);
+
+        // One save per club, so a club whose save fails leaves nothing pending for the next one.
+        await _unitOfWork.Received(2).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Handle_RecordsOnlyTheRequestedClub_AndLeavesTheRetentionAlone()
+    {
+        _boardReader.ReadCurrentAsync(_clubA, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, Tile(claimedBy: "alice"))));
+        _boardReader.ReadCurrentAsync(_clubB, Arg.Any<CancellationToken>())
+            .Returns(Week(Board(1, Tile(claimedBy: "bob"))));
+
+        await CreateHandler().Handle(new RecordMissionClaimsCommand(_clubB), CancellationToken.None);
+
+        _added.Should().ContainSingle().Which.ClubId.Should().Be(_clubB);
+        await _boardReader.DidNotReceive().ReadCurrentAsync(_clubA, Arg.Any<CancellationToken>());
+        await _claims.DidNotReceiveWithAnyArgs().DeleteClaimedBeforeAsync(default);
+    }
+
+    [Fact]
+    public async Task Handle_RunsOneClubAtATime_WhenTwoRecordingsOverlap()
+    {
+        var firstRead = new TaskCompletionSource<ClubMissionBoardWeek?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var concurrentReads = 0;
+        var maxConcurrentReads = 0;
+        _boardReader.ReadPreviousAsync(_clubA, Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            var now = Interlocked.Increment(ref concurrentReads);
+            maxConcurrentReads = Math.Max(maxConcurrentReads, now);
+            var result = await firstRead.Task;
+            Interlocked.Decrement(ref concurrentReads);
+            return result;
+        });
+
+        var first = CreateHandler().Handle(new RecordMissionClaimsCommand(_clubA), CancellationToken.None);
+        var second = CreateHandler().Handle(new RecordMissionClaimsCommand(_clubA), CancellationToken.None);
+        await Task.Delay(50);
+        firstRead.SetResult(null);
+        await Task.WhenAll(first, second);
+
+        maxConcurrentReads.Should().Be(1);
     }
 }

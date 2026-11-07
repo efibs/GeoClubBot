@@ -80,6 +80,18 @@ try
             await ProbeSingleAsync(arguments.Target, itemsProperty: null).ConfigureAwait(false);
             break;
 
+        // Listens to the club's topic on GeoGuessr's socket; see SocketProbe.
+        case "socket":
+            await SocketProbe.RunAsync(
+                    settings.NcfaToken,
+                    RequireClub(),
+                    arguments.Minutes is { } minutes ? TimeSpan.FromMinutes(minutes) : null,
+                    arguments.ClientVersion,
+                    Emit,
+                    cancellation.Token)
+                .ConfigureAwait(false);
+            break;
+
         default:
             Console.Error.WriteLine($"Unknown command '{arguments.Command}'.");
             ProbeArguments.PrintUsage();
