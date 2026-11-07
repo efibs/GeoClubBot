@@ -15,6 +15,7 @@ public sealed class ClubSocketSupervisorTests : IAsyncLifetime
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 7, 12, 0, 0, TimeSpan.Zero));
     private readonly ScriptedConnector _connector = new();
     private readonly RecordingSink _sink = new();
+    private readonly ClubChatChannels _chats = new();
     private readonly CancellationTokenSource _stop = new();
     private Task? _run;
 
@@ -22,7 +23,7 @@ public sealed class ClubSocketSupervisorTests : IAsyncLifetime
     {
         var supervisor = new ClubSocketSupervisor(
             club ?? new GeoGuessrClubEntry { ClubId = ClubId, NcfaToken = "x" },
-            _connector, _sink, new SocketFrameReports(), options ?? new GeoGuessrSocketConfiguration(), _clock,
+            _connector, _sink, new SocketFrameReports(), _chats, options ?? new GeoGuessrSocketConfiguration(), _clock,
             NullLogger<ClubSocketSupervisor>.Instance);
         _run = supervisor.RunAsync(_stop.Token);
     }
@@ -129,6 +130,47 @@ public sealed class ClubSocketSupervisorTests : IAsyncLifetime
         await _clock.AdvanceSlowlyAsync(TimeSpan.FromMinutes(29), TimeSpan.FromSeconds(10));
         _connector.Attempts.Should().Be(1);
         await _clock.EventuallyAsync(() => _connector.Attempts == 2, TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task WhileConnected_TheClubsChatIsAttached_AndDetachedWhenTheSocketCloses()
+    {
+        var session = _connector.Session();
+        Start();
+        await _clock.EventuallyAsync(() => _chats.Live(ClubId) is not null, TimeSpan.FromSeconds(5));
+
+        session.Close(1000);
+
+        await _clock.EventuallyAsync(() => _chats.Live(ClubId) is null, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task ADeniedChatTopic_KeepsTheClubsSocketOpen_AndTellsTheForward()
+    {
+        var session = _connector.Session();
+        Start();
+        await _clock.EventuallyAsync(() => _chats.Live(ClubId) is not null, TimeSpan.FromSeconds(5));
+        var subscribing = _chats.Live(ClubId)!.EnsureSubscribedAsync(TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        session.Feed($$"""{"code":"SubscribeDenied","topic":"chat:Club:TextMessages:{{ClubId}}","payload":null}""");
+
+        (await subscribing.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(ChatSubscription.Denied);
+        session.Disposed.Should().BeFalse();
+        _connector.Attempts.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AnEchoedChatMessage_ConfirmsTheForwardOnTheLiveSocket()
+    {
+        var session = _connector.Session();
+        Start();
+        await _clock.EventuallyAsync(() => _chats.Live(ClubId) is not null, TimeSpan.FromSeconds(5));
+
+        var sending = _chats.Live(ClubId)!.SendAndConfirmAsync("hello club", TimeSpan.FromMinutes(1), CancellationToken.None);
+        session.Feed($$"""{"code":"ChatMessage","topic":"chat:Club:TextMessages:{{ClubId}}","payload":"{\"id\":\"abcdefghij\",\"textPayload\":\"hello club\",\"sourceId\":\"bot\"}"}""");
+
+        (await sending.WaitAsync(TimeSpan.FromSeconds(5))).Should().BeTrue();
+        session.Sent.Should().Contain($$"""{"code":"ChatMessage","topic":"chat:Club:TextMessages:{{ClubId}}","payload":"hello club","client":"web"}""");
     }
 
     [Fact]

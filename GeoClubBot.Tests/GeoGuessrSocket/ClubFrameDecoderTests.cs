@@ -210,4 +210,29 @@ public sealed class ClubFrameDecoderTests
 
         push.ToString().Should().NotContain("secret-access-token");
     }
+
+    private static readonly string ChatTopic = $"chat:Club:TextMessages:{ClubId}";
+
+    [Fact]
+    public void AChatMessageOnTheClubsChat_CarriesItsText()
+    {
+        var frame = Frame("ChatMessage", new { id = "abcdefghij", payloadType = "Text", textPayload = "Hi club", sourceId = "u1", roomId = "r" }, ChatTopic);
+
+        Decode(frame).Should().Be(new DecodedClubFrame.ChatMessage("Hi club", "abcdefghij", "u1"));
+    }
+
+    [Fact]
+    public void AChatMessageWithoutText_OrOfAnotherChat_IsIgnored()
+    {
+        Decode(Frame("ChatMessage", new { id = "x", payloadType = "Poll" }, ChatTopic)).Should().BeOfType<DecodedClubFrame.Ignored>();
+        Decode(Frame("ChatMessage", new { id = "x", textPayload = "dm" }, "chat:Friend:TextMessages:u2")).Should().BeOfType<DecodedClubFrame.Ignored>();
+    }
+
+    [Fact]
+    public void TheOutboundChatFrame_CarriesTheBareText()
+    {
+        OutboundFrames.ChatMessage(SocketTopics.ClubChat(ClubId), "Hi \"club\"")
+            .Should().Be($$"""{"code":"ChatMessage","topic":"{{ChatTopic}}","payload":"Hi \u0022club\u0022","client":"web"}""");
+        OutboundFrames.HeartBeat.Should().Be("""{"code":"HeartBeat"}""");
+    }
 }

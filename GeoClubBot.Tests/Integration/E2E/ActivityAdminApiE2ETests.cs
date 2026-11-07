@@ -453,6 +453,10 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
     {
         public Task<bool> IsAdministratorAsync(ulong discordUserId, CancellationToken cancellationToken = default) =>
             Task.FromResult(discordUserId == adminDiscordId);
+
+        public Task<bool> IsAdministratorOrHasAnyRoleAsync(ulong discordUserId, IReadOnlyCollection<ulong> roleIds,
+            CancellationToken cancellationToken = default) =>
+            IsAdministratorAsync(discordUserId, cancellationToken);
     }
 
     private sealed class StubGeoGuessrActivityReader : IGeoGuessrActivityReader

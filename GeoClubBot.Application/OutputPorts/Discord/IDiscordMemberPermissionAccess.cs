@@ -9,4 +9,10 @@ public interface IDiscordMemberPermissionAccess
     /// connected (fail closed).
     /// </summary>
     Task<bool> IsAdministratorAsync(ulong discordUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the Discord user is an administrator (as <see cref="IsAdministratorAsync"/>) or holds
+    /// any of <paramref name="roleIds"/> in the configured guild. Fails closed like it.
+    /// </summary>
+    Task<bool> IsAdministratorOrHasAnyRoleAsync(ulong discordUserId, IReadOnlyCollection<ulong> roleIds, CancellationToken cancellationToken = default);
 }

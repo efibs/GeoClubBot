@@ -645,4 +645,28 @@ public class MockManagementController(
         socket.PublishRaw(clubId, req.Code, string.IsNullOrWhiteSpace(req.Payload) ? null : req.Payload);
         return Ok();
     }
+
+    /// <summary>What was written into the club's chat over the socket, newest first.</summary>
+    [HttpGet("clubs/{clubId:guid}/chat")]
+    public IActionResult GetChat(Guid clubId) =>
+        Ok(new
+        {
+            echoesDropped = store.ChatEchoesDropped.GetValueOrDefault(clubId),
+            messages = store.ClubChats.TryGetValue(clubId, out var chat) ? chat.Reverse().ToList() : [],
+        });
+
+    /// <summary>Stops (or resumes) echoing the club's chat messages, so a forward is left unconfirmed.</summary>
+    [HttpPost("clubs/{clubId:guid}/chat/echoes")]
+    public IActionResult SetChatEchoes(Guid clubId, [FromQuery] bool drop)
+    {
+        store.ChatEchoesDropped[clubId] = drop;
+        return Ok();
+    }
+
+    [HttpDelete("clubs/{clubId:guid}/chat")]
+    public IActionResult ClearChat(Guid clubId)
+    {
+        store.ClubChats.TryRemove(clubId, out _);
+        return Ok();
+    }
 }

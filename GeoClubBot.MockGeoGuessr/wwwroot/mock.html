@@ -55,6 +55,7 @@ async function api(path,opts){
 }
 function post(p,b){return api(p,{method:'POST',body:JSON.stringify(b)})}
 function del(p){return api(p,{method:'DELETE'})}
+function esc(t){return String(t).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 
 function showView(v,clubId){
   currentView=v;
@@ -144,6 +145,20 @@ async function loadClub(id){
       <div class="col-md-7"><label class="form-label">Payload JSON (empty for none)</label><input class="form-control form-control-sm" id="sf-payload" value='{"user":{"userId":"no-nick"}}'/></div>
       <div class="col-md-2"><button class="btn btn-primary btn-sm" onclick="sendSocketFrame('${c.clubId}')">Send frame</button></div>
     </div></div></div>`;
+
+  // The club chat: what the bot forwarded from Discord, as GeoGuessr stored it (cut at 300 characters).
+  const chat=await api(`/clubs/${c.clubId}/chat`);
+  html+=`<div class="card"><div class="card-header">Chat <span class="badge bg-secondary">${chat.messages.length}</span>
+      ${chat.echoesDropped?'<span class="badge bg-warning text-dark">echoes dropped</span>':''}</div><div class="card-body">
+    <p class="text-muted small mb-2">Messages forwarded with Discord's "📢 Send to club chat". Each is echoed back to the bot, which is how it confirms a forward; drop the echoes to see an unconfirmed one.</p>
+    <div class="btn-group btn-group-sm mb-2">
+      <button class="btn btn-outline-secondary" onclick="setChatEchoes('${c.clubId}',${!chat.echoesDropped})">${chat.echoesDropped?'Echo messages again':'Drop echoes'}</button>
+      <button class="btn btn-outline-danger" onclick="clearChat('${c.clubId}')">Clear</button>
+      <button class="btn btn-outline-secondary" onclick="loadClub('${c.clubId}')">Refresh</button>
+    </div>
+    ${chat.messages.length===0?'<p class="text-muted small mb-0">Nothing yet.</p>':
+      chat.messages.map(m=>`<div class="border rounded p-2 mb-1"><div class="small text-muted">${new Date(m.sentAt).toLocaleString()} · ${m.text.length} chars${m.echoed?'':' · not echoed'}</div><div style="white-space:pre-wrap">${esc(m.text)}</div></div>`).join('')}
+    </div></div>`;
 
   // Members
   html+=`<div class="card"><div class="card-header">Members (${d.members.length})</div><div class="card-body">
@@ -235,6 +250,8 @@ async function incrLevel(id){await post('/clubs/'+id+'/level');loadClub(id)}
 async function dropSocket(id,code,reason){
   const q=new URLSearchParams();if(code)q.set('code',code);if(reason)q.set('reason',reason);
   const r=await post(`/clubs/${id}/socket/drop?${q}`);alert(`Dropped ${r.dropped} connection(s).`);loadClub(id)}
+async function setChatEchoes(id,drop){await post(`/clubs/${id}/chat/echoes?drop=${drop}`);loadClub(id)}
+async function clearChat(id){await del(`/clubs/${id}/chat`);loadClub(id)}
 async function sendSocketFrame(id){
   await post(`/clubs/${id}/socket/frame`,{code:document.getElementById('sf-code').value,payload:document.getElementById('sf-payload').value});
   alert('Sent.')}

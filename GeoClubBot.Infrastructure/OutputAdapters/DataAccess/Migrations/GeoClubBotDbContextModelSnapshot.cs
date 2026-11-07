@@ -319,6 +319,42 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("LatestClubChallengeLinks");
                 });
 
+            modelBuilder.Entity("Entities.ClubChatForward", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ClubId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("DiscordMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<DateTimeOffset>("ForwardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("ForwardedByDiscordUserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<int>("PartCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PartsConfirmed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PartsSent")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DiscordMessageId", "ClubId");
+
+                    b.ToTable("ClubChatForwards");
+                });
+
             modelBuilder.Entity("Entities.ClubMember", b =>
                 {
                     b.Property<string>("UserId")

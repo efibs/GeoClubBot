@@ -157,4 +157,37 @@ public sealed class MockGeoGuessrSocketTests : IAsyncDisposable
 
         ((DecodedClubFrame.Push)await NextAsync(frames, _clubA)).PayloadUnusable.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task AChatMessage_IsStoredCutAt300_AndEchoedToTheChatsSubscribers()
+    {
+        var session = await new MockGeoGuessrSocketConnector(_hub)
+            .ConnectAsync(new GeoGuessrClubEntry { ClubId = _clubA, NcfaToken = "x" }, false, CancellationToken.None);
+        _sessions.Add(session);
+        var frames = session.ReadFramesAsync(CancellationToken.None).GetAsyncEnumerator();
+        var chat = SocketTopics.ClubChat(_clubA);
+
+        await session.SendAsync(OutboundFrames.Subscribe(chat), CancellationToken.None);
+        (await NextAsync(frames, _clubA)).Should().BeOfType<DecodedClubFrame.Subscribed>().Which.Topic.Should().Be(chat);
+
+        await session.SendAsync(OutboundFrames.ChatMessage(chat, new string('x', 310)), CancellationToken.None);
+
+        (await NextAsync(frames, _clubA)).Should().BeOfType<DecodedClubFrame.ChatMessage>().Which.Text.Should().HaveLength(300);
+        _store.ClubChats[_clubA].Should().ContainSingle().Which.Echoed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DroppedEchoes_StoreTheMessage_WithoutSendingItBack()
+    {
+        _store.ChatEchoesDropped[_clubA] = true;
+        var session = await new MockGeoGuessrSocketConnector(_hub)
+            .ConnectAsync(new GeoGuessrClubEntry { ClubId = _clubA, NcfaToken = "x" }, false, CancellationToken.None);
+        _sessions.Add(session);
+        var chat = SocketTopics.ClubChat(_clubA);
+        await session.SendAsync(OutboundFrames.Subscribe(chat), CancellationToken.None);
+
+        await session.SendAsync(OutboundFrames.ChatMessage(chat, "hi"), CancellationToken.None);
+
+        _store.ClubChats[_clubA].Should().ContainSingle().Which.Echoed.Should().BeFalse();
+    }
 }
