@@ -10,6 +10,7 @@ using Infrastructure.OutputAdapters.AI.Extractors;
 using Infrastructure.OutputAdapters.AI.Gbif;
 using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
+using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
 using UseCases.OutputPorts.AI;
@@ -58,6 +59,7 @@ public static class AiServices
     {
         var openRouter = aiConfig.OpenRouter;
         var attemptTimeout = TimeSpan.FromSeconds(aiConfig.RequestTimeoutSeconds);
+        var responseTimeout = TimeSpan.FromSeconds(Math.Max(1, aiConfig.ResponseTimeoutSeconds));
 
         // One limiter for both clients below: the budget is the key's, whichever pipeline a request takes.
         services.AddKeyedSingleton(
@@ -68,8 +70,9 @@ public static class AiServices
         {
             client.BaseAddress = new Uri(openRouter.BaseUrl);
 
-            // The whole call: queueing for a token, waiting out a rate-limit window, and the retry
-            // after it. Each attempt is bounded separately, inside the pipeline.
+            // The whole call: queueing for a token, waiting out a rate-limit window, the retry after
+            // it, and reading the response. Each attempt is bounded separately, inside the pipeline,
+            // and the response's body by the handler added first below.
             client.Timeout = TimeSpan.FromSeconds(Math.Max(aiConfig.OverallTimeoutSeconds, aiConfig.RequestTimeoutSeconds));
 
             if (!string.IsNullOrWhiteSpace(openRouter.ApiKey))
@@ -88,6 +91,9 @@ public static class AiServices
         }
 
         services.AddHttpClient(RefitChatModelClient.HttpClientName, ConfigureClient)
+            // Outermost: a body that stalls after its headers is cut off while the client's overall
+            // timeout still counts, and the pipeline's retry never sends the request again for it.
+            .AddHttpMessageHandler(() => new ResponseBodyDeadlineHandler(responseTimeout))
             .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "OpenRouterResiliencePipeline",
@@ -99,6 +105,7 @@ public static class AiServices
         // Provider health reads, kept out of the chat pipeline's retry and circuit breaker: see
         // ResiliencePipelines.AddOpenRouterHealthResiliencePipeline.
         services.AddHttpClient(RefitChatModelClient.HealthHttpClientName, ConfigureClient)
+            .AddHttpMessageHandler(() => new ResponseBodyDeadlineHandler(responseTimeout))
             .AddHttpMessageHandler(() => new ResilienceRejectionHandler())
             .AddResilienceHandler(
                 "OpenRouterHealthResiliencePipeline",
@@ -145,8 +152,10 @@ public static class AiServices
                 "GbifResiliencePipeline",
                 builder => ResiliencePipelines.AddGbifResiliencePipeline(builder, attemptTimeout));
 
-        // Singleton for its cache, which is worth keeping across questions.
+        // Singletons for their caches, which are worth keeping across questions. The map shares the
+        // reader's client: its tiles come from GBIF too, and one retry suits a tile as it suits a count.
         services.AddSingleton<ISpeciesRangeReader, GbifSpeciesRangeReader>();
+        services.AddSingleton<ISpeciesRangeMap, GbifSpeciesRangeMap>();
         services.AddSingleton<AnswerToolbox>();
         services.AddSingleton<PlantRangeLookAhead>();
 
@@ -249,6 +258,11 @@ public static class AiServices
         // the query planner's pause after a timeout, which must outlive the question that timed out.
         services.AddSingleton<KnowledgeCountryDirectory>();
         services.AddSingleton<QueryPlannerPause>();
+
+        // What PlonkIt has too, for questions asking for a clue that is not common knowledge, and the
+        // clues drawn at random for those that name nothing to look for.
+        services.AddSingleton<MainGuideOverlap>();
+        services.AddSingleton<ClueSampler>();
     }
 
     /// <summary>

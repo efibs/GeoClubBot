@@ -55,6 +55,27 @@ public sealed class SpeciesRangeExcerptTests
     }
 
     [Fact]
+    public void SaysWhatItsMapShows_AndNeverHowToShowIt()
+    {
+        // "cite this excerpt to show where the plant is found" came back in an answer as "citing it
+        // will attach the map to this reply". And a map framed on one country shows its neighbours'
+        // records too: cholla's map of the United States is purple well into Mexico.
+        var world = new SpeciesRange(5285824, "Pinus kesiya", "Pinus kesiya", "SPECIES", false, false, null, [new("PH", 256)], 256);
+        var country = new SpeciesRange(7628502, "Cylindropuntia", "Cylindropuntia", "GENUS", true, false, "US", [new("Arizona", 42_087)], 42_087);
+
+        var ofTheWorld = SpeciesRangeExcerpt.ToHit(world, "khasi pine", 15, "https://bot.example/api/v1/ai/images/a.jpg");
+        var ofACountry = SpeciesRangeExcerpt.ToHit(country, "cholla", 15, "https://bot.example/api/v1/ai/images/b.jpg");
+
+        ofTheWorld.Kind.Should().Be(KnowledgeChunkKind.Image);
+        ofTheWorld.Text.Should().EndWith("The picture is a map of these records.");
+        ofACountry.Text.Should().EndWith(
+            "The picture is a map of its records in and around United States; the counts above are for United States alone.");
+        new[] { ofTheWorld.Text, ofACountry.Text }.Should().OnlyContain(text => !text.Contains("cite", StringComparison.OrdinalIgnoreCase));
+
+        SpeciesRangeExcerpt.ToHit(world, "khasi pine", 15).Text.Should().NotContain("picture", "without a map there is none to speak of");
+    }
+
+    [Fact]
     public void IsTheSameExcerpt_ForTheSameSpeciesAndScope()
     {
         var range = new SpeciesRange(5285824, "Pinus kesiya", "Pinus kesiya", "SPECIES", false, false, null, [new("PH", 1)], 1);

@@ -71,8 +71,9 @@ public static class AnswerTools
         "Search the community GeoGuessr guides again, in your own words. Use it when the excerpts answer only "
         + "part of the question: it asks for every, all or exactly which places and they name only some; it uses "
         + "other terms than the guides (they say \"snow poles\" where a player says \"snow bollards\"); it names a "
-        + "country or region they miss; or they describe something related but different. Returns up to 6 new "
-        + "numbered excerpts, cited like the others, and says so when none of them is from the country searched. "
+        + "country or region they miss; or they describe something related but different. With source it reads "
+        + "PlonkIt alone, the guide every player knows, or every other guide. Returns up to 6 new numbered "
+        + "excerpts, cited like the others, and says so when none of them is from the country searched. "
         + "Don't use it when the excerpts fully answer the question.",
         """
         {
@@ -80,7 +81,8 @@ public static class AnswerTools
           "properties": {
             "query": { "type": "string", "description": "What to look for, in the words a guide would use, e.g. \"pole supports\"." },
             "country": { "type": "string", "description": "Optional. A country to prefer, e.g. \"Brazil\"; guides of other countries can still come back." },
-            "pictures_only": { "type": "boolean", "description": "Optional. True to find only excerpts that come with a picture." }
+            "pictures_only": { "type": "boolean", "description": "Optional. True to find only excerpts that come with a picture." },
+            "source": { "type": "string", "enum": ["plonkit", "other"], "description": "Optional. \"plonkit\" to search PlonkIt alone, e.g. to check whether it has a clue; \"other\" to search every guide but PlonkIt, for a clue players are less likely to know." }
           },
           "required": ["query"]
         }
@@ -105,10 +107,11 @@ public static class AnswerTools
     private static readonly AiToolDefinition SpeciesRangeTool = new(
         SpeciesRange,
         "Where a plant, tree or crop species is recorded, by country, or by region within one country, "
-        + "from the GBIF biodiversity database. Use it for any question about where a plant, tree or crop grows "
-        + "or in which countries or regions it is found: guides rarely list every country, so excerpts naming "
-        + "some are a reason to call it, not to skip it. Returns one numbered excerpt, cited like the others. "
-        + "Don't use it for anything but a plant.",
+        + "from the GBIF biodiversity database, with a map of the records. Use it for any question about where "
+        + "a plant, tree or crop grows or in which countries or regions it is found, and when you have named the "
+        + "plant in a user's screenshot: guides rarely list every country, so excerpts naming some are a reason "
+        + "to call it, not to skip it. Returns one numbered excerpt, cited like the others; citing it attaches "
+        + "the map. Don't use it for anything but a plant.",
         """
         {
           "type": "object",

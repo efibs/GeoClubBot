@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
+using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using UseCases.OutputPorts.AI;
@@ -211,6 +212,22 @@ public sealed class RefitChatModelClientTests
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be(ChatErrorCodes.Unreachable);
+    }
+
+    [Fact]
+    public async Task Complete_ReportsACompletionThatNeverFinished_AsTheModelsFailure_NotAsAnOutage()
+    {
+        // The provider was reached and answered; the model then stalled (ResponseBodyDeadlineHandler).
+        // Reported as unreachable, nobody would be demoted and no other model asked, and the next
+        // question would wait on the same stalled model all over again.
+        var client = CreateClient(new UnreachableHandler(new ResponseBodyTimeoutException(
+            "openrouter.ai began to answer and had not finished after 60 s.", new TaskCanceledException())));
+
+        var result = await client.CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")]));
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be(ChatErrorCodes.TimedOut);
+        result.Error.Message.Should().Be("The AI model I tried took too long to answer. Please ask again in a moment.");
     }
 
     [Fact]

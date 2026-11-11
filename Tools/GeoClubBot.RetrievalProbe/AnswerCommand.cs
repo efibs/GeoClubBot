@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Configuration;
 using Infrastructure.OutputAdapters.AI.Gbif;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
+using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
@@ -233,8 +234,9 @@ public static class AnswerCommand
 
 /// <summary>
 /// The bot's answering services, built as its host builds them, over clients the probe guards: OpenRouter
-/// behind <see cref="EmbeddingsOnlyHandler"/> (embeddings, chat, the roster and model health only) and
-/// <see cref="PacedRetryHandler"/>, GBIF behind a handler that only reads.
+/// behind <see cref="EmbeddingsOnlyHandler"/> (embeddings, chat, the roster and model health only),
+/// <see cref="PacedRetryHandler"/> and the bot's <see cref="ResponseBodyDeadlineHandler"/>, GBIF behind a
+/// handler that only reads.
 /// </summary>
 public sealed class AnsweringStack : IDisposable
 {
@@ -251,6 +253,8 @@ public sealed class AnsweringStack : IDisposable
     private readonly IChatModelClient _chat;
     private readonly AnswerToolbox _toolbox;
     private readonly PlantRangeLookAhead _plantRange;
+    private readonly MainGuideOverlap _mainGuide;
+    private readonly ClueSampler _clueSampler;
     private readonly KnowledgeCountryDirectory _countries;
     private readonly QueryPlannerPause _plannerPause;
 
@@ -263,9 +267,16 @@ public sealed class AnsweringStack : IDisposable
         _tools = Options.Create(settings.Tools);
 
         var openRouter = settings.Ai.OpenRouter;
+        var attemptTimeout = TimeSpan.FromSeconds(settings.Ai.RequestTimeoutSeconds);
         _guard = new EmbeddingsOnlyHandler(new HttpClientHandler(), allowChat: true);
-        _openRouter = new HttpClient(new PacedRetryHandler(
-            _guard, openRouter.PerMinuteRequestBudget, TimeSpan.FromSeconds(settings.Ai.RequestTimeoutSeconds)))
+
+        // The bot's own guard against a response that opens and never ends, outside the pacing and the
+        // retries as the bot has it outside its pipeline: without it one stalled model held a replay
+        // for 57 minutes (2026-11-11), and the bot's answer to it could not be seen.
+        _openRouter = new HttpClient(new ResponseBodyDeadlineHandler(TimeSpan.FromSeconds(Math.Max(1, settings.Ai.ResponseTimeoutSeconds)))
+        {
+            InnerHandler = new PacedRetryHandler(_guard, openRouter.PerMinuteRequestBudget, attemptTimeout)
+        })
         {
             BaseAddress = new Uri(openRouter.BaseUrl),
             Timeout = TimeSpan.FromSeconds(Math.Max(settings.Ai.OverallTimeoutSeconds, settings.Ai.RequestTimeoutSeconds))
@@ -297,9 +308,18 @@ public sealed class AnsweringStack : IDisposable
         _plannerPause = new QueryPlannerPause(clock);
         // One reader for the tool and the lookup before answering, as the bot's singleton is shared.
         var speciesReader = new GbifSpeciesRangeReader(clients, _tools, clock, _logging.CreateLogger<GbifSpeciesRangeReader>());
+
+        // The bot's own map renderer, reading GBIF's tiles through the same GET-only client; what it
+        // draws is kept in a folder instead of the bot's image relay.
+        var speciesMap = new GbifSpeciesRangeMap(
+            clients, new SpeciesMapFolder(Path.Combine(AppContext.BaseDirectory, "species-maps")), _tools, clock,
+            _logging.CreateLogger<GbifSpeciesRangeMap>());
+
+        _mainGuide = new MainGuideOverlap(_index, _countries, _retrieval, _logging.CreateLogger<MainGuideOverlap>());
+        _clueSampler = new ClueSampler(_index, _mainGuide, _retrieval, _logging.CreateLogger<ClueSampler>());
         _toolbox = new AnswerToolbox(
-            _embedder, _index, speciesReader, _countries, _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
-        _plantRange = new PlantRangeLookAhead(speciesReader, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
+            _embedder, _index, speciesReader, speciesMap, _mainGuide, _countries, _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
+        _plantRange = new PlantRangeLookAhead(speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
     }
 
     /// <summary>Shared by every answer, as the bot's singleton is: a model that fails for one is demoted for the next.</summary>
@@ -323,7 +343,8 @@ public sealed class AnsweringStack : IDisposable
         var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
 
         return new AskAiHandler(
-            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _countries, _plannerPause,
+            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _mainGuide, _clueSampler, _countries,
+            _plannerPause,
             _ai, _conversation, _retrieval, clock, _logging.CreateLogger<AskAiHandler>());
     }
 

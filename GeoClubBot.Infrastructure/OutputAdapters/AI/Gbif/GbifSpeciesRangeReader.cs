@@ -70,6 +70,12 @@ public sealed partial class GbifSpeciesRangeReader(
     /// </summary>
     private const int MinVernacularEntries = 3;
 
+    /// <summary>Fewest species of one genus carrying a common name before the genus is taken for it.</summary>
+    private const int MinGenusSpecies = 3;
+
+    /// <summary>Share of the species carrying a common name that one genus must hold to be what the name means.</summary>
+    private const double MinGenusShare = 0.6;
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly ConcurrentDictionary<string, CachedAnswer> _cache = new(StringComparer.Ordinal);
@@ -253,7 +259,7 @@ public sealed partial class GbifSpeciesRangeReader(
             || candidates[0].Entries < MinVernacularEntries
             || (candidates.Count > 1 && candidates[1].Entries == candidates[0].Entries))
         {
-            return null;
+            return GenusNamedBy(search?.Results ?? [], asked);
         }
 
         var found = candidates[0].Result;
@@ -265,6 +271,53 @@ public sealed partial class GbifSpeciesRangeReader(
             ByCommonName: true,
             Fuzzy: false);
     }
+
+    /// <summary>
+    /// The genus a common name stands for when no one species does: the genus most of the species whose
+    /// common names end in it belong to. "Cholla" is no species — it is the teddy bear cholla, the tree
+    /// cholla, the buckhorn cholla and forty-six more of the genus Cylindropuntia, against sixteen of
+    /// Grusonia — and a member asking "where in the US can you see cholla?" means all of them
+    /// (2026-11-09: no plant was found, and no map offered).
+    ///
+    /// Only a genus that clearly holds the name: at least <see cref="MinGenusSpecies"/> species, and
+    /// <see cref="MinGenusShare"/> of all that carry it. Measured on the live API the same day, that takes
+    /// cholla (Cylindropuntia, 69 %), birch (Betula, 98 %) and cypress (Cupressus, 61 %), and leaves
+    /// alone the names that are no genus: pine (Pinus 52 %, beside the cypress-pines), bamboo, fan palm,
+    /// mangrove, cactus.
+    /// </summary>
+    private static Taxon? GenusNamedBy(IReadOnlyList<SpeciesSearchResultDto> results, string asked)
+    {
+        if (asked.Length == 0)
+        {
+            return null;
+        }
+
+        var genera = results
+            .Where(result => result.GenusKey is not null
+                             && !string.IsNullOrWhiteSpace(result.Genus)
+                             && string.Equals(result.Kingdom, "Plantae", StringComparison.OrdinalIgnoreCase)
+                             && result.VernacularNames?.Any(vernacular => IsNamedBy(VernacularForm(vernacular.VernacularName), asked)) == true)
+            .GroupBy(result => result.GenusKey!.Value)
+            .Select(genus => (Key: genus.Key, Name: genus.First().Genus!, Species: genus.Count()))
+            .OrderByDescending(genus => genus.Species)
+            .ToList();
+
+        if (genera.Count == 0
+            || genera[0].Species < MinGenusSpecies
+            || genera[0].Species < genera.Sum(genus => genus.Species) * MinGenusShare)
+        {
+            return null;
+        }
+
+        return new Taxon(genera[0].Key, genera[0].Name, genera[0].Name, "GENUS", ByCommonName: true, Fuzzy: false);
+    }
+
+    /// <summary>Whether a species' common name is the name asked or ends in it, singular or plural: "tree cholla", "chollas".</summary>
+    private static bool IsNamedBy(string vernacular, string asked) =>
+        vernacular == asked
+        || vernacular == $"{asked}s"
+        || vernacular.EndsWith($" {asked}", StringComparison.Ordinal)
+        || vernacular.EndsWith($" {asked}s", StringComparison.Ordinal);
 
     /// <summary>The key a search result's records are counted under: a synonym's is its accepted name's.</summary>
     private static long KeyOf(SpeciesSearchResultDto result) => result.AcceptedKey ?? result.NubKey ?? result.Key!.Value;
@@ -327,6 +380,12 @@ public sealed partial class GbifSpeciesRangeReader(
 
         [JsonPropertyName("kingdom")]
         public string? Kingdom { get; set; }
+
+        [JsonPropertyName("genus")]
+        public string? Genus { get; set; }
+
+        [JsonPropertyName("genusKey")]
+        public long? GenusKey { get; set; }
 
         [JsonPropertyName("vernacularNames")]
         public List<VernacularNameDto>? VernacularNames { get; set; }

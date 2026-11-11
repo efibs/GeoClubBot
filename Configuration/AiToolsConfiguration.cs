@@ -72,6 +72,23 @@ public class AiToolsConfiguration : IValidatableObject
             yield return new ValidationResult(
                 $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.BaseUrl)} must be an absolute URL.");
         }
+
+        var map = SpeciesRange.Map;
+        var mapResults = new List<ValidationResult>();
+        Validator.TryValidateObject(map, new ValidationContext(map), mapResults, validateAllProperties: true);
+
+        foreach (var result in mapResults)
+        {
+            yield return new ValidationResult(
+                $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.Map)}: {result.ErrorMessage}",
+                [.. result.MemberNames.Select(member => $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.Map)}:{member}")]);
+        }
+
+        if (!Uri.TryCreate(map.TileBaseUrl, UriKind.Absolute, out _))
+        {
+            yield return new ValidationResult(
+                $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.Map)}:{nameof(AiSpeciesRangeMapConfiguration.TileBaseUrl)} must be an absolute URL.");
+        }
     }
 }
 
@@ -107,4 +124,49 @@ public class AiSpeciesRangeConfiguration
     /// <summary>Countries, or regions of one, listed per answer, most records first.</summary>
     [Range(1, 30)]
     public int MaxAreas { get; set; } = 15;
+
+    /// <summary>
+    /// Fewest records a plant needs in one country before its records there are offered, with their
+    /// map, for a question about that country ("where in the US can you see cholla?").
+    ///
+    /// Within a country the records follow who went looking more than where the plant grows, and a crop
+    /// is hardly recorded at all: 308 records of sugar cane in the Philippines, none of the top eight
+    /// provinces in Negros, which grows most of it (measured 2026-10-30). A plant people do record has
+    /// thousands — the cholla genus has tens of thousands in the United States — so few records are
+    /// taken to mean the database does not know, and the question is left to the guides.
+    /// </summary>
+    [Range(1, 1_000_000)]
+    public int MinRecordsInCountry { get; set; } = 500;
+
+    /// <summary>The map drawn of a plant's records. See <see cref="AiSpeciesRangeMapConfiguration"/>.</summary>
+    public AiSpeciesRangeMapConfiguration Map { get; set; } = new();
+}
+
+/// <summary>
+/// The map of where a plant is recorded, drawn from GBIF's own map tiles: its base map, and over it
+/// the density of the species' records. Free and without a key, like the counts; the picture is kept in
+/// the image relay, so it needs <c>AI:ImageRelay:PublicBaseUrl</c> to be set.
+/// </summary>
+public class AiSpeciesRangeMapConfiguration
+{
+    /// <summary>Draws the map. Off, a plant's range is offered in words alone.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>GBIF's base-map tile server. Changed only to point tests or a mirror elsewhere.</summary>
+    public string TileBaseUrl { get; set; } = "https://tile.gbif.org";
+
+    /// <summary>
+    /// The base map's style. <c>osm-bright-en</c> draws state and province borders and names them in
+    /// English, which is what makes a range readable as "southern Arizona, not Nevada"; GBIF's own
+    /// <c>gbif-light</c> is calmer and names nothing.
+    /// </summary>
+    [Required]
+    public string BaseMapStyle { get; set; } = "osm-bright-en";
+
+    /// <summary>
+    /// Seconds the whole map may take: a dozen tiles or so, fetched side by side. The answer waits for
+    /// it, so past this the range is offered without a map.
+    /// </summary>
+    [Range(1, 60)]
+    public int TimeoutSeconds { get; set; } = 8;
 }

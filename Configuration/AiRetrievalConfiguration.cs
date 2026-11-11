@@ -69,6 +69,9 @@ public class AiRetrievalConfiguration : IValidatableObject
     /// <summary>Keeping the countries a question is about in view. See <see cref="AiCountryBoostConfiguration"/>.</summary>
     public AiCountryBoostConfiguration CountryBoost { get; set; } = new();
 
+    /// <summary>Questions asking for a clue that is not common knowledge. See <see cref="AiLesserKnownConfiguration"/>.</summary>
+    public AiLesserKnownConfiguration LesserKnown { get; set; } = new();
+
     /// <summary>
     /// How much a picture whose only text is a guide heading ("Svalbard — Identifying Svalbard",
     /// "Distribution") counts, relative to its fused rank. The model knows a picture only by its text,
@@ -95,7 +98,8 @@ public class AiRetrievalConfiguration : IValidatableObject
         foreach (var (section, name) in new (object Section, string Name)[]
                  {
                      (QueryPlanner, nameof(QueryPlanner)),
-                     (CountryBoost, nameof(CountryBoost))
+                     (CountryBoost, nameof(CountryBoost)),
+                     (LesserKnown, nameof(LesserKnown))
                  })
         {
             var results = new List<ValidationResult>();
@@ -118,6 +122,56 @@ public class AiRetrievalConfiguration : IValidatableObject
             }
         }
     }
+}
+
+/// <summary>
+/// What a question asking for something new is given: "tell me a reliable clue I don't know yet", "a
+/// good clue that is not on PlonkIt".
+///
+/// PlonkIt is the guide most players have read, so to a member "a clue I don't know" means one it does
+/// not carry. Asked exactly that on 2026-11-09, the bot was offered nine PlonkIt tips of ten, and then
+/// answered three times running with clues that are on PlonkIt too — the Sikkim poles from one
+/// document, two Ukrainian car metas from another: "Both Ukraine car metas are again on PlonkIt and I
+/// knew them very well". Nothing told the model what PlonkIt has.
+///
+/// So for such a question PlonkIt's own tips are left out of what is searched, and each excerpt from
+/// another guide is compared with PlonkIt's tips for the same country, by the vectors the index already
+/// holds: one PlonkIt has a tip like is marked, and the model told to pass it over.
+/// </summary>
+public class AiLesserKnownConfiguration
+{
+    /// <summary>Off, such a question is searched and answered like any other.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// How alike a guide's excerpt and a PlonkIt tip must be, as their text vectors' cosine, for the
+    /// excerpt to be marked "also on PlonkIt".
+    ///
+    /// Measured on production on 2026-11-10 (the probe's <c>overlap</c>). The same clue told twice
+    /// scores 0.58 to 0.83: Meghalaya's taxis 0.83, the Sikkim poles 0.61, Ukraine's flag car 0.59 and
+    /// leaf car 0.58 — the three that were answered and complained about. Two tips of one country about
+    /// different things score up to about 0.55, with the odd one-line remark at 0.61. At 0.57 a ninth
+    /// of one India document's chunks are marked, nearly all of them clues PlonkIt does carry. It errs
+    /// towards marking: a clue wrongly passed over costs one candidate of many, a PlonkIt staple offered
+    /// as new costs the answer.
+    /// </summary>
+    [Range(0d, 1d)]
+    public double SameClueSimilarity { get; set; } = 0.57;
+
+    /// <summary>
+    /// Picture clues drawn at random for a question that asks for something new and names nothing to
+    /// look for ("tell me a reliable clue I don't know yet", "another one please"), offered first among
+    /// the <see cref="AiRetrievalConfiguration.ExcerptLimit"/> excerpts. Zero draws none.
+    ///
+    /// A search has only such a question's wording to go by, and finds what is worded alike: asked
+    /// again on 2026-11-11, the bot was offered a document's legend ("dark red for where it's most
+    /// common") and answered with it, without a picture. A draw offers clues instead, each with its
+    /// picture, one per guide, none from PlonkIt and none PlonkIt has a tip like — and other ones the
+    /// next time. It costs no AI request: the index draws, and the comparison with PlonkIt uses the
+    /// vectors it already holds. The search's own results fill the places left.
+    /// </summary>
+    [Range(0, 20)]
+    public int RandomPicks { get; set; } = 6;
 }
 
 /// <summary>

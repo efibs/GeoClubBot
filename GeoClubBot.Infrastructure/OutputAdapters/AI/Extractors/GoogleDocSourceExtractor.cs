@@ -1,11 +1,11 @@
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 using Configuration;
-using HtmlAgilityPack;
+using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
-using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Ingestion;
 using Utilities;
 
@@ -14,20 +14,31 @@ namespace Infrastructure.OutputAdapters.AI.Extractors;
 /// <summary>
 /// Reads publicly shared Google Docs, which make up the largest share of the guide library.
 ///
-/// Two export formats, chosen by whether images can be served at all:
+/// Three ways to read one, tried in this order:
 ///
-/// - **Text** (~2 KB) when images are not wanted. Cheap, and everything the model reads.
-/// - **Zip** (~1.5 MB) when they are: the same document as HTML plus its images as separate files.
+/// - <b>The mobile page</b> (<c>/mobilebasic</c>): the document as plain HTML, half a megabyte to two,
+///   with its headings as heading elements and every picture as a link of its own that serves it at
+///   the size asked for.
+/// - <b>The archive export</b> (<c>format=zip</c>): the same HTML with the pictures as files, at their
+///   original size. Read when the page cannot be.
+/// - <b>The text export</b> (<c>format=txt</c>): a few kilobytes, no pictures and no heading markup.
+///   Read when neither of the others can be.
 ///
-/// The HTML export is never used — it inlines every image as base64, costing the same bandwidth as
-/// the zip while making the images harder to pull out. Note the size gap is almost entirely images:
-/// the HTML inside the zip is around 10 KB.
+/// The page comes first because of what the archive cost. Its pictures are the originals, so its size
+/// has no bound worth trusting: "A Learnable Colombia" exports 218 MB for 171 pictures, another library
+/// document 332 MB, and past <see cref="AiIngestionConfiguration.MaxDocumentExportBytes"/> the text was
+/// indexed instead. Measured on production on 2026-11-09, that was 86 of the 185 indexed documents —
+/// "A Unique USA" with its 1,044 pictures among them — and it is what members rated down: "I would have
+/// liked an image", of a clue whose document had lost all of them. The same 171 pictures arrive from
+/// the page as JPEGs of about 200 kB each, one request at a time.
 ///
-/// That gap also has no upper bound worth trusting. One library document exports 332 MB, and Google
-/// refuses to build an export larger still, answering 413 after the best part of a minute. Either way
-/// the text export is what gets indexed instead — a few kilobytes, and everything the model reads. The
-/// same goes for an archive that times out or fails on Google's side, except that the result is marked
-/// degraded: the pictures are missing this time only.
+/// The text export costs more than pictures. It knows headings only by the shape of a line, and where
+/// two stood together ("Helpful plants", "Ocotillo (Fouquieria splendens)") it read them as a paragraph:
+/// the ocotillo's range was filed without its name, and answered as the range of the cholla, and of the
+/// tree yucca. The page says which lines are headings, and how they nest.
+///
+/// The HTML export is never used: it inlines every picture as base64, costing the archive's bandwidth
+/// while making the pictures harder to pull out.
 /// </summary>
 public sealed partial class GoogleDocSourceExtractor(
     IHttpClientFactory httpClientFactory,
@@ -35,19 +46,21 @@ public sealed partial class GoogleDocSourceExtractor(
     IOptions<AiIngestionConfiguration> ingestionConfiguration,
     ILogger<GoogleDocSourceExtractor> logger) : ISourceExtractor
 {
-    /// <summary>A line this short, standing alone between blanks, is treated as a heading.</summary>
-    private const int MaxHeadingLength = 80;
+    /// <summary>
+    /// Pictures read from one document at most. The largest in the library holds 1,044; past this a
+    /// document is something else, and its pictures would take the night.
+    /// </summary>
+    private const int MaxPictures = 2_000;
 
     /// <summary>
-    /// Heading elements a document needs before they alone mark its sections. One or two are often a
-    /// title styled as a heading above sections in bold, whose names only the shape of a line gives
-    /// away; reading such a document by its styles would lose every section name in it.
+    /// Pictures in a row that may fail before the rest are left for another night. One missing picture
+    /// costs a picture; a run of them is Google or the network, and asking a thousand more times would
+    /// only hold the run up.
     /// </summary>
-    private const int MinStyledHeadings = 3;
+    private const int MaxConsecutivePictureFailures = 5;
 
-    private static readonly string[] BlockElements = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "li"];
-
-    private static readonly HashSet<string> HeadingElements = new(StringComparer.OrdinalIgnoreCase) { "h1", "h2", "h3", "h4", "h5", "h6" };
+    /// <summary>The most one picture may weigh as it is downloaded. The relay holds its own, lower limit.</summary>
+    private const int MaxPictureDownloadBytes = 16 * 1024 * 1024;
 
     public string SourceType => SourceLinkClassifier.GoogleDoc;
 
@@ -60,17 +73,54 @@ public sealed partial class GoogleDocSourceExtractor(
     {
         var settings = ingestionConfiguration.Value;
 
-        // Fetching the heavier export is only worth it if the images can actually be served
-        // afterwards; without a relay their bytes have nowhere to live.
+        // Pictures are only worth fetching if they can be served afterwards; without a relay their
+        // bytes have nowhere to live.
         var wantsImages = imageRelay.IsEnabled && settings.EmbedImages;
 
-        // Set when the text stands in for an archive that failed for a reason that may not recur, so
-        // the caller can keep a fuller copy it already holds rather than trade it for this one.
-        Error? archiveFailure = null;
+        // Set when a fuller reading failed for a reason that may not recur, so the caller can keep a
+        // fuller copy it already holds rather than trade it for this one.
+        Error? fullerFailure = null;
+
+        var page = await FetchAsync(source, PageEndpoint(source), settings, isPage: true, cancellationToken).ConfigureAwait(false);
+        if (page.IsSuccess)
+        {
+            await using (page.Value.ConfigureAwait(false))
+            {
+                var pieces = GoogleDocHtml.Read(ReadUtf8(page.Value), DefaultSection(source));
+                if (pieces.Count > 0)
+                {
+                    var downloads = new PictureDownloads(
+                        httpClientFactory.CreateClient(PlonkItSourceExtractor.HttpClientName), settings.DocumentPicturePixels);
+
+                    var read = await ToChunksAsync(
+                            pieces,
+                            wantsImages ? (picture, token) => DownloadPictureAsync(downloads, picture, source, token) : null,
+                            source,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                    return Document(read.Chunks, source, read.Complete ? null : PicturesIncomplete);
+                }
+
+                // Answered, but with something that is no document: the exports say what is wrong with it.
+                LogPageUnreadable(logger, source.NaturalKey);
+            }
+        }
+        else if (page.Error.Code == SourceExtractionErrorCodes.HostRefused)
+        {
+            // About Google, not this document: the exports would only be refused as well.
+            return page.Error;
+        }
+        else if (page.Error.Code == SourceExtractionErrorCodes.Unreachable)
+        {
+            LogPageUnavailable(logger, source.NaturalKey, page.Error.Message);
+            fullerFailure = page.Error;
+        }
 
         if (wantsImages)
         {
-            var archive = await FetchAsync(source, "zip", settings, cancellationToken).ConfigureAwait(false);
+            var archive = await FetchAsync(source, ExportEndpoint(source, "zip"), settings, isPage: false, cancellationToken)
+                .ConfigureAwait(false);
 
             if (archive.IsSuccess)
             {
@@ -96,7 +146,7 @@ public sealed partial class GoogleDocSourceExtractor(
                 // build that usually still answers, and without it a document whose archive never
                 // finishes in time would never be indexed at all.
                 LogArchiveUnavailable(logger, source.NaturalKey, archive.Error.Message);
-                archiveFailure = archive.Error;
+                fullerFailure = archive.Error;
             }
             else
             {
@@ -105,7 +155,8 @@ public sealed partial class GoogleDocSourceExtractor(
             }
         }
 
-        var text = await FetchAsync(source, "txt", settings, cancellationToken).ConfigureAwait(false);
+        var text = await FetchAsync(source, ExportEndpoint(source, "txt"), settings, isPage: false, cancellationToken)
+            .ConfigureAwait(false);
         if (text.IsFailure)
         {
             return text.Error;
@@ -113,35 +164,49 @@ public sealed partial class GoogleDocSourceExtractor(
 
         await using (text.Value.ConfigureAwait(false))
         {
-            return Document(ParseTextExport(ReadUtf8(text.Value), DefaultSection(source)), source, archiveFailure);
+            return Document(ParseTextExport(ReadUtf8(text.Value), DefaultSection(source)), source, fullerFailure);
         }
     }
 
-    /// <param name="archiveFailure">
-    /// Why the archive could not be read, when the text stands in for it for a reason that may not recur.
-    /// The document is then marked degraded — and text with nothing in it settles nothing: a document of
-    /// pictures has no text to speak of, and skipping it as empty would end it for good, pictures indexed
-    /// included, over one timeout. That failure is reported instead, so the document is retried with backoff.
+    /// <summary>What a document read without all of its pictures is marked with: they may arrive another night.</summary>
+    private static readonly Error PicturesIncomplete = Error.Unexpected(
+        SourceExtractionErrorCodes.Unreachable, "Some of this document's pictures could not be downloaded.");
+
+    private static Uri PageEndpoint(SourceDescriptor source) =>
+        new($"https://docs.google.com/document/d/{source.NaturalKey}/mobilebasic");
+
+    private static Uri ExportEndpoint(SourceDescriptor source, string format) =>
+        new($"https://docs.google.com/document/d/{source.NaturalKey}/export?format={format}");
+
+    /// <param name="fullerFailure">
+    /// Why a fuller reading could not be had, when what was read stands in for it for a reason that may
+    /// not recur. The document is then marked degraded — and text with nothing in it settles nothing: a
+    /// document of pictures has no text to speak of, and skipping it as empty would end it for good,
+    /// pictures indexed included, over one timeout. That failure is reported instead, so the document is
+    /// retried with backoff.
     /// </param>
     private static Result<ExtractedDocument> Document(
         List<ExtractedChunk> chunks,
         SourceDescriptor source,
-        Error? archiveFailure = null) =>
+        Error? fullerFailure = null) =>
         chunks.Count == 0
-            ? archiveFailure ?? Error.Validation("ai.document_empty", "This document has no readable text.")
-            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks, Degraded: archiveFailure is not null);
+            ? fullerFailure ?? Error.Validation("ai.document_empty", "This document has no readable text.")
+            : new ExtractedDocument(source.Title, SourceUpdatedAtUtc: null, chunks, Degraded: fullerFailure is not null);
 
     /// <summary>
-    /// Downloads one export, refusing to hold more of it than <see cref="AiIngestionConfiguration.MaxDocumentExportBytes"/>.
+    /// Downloads the page or one export, refusing to hold more of it than <see cref="AiIngestionConfiguration.MaxDocumentExportBytes"/>.
     /// </summary>
+    /// <param name="isPage">
+    /// The page is followed to wherever Google sends the request, and a document that is not shared
+    /// sends it to a sign-in form, which answers 200. Only the page itself counts.
+    /// </param>
     private async Task<Result<MemoryStream>> FetchAsync(
         SourceDescriptor source,
-        string format,
+        Uri endpoint,
         AiIngestionConfiguration settings,
+        bool isPage,
         CancellationToken cancellationToken)
     {
-        var endpoint = new Uri($"https://docs.google.com/document/d/{source.NaturalKey}/export?format={format}");
-
         // Bounds the download as well as the request. The HttpClient's own timeout stops once the
         // headers are in, so reading the body — which is where this spends its time — has nothing else
         // holding it to a limit.
@@ -162,6 +227,12 @@ public sealed partial class GoogleDocSourceExtractor(
                 return SourceFetch.FromStatus(response.StatusCode, "document", ForbiddenMeans.NotPublic);
             }
 
+            if (isPage && response.RequestMessage?.RequestUri is { } answeredBy && !IsDocumentPage(answeredBy))
+            {
+                return Error.Forbidden(SourceExtractionErrorCodes.NotPublic,
+                    "This document's page led somewhere else, as it does for one that is not shared.");
+            }
+
             return await SourceFetch.ReadCappedAsync(response, settings.MaxDocumentExportBytes, "document", bounded.Token)
                 .ConfigureAwait(false);
         }
@@ -171,6 +242,10 @@ public sealed partial class GoogleDocSourceExtractor(
             return SourceFetch.FromException(ex, "document", ForbiddenMeans.NotPublic);
         }
     }
+
+    private static bool IsDocumentPage(Uri url) =>
+        url.Host.Equals("docs.google.com", StringComparison.OrdinalIgnoreCase)
+        && url.AbsolutePath.Contains("/mobilebasic", StringComparison.OrdinalIgnoreCase);
 
     private static string ReadUtf8(MemoryStream body) =>
         System.Text.Encoding.UTF8.GetString(body.GetBuffer(), 0, (int)body.Length);
@@ -199,7 +274,14 @@ public sealed partial class GoogleDocSourceExtractor(
             using var reader = new StreamReader(htmlEntry.Open());
             var html = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
-            return await ParseHtmlAsync(html, archive, source, cancellationToken).ConfigureAwait(false);
+            var read = await ToChunksAsync(
+                    GoogleDocHtml.Read(html, DefaultSection(source)),
+                    async (picture, token) => new PictureResult(await StoreEntryAsync(archive, picture, token).ConfigureAwait(false)),
+                    source,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return read.Chunks;
         }
         catch (InvalidDataException ex)
         {
@@ -208,93 +290,185 @@ public sealed partial class GoogleDocSourceExtractor(
         }
     }
 
-    private async Task<List<ExtractedChunk>> ParseHtmlAsync(
-        string html,
-        ZipArchive archive,
+    /// <summary>
+    /// Turns a document's pieces into chunks, fetching each picture once. A piece keeps its place in the
+    /// key whether or not its picture arrived, so a picture that is missing one night and back the next
+    /// does not re-key every chunk after it.
+    ///
+    /// A picture that cannot be stored costs the picture, never the words: when all the pictures sharing
+    /// a caption are lost and the caption holds paragraphs that are in no text chunk, it is kept as text.
+    /// </summary>
+    /// <param name="store">Fetches and stores one picture by its <c>src</c>; null when pictures are not wanted.</param>
+    /// <returns>The chunks, and whether every picture was at least asked for.</returns>
+    private async Task<(List<ExtractedChunk> Chunks, bool Complete)> ToChunksAsync(
+        IReadOnlyList<GoogleDocPiece> pieces,
+        Func<string, CancellationToken, Task<PictureResult>>? store,
         SourceDescriptor source,
         CancellationToken cancellationToken)
     {
-        var document = new HtmlDocument();
-        document.LoadHtml(html);
+        var stored = new string?[pieces.Count];
+        var complete = true;
 
-        var blocks = document.DocumentNode.SelectNodes(
-            string.Join(" | ", BlockElements.Select(element => $"//body//{element}")));
-
-        // A document whose author used heading styles says where its sections are, and nothing else is
-        // guessed to be one. Only a document without them is read by the shape of its lines.
-        var styled = (blocks?.Count(block => HeadingElements.Contains(block.Name)) ?? 0) >= MinStyledHeadings;
-
-        var chunks = new List<ExtractedChunk>();
-        var section = DefaultSection(source);
-        var textIndex = 0;
-        var imageIndex = 0;
-
-        // The last non-empty text, so an image in a paragraph of its own still gets a caption.
-        var lastText = string.Empty;
-
-        foreach (var block in blocks ?? Enumerable.Empty<HtmlNode>())
+        if (store is not null)
         {
-            var text = HtmlText.Decode(block.InnerText ?? string.Empty).Trim();
-            var images = block.SelectNodes(".//img") ?? Enumerable.Empty<HtmlNode>();
+            var bySource = new Dictionary<string, string?>(StringComparer.Ordinal);
+            var stopped = false;
 
-            var isHeading = text.Length > 0 && IsHeading(block, text, styled);
-
-            if (text.Length > 0)
+            for (var index = 0; index < pieces.Count; index++)
             {
-                if (isHeading)
-                {
-                    section = $"{DefaultSection(source)} > {text}";
-                }
-                else
-                {
-                    chunks.Add(new ExtractedChunk($"p{textIndex++}", section, text));
-                    lastText = text;
-                }
-            }
-
-            foreach (var image in images)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var stored = await StoreImageAsync(archive, image, cancellationToken).ConfigureAwait(false);
-                if (stored is null)
+                if (pieces[index].ImageSource is not { } picture)
                 {
                     continue;
                 }
 
-                // Captioned from the paragraph the image sits in, falling back to the previous one.
-                // Images here are frequently the actual answer, and a written question reaches them
-                // only through this text.
-                var caption = text.Length > 0 && !isHeading ? text : lastText;
+                if (!bySource.TryGetValue(picture, out var url))
+                {
+                    if (stopped)
+                    {
+                        continue;
+                    }
 
-                chunks.Add(new ExtractedChunk(
-                    $"img{imageIndex++}",
-                    section,
-                    caption.Length > 0 ? caption : section,
-                    stored));
+                    if (bySource.Count >= MaxPictures)
+                    {
+                        LogTooManyPictures(logger, source.NaturalKey, MaxPictures);
+                        stopped = true;
+                        continue;
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var result = await store(picture, cancellationToken).ConfigureAwait(false);
+                    url = result.Url;
+                    bySource[picture] = url;
+
+                    if (result.Stop)
+                    {
+                        LogPicturesStopped(logger, source.NaturalKey, bySource.Count);
+                        stopped = true;
+                        complete = false;
+                    }
+                }
+
+                stored[index] = url;
             }
         }
 
-        return chunks;
-    }
-
-    /// <summary>Copies one embedded image into the relay and returns the URL it will be served from.</summary>
-    private async Task<string?> StoreImageAsync(
-        ZipArchive archive,
-        HtmlNode image,
-        CancellationToken cancellationToken)
-    {
-        // Decoded before it is matched: the attribute is HTML-encoded and the entry name it has to
-        // equal is not, so an encoded character would silently drop the image.
-        var source = HtmlText.Decode(image.GetAttributeValue("src", string.Empty));
-        if (string.IsNullOrWhiteSpace(source))
+        var groupsWithPicture = new HashSet<int>();
+        for (var index = 0; index < pieces.Count; index++)
         {
-            return null;
+            if (stored[index] is not null && pieces[index].Group is { } group)
+            {
+                groupsWithPicture.Add(group);
+            }
         }
 
+        var chunks = new List<ExtractedChunk>();
+        var groupsKeptAsText = new HashSet<int>();
+
+        for (var index = 0; index < pieces.Count; index++)
+        {
+            var piece = pieces[index];
+            var key = $"p{index.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+            if (piece.ImageSource is null)
+            {
+                chunks.Add(new ExtractedChunk(key, piece.SectionPath, piece.Text, Anchor: piece.Anchor));
+            }
+            else if (stored[index] is { } url)
+            {
+                // A picture nothing near it describes is captioned by where it stands.
+                chunks.Add(new ExtractedChunk(
+                    $"{key}-img", piece.SectionPath, piece.Text.Length > 0 ? piece.Text : piece.SectionPath, url, piece.Anchor));
+            }
+            else if (piece is { OwnsText: true, Text.Length: > 0, Group: { } group }
+                     && !groupsWithPicture.Contains(group)
+                     && groupsKeptAsText.Add(group))
+            {
+                chunks.Add(new ExtractedChunk(key, piece.SectionPath, piece.Text, Anchor: piece.Anchor));
+            }
+        }
+
+        return (chunks, complete);
+    }
+
+    /// <summary>
+    /// Downloads one of the page's pictures and stores it in the relay. The page links each picture at
+    /// 800 pixels; the size is part of the link, and <see cref="AiIngestionConfiguration.DocumentPicturePixels"/>
+    /// is asked for instead, so a map's small print stays readable.
+    ///
+    /// Only Google's own hosts are asked: the page is Google's, and nothing in it should send the bot
+    /// anywhere else.
+    /// </summary>
+    private async Task<PictureResult> DownloadPictureAsync(
+        PictureDownloads downloads,
+        string picture,
+        SourceDescriptor source,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(picture, UriKind.Absolute, out var url)
+            || url.Scheme != Uri.UriSchemeHttps
+            || !IsGoogleHost(url.Host))
+        {
+            return new PictureResult(null);
+        }
+
+        var sized = new Uri(PictureSize().Replace(
+            url.AbsoluteUri, $"=s{downloads.Pixels.ToString(System.Globalization.CultureInfo.InvariantCulture)}", 1));
+
+        try
+        {
+            using var response = await downloads.Client
+                .GetAsync(sized, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                LogPictureFailed(logger, source.NaturalKey, (int)response.StatusCode);
+
+                // Google turning requests away is about the night, not the picture.
+                return new PictureResult(null, Stop: (int)response.StatusCode == 429 || downloads.Failed());
+            }
+
+            var body = await SourceFetch.ReadCappedAsync(response, MaxPictureDownloadBytes, "picture", cancellationToken)
+                .ConfigureAwait(false);
+            if (body.IsFailure)
+            {
+                return new PictureResult(null, Stop: downloads.Failed());
+            }
+
+            await using (body.Value.ConfigureAwait(false))
+            {
+                var saved = await imageRelay
+                    .StoreAsync(body.Value.ToArray(), response.Content.Headers.ContentType?.MediaType, cancellationToken)
+                    .ConfigureAwait(false);
+
+                downloads.Succeeded();
+                return new PictureResult(saved.IsSuccess ? saved.Value : null);
+            }
+        }
+        catch (HostRefusedRequestException)
+        {
+            return new PictureResult(null, Stop: true);
+        }
+        catch (Exception ex) when (SourceFetch.IsFetchFailure(ex, cancellationToken))
+        {
+            LogPictureThrew(logger, source.NaturalKey, ex);
+            return new PictureResult(null, Stop: downloads.Failed());
+        }
+    }
+
+    private static bool IsGoogleHost(string host) =>
+        host.Equals("google.com", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("googleusercontent.com", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".googleusercontent.com", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Copies one of the archive's pictures into the relay and returns the URL it will be served from.</summary>
+    private async Task<string?> StoreEntryAsync(ZipArchive archive, string picture, CancellationToken cancellationToken)
+    {
         // Entry names in the archive are exactly the relative src values.
         var entry = archive.Entries.FirstOrDefault(candidate =>
-            candidate.FullName.Equals(source, StringComparison.OrdinalIgnoreCase));
+            candidate.FullName.Equals(picture, StringComparison.OrdinalIgnoreCase));
 
         if (entry is null)
         {
@@ -307,11 +481,11 @@ public sealed partial class GoogleDocSourceExtractor(
             await content.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
         }
 
-        var stored = await imageRelay
+        var saved = await imageRelay
             .StoreAsync(buffer.ToArray(), contentType: null, cancellationToken)
             .ConfigureAwait(false);
 
-        return stored.IsSuccess ? stored.Value : null;
+        return saved.IsSuccess ? saved.Value : null;
     }
 
     /// <summary>
@@ -331,7 +505,9 @@ public sealed partial class GoogleDocSourceExtractor(
 
         foreach (var paragraph in paragraphs)
         {
-            if (LooksLikeHeading(paragraph))
+            // The text export loses heading markup, so a heading is recognised by its shape. Wrong
+            // guesses only affect the section label, never whether content is indexed.
+            if (GoogleDocHtml.LooksLikeHeading(paragraph))
             {
                 // Tracked so each chunk carries where in the document it came from; that path is
                 // shown in citations and folded into the embedding text.
@@ -350,54 +526,36 @@ public sealed partial class GoogleDocSourceExtractor(
     private static string DefaultSection(SourceDescriptor source) =>
         source.Title ?? source.Country ?? "Document";
 
-    /// <summary>
-    /// Whether a block of the archive's HTML is a heading: a heading element, unless it is a credit, a
-    /// URL or has no words (<see cref="SectionLabel.IsNeverAHeading"/>) — never for its length or its
-    /// case, since its author chose to make it one, and a heading lost files every chunk under it under
-    /// the heading before; and in a document that does not mark its sections with heading elements
-    /// (<paramref name="styled"/>), also a line shaped like one that is neither a list item nor nothing
-    /// but a link. "Counties (33) ->" and "You can view the flags in more detail here" were links, and
-    /// became the section of every chunk after them.
-    /// </summary>
-    private static bool IsHeading(HtmlNode block, string text, bool styled) =>
-        HeadingElements.Contains(block.Name)
-            ? !SectionLabel.IsNeverAHeading(text)
-            : !styled
-              && !string.Equals(block.Name, "li", StringComparison.OrdinalIgnoreCase)
-              && LooksLikeHeading(text)
-              && !IsOnlyALink(block, text);
+    /// <param name="Url">Where the stored picture is served from, or null when it could not be stored.</param>
+    /// <param name="Stop">Ask for no more of this document's pictures this run.</param>
+    private readonly record struct PictureResult(string? Url, bool Stop = false);
 
-    /// <summary>Whether the block's words are all inside links, arrows and spacing aside.</summary>
-    private static bool IsOnlyALink(HtmlNode block, string text)
+    /// <summary>One document's picture downloads: the client they share, and how many failed in a row.</summary>
+    private sealed class PictureDownloads(HttpClient client, int pixels)
     {
-        var links = block.SelectNodes(".//a[@href]");
-        if (links is null)
-        {
-            return false;
-        }
+        private int _consecutiveFailures;
 
-        var linked = string.Concat(links.Select(link => HtmlText.Decode(link.InnerText ?? string.Empty)));
-        return LettersAndDigits(linked).Length > 0 && LettersAndDigits(linked) == LettersAndDigits(text);
+        public HttpClient Client { get; } = client;
+
+        public int Pixels { get; } = Math.Clamp(pixels, 200, 4_000);
+
+        public void Succeeded() => _consecutiveFailures = 0;
+
+        /// <summary>Counts a failure, and says whether it is one too many in a row.</summary>
+        public bool Failed() => ++_consecutiveFailures >= MaxConsecutivePictureFailures;
     }
 
-    private static string LettersAndDigits(string text) => string.Concat(text.Where(char.IsLetterOrDigit));
+    // The size a picture link asks for: "=s800" closing the path, before the link's key.
+    [GeneratedRegex(@"=s[0-9]+(?=$|\?)", RegexOptions.CultureInvariant)]
+    private static partial Regex PictureSize();
 
-    /// <summary>
-    /// Heuristic: the text export loses heading markup, so a heading is recognised by shape — short,
-    /// standing alone, and not punctuated like a sentence — and by not being one of the lines that are
-    /// shaped like one but are not (<see cref="SectionLabel.IsNotAHeading"/>): credits, URLs, filler,
-    /// captions, or a line ending in an arrow. Those headed the answers of the 2026-10-29 replay as
-    /// "Image credit to PlonkIt", "@bagaboiebailey", "Research by Yaron", "________________". Wrong
-    /// guesses only affect the section label, never whether content is indexed.
-    /// </summary>
-    private static bool LooksLikeHeading(string paragraph) =>
-        paragraph.Length <= MaxHeadingLength
-        && !paragraph.Contains('\n')
-        && !paragraph.EndsWith('.')
-        && !paragraph.EndsWith(',')
-        && !paragraph.EndsWith(':')
-        && !SectionLabel.EndsWithArrow(paragraph)
-        && !SectionLabel.IsNotAHeading(paragraph);
+    [LoggerMessage(LogLevel.Information,
+        "The page of Google document {DocumentId} holds no document; reading its exports instead.")]
+    static partial void LogPageUnreadable(ILogger logger, string documentId);
+
+    [LoggerMessage(LogLevel.Warning,
+        "The page of Google document {DocumentId} could not be read ({Reason}); reading its exports instead.")]
+    static partial void LogPageUnavailable(ILogger logger, string documentId, string reason);
 
     [LoggerMessage(LogLevel.Information,
         "The export of Google document {DocumentId} is too large to take; indexing its text without images.")]
@@ -412,4 +570,18 @@ public sealed partial class GoogleDocSourceExtractor(
 
     [LoggerMessage(LogLevel.Warning, "Could not read the export archive for {DocumentId}.")]
     static partial void LogArchiveUnreadable(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(LogLevel.Debug, "A picture of Google document {DocumentId} answered HTTP {Status}; indexing the document without it.")]
+    static partial void LogPictureFailed(ILogger logger, string documentId, int status);
+
+    [LoggerMessage(LogLevel.Debug, "A picture of Google document {DocumentId} could not be downloaded; indexing the document without it.")]
+    static partial void LogPictureThrew(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Stopped downloading the pictures of Google document {DocumentId} after {Asked}: too many failed in a row. The rest are left for a later run.")]
+    static partial void LogPicturesStopped(ILogger logger, string documentId, int asked);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Google document {DocumentId} holds more than {MaxPictures} pictures; the rest are not indexed.")]
+    static partial void LogTooManyPictures(ILogger logger, string documentId, int maxPictures);
 }

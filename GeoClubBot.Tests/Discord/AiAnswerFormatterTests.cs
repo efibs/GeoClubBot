@@ -248,17 +248,18 @@ public sealed class AiAnswerFormatterTests
     }
 
     [Fact]
-    public void Render_TitlesPicturesSharingALink_AsTheOneGridDiscordShowsThem()
+    public void Render_GivesEachCitedExcerptAGalleryOfItsOwn_EvenWhenTheyShareALink()
     {
-        // Discord shows embeds with the same link as one, under the first one's title: two pictures cited
-        // as [1] and [3] from one Google Doc came out as "[1] …" over both, and [3] was nowhere. They are
-        // posted together and titled as the group they become.
+        // Discord draws embeds with the same link as one, under the first one's title. Titled as the
+        // group they became, five clues from one Google Doc stood under "[2][3][4][5][6] 28 Secret US
+        // Metas (5 pictures)" — "it is hard to understand which image is which clue" — and the fifth
+        // was not drawn at all. Each excerpt's pictures now have a link no other gallery has.
         var answer = new AiAnswer(
             "Straps [1], tents [2], map [3].",
             [
-                new AiAnswerImage(1, "https://i.imgur.com/straps.png", "https://docs.google.com/document/d/mongolia", "Mongolia Gen 4 Car Meta"),
+                new AiAnswerImage(1, "https://i.imgur.com/straps.png", "https://docs.google.com/document/d/mongolia/edit?tab=t.0#heading=h.a", "Mongolia Gen 4 Car Meta > Straps"),
                 new AiAnswerImage(2, "https://i.imgur.com/tents.png", "https://www.plonkit.net/mongolia#t1", "Mongolia"),
-                new AiAnswerImage(3, "https://i.imgur.com/map.png", "https://docs.google.com/document/d/mongolia", "Mongolia Gen 4 Car Meta")
+                new AiAnswerImage(3, "https://i.imgur.com/map.png", "https://docs.google.com/document/d/mongolia/edit?tab=t.0#heading=h.a", "Mongolia Gen 4 Car Meta > Straps")
             ],
             [],
             "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
@@ -266,9 +267,76 @@ public sealed class AiAnswerFormatterTests
         var embeds = RenderLinked(answer).Embeds;
 
         embeds.Select(embed => embed.Image!.Value.Url).Should().Equal(
-            "https://i.imgur.com/straps.png", "https://i.imgur.com/map.png", "https://i.imgur.com/tents.png");
+            "https://i.imgur.com/straps.png", "https://i.imgur.com/tents.png", "https://i.imgur.com/map.png");
         embeds.Select(embed => embed.Title).Should().Equal(
-            "[1][3] Mongolia Gen 4 Car Meta (2 pictures)", "[1][3] Mongolia Gen 4 Car Meta (2 pictures)", "[2] Mongolia");
+            "[1] Mongolia Gen 4 Car Meta > Straps", "[2] Mongolia", "[3] Mongolia Gen 4 Car Meta > Straps");
+        embeds.Select(embed => embed.Url).Should().Equal(
+            ["https://docs.google.com/document/d/mongolia/edit?tab=t.0#heading=h.a",
+             "https://www.plonkit.net/mongolia#t1",
+             "https://docs.google.com/document/d/mongolia/edit?tab=t.0&_=2#heading=h.a"],
+            "told apart before the fragment, so the link still opens at its heading");
+    }
+
+    [Fact]
+    public void Render_GivesAnExcerptASecondGallery_PastTheFourPicturesDiscordDrawsInOne()
+    {
+        var images = Enumerable.Range(1, 6)
+            .Select(position => new AiAnswerImage(
+                1, $"https://i.imgur.com/{position}.png", "https://docs.google.com/presentation/d/deck/edit#slide=id.p7",
+                "Brazilian Poles Lite > Slide 7", position, 6, "Pole tops by state."))
+            .ToList();
+        var answer = new AiAnswer(
+            "See [1].", images, [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false,
+            RetrievedSourceUrls: [], CitedSourceUrls: []);
+
+        var embeds = RenderLinked(answer).Embeds;
+
+        embeds.Select(embed => embed.Title).Should().Equal(
+            [.. Enumerable.Repeat("[1] Brazilian Poles Lite > Slide 7 (pictures 1–4 of 6)", 4),
+             .. Enumerable.Repeat("[1] Brazilian Poles Lite > Slide 7 (pictures 5–6 of 6)", 2)]);
+        embeds.Select(embed => embed.Url).Distinct().Should().Equal(
+            "https://docs.google.com/presentation/d/deck/edit#slide=id.p7",
+            "https://docs.google.com/presentation/d/deck/edit?_=2#slide=id.p7");
+        embeds.Select(embed => embed.Description).Should().Equal(
+            ["Pole tops by state.", null, null, null, null, null], "said once, under the first gallery's title");
+    }
+
+    [Fact]
+    public void Render_CaptionsAPicture_WithWhatItsGuideSaysOfIt_AsPlainText()
+    {
+        var answer = new AiAnswer(
+            "See [1].",
+            [new AiAnswerImage(1, "https://i.imgur.com/a.png", "https://guide/a", "USA · 28 Secret US Metas",
+                Caption: "Ohio gap (Photo : West_Liberty, Ohio): gaps in road lines where there is a RPM.")],
+            [],
+            "test/model", ConversationId: 100, Depth: 1, IsLongThread: false, RetrievedSourceUrls: [], CitedSourceUrls: []);
+
+        RenderLinked(answer).Embeds.Single().Description
+            .Should().Be("Ohio gap (Photo : West\\_Liberty, Ohio): gaps in road lines where there is a RPM.",
+                "what a guide wrote must not turn into Discord's formatting");
+    }
+
+    [Fact]
+    public void Render_KeepsTheEmbedsWithinDiscordsTextAllowance_ByLeavingOutCaptionsThatNoLongerFit()
+    {
+        // Discord adds up the titles and descriptions of a message's embeds and refuses the message,
+        // answer and all, past 6,000 characters. Ten long headings with ten long captions, every
+        // underscore of which is escaped, come to more.
+        var images = Enumerable.Range(1, 10)
+            .Select(marker => new AiAnswerImage(
+                marker, $"https://i.imgur.com/{marker}.png", $"https://guide/{marker}", new string('h', 300),
+                Caption: string.Concat(Enumerable.Repeat("pole_top ", 44)).Trim()))
+            .ToList();
+        var answer = new AiAnswer(
+            "Many clues.", images, [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false,
+            RetrievedSourceUrls: [], CitedSourceUrls: []);
+
+        var embeds = RenderLinked(answer).Embeds;
+
+        embeds.Should().HaveCount(10, "every picture is still shown");
+        embeds.Sum(embed => embed.Title.Length + (embed.Description?.Length ?? 0)).Should().BeLessThanOrEqualTo(6000);
+        embeds[0].Description.Should().NotBeNullOrEmpty("captions are given in reading order while they fit");
+        embeds[^1].Description.Should().BeNull("the one that no longer fits is left out whole, not cut");
     }
 
     [Fact]
@@ -315,6 +383,13 @@ public sealed class AiAnswerFormatterTests
         {
             builder.AppendLine("--- embed ---");
             builder.AppendLine($"Title: {embed.Title}");
+
+            // Only when there is one, so a layout without captions reads exactly as it did.
+            if (!string.IsNullOrEmpty(embed.Description))
+            {
+                builder.AppendLine($"About: {embed.Description}");
+            }
+
             builder.AppendLine($"Image: {embed.Image?.Url}");
             builder.AppendLine($"Url:   {embed.Url}");
         }

@@ -241,6 +241,114 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
+    public async Task AskAi_AttachesTheMapOfAPlantsRecords_AfterTheGuides_WhenTheQuestionNamesACountry()
+    {
+        // "where in the us can you see cholla?" — "I would have liked a distribution map" (2026-11-09).
+        // Such a question was not looked up at all; within a country the guides lead and the map follows.
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "Cholla grows across the Southwest [1], as the records show [2].");
+        host.Mock<IKnowledgeIndex>().SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Chollas are common in southern Arizona.", "https://www.plonkit.net/united-states#ch0l")]);
+        var inTheUnitedStates = new SpeciesRange(
+            7628502, "Cylindropuntia (Engelm.) F.M.Knuth", "Cylindropuntia", "GENUS", MatchedByCommonName: true, FuzzyMatch: false,
+            "US", [new("California", 45_272), new("Arizona", 42_087)], 125_821);
+        var species = host.Mock<ISpeciesRangeReader>();
+        species.ReadAsync(Arg.Any<SpeciesRangeQuery>(), Arg.Any<CancellationToken>())
+            .Returns(Error.NotFound("ai.species_not_found", "No such plant."));
+        species.ReadAsync(new SpeciesRangeQuery("cholla", "US"), Arg.Any<CancellationToken>()).Returns(inTheUnitedStates);
+        host.Mock<ISpeciesRangeMap>().DrawAsync(inTheUnitedStates, Arg.Any<CancellationToken>())
+            .Returns("https://bot.example/api/v1/ai/images/cholla.jpg");
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "where in the us can you see cholla?"));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Sources.Select(source => source.Url).Should().Equal(
+            "https://www.plonkit.net/united-states#ch0l", "https://www.gbif.org/species/7628502");
+        var map = result.Value.Images.Should().ContainSingle().Subject;
+        map.ImageUrl.Should().Be("https://bot.example/api/v1/ai/images/cholla.jpg");
+        map.Marker.Should().Be(2);
+        map.Title.Should().Be("Where Cylindropuntia is recorded in United States (GBIF)");
+    }
+
+    [Fact]
+    public async Task AskAi_LeavesPlonkItOutOfTheSearch_AndMarksWhatItHasToo_ForAQuestionAskingForSomethingNew()
+    {
+        // "tell me a reliable clue I don't know yet." was answered with Sikkim's metal poles: "also on
+        // PlonkIt, which means lots of people will know it". The follow-up got two more of the kind.
+        using var host = CreateHost();
+        var chat = ArrangeProviders(host, answer: "The Dasuya forest car [2].");
+        var poles = Hit("These metal telephone poles are pretty much exclusively found in Sikkim.", "https://docs.google.com/document/d/india/edit#heading=h.a") with { SourceType = "gdoc", SourceKey = "india", Country = "india" };
+        var forestCar = Hit("The Dasuya forest has been covered with a very unusual car.", "https://docs.google.com/document/d/india/edit#heading=h.b") with { SourceType = "gdoc", SourceKey = "india", Country = "india" };
+        var index = host.Mock<IKnowledgeIndex>();
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([poles, forestCar]);
+        index.ReadNearestOfSourceAsync(default!, default!, default, default).ReturnsForAnyArgs(
+            Task.FromResult<IReadOnlyDictionary<Guid, KnowledgeHit>>(new Dictionary<Guid, KnowledgeHit>
+            {
+                [poles.Id] = Hit("Metal poles with a mesh pattern are commonly found in Sikkim.", "https://www.plonkit.net/india#p0le") with { Score = 0.61f },
+                [forestCar.Id] = Hit("Canola is mostly found in and around Rajasthan.", "https://www.plonkit.net/india#c4n") with { Score = 0.44f }
+            }));
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "tell me a reliable clue I don't know yet."));
+
+        result.IsSuccess.Should().BeTrue();
+        index.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<KnowledgeQuery>()
+            .Should().ContainSingle().Which.ExcludedSourceType.Should().Be("plonkit");
+
+        var prompt = chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().First().Messages[^1].ToPlainText();
+        prompt.Should().Contain("PlonkIt is the guide every player has read")
+            .And.Contain("(also on PlonkIt)\nThese metal telephone poles")
+            .And.NotContain("(also on PlonkIt)\nThe Dasuya forest");
+    }
+
+    [Fact]
+    public async Task AskAi_LeadsWithPictureCluesDrawnAtRandom_ForAQuestionThatNamesNothingToLookFor()
+    {
+        // Asked again on 2026-11-11, "tell me a reliable clue I don't know yet." was searched by its
+        // wording, offered a document's legend and answered with it — no clue, and no picture.
+        using var host = CreateHost();
+        var chat = ArrangeProviders(host, answer: "Riau's poles carry a huge squared X [1].");
+        var legend = Hit("Dark red marks where a meta is most common, light red where it is rare.", "https://docs.google.com/document/d/peru/edit")
+            with
+        { SourceType = "gdoc", SourceKey = "peru" };
+        var riau = Picture(
+            "Riau: very tall poles with a huge squared X, entirely unique to the province.",
+            "https://docs.google.com/presentation/d/poles/edit#slide=id.p38", "https://bot.example/api/v1/ai/images/riau.png")
+            with
+        { SourceType = "gslides", SourceKey = "poles", SectionPath = "Introduction to Utility Poles > Slide 38" };
+        var index = host.Mock<IKnowledgeIndex>();
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([legend]);
+        index.SampleAsync(Arg.Any<KnowledgeSample>(), Arg.Any<CancellationToken>()).Returns([riau]);
+
+        var result = await host.SendAsync(Ask(NewSnowflake(), null, "tell me a reliable clue I don't know yet."));
+
+        result.IsSuccess.Should().BeTrue();
+        await index.Received(1).SampleAsync(
+            Arg.Is<KnowledgeSample>(sample => sample.Kind == KnowledgeChunkKind.Image && sample.ExcludedSourceType == "plonkit"),
+            Arg.Any<CancellationToken>());
+
+        var prompt = chat.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<AiChatRequest>().First().Messages[^1].ToPlainText();
+        prompt.IndexOf("Riau: very tall poles", StringComparison.Ordinal)
+            .Should().BePositive().And.BeLessThan(prompt.IndexOf("Dark red marks", StringComparison.Ordinal), "the draw leads what the search found");
+        result.Value.Images.Should().ContainSingle().Which.ImageUrl.Should().Be("https://bot.example/api/v1/ai/images/riau.png");
+    }
+
+    [Theory]
+    [InlineData("Give me a lesser-known clue for Japan")]
+    [InlineData("where are MR roads?")]
+    public async Task AskAi_DrawsNothing_WhenTheQuestionNamesWhatItIsAbout_OrAsksForNothingNew(string question)
+    {
+        using var host = CreateHost();
+        ArrangeProviders(host, answer: "An answer [1].");
+        var index = host.Mock<IKnowledgeIndex>();
+        index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Roads starting with MR…", "https://docs.google.com/document/d/a/edit") with { SourceType = "gdoc", SourceKey = "a" }]);
+
+        (await host.SendAsync(Ask(NewSnowflake(), null, question))).IsSuccess.Should().BeTrue();
+
+        await index.DidNotReceiveWithAnyArgs().SampleAsync(default!, default);
+    }
+
+    [Fact]
     public async Task AskAi_KeepsTheModelsOwnCitations_WhenItDoesCite()
     {
         using var host = CreateHost();
@@ -1365,4 +1473,7 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     private static KnowledgeHit Hit(string text, string sourceUrl) =>
         new(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Text, text, sourceUrl, ImageUrl: null,
             "Plonk It", "eswatini", "Eswatini > Identifying", "Plonk It team", 0);
+
+    private static KnowledgeHit Picture(string text, string sourceUrl, string imageUrl) =>
+        Hit(text, sourceUrl) with { Kind = KnowledgeChunkKind.Image, ImageUrl = imageUrl };
 }

@@ -196,15 +196,31 @@ public sealed class AiPromptBuilderTests
     [InlineData("never say a picture is attached unless you cite it", "\"shown in the attached pictures\" was written of pictures never attached")]
     [InlineData("each such claim in a sentence of its own that starts \"Not from the guides:\"",
         "\"In practice, Philippine roads typically have solid white outer edge lines\" read as the guides' own (2026-10-29, #35)")]
+    [InlineData("a GBIF excerpt's picture is a map of where a plant is recorded", "\"Please show the GBIF distribution.\" (2026-11-09)")]
+    [InlineData("when you name a clue, cite an excerpt that shows it", "\"where is the image for the Ohio gap?\"")]
+    [InlineData("never explain a clue from its name alone",
+        "\"Ohio gap – a telltale gap in pavement or road markings\": the guide says a gap in a road line at a raised pavement marker")]
+    [InlineData("name the likeliest species yourself", "\"did it not mention the species\"")]
+    [InlineData("its country is not the screenshot's", "\"it is wrong because it was South Africa\", answered with a Brazilian look-alike")]
+    [InlineData("give one from another guide that is not marked \"also on PlonkIt\"",
+        "\"Both Ukraine car metas are again on PlonkIt and I knew them very well.\"")]
+    [InlineData("prefer one that holds across a region to one seen on a single road",
+        "\"it's probably also pretty rare to see as it's specific to one small forest\"")]
+    [InlineData("name the practice maps the guides mention", "a guide's practice maps sat unused in its excerpts")]
+    [InlineData("never tell the user how citing works",
+        "\"The map in [1] visualizes this distribution; citing it will attach the map to this reply.\" (replay of 2026-11-11)")]
     public void SystemPrompt_AnswersWhatTheRatedAnswersGotWrong(string instruction, string because) =>
         Normalise(AiPromptBuilder.SystemPrompt).Should().Contain(Normalise(instruction), because);
 
     [Fact]
     public void SystemPrompt_StaysShortEnoughForAFreeModelToFollow()
     {
-        // One short instruction per lesson: free models follow a short list and lose a long one.
+        // One short instruction per lesson: free models follow a short list and lose a long one. It was
+        // 510 words until the feedback of 2026-11-09 added four lessons (a clue's picture, a plant in a
+        // screenshot, what PlonkIt already tells, practice maps), by when the answers came from a 550B
+        // model rather than whichever was free that day.
         AiPromptBuilder.SystemPrompt.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-            .Should().HaveCountLessThan(550);
+            .Should().HaveCountLessThan(700);
     }
 
     /// <summary>The prompt as a model reads it: one line, whatever the source's wrapping.</summary>
@@ -242,9 +258,11 @@ public sealed class AiPromptBuilderTests
     }
 
     [Fact]
-    public void PictureTitle_IsTheSourcesTitle_OrTheHeadingTheSourceListShows()
+    public void PictureTitle_IsTheHeadingTheSourceListShows()
     {
-        // Every PlonkIt picture comes without a title of its own, and its embed read "Guide image".
+        // Every PlonkIt picture comes without a title of its own, and its embed read "Guide image". A
+        // document's own title, in turn, named every picture of it alike: five clues of one Google Doc
+        // stood under its name. Both are titled as they are listed beneath the answer.
         var plonkIt = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Image, "Rounded tiles.", "https://www.plonkit.net/india#cIYN",
             "https://relay/tiles.png", null, "india", "India > Regional and state-specific clues", "Plonk It team", 0, "plonkit", "india");
         var slide = new KnowledgeHit(Guid.NewGuid(), 0.9f, KnowledgeChunkKind.Image, "Antenna.", "https://docs.google.com/presentation/d/b/edit#slide=id.p7",
@@ -254,7 +272,22 @@ public sealed class AiPromptBuilderTests
         AiPromptBuilder.FormatExcerpt(slide, 2, out var picture);
 
         tip.PictureTitle.Should().Be("India > Regional and state-specific clues").And.Be(tip.Label);
-        picture.PictureTitle.Should().Be("Brazilian Poles Lite");
+        picture.PictureTitle.Should().Be("Brazilian Poles Lite > Slide 7").And.Be(picture.Label);
+    }
+
+    [Fact]
+    public void APictureIsCaptioned_ByWhatItsGuideSaysOfIt_AndATextExcerptIsNot()
+    {
+        var card = Hit(KnowledgeChunkKind.Image,
+            "Ohio gap ** (Photo : West Liberty, Ohio):\nIn Ohio, you can often see gaps in road lines where there is a RPM.",
+            imageUrl: "https://relay/ohio.png");
+        var text = Hit(KnowledgeChunkKind.Text, "Bollards are white.");
+
+        AiPromptBuilder.FormatExcerpt(card, 1, out var picture);
+        AiPromptBuilder.FormatExcerpt(text, 2, out var paragraph);
+
+        picture.Caption.Should().Be("Ohio gap (Photo : West Liberty, Ohio): In Ohio, you can often see gaps in road lines where there is a RPM.");
+        paragraph.Caption.Should().BeNull();
     }
 
     [Fact]
@@ -301,7 +334,8 @@ public sealed class AiPromptBuilderTests
         formatted.Should().StartWith("[1] (picture, usually with a distribution map) Tunisia > Identifying");
         excerpt.Should().BeEquivalentTo(new OfferedExcerpt(1, "https://www.plonkit.net/tunisia", "Tunisia > Identifying", "https://relay/b.png", "Tunisia")
         {
-            ChunkIds = [picture.Id]
+            ChunkIds = [picture.Id],
+            Caption = "The bollard is white."
         });
     }
 
@@ -403,6 +437,25 @@ public sealed class AiPromptBuilderTests
         prompt.Should().Contain("[4] Tunisia > Identifying\nFound now.", "only the carried excerpts were numbered by the reader");
         prompt.Should().Contain("a \"[N]\" or \"source N\" in the question means that excerpt, which you still cite by its number here.");
         offered.Select(excerpt => excerpt.Label).Should().AllBe("Tunisia > Identifying", "the reply names an excerpt by its heading alone");
+    }
+
+    [Fact]
+    public void Build_TellsTheModelWhatPlonkItHasToo_ForAQuestionAskingForSomethingNew()
+    {
+        // The model is shown excerpts, not guides: asked for "a clue I don't know yet" it gave three
+        // that PlonkIt carries, and could not have known.
+        var known = Hit(KnowledgeChunkKind.Text, "These metal telephone poles are found in Sikkim.") with { AlsoInMainGuide = true };
+        var unknown = Hit(KnowledgeChunkKind.Text, "The Dasuya forest was covered with an unusual car.");
+
+        var prompt = AiPromptBuilder.Build(ConversationContext.Empty, "tell me a clue I don't know yet", [], [known, unknown], lesserKnown: true)
+            .Messages[^1].ToPlainText();
+
+        prompt.Should().Contain("PlonkIt is the guide every player has read")
+            .And.Contain("[1] Tunisia > Identifying (also on PlonkIt)\nThese metal telephone poles")
+            .And.Contain("[2] Tunisia > Identifying\nThe Dasuya forest");
+
+        AiPromptBuilder.Build(ConversationContext.Empty, "where are metal poles found?", [], [unknown])
+            .Messages[^1].ToPlainText().Should().NotContain("PlonkIt", "any other question is asked as it always was");
     }
 
     [Fact]
