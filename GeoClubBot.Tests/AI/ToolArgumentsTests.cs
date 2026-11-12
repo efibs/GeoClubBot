@@ -33,6 +33,34 @@ public sealed class ToolArgumentsTests
         arguments.PicturesOnly.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("\"plonkit\"", GuideSource.MainGuide)]
+    [InlineData("\"PlonkIt\"", GuideSource.MainGuide)]
+    [InlineData("\"plonk it\"", GuideSource.MainGuide)]
+    [InlineData("\"other\"", GuideSource.Others)]
+    [InlineData("\"others\"", GuideSource.Others)]
+    [InlineData("\"not_plonkit\"", GuideSource.Others)]
+    [InlineData("\"non-PlonkIt\"", GuideSource.Others)]
+    public void Search_ReadsWhichGuidesToSearch_HoweverTheModelPutsIt(string source, GuideSource expected)
+    {
+        ToolArguments.TryReadSearchGuides($$"""{"query": "poles", "source": {{source}}}""", out var arguments, out _).Should().BeTrue();
+
+        arguments.Source.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("""{"query": "poles"}""")]
+    [InlineData("""{"query": "poles", "source": "all"}""")]
+    [InlineData("""{"query": "poles", "source": ""}""")]
+    [InlineData("""{"query": "poles", "source": 3}""")]
+    public void Search_SearchesEveryGuide_WhenNoSourceItKnowsIsNamed(string json)
+    {
+        // A source the bot cannot read is not worth refusing a search for.
+        ToolArguments.TryReadSearchGuides(json, out var arguments, out _).Should().BeTrue();
+
+        arguments.Source.Should().BeNull();
+    }
+
     [Fact]
     public void Search_ReadsAFlagWrittenAsAString()
     {

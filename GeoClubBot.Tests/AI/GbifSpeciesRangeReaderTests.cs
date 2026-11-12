@@ -175,6 +175,72 @@ public sealed class GbifSpeciesRangeReaderTests
     }
 
     [Fact]
+    public async Task TakesTheGenus_ACommonNameStandsFor_WhenNoOneSpeciesDoes()
+    {
+        // "where in the us can you see cholla?" found no plant: a cholla is no species, but the teddy
+        // bear cholla, the tree cholla and forty-seven more of one genus (captured 2026-11-10, trimmed).
+        var handler = new RoutingHandler()
+            .On("/v1/species/match", KingdomMatch)
+            .On("/v1/species/search", """
+                {"results":[
+                  {"key":1,"nubKey":1,"canonicalName":"Cylindropuntia imbricata","rank":"SPECIES","kingdom":"Plantae","genus":"Cylindropuntia","genusKey":7628502,
+                   "vernacularNames":[{"vernacularName":"tree cholla"},{"vernacularName":"cholla"}]},
+                  {"key":2,"nubKey":2,"canonicalName":"Cylindropuntia bigelovii","rank":"SPECIES","kingdom":"Plantae","genus":"Cylindropuntia","genusKey":7628502,
+                   "vernacularNames":[{"vernacularName":"Teddy-bear Cholla"}]},
+                  {"key":3,"nubKey":3,"canonicalName":"Cylindropuntia acanthocarpa","rank":"SPECIES","kingdom":"Plantae","genus":"Cylindropuntia","genusKey":7628502,
+                   "vernacularNames":[{"vernacularName":"buckhorn cholla"}]},
+                  {"key":4,"nubKey":4,"canonicalName":"Cylindropuntia fulgida","rank":"SPECIES","kingdom":"Plantae","genus":"Cylindropuntia","genusKey":7628502,
+                   "vernacularNames":[{"vernacularName":"jumping chollas"}]},
+                  {"key":5,"nubKey":5,"canonicalName":"Grusonia clavata","rank":"SPECIES","kingdom":"Plantae","genus":"Grusonia","genusKey":8398021,
+                   "vernacularNames":[{"vernacularName":"club cholla"}]},
+                  {"key":6,"nubKey":6,"canonicalName":"Opuntia engelmannii","rank":"SPECIES","kingdom":"Plantae","genus":"Opuntia","genusKey":3084187,
+                   "vernacularNames":[{"vernacularName":"cholla"},{"vernacularName":"cactus apple"}]},
+                  {"key":7,"nubKey":7,"canonicalName":"Chollaia insecta","rank":"SPECIES","kingdom":"Animalia","genus":"Chollaia","genusKey":99,
+                   "vernacularNames":[{"vernacularName":"cholla"}]}]}
+                """)
+            .On("/v1/occurrence/search", KesiyaCountries);
+
+        var result = await CreateReader(handler).ReadAsync(new SpeciesRangeQuery("cholla", "US"));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().BeEquivalentTo(new
+        {
+            TaxonKey = 7628502L,
+            CanonicalName = "Cylindropuntia",
+            Rank = "GENUS",
+            MatchedByCommonName = true
+        });
+        handler.Requests[^1].Should().Contain("taxonKey=7628502").And.Contain("country=US");
+    }
+
+    [Fact]
+    public async Task TakesNoGenus_ForANameSeveralGeneraShare()
+    {
+        // "Pine" is Pinus thirteen times and the cypress-pines nine: no one genus is what the name means.
+        var handler = new RoutingHandler()
+            .On("/v1/species/match", KingdomMatch)
+            .On("/v1/species/search", """
+                {"results":[
+                  {"key":1,"nubKey":1,"canonicalName":"Pinus nigra","rank":"SPECIES","kingdom":"Plantae","genus":"Pinus","genusKey":2684241,
+                   "vernacularNames":[{"vernacularName":"black pine"}]},
+                  {"key":2,"nubKey":2,"canonicalName":"Pinus mugo","rank":"SPECIES","kingdom":"Plantae","genus":"Pinus","genusKey":2684241,
+                   "vernacularNames":[{"vernacularName":"mountain pine"}]},
+                  {"key":3,"nubKey":3,"canonicalName":"Pinus pinea","rank":"SPECIES","kingdom":"Plantae","genus":"Pinus","genusKey":2684241,
+                   "vernacularNames":[{"vernacularName":"stone pine"}]},
+                  {"key":4,"nubKey":4,"canonicalName":"Callitris glaucophylla","rank":"SPECIES","kingdom":"Plantae","genus":"Callitris","genusKey":2684270,
+                   "vernacularNames":[{"vernacularName":"white cypress pine"}]},
+                  {"key":5,"nubKey":5,"canonicalName":"Callitris endlicheri","rank":"SPECIES","kingdom":"Plantae","genus":"Callitris","genusKey":2684270,
+                   "vernacularNames":[{"vernacularName":"black cypress pine"}]},
+                  {"key":6,"nubKey":6,"canonicalName":"Callitris preissii","rank":"SPECIES","kingdom":"Plantae","genus":"Callitris","genusKey":2684270,
+                   "vernacularNames":[{"vernacularName":"Rottnest Island pine"}]}]}
+                """);
+
+        var result = await CreateReader(handler).ReadAsync(new SpeciesRangeQuery("pine", null));
+
+        result.Error.Type.Should().Be(ErrorType.NotFound);
+    }
+
+    [Fact]
     public async Task ReportsNotFound_WhenSeveralPlantsShareTheNameEqually()
     {
         // Captured 2026-10-25 for "flame tree": two plants called so twice each, another once.

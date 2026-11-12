@@ -4,9 +4,20 @@ using System.Text.RegularExpressions;
 
 namespace UseCases.UseCases.AI.Tools;
 
+/// <summary>Which guides a search reads.</summary>
+public enum GuideSource
+{
+    /// <summary>PlonkIt alone: what every player has read, searched to check whether it carries a clue.</summary>
+    MainGuide,
+
+    /// <summary>Every guide but PlonkIt: where a clue a player does not know yet is found.</summary>
+    Others
+}
+
 /// <param name="Query">What to search for, trimmed to <see cref="ToolArguments.MaxQueryLength"/>.</param>
 /// <param name="Country">The country to prefer, as the model wrote it, or null.</param>
-public sealed record SearchGuidesArguments(string Query, string? Country, bool PicturesOnly);
+/// <param name="Source">The guides to search, or null for all of them.</param>
+public sealed record SearchGuidesArguments(string Query, string? Country, bool PicturesOnly, GuideSource? Source = null);
 
 /// <param name="Excerpt">The marker of the excerpt whose guide to read.</param>
 public sealed record ReadGuideArguments(int Excerpt);
@@ -51,8 +62,30 @@ public static partial class ToolArguments
         arguments = new SearchGuidesArguments(
             query,
             ReadText(root, "country", MaxCountryLength),
-            ReadFlag(root, "pictures_only"));
+            ReadFlag(root, "pictures_only"),
+            ReadSource(ReadText(root, "source", MaxCountryLength)));
         return true;
+    }
+
+    /// <summary>
+    /// The guides a search names, however the model put it: "plonkit" and "plonk it" are PlonkIt,
+    /// "other", "others" and "not plonkit" the rest. Anything else searches every guide, as no value does:
+    /// a source the bot cannot read is not worth refusing a search for.
+    /// </summary>
+    private static GuideSource? ReadSource(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return null;
+        }
+
+        var named = string.Concat(source.Where(char.IsLetter)).ToLowerInvariant();
+        return named switch
+        {
+            "plonkit" or "plonkitnet" or "plonkitonly" or "onlyplonkit" => GuideSource.MainGuide,
+            "other" or "others" or "notplonkit" or "nonplonkit" or "noplonkit" or "withoutplonkit" or "exceptplonkit" => GuideSource.Others,
+            _ => null
+        };
     }
 
     public static bool TryReadReadGuide(string? json, out ReadGuideArguments arguments, out string error)

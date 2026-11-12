@@ -116,6 +116,8 @@ public sealed partial class AnswerToolbox(
     IEmbedder embedder,
     IKnowledgeIndex knowledgeIndex,
     ISpeciesRangeReader speciesRange,
+    ISpeciesRangeMap speciesMap,
+    MainGuideOverlap mainGuide,
     KnowledgeCountryDirectory countryDirectory,
     IOptions<AiRetrievalConfiguration> retrievalConfiguration,
     IOptions<AiToolsConfiguration> toolsConfiguration,
@@ -314,20 +316,43 @@ public sealed partial class AnswerToolbox(
             var named = search.Country is null ? [] : gazetteer.Resolve(search.Country);
             var countries = composed.Countries.Concat(named).Distinct().ToList();
 
+            // A question asking for something new keeps PlonkIt out of its searches, as the search it
+            // came with did, unless the model asks for PlonkIt by name — to check what it carries.
+            var source = search.Source ?? (ledger.LeavesOutMainGuide ? GuideSource.Others : (GuideSource?)null);
+
             var query = composed.ToQuery([vectors[index]], imageVector: null, settings) with
             {
                 BoostCountries = countries.Count <= settings.CountryBoost.MaxCountries
                     ? [.. countries.SelectMany(country => country.IndexNames).Distinct(StringComparer.Ordinal)]
                     : [],
                 ChunkKind = search.PicturesOnly ? KnowledgeChunkKind.Image : null,
+                SourceType = source == GuideSource.MainGuide ? MainGuideOverlap.MainGuide : null,
+                ExcludedSourceType = source == GuideSource.Others ? MainGuideOverlap.MainGuide : null,
                 // Enough to find new ones past every excerpt already offered.
                 Limit = Math.Min(MaxSearchCandidates, ledger.Count + MaxSearchExcerpts)
             };
 
             var hits = await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false) ?? [];
-            var note = search.Country is not null && named.Count == 0
-                ? $"No guides are filed under '{search.Country}', so every country was searched."
-                : null;
+            if (source == GuideSource.Others)
+            {
+                // Said on each excerpt PlonkIt has a tip like, which the model cannot know otherwise.
+                hits = await mainGuide.MarkAsync(hits, cancellationToken).ConfigureAwait(false);
+            }
+
+            var notes = new[]
+            {
+                search.Country is not null && named.Count == 0
+                    ? $"No guides are filed under '{search.Country}', so every country was searched."
+                    : null,
+                source switch
+                {
+                    GuideSource.MainGuide => "Searched PlonkIt alone: what it has is what players already know.",
+                    GuideSource.Others =>
+                        $"Searched every guide but PlonkIt. An excerpt marked \"{Conversations.AiPromptBuilder.AlsoOnMainGuideNote}\" tells a clue PlonkIt has too.",
+                    _ => null
+                }
+            }.Where(said => said is not null).ToList();
+            var note = notes.Count == 0 ? null : string.Join(" ", notes);
 
             // What the search is about: the country it names, else those its words name; none when it
             // names none, since it then looks across countries on purpose.
@@ -401,8 +426,11 @@ public sealed partial class AnswerToolbox(
 
             if (range.IsSuccess && range.Value is { } found)
             {
+                // Best effort, like the lookup before the answer: without a map the counts still stand.
+                var map = await speciesMap.DrawAsync(found, cancellationToken).ConfigureAwait(false);
+
                 return new CallData.Found(
-                    [SpeciesRangeExcerpt.ToHit(found, species.Name, toolsConfiguration.Value.SpeciesRange.MaxAreas)], 1, null, null);
+                    [SpeciesRangeExcerpt.ToHit(found, species.Name, toolsConfiguration.Value.SpeciesRange.MaxAreas, map)], 1, null, null);
             }
 
             return range.Error.Type == ErrorType.NotFound && range.Error.Code is not null

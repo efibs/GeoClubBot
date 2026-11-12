@@ -27,6 +27,18 @@ public static class AiAnswerFormatter
     /// <summary>Discord rejects an embed whose title is longer, and a guide's section path can be.</summary>
     private const int MaxEmbedTitleLength = 256;
 
+    /// <summary>
+    /// Pictures Discord shows in one gallery. Embeds sharing a link are drawn as one, and a fifth
+    /// picture under that link is not drawn at all.
+    /// </summary>
+    private const int MaxPicturesPerGallery = 4;
+
+    /// <summary>
+    /// The text Discord takes in one message's embeds, their titles and descriptions added up. Past it
+    /// the whole message is refused, answer and all.
+    /// </summary>
+    private const int MaxEmbedTextLength = 6000;
+
     /// <param name="pictures">
     /// How each picture is delivered, from <see cref="AiAnswerPicturePlanner"/>. An uploaded one keeps
     /// its numbered, linked embed; only the image inside it points at the attachment.
@@ -47,41 +59,141 @@ public static class AiAnswerFormatter
         var shown = new AiAnswerPicturePlan(
             [.. pictures.Pictures.Take(AiAnswerPicturePlanner.MaxPicturesPerMessage)]);
 
-        var embeds = shown.Pictures
-            .GroupBy(picture => picture.Image.SourceUrl, StringComparer.Ordinal)
-            .SelectMany(gallery =>
-            {
-                var title = BuildTitle([.. gallery.Select(picture => picture.Image)]);
-                return gallery.Select(picture => new EmbedBuilder()
-                    .WithImageUrl(picture.EmbedImageUrl)
-                    // Linking the embed to its source makes every shown image a citation rather than a
-                    // decoration, and credits the guide it came from.
-                    .WithUrl(picture.Image.SourceUrl)
-                    // Numbered like the prose, so "[2]" in a sentence leads to the picture that shows it.
-                    .WithTitle(title)
-                    .Build());
-            })
-            .ToList();
-
-        return new AiAnswerRendering(chunks, embeds, shown.Uploads);
+        return new AiAnswerRendering(chunks, BuildEmbeds(shown.Pictures), shown.Uploads);
     }
 
     /// <summary>
-    /// The title of every embed linking to one source: "[2] Title", "[2] Title (3 pictures)" when it
-    /// shows several, "[1][3] Title (2 pictures)" when several cited excerpts share the link.
+    /// One gallery per cited excerpt: its pictures under its number, its heading and what the guide
+    /// says of them.
     ///
-    /// Discord shows embeds sharing a link as one, under the first one's title, with all their pictures
-    /// in a grid. So they are posted together, and each carries the title of the whole group: a
-    /// position like "(1/3)" would head a grid of three, and the "(2/3)" and "(3/3)" it promises never
-    /// appear. The count is kept when a long title is cut.
+    /// Discord draws embeds that share a link as one embed, under the first one's title, with at most
+    /// <see cref="MaxPicturesPerGallery"/> pictures. Pictures used to be grouped by their guide's link
+    /// for that reason, and titled as the group they became: five clues cited from one Google Doc stood
+    /// under one title, "[2][3][4][5][6] 28 Secret US Metas (5 pictures)" — "it is hard to understand
+    /// which image is which clue" — and the fifth, the Ohio gap, was not shown at all (2026-11-09).
+    ///
+    /// So each excerpt's pictures get a link of their own: the guide's, told apart from an earlier
+    /// gallery's by a query parameter the guide's site ignores, placed before the fragment so the link
+    /// still opens at the section it names. An excerpt with more pictures than one gallery holds takes
+    /// a second.
     /// </summary>
-    private static string BuildTitle(IReadOnlyList<AiAnswerImage> gallery)
+    private static List<Embed> BuildEmbeds(IReadOnlyList<AiAnswerPicture> pictures)
     {
-        var name = gallery.Select(image => image.Title).FirstOrDefault(title => !string.IsNullOrWhiteSpace(title)) ?? "Guide image";
-        var markers = string.Concat(gallery.Select(image => image.Marker).Distinct().Order().Select(marker => $"[{marker}]"));
-        var count = gallery.Count > 1 ? $" ({gallery.Count} pictures)" : string.Empty;
+        var galleries = new List<(string Link, string Title, AiAnswerPicture[] Pictures, string? Caption)>();
+        var galleriesPerLink = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        return Truncate($"{markers} {name}", MaxEmbedTitleLength - count.Length) + count;
+        foreach (var excerpt in pictures.GroupBy(picture => picture.Image.Marker))
+        {
+            var all = excerpt.ToList();
+            var first = all[0].Image;
+            var shownBefore = 0;
+
+            foreach (var part in all.Chunk(MaxPicturesPerGallery))
+            {
+                var ordinal = galleriesPerLink[first.SourceUrl] = galleriesPerLink.GetValueOrDefault(first.SourceUrl) + 1;
+
+                galleries.Add((
+                    DistinctLink(first.SourceUrl, ordinal),
+                    // Numbered like the prose, so "[2]" in a sentence leads to the picture that shows it.
+                    BuildTitle(first, all.Count, shownBefore, part.Length),
+                    part,
+                    // Said once, under the excerpt's first gallery: what these pictures are of.
+                    shownBefore == 0 && !string.IsNullOrWhiteSpace(first.Caption) ? EscapeFormatting(first.Caption) : null));
+
+                shownBefore += part.Length;
+            }
+        }
+
+        // Every embed of a gallery carries its title, and Discord counts each one. What the titles
+        // leave of the message's allowance goes to the captions in reading order; one that no longer
+        // fits is left out whole, and its pictures still stand under their heading.
+        var left = MaxEmbedTextLength - galleries.Sum(gallery => gallery.Title.Length * gallery.Pictures.Length);
+
+        var embeds = new List<Embed>();
+        foreach (var (link, title, part, caption) in galleries)
+        {
+            var captioned = caption is not null && caption.Length <= left;
+            if (captioned)
+            {
+                left -= caption!.Length;
+            }
+
+            for (var index = 0; index < part.Length; index++)
+            {
+                var embed = new EmbedBuilder()
+                    .WithImageUrl(part[index].EmbedImageUrl)
+                    // Linking the embed to its source makes every shown image a citation rather than a
+                    // decoration, and credits the guide it came from.
+                    .WithUrl(link)
+                    .WithTitle(title);
+
+                if (index == 0 && captioned)
+                {
+                    embed.WithDescription(caption);
+                }
+
+                embeds.Add(embed.Build());
+            }
+        }
+
+        return embeds;
+    }
+
+    /// <summary>
+    /// A gallery's title: "[2] Heading", "[2] Heading (3 pictures)" when it shows several, and
+    /// "[2] Heading (pictures 5–7 of 7)" for what did not fit the gallery before it. Every embed of a
+    /// gallery carries it, since Discord shows the first one's. The count is kept when a long title is cut.
+    /// </summary>
+    private static string BuildTitle(AiAnswerImage image, int total, int shownBefore, int shownHere)
+    {
+        var name = string.IsNullOrWhiteSpace(image.Title) ? "Guide image" : image.Title;
+
+        var count = total <= 1
+            ? string.Empty
+            : shownHere == total
+                ? $" ({total} pictures)"
+                : $" (pictures {shownBefore + 1}–{shownBefore + shownHere} of {total})";
+
+        return Truncate($"[{image.Marker}] {name}", MaxEmbedTitleLength - count.Length) + count;
+    }
+
+    /// <summary>
+    /// A guide's words as plain text: the characters Discord reads as formatting are escaped, so an
+    /// underscore in a name or a stray asterisk cannot set half a caption in italics. Only those —
+    /// Discord.Net's own sanitiser escapes every full stop and colon as well.
+    /// </summary>
+    private static string EscapeFormatting(string text)
+    {
+        var builder = new System.Text.StringBuilder(text.Length + 8);
+        foreach (var character in text)
+        {
+            if (character is '\\' or '*' or '_' or '~' or '`' or '|')
+            {
+                builder.Append('\\');
+            }
+
+            builder.Append(character);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// The guide's link as the first gallery showing it has it, and with <c>_=n</c> added to its query
+    /// for the nth: another address to Discord, the same page to the guide's site.
+    /// </summary>
+    private static string DistinctLink(string url, int ordinal)
+    {
+        if (ordinal <= 1)
+        {
+            return url;
+        }
+
+        var fragmentStart = url.IndexOf('#', StringComparison.Ordinal);
+        var page = fragmentStart < 0 ? url : url[..fragmentStart];
+        var fragment = fragmentStart < 0 ? string.Empty : url[fragmentStart..];
+
+        return $"{page}{(page.Contains('?', StringComparison.Ordinal) ? '&' : '?')}_={ordinal}{fragment}";
     }
 
     /// <summary>

@@ -515,13 +515,14 @@ public sealed class SourceExtractorTests
     public async Task GoogleDoc_UsesTheCheapTextExport_WhenImagesCannotBeServed()
     {
         // Without a relay the images have nowhere to live, so paying ~800x the bandwidth for the zip
-        // would buy nothing.
-        var handler = new RecordingHandler("Some text.\n\nMore text.");
+        // would buy nothing: when the page holds no document, the text is read straight away.
+        var handler = new FormatHandler(("txt", HttpStatusCode.OK, Encoding.UTF8.GetBytes("Some text.\n\nMore text.")));
         var extractor = CreateDocExtractor(Factory(handler), relayEnabled: false);
 
         await extractor.ExtractAsync(GoogleDoc());
 
-        handler.LastRequestUri.Should().Contain("format=txt");
+        handler.PageRequested.Should().BeTrue();
+        handler.RequestedFormats.Should().Equal("txt");
     }
 
     [Fact]
@@ -571,7 +572,8 @@ public sealed class SourceExtractorTests
     public async Task GoogleDoc_ReadsImagesFromTheZipExport_AndCaptionsThemFromTheirParagraph()
     {
         // An image in one of these guides is often the actual answer, and a written question reaches
-        // it only through the text it sits in.
+        // it only through the text it sits in. The archive is what is read when the page holds no
+        // document, as here.
         var archive = BuildDocArchive(
             "<html><body>"
             + "<p>Tunisian plates are black with white text.<img src=\"images/image1.png\"></p>"
@@ -591,7 +593,9 @@ public sealed class SourceExtractorTests
         image.ImageUrl.Should().Be("https://relay/img.png");
         image.Text.Should().Contain("black with white text");
 
-        result.Value.Chunks.Where(chunk => chunk.ImageUrl == null).Should().HaveCount(2);
+        // The paragraph lives in its picture's chunk alone: whoever finds the words gets the picture.
+        result.Value.Chunks.Where(chunk => chunk.ImageUrl == null).Select(chunk => chunk.Text)
+            .Should().Equal("Second paragraph.");
     }
 
     [Fact]
@@ -651,13 +655,14 @@ public sealed class SourceExtractorTests
         var result = await CreateDocExtractor(Factory(new RecordingHandler(archive)), Relay(enabled: true))
             .ExtractAsync(GoogleDoc());
 
+        // Nested as the headings are, so a section says what it is a part of.
         result.Value.Chunks.Select(chunk => (chunk.SectionPath, chunk.Text)).Should().Equal(
-            ("Tunisia Doc > Front Plate Requirements", "Most states require a front plate."),
-            ("Tunisia Doc > Front Plate Requirements", "This is just the normal"),
-            ("Tunisia Doc > Front Plate Requirements", "Ohio dropped its front plate in 2020."),
-            ("Tunisia Doc > Front Plate Requirements", "Image credit to PlonkIt"),
-            ("Tunisia Doc > Front Plate Requirements", "Last words."),
-            ("Tunisia Doc > Counties", "Counted by state."));
+            ("Tunisia Doc > Plates > Front Plate Requirements", "Most states require a front plate."),
+            ("Tunisia Doc > Plates > Front Plate Requirements", "This is just the normal"),
+            ("Tunisia Doc > Plates > Front Plate Requirements", "Ohio dropped its front plate in 2020."),
+            ("Tunisia Doc > Plates > Front Plate Requirements", "Image credit to PlonkIt"),
+            ("Tunisia Doc > Plates > Front Plate Requirements", "Last words."),
+            ("Tunisia Doc > Plates > Counties", "Counted by state."));
     }
 
     [Fact]
@@ -734,10 +739,10 @@ public sealed class SourceExtractorTests
             .ExtractAsync(GoogleDoc());
 
         result.Value.Chunks.Select(chunk => (chunk.SectionPath, chunk.Text)).Should().Equal(
-            ("Tunisia Doc > Poles", "Concrete poles with holes."),
-            ("Tunisia Doc > Bollards : (they are also present in the Czech Republic)", "White with a black band and an orange reflector."),
-            ("Tunisia Doc > blue gen 4 with antenna", "Seen in the east."),
-            ("Tunisia Doc > How to tell Spain and Portugal apart by road lines", "Yellow outer lines are Spanish."));
+            ("Tunisia Doc > Slovakia Guide > Poles", "Concrete poles with holes."),
+            ("Tunisia Doc > Slovakia Guide > Bollards : (they are also present in the Czech Republic)", "White with a black band and an orange reflector."),
+            ("Tunisia Doc > Slovakia Guide > blue gen 4 with antenna", "Seen in the east."),
+            ("Tunisia Doc > Slovakia Guide > How to tell Spain and Portugal apart by road lines", "Yellow outer lines are Spanish."));
     }
 
     [Fact]
@@ -775,6 +780,165 @@ public sealed class SourceExtractorTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Chunks.Should().ContainSingle().Which.ImageUrl.Should().BeNull();
+    }
+
+    /// <summary>The page of a document of two clues, shaped like the real one: the picture links carry their size and a key.</summary>
+    private const string DocPage =
+        "<html><body>"
+        + "<h1 id=\"h.poles\">Poles</h1><h1>Bollards</h1><h1 id=\"h.plants\">Plants</h1>"
+        + "<p>Ocotillo:</p>"
+        + "<p><img src=\"https://lh7-rt.googleusercontent.com/docsz/AD_one=s800?key=k1\"></p>"
+        + "<p>The ocotillo is tall and spindly, with red flowers when in bloom.</p>"
+        + "<p>Joshua tree:</p>"
+        + "<p><img src=\"https://docs.google.com/drawings/d/sABC/image?w=377&amp;h=377\"></p>"
+        + "<p>Found throughout the Mojave.</p>"
+        + "</body></html>";
+
+    [Fact]
+    public async Task GoogleDoc_ReadsThePage_AndFetchesEachPictureAtTheSizeAskedFor()
+    {
+        // The archive of "A Learnable Colombia" is 218 MB for 171 pictures, so it was indexed without
+        // one. Its page is half a megabyte, and serves each picture alone, at the size its link names.
+        var handler = new FormatHandler(
+            ("page", HttpStatusCode.OK, Encoding.UTF8.GetBytes(DocPage)),
+            ("picture", HttpStatusCode.OK, PngBytes));
+
+        var result = await CreateDocExtractor(
+                Factory(handler), Relay(enabled: true),
+                settings: new AiIngestionConfiguration { EmbedImages = true, DocumentPicturePixels = 1600 })
+            .ExtractAsync(GoogleDoc());
+
+        handler.RequestedFormats.Should().BeEmpty("neither export is needed once the page was read");
+        handler.PictureRequests.Should().Equal(
+            "https://lh7-rt.googleusercontent.com/docsz/AD_one=s1600?key=k1",
+            "https://docs.google.com/drawings/d/sABC/image?w=377&h=377");
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Degraded.Should().BeFalse();
+        result.Value.Chunks.Select(chunk => (chunk.LocalKey, chunk.SectionPath, chunk.Anchor, chunk.ImageUrl, chunk.Text)).Should().Equal(
+            ("p0-img", "Tunisia Doc > Plants", "heading=h.plants", "https://relay/img.png",
+                "Ocotillo:\nThe ocotillo is tall and spindly, with red flowers when in bloom."),
+            ("p1-img", "Tunisia Doc > Plants", "heading=h.plants", "https://relay/img.png",
+                "Joshua tree:\nFound throughout the Mojave."));
+    }
+
+    [Fact]
+    public async Task GoogleDoc_ReadsThePageWithoutItsPictures_WhenImagesCannotBeServed()
+    {
+        // The page is still the better reading: it says which lines are headings. The words a picture
+        // would have taken with it stay, as text.
+        var handler = new FormatHandler(("page", HttpStatusCode.OK, Encoding.UTF8.GetBytes(DocPage)));
+
+        var result = await CreateDocExtractor(Factory(handler), relayEnabled: false).ExtractAsync(GoogleDoc());
+
+        handler.PictureRequests.Should().BeEmpty();
+        handler.RequestedFormats.Should().BeEmpty();
+        result.Value.Chunks.Should().OnlyContain(chunk => chunk.ImageUrl == null && chunk.SectionPath == "Tunisia Doc > Plants");
+        result.Value.Chunks.Select(chunk => chunk.Text).Should().Equal(
+            "Ocotillo:\nThe ocotillo is tall and spindly, with red flowers when in bloom.",
+            "Joshua tree:\nFound throughout the Mojave.");
+    }
+
+    [Fact]
+    public async Task GoogleDoc_KeepsAPicturesWordsAsText_WhenThePictureIsGone()
+    {
+        var handler = new FormatHandler(
+            ("page", HttpStatusCode.OK, Encoding.UTF8.GetBytes(DocPage)),
+            ("picture", HttpStatusCode.OK, PngBytes))
+        {
+            PictureStatus = link => link.Contains("/drawings/", StringComparison.Ordinal) ? HttpStatusCode.NotFound : null
+        };
+
+        var result = await CreateDocExtractor(Factory(handler), Relay(enabled: true)).ExtractAsync(GoogleDoc());
+
+        result.Value.Degraded.Should().BeFalse("one missing picture is the picture's loss, not a failed reading");
+        result.Value.Chunks.Select(chunk => (chunk.LocalKey, chunk.ImageUrl is not null, chunk.Text)).Should().Equal(
+            ("p0-img", true, "Ocotillo:\nThe ocotillo is tall and spindly, with red flowers when in bloom."),
+            ("p1", false, "Joshua tree:\nFound throughout the Mojave."));
+    }
+
+    [Fact]
+    public async Task GoogleDoc_StopsAskingForPictures_WhenTheyKeepFailing_AndSaysTheReadingIsIncomplete()
+    {
+        // A run of failures is Google or the network, not the pictures: a thousand more requests would
+        // only hold the night's run up. Marked degraded, so a copy indexed with its pictures is kept.
+        var page = "<html><body><h1>A</h1><h1>B</h1><h1>C</h1>"
+                   + string.Concat(Enumerable.Range(1, 9).Select(number =>
+                       $"<p>Clue {number} is seen in the north of the island.</p><p><img src=\"https://lh7-rt.googleusercontent.com/docsz/pic{number}=s800?key=k\"></p>"))
+                   + "</body></html>";
+
+        var handler = new FormatHandler(
+            ("page", HttpStatusCode.OK, Encoding.UTF8.GetBytes(page)),
+            ("picture", HttpStatusCode.InternalServerError, []));
+
+        var result = await CreateDocExtractor(Factory(handler), Relay(enabled: true)).ExtractAsync(GoogleDoc());
+
+        handler.PictureRequests.Should().HaveCount(5);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Degraded.Should().BeTrue();
+        result.Value.Chunks.Should().HaveCount(9).And.OnlyContain(chunk => chunk.ImageUrl == null);
+    }
+
+    [Fact]
+    public async Task GoogleDoc_StopsAskingForPictures_WhenGoogleRefusesThem()
+    {
+        var handler = new FormatHandler(
+            ("page", HttpStatusCode.OK, Encoding.UTF8.GetBytes(DocPage)),
+            ("picture", HttpStatusCode.TooManyRequests, []));
+
+        var result = await CreateDocExtractor(Factory(handler), Relay(enabled: true)).ExtractAsync(GoogleDoc());
+
+        handler.PictureRequests.Should().ContainSingle();
+        result.Value.Degraded.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GoogleDoc_AsksOnlyGoogleForPictures()
+    {
+        // The page is Google's, and nothing in it should send the bot anywhere else.
+        var page = "<html><body><p>Poles are concrete here.</p>"
+                   + "<p><img src=\"https://example.org/tracker.png\"><img src=\"http://lh7-rt.googleusercontent.com/plain=s800\"></p></body></html>";
+        var handler = new RecordingHandler(page);
+
+        var result = await CreateDocExtractor(Factory(handler), Relay(enabled: true)).ExtractAsync(GoogleDoc());
+
+        handler.LastRequestUri.Should().EndWith("/mobilebasic", "no picture was asked for after the page");
+        result.Value.Chunks.Should().ContainSingle().Which.ImageUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GoogleDoc_ReadsTheExports_WhenThePageLeadsToASignInForm()
+    {
+        // A document that is not shared sends its page to a sign-in form, which answers 200 and is
+        // full of paragraphs. The exports say what is the matter with it.
+        var handler = new FormatHandler(
+            ("page", HttpStatusCode.OK, Encoding.UTF8.GetBytes("<html><body><p>Sign in to continue to Google Docs</p></body></html>")),
+            ("zip", HttpStatusCode.Forbidden, []))
+        {
+            PageAnsweredFrom = new Uri("https://accounts.google.com/v3/signin/identifier?continue=x")
+        };
+
+        var result = await CreateDocExtractor(Factory(handler), Relay(enabled: true)).ExtractAsync(GoogleDoc());
+
+        handler.RequestedFormats.Should().Equal("zip");
+        result.Error.Code.Should().Be(SourceExtractionErrorCodes.NotPublic);
+    }
+
+    [Fact]
+    public async Task GoogleDoc_IsDegraded_WhenThePageFailedThisTimeOnly_AndTheTextStandsInForIt()
+    {
+        // Too large to export, so the page is the only reading with pictures: one that failed tonight
+        // must not trade a copy indexed with them for the text.
+        var handler = new FormatHandler(
+            ("page", HttpStatusCode.ServiceUnavailable, []),
+            ("zip", HttpStatusCode.RequestEntityTooLarge, []),
+            ("txt", HttpStatusCode.OK, Encoding.UTF8.GetBytes("Tunisian roads\n\nAre numbered oddly.")));
+
+        var result = await CreateDocExtractor(Factory(handler), Relay(enabled: true)).ExtractAsync(GoogleDoc());
+
+        handler.RequestedFormats.Should().Equal("zip", "txt");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Degraded.Should().BeTrue();
     }
 
     /// <summary>A zip shaped like the real export: the document as HTML plus its images as entries.</summary>
@@ -823,11 +987,20 @@ public sealed class SourceExtractorTests
             Options.Create(settings ?? new AiIngestionConfiguration { EmbedImages = true }),
             NullLogger<GoogleDocSourceExtractor>.Instance);
 
-    /// <summary>Answers each export format differently, and remembers which were asked for.</summary>
+    /// <summary>
+    /// Answers each export format differently, and remembers which were asked for. A document's page
+    /// ("page") and its pictures ("picture") are answered too, and kept apart from the exports: unless a
+    /// test says otherwise the page holds no document, which is when the exports are read, and a picture
+    /// is not there.
+    /// </summary>
     private sealed class FormatHandler(params (string Format, HttpStatusCode Status, byte[] Body)[] answers)
         : HttpMessageHandler
     {
         public List<string> RequestedFormats { get; } = [];
+
+        public bool PageRequested { get; private set; }
+
+        public List<string> PictureRequests { get; } = [];
 
         /// <summary>An exception to throw instead of answering, by format.</summary>
         public Func<string, Exception?> Fail { get; init; } = _ => null;
@@ -835,27 +1008,59 @@ public sealed class SourceExtractorTests
         /// <summary>A body to stream instead of the canned one, by format.</summary>
         public Func<string, Stream?> Body { get; init; } = _ => null;
 
+        /// <summary>Where the page's answer came from, when not from the page itself: a redirect followed.</summary>
+        public Uri? PageAnsweredFrom { get; init; }
+
+        /// <summary>The status a picture is answered with, by its link; null leaves it to the canned answer.</summary>
+        public Func<string, HttpStatusCode?> PictureStatus { get; init; } = _ => null;
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             var uri = request.RequestUri?.ToString() ?? string.Empty;
-            var format = uri.Contains("format=zip", StringComparison.Ordinal) ? "zip"
+            var format = uri.Contains("/mobilebasic", StringComparison.Ordinal) ? "page"
+                : uri.Contains("googleusercontent.com", StringComparison.Ordinal) || uri.Contains("/drawings/", StringComparison.Ordinal) ? "picture"
+                : uri.Contains("format=zip", StringComparison.Ordinal) ? "zip"
                 : uri.EndsWith("/export/pptx", StringComparison.Ordinal) ? "pptx"
                 : "txt";
-            RequestedFormats.Add(format);
+
+            switch (format)
+            {
+                case "page":
+                    PageRequested = true;
+                    break;
+                case "picture":
+                    PictureRequests.Add(uri);
+                    break;
+                default:
+                    RequestedFormats.Add(format);
+                    break;
+            }
 
             if (Fail(format) is { } failure)
             {
                 throw failure;
             }
 
-            var answer = answers.First(candidate => candidate.Format == format);
+            var answer = answers.FirstOrDefault(candidate => candidate.Format == format);
+            if (answer.Format is null)
+            {
+                answer = format == "page"
+                    ? ("page", HttpStatusCode.OK, [])
+                    : format == "picture"
+                        ? ("picture", HttpStatusCode.NotFound, [])
+                        : throw new InvalidOperationException($"The test answers no '{format}' request.");
+            }
 
-            return Task.FromResult(new HttpResponseMessage(answer.Status)
+            var status = format == "picture" && PictureStatus(uri) is { } forced ? forced : answer.Status;
+
+            return Task.FromResult(new HttpResponseMessage(status)
             {
                 Content = Body(format) is { } body ? new StreamContent(body) : new ByteArrayContent(answer.Body),
-                RequestMessage = request
+                RequestMessage = format == "page" && PageAnsweredFrom is { } elsewhere
+                    ? new HttpRequestMessage(HttpMethod.Get, elsewhere)
+                    : request
             });
         }
     }

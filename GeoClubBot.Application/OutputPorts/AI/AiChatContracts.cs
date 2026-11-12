@@ -197,6 +197,16 @@ public static class ChatErrorCodes
     public const string EmptyResponse = "ai.empty_response";
 
     /// <summary>
+    /// The provider began to answer and the model did not finish in the time a reply may take. The
+    /// provider opens a completion's response at once and holds it open while the model works, so a
+    /// model that stalls holds it open too: on 2026-11-11 nemotron-3-ultra did for 57 minutes. Unlike
+    /// <see cref="Unreachable"/> the provider was reached, so it is about the model asked — the chain's
+    /// first, which the provider only leaves for the next on an error — and other models are worth
+    /// asking straight away, however long the wait has been.
+    /// </summary>
+    public const string TimedOut = "ai.model_timed_out";
+
+    /// <summary>
     /// The provider refused the request because of the tools it declares — "No endpoints found that
     /// support tool use" — rather than anything about the question. Unlike <see cref="Rejected"/> the
     /// same question is worth asking again without them.
@@ -207,8 +217,9 @@ public static class ChatErrorCodes
     public const string NoModelAvailable = "ai.no_model_available";
 
     /// <summary>
-    /// A completion arrived but is not an answer — a safety classifier's verdict, or a reply from a
-    /// model that should never have been asked. Raised by the use case, not by the client.
+    /// A completion arrived but is not an answer — a safety classifier's verdict, a reply from a
+    /// model that should never have been asked, or text that is no language at all. Raised by the use
+    /// case, not by the client.
     /// </summary>
     public const string UnusableAnswer = "ai.unusable_answer";
 

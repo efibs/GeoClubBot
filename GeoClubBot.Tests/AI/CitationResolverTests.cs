@@ -157,6 +157,8 @@ public sealed class CitationResolverTests
     [InlineData("See the slide (3 pictures) [2].", "See the slide [1].")]
     [InlineData("The map **(picture)** [2].", "The map [1].")]
     [InlineData("As before [1] (the user saw this as 2).", "As before [1].")]
+    [InlineData("The Sikkim poles [1] (also on PlonkIt) are metal.", "The Sikkim poles [1] are metal.")]
+    [InlineData("As before [1] (the user saw this as 2; also on PlonkIt).", "As before [1].")]
     [InlineData("The tip [2], usually with a distribution map, shows it.", "The tip [1] shows it.")]
     [InlineData("The tip [2] (usually with a distribution map).", "The tip [1].")]
     public void Resolve_RemovesThePromptsNotesOnAnExcerpt(string answer, string expected)

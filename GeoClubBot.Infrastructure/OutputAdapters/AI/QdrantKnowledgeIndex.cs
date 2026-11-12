@@ -127,6 +127,12 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         CancellationToken cancellationToken = default)
     {
         var filter = BuildFilter(query.Country, query.SourceType, ingestRun: null, sourceKey: null, query.ChunkKind);
+        if (!string.IsNullOrWhiteSpace(query.ExcludedSourceType))
+        {
+            filter ??= new Filter();
+            filter.MustNot.Add(KeywordCondition("sourceType", query.ExcludedSourceType));
+        }
+
         var searches = new List<(QueryPoints Search, double Weight, string Name)>();
 
         // The boosts narrow the hard filter rather than replace it, so /ai search's country still holds.
@@ -278,6 +284,99 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             .. KnowledgeHitFusion.Fuse([new WeightedHitList(ordered, Weight: 1d, "read by id")], ordered.Count)
                 .Select(hit => hit with { Score = 0f })
         ];
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, KnowledgeHit>> ReadNearestOfSourceAsync(
+        IReadOnlyList<KnowledgeHit> hits,
+        string sourceType,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? countrySpellings = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Only what the index holds can be searched by: a tool's result (a species range) has no vector.
+        var asked = hits
+            .Where(hit => hit.Id != Guid.Empty && !string.IsNullOrWhiteSpace(hit.SourceType) && !string.IsNullOrWhiteSpace(hit.SourceKey))
+            .DistinctBy(hit => hit.Id)
+            .ToList();
+
+        if (asked.Count == 0 || string.IsNullOrWhiteSpace(sourceType))
+        {
+            return new Dictionary<Guid, KnowledgeHit>();
+        }
+
+        var searches = asked.Select(hit => new QueryPoints
+        {
+            CollectionName = collectionName,
+            // The chunk's own stored text vector, so nothing is embedded.
+            Query = hit.Id,
+            Using = TextVectorName,
+            Filter = InCountryOf(hit, sourceType, countrySpellings),
+            Limit = 1,
+            WithPayload = new WithPayloadSelector { Enable = true },
+            Params = new SearchParams { Exact = true }
+        }).ToList();
+
+        var results = await client.QueryBatchAsync(collectionName, searches, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var nearest = new Dictionary<Guid, KnowledgeHit>();
+        for (var index = 0; index < asked.Count && index < results.Count; index++)
+        {
+            if (results[index].Result.FirstOrDefault() is { } point)
+            {
+                nearest[asked[index].Id] = ToHit(point);
+            }
+        }
+
+        return nearest;
+    }
+
+    public async Task<IReadOnlyList<KnowledgeHit>> SampleAsync(
+        KnowledgeSample sample,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+
+        if (sample.Limit <= 0)
+        {
+            return [];
+        }
+
+        var filter = BuildFilter(country: null, sourceType: null, ingestRun: null, sourceKey: null, sample.Kind) ?? new Filter();
+        if (!string.IsNullOrWhiteSpace(sample.ExcludedSourceType))
+        {
+            filter.MustNot.Add(KeywordCondition("sourceType", sample.ExcludedSourceType));
+        }
+
+        // The store's own random draw (Qdrant 1.11 and later): no vector to search by, so nothing is embedded.
+        var points = await client.QueryAsync(
+            collectionName,
+            query: new Query { Sample = Sample.Random },
+            filter: filter,
+            limit: (ulong)sample.Limit,
+            payloadSelector: true,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        // A draw has no ranking: whatever number the store attaches is not a similarity.
+        return [.. points.Select(ToHit).Where(hit => hit.Id != Guid.Empty).Select(hit => hit with { Score = 0f })];
+    }
+
+    /// <summary>The chunks of a source type filed under a hit's country, however that country is spelt; all of them for a hit with none.</summary>
+    private static Filter InCountryOf(
+        KnowledgeHit hit,
+        string sourceType,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? countrySpellings)
+    {
+        var filter = BuildFilter(country: null, sourceType, ingestRun: null, sourceKey: null)!;
+        if (string.IsNullOrWhiteSpace(hit.Country))
+        {
+            return filter;
+        }
+
+        return WithCountries(
+            filter,
+            countrySpellings is not null && countrySpellings.TryGetValue(hit.Country, out var spellings) && spellings.Count > 0
+                ? spellings
+                : [hit.Country]);
     }
 
     public async Task<int> SweepAsync(

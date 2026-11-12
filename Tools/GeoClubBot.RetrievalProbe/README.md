@@ -45,7 +45,10 @@ stand in for "no references":
    changes the account, no other method on these. The embedder's handler of `replay` and `compare` never
    lets a chat request through, flag or not. `answer`'s calls to GBIF, for the species-range tool, pass a
    handler that lets only `GET` through.
-3. **No verb in the CLI.** Every command reads. There is no option that writes.
+3. **No verb in the CLI.** Every command reads. There is no option that writes. `extract` fetches a
+   guide's page from its own host with GETs only, and answers the requests for a document's pictures
+   itself instead of sending them; `map` and `answer` keep the species maps they draw in a folder
+   beside the binary, where the bot would use its image relay.
 4. **A cache.** Question vectors are kept in `embedding-cache.json` and planner replies in
    `planner-cache.json`, next to the built binary, so rerunning a report costs nothing. Vectors are
    keyed by embedding model; planner replies by exactly what was sent (and by the chain, when
@@ -58,7 +61,7 @@ stand in for "no references":
 
 Questions have to be embedded before they can be searched. That costs **one request per 32 new
 questions**, out of the key's daily allowance, which is shared with the bot if you use its key.
-`grep` embeds nothing and needs no key.
+`grep`, `chunks`, `extract`, `overlap` and `map` embed nothing and need no key.
 
 The key is read from the first of these that has one:
 
@@ -109,6 +112,10 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `grep <regex>` | Every indexed chunk whose text matches. Was the answer there to find at all? |
 | `similarity` | How close a guide's chunks sit to a question, as stored and as re-worded (`--question`, `--source`, `--variant`) |
 | `answer <export.jsonl>` | Every rated answer asked again through the bot's own answering code — retrieval, model chain, tool calls — shown as Discord would post it, beside the rated one; with `--judge`, compared by a model. Needs `--allow-chat` |
+| `chunks <export.jsonl>` | The excerpts each rated answer was shown, in full, read back by the chunk ids the export kept and numbered as the model saw them, the cited ones marked. With `--source <link or type:key>` instead: every chunk the index holds of one guide, in reading order |
+| `extract <guide link>` | What a guide would be indexed as, read now by the bot's own extractor and chunker — sections, chunks, picture captions — without indexing anything. A Google document's pictures are not downloaded: each picture chunk shows the link it would come from |
+| `overlap --source <guide>` | How much of a guide PlonkIt has too: for each of its chunks, the nearest PlonkIt tip of the same country and how near. Where `AI:Retrieval:LesserKnown:SameClueSimilarity` was read off |
+| `map <plant name>` | The species map the bot would attach, drawn by its own GBIF reader and renderer into `species-maps/` beside the binary; `--country` counts and frames one country. Needs neither the index nor a key |
 
 | Option | Meaning |
 |---|---|
@@ -120,15 +127,16 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `--allow-chat` | `replay`/`compare`: let the query planner's chat requests leave the probe — one per question, cached. `replay` then searches with the planner on (it ships off); without it, `compare`'s variants that plan search as the bot does when the planner fails. `answer`: required, since it asks the bot's models |
 | `--planner-models <ids>` | `replay`/`compare`: comma-separated chain the planner asks instead of the bot's own, to measure another model; cached apart |
 | `--set <Key=Value>` | `answer`: overrides one of the bot's AI settings, e.g. `--set AI:Tools:Enabled=false`; repeatable |
-| `--only <list>` | `answer`: record numbers and ranges, feedback-id prefixes, `after:`/`before:` dates, comma-separated (`1-25,31`, `after:2026-09-27`) |
+| `--country <name>` | `map`: the country to count and frame the plant in |
+| `--only <list>` | `answer`, `chunks`: record numbers and ranges, feedback-id prefixes, `after:`/`before:` dates, comma-separated (`1-25,31`, `after:2026-09-27`) |
 | `--parallel <n>` | `answer`: rated answers asked at once (default 2, at most 8) |
 | `--judge` | `answer`: a model compares each new answer with the rated one — one request each, cached |
 | `--judge-model <ids>` | `answer`: comma-separated chain the judge asks (implies `--judge`; default: the best free text model of today's chain) |
 | `--variants <file>` | `compare`: retrieval settings to compare instead of the built-in steps (see below) |
 | `--question <text>` | `similarity`: the question |
-| `--source <url>` | `similarity`: a chunk's source URL, as listed under an answer or in a replay |
+| `--source <url>` | `similarity`: a chunk's source URL, as listed under an answer or in a replay; `chunks`, `overlap`: a guide's link, or its type and key (`gdoc:<id>`) |
 | `--variant <text>` | `similarity`: re-worded chunk text to try; repeatable |
-| `--max <n>` | `grep`: matches to list (default 20) |
+| `--max <n>` | `grep`: matches to list (default 20); `chunks --source`, `extract`, `overlap`: rows to show |
 | `--out <file>` | Also write the report, which is Markdown, to a file |
 
 Keep exports and reports in `ai_feedback/`, which is git-ignored. Exports carry Discord user ids and
@@ -292,8 +300,12 @@ where the export kept their chunk ids (exports from before 2026-10-25 did not). 
 runs out and starts afresh for every answer, as the first question of a day. The bot's HTTP pipeline
 lives in the API project, so `PacedRetryHandler` stands in for it: requests paced to
 `AI:OpenRouter:PerMinuteRequestBudget`, each attempt bounded by `AI:RequestTimeoutSeconds`, transient
-failures retried twice and a 429 once after its minute, as the bot retries them. The catalog is refreshed
-once per run — its failure penalties then carry from one answer to the next, as in the bot.
+failures retried twice and a 429 once after its minute, as the bot retries them. Around it sits the
+bot's own `ResponseBodyDeadlineHandler`: a reply that has not arrived in full `AI:ResponseTimeoutSeconds`
+after the provider started answering is cut off, and the answer asks other models, as in the bot (before
+it, one stalled model held a replay for 57 minutes). The catalog is refreshed once per run — its failure
+penalties then carry from one answer to the next, as in the bot. Two records are answered at a time
+(`--parallel`), and progress is written to standard error.
 
 **Screenshots.** A Discord attachment link carries its expiry (`ex`) and is dead after it; a model asked
 to read one fails the whole request. Such a screenshot is left out — the question asked by its text

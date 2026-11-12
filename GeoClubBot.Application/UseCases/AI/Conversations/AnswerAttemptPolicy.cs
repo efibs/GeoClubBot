@@ -19,26 +19,30 @@ public static class AnswerAttemptPolicy
     /// likely to fail again. A 403 or 429 that one model earned on its own — a free model reserved for
     /// agentic harnesses, a provider's shared pool running dry — is not refused: on 2026-10-23 other
     /// models answered the very request those two failed.
+    ///
+    /// A model cut off for not finishing (<see cref="ChatErrorCodes.TimedOut"/>) is retried although it
+    /// is slow by definition: the provider had answered at once and was only waiting for that model,
+    /// so the wait says nothing about the others, and the member has waited too long to be sent away.
     /// </summary>
     public static bool ShouldRetry(Error error, TimeSpan elapsed, TimeSpan patience) =>
         error.Code is not (ChatErrorCodes.RateLimited
             or ChatErrorCodes.Unreachable
             or ChatErrorCodes.Rejected
             or ChatErrorCodes.NoModelAvailable)
-        && elapsed <= patience;
+        && (elapsed <= patience || error.Code == ChatErrorCodes.TimedOut);
 
     /// <summary>
     /// Which models of a failed chain the failure says something about. A server error or an empty
-    /// completion speaks to the whole chain. A refusal to serve this bot, or a provider's shared pool
-    /// running dry, speaks only to the model it names — the first — and blaming the rest would demote
-    /// healthy models for one model's trouble. An outage, our own rate limit or a request refused as
-    /// sent speaks to none of them, and blaming the chain for one would demote the best models on the
-    /// roster all at once.
+    /// completion speaks to the whole chain. A refusal to serve this bot, a provider's shared pool
+    /// running dry, or a model that never finished its answer speaks only to the model it names — the
+    /// first — and blaming the rest would demote healthy models for one model's trouble. An outage, our
+    /// own rate limit or a request refused as sent speaks to none of them, and blaming the chain for
+    /// one would demote the best models on the roster all at once.
     /// </summary>
     public static AnswerFailureBlame AssignBlame(Error error) => error.Code switch
     {
         ChatErrorCodes.RequestFailed or ChatErrorCodes.EmptyResponse => AnswerFailureBlame.WholeChain,
-        ChatErrorCodes.ModelRateLimited => AnswerFailureBlame.FirstModel,
+        ChatErrorCodes.ModelRateLimited or ChatErrorCodes.TimedOut => AnswerFailureBlame.FirstModel,
         ChatErrorCodes.ModelGated => AnswerFailureBlame.FirstModelUnfit,
         _ => AnswerFailureBlame.None
     };

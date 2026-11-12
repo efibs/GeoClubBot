@@ -283,8 +283,9 @@ public static partial class CitationResolver
 
     /// <summary>
     /// Removes what the prompt says about an excerpt from an answer that copied it: "(picture)",
-    /// "(3 pictures)", "(picture, usually with a distribution map)", "(the user saw this as 2)", and the
-    /// distribution-map note written bare after a citation. Code is left exactly as written.
+    /// "(3 pictures)", "(picture, usually with a distribution map)", "(the user saw this as 2)", "(also
+    /// on PlonkIt)", and the distribution-map note written bare after a citation. Code is left exactly
+    /// as written.
     /// </summary>
     private static string RemoveAnnotations(string answer) =>
         AnnotationOrCode().Replace(answer, match => match.Groups["note"].Success ? string.Empty : match.Value);
@@ -370,7 +371,8 @@ public static partial class CitationResolver
         + "|(?<note>[ \\t]*(?<w>\\*{1,3}|_{1,2})?\\([ \\t]*(?:"
         + "(?:pictures?|[0-9]{1,2}[ \\t]+pictures)(?:[ \\t]*,[ \\t]*" + AiPromptBuilder.DistributionMapNote + ")?"
         + "|" + AiPromptBuilder.DistributionMapNote
-        + "|the user saw this as [0-9]{1,2}"
+        + "|the user saw this as [0-9]{1,2}(?:;[ \\t]*" + AiPromptBuilder.AlsoOnMainGuideNote + ")?"
+        + "|" + AiPromptBuilder.AlsoOnMainGuideNote
         + ")[ \\t]*\\)(?(w)\\k<w>))"
         + "|(?<=[\\]】］〕])(?<note>[ \\t]*[,:–—-]?[ \\t]*" + AiPromptBuilder.DistributionMapNote + "\\b,?)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

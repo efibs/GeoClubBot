@@ -238,6 +238,11 @@ public sealed class KnowledgeHitFusionTests
     [InlineData("Summary :", "Kazakhstan", "Kazakhstan > Summary :", true)]
     [InlineData("https://i.imgur.com/AgNVVGk.png", "Mongolia", "Mongolia", true)]
     [InlineData("The tent with 4 straps covers most of central-northern Mongolia.", "Plonk It", "Mongolia > Region-specific clues", false)]
+    // A path three headings deep names its picture: Maryland's route shield, Sikkim's taxis.
+    [InlineData("A Unique USA > 7.20 Maryland (MD) > 7.20.1 Signs > State Route Shield", "A Unique USA",
+        "A Unique USA > 7.20 Maryland (MD) > 7.20.1 Signs > State Route Shield", false)]
+    [InlineData("India region guessing doc > Sikkim > Sikkim taxis", "India region guessing doc", "India region guessing doc > Sikkim > Sikkim taxis", false)]
+    [InlineData("A Learnable Colombia > Chapter 5: Vegetation", "A Learnable Colombia", "A Learnable Colombia > Chapter 5: Vegetation", true)]
     public void IsHeadingOnlyPicture_KnowsACaptionThatSaysNothing(string text, string title, string section, bool expected) =>
         new KnowledgeHit(Guid.NewGuid(), 0.5f, KnowledgeChunkKind.Image, text, "https://guide", "https://img/x.png",
                 title, "country", section, "Author", 0)

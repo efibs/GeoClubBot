@@ -32,13 +32,15 @@ public sealed record AskAiCommand(
 /// shows pictures sharing a link as one grid under one title, so this only tells their files apart.
 /// </param>
 /// <param name="Count">How many of its excerpt's pictures are attached.</param>
+/// <param name="Caption">What the guide says the picture shows, in a line; null when only its title does.</param>
 public sealed record AiAnswerImage(
     int Marker,
     string ImageUrl,
     string SourceUrl,
     string? Title,
     int Position = 1,
-    int Count = 1);
+    int Count = 1,
+    string? Caption = null);
 
 /// <param name="Marker">
 /// The number the answer's prose cites, so the two line up — or <c>null</c> when the model cited
@@ -92,6 +94,8 @@ public sealed partial class AskAiHandler(
     IChatModelClient chatClient,
     AiAnswerLoop answerLoop,
     PlantRangeLookAhead plantRange,
+    MainGuideOverlap mainGuide,
+    ClueSampler clueSampler,
     KnowledgeCountryDirectory countryDirectory,
     QueryPlannerPause plannerPause,
     IOptions<AiConfiguration> aiConfiguration,
@@ -154,9 +158,27 @@ public sealed partial class AskAiHandler(
         // Also read while the question is searched: a GBIF lookup costs no request, and never fails it.
         var plantRead = plantRange.ReadAsync(request.Content, cancellationToken);
 
+        // "A clue I don't know yet", "one that is not on PlonkIt": PlonkIt is what a player knows, so
+        // its tips stay out of the search, and what other guides say that PlonkIt says too is marked.
+        var lesserKnown = retrievalConfiguration.Value.LesserKnown.Enabled
+                          && LesserKnownQuestion.Asks(request.Content, context.Turns);
+
+        // "Tell me a reliable clue I don't know yet" names nothing a search could match. Picture clues
+        // drawn at random from the other guides lead its excerpts; what the search found fills the rest.
+        // Drawn while the question is searched: it costs no request, and never fails the question.
+        var drawRead = lesserKnown
+                       && request.AttachmentImageUrls.Count == 0
+                       && LesserKnownQuestion.NamesNoSubject(request.Content, context.Turns)
+            ? clueSampler.DrawAsync(cancellationToken)
+            : Task.FromResult<IReadOnlyList<KnowledgeHit>>([]);
+
         // Deliberately not released on later failure: by this point at least one upstream call has
         // usually been made, and over-counting is far safer than a 429 storm from under-counting.
-        var hits = await RetrieveAsync(request, context, config, now, cancellationToken).ConfigureAwait(false);
+        var searched = await RetrieveAsync(request, context, config, now, lesserKnown, cancellationToken).ConfigureAwait(false);
+        var hits = searched.IsSuccess
+            ? Result<IReadOnlyList<KnowledgeHit>>.Success(
+                ClueSampler.Lead(await drawRead.ConfigureAwait(false), searched.Value, retrievalConfiguration.Value.ExcerptLimit))
+            : searched;
         if (hits.IsFailure)
         {
             // Deliberately not answered anyway. An empty hit list reads to the model as "the guides do
@@ -168,17 +190,28 @@ public sealed partial class AskAiHandler(
 
         // A plant's countries lead the excerpts found for the question: they answer its "where", while
         // the guides found beside them cover a country or two (Khasi pines: India and Vietnam only).
-        IReadOnlyList<KnowledgeHit> retrieved = await plantRead.ConfigureAwait(false) is { } plant
-            ? [plant, .. hits.Value]
-            : hits.Value;
+        // Counted within the one country a question names, its records follow the guides instead.
+        IReadOnlyList<KnowledgeHit> retrieved = await plantRead.ConfigureAwait(false) switch
+        {
+            { LeadsTheGuides: true } plant => [plant.Hit, .. hits.Value],
+            { } plant => [.. hits.Value, plant.Hit],
+            null => hits.Value
+        };
 
-        var offered = CarriedExcerpts.Combine(
-            await carriedRead.ConfigureAwait(false), retrieved, maxCarried, context.PreviousCitedChunkIds);
+        // The clues the answer before gave are marked too: "give me another one" is no reason to
+        // repeat one PlonkIt has.
+        var carriedOver = await carriedRead.ConfigureAwait(false);
+        if (lesserKnown)
+        {
+            carriedOver = await mainGuide.MarkAsync(carriedOver, cancellationToken).ConfigureAwait(false);
+        }
+
+        var offered = CarriedExcerpts.Combine(carriedOver, retrieved, maxCarried, context.PreviousCitedChunkIds);
 
         var completion = await answerLoop.AnswerAsync(
                 new AnswerRequest(
                     context, request.Content, request.AttachmentImageUrls, offered.Hits,
-                    DateOnly.FromDateTime(now.UtcDateTime), startedAt, offered.Carried, offered.CarriedSourceNumbers),
+                    DateOnly.FromDateTime(now.UtcDateTime), startedAt, offered.Carried, offered.CarriedSourceNumbers, lesserKnown),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -226,9 +259,10 @@ public sealed partial class AskAiHandler(
 
         return new AiAnswer(
             citations.Text,
-            // Titled as listed beneath the answer when the source has no title of its own.
+            // Titled as listed beneath the answer, and captioned by what the guide says of the picture.
             [.. citations.Images.Select(image => new AiAnswerImage(
-                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count))],
+                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count,
+                image.Excerpt.Caption))],
             sources,
             outcome.Response.ModelUsed,
             ResolveConversationId(context, request),
@@ -330,11 +364,13 @@ public sealed partial class AskAiHandler(
     /// branch, the planner's rewrite and phrasings — all embedded in one request, so a follow-up costs
     /// no more embedding than a fresh question.
     /// </summary>
+    /// <param name="lesserKnown">Leave PlonkIt's tips out, and mark what other guides say that PlonkIt says too.</param>
     private async Task<Result<IReadOnlyList<KnowledgeHit>>> RetrieveAsync(
         AskAiCommand request,
         ConversationContext context,
         AiConfiguration config,
         DateTimeOffset now,
+        bool lesserKnown,
         CancellationToken cancellationToken)
     {
         var settings = retrievalConfiguration.Value;
@@ -378,14 +414,21 @@ public sealed partial class AskAiHandler(
         }
 
         var query = searchPlan.ToQuery([.. embeddings.Value.Take(textCount)], imageVector, settings);
+        if (lesserKnown)
+        {
+            query = query with { ExcludedSourceType = MainGuideOverlap.MainGuide };
+            LogLesserKnown(logger);
+        }
 
         LogRetrieving(logger, searchPlan.Lead.Name, searchPlan.Others.Count,
             string.Join(", ", searchPlan.Countries.Select(country => country.Name)), searchPlan.KeyPhrases.Count);
 
         try
         {
+            var found = await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false);
+
             return Result<IReadOnlyList<KnowledgeHit>>.Success(
-                await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false));
+                lesserKnown ? await mainGuide.MarkAsync(found, cancellationToken).ConfigureAwait(false) : found);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -565,6 +608,10 @@ public sealed partial class AskAiHandler(
     [LoggerMessage(LogLevel.Warning,
         "Guide index search failed (text vector: {TextVectorLength}, image vector: {ImageVectorLength}).")]
     static partial void LogSearchFailed(ILogger logger, int textVectorLength, int imageVectorLength, Exception exception);
+
+    [LoggerMessage(LogLevel.Information,
+        "The question asks for something the user does not know yet: searching every guide but PlonkIt.")]
+    static partial void LogLesserKnown(ILogger logger);
 
     [LoggerMessage(LogLevel.Debug,
         "Searching the guides by the {Lead} wording and {OtherCount} more, countries [{Countries}], {PhraseCount} key phrase(s).")]

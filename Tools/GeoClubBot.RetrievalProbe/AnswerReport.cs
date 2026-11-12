@@ -65,7 +65,8 @@ public static class AnswerReport
         var pictures = rendering.Embeds
             .Zip(plan.Pictures
                 .Take(AiAnswerPicturePlanner.MaxPicturesPerMessage)
-                .GroupBy(picture => picture.Image.SourceUrl, StringComparer.Ordinal)
+                // In the formatter's order: each cited excerpt's pictures together.
+                .GroupBy(picture => picture.Image.Marker)
                 .SelectMany(group => group))
             .Select(pair => $"{pair.First.Title} — {Link(pair.Second.Image.ImageUrl)}"
                             + (RelayedImageUrl.TryReadName(pair.Second.Image.ImageUrl, out _)
@@ -96,7 +97,9 @@ public static class AnswerReport
         text.AppendLine($"- Chain today, text: {Chain(header.TextChain)}; with tools: {(header.ToolChain.Count == 0 ? "–" : Chain(header.ToolChain))}.");
         text.AppendLine("- Each answer is asked as the first question of a day (an allowance that never runs out), in a branch rebuilt "
                         + "from the export: follow-ups get their branch, and the excerpts the answer before cited where the export kept them.");
-        text.AppendLine("- Not the bot: no Discord, nothing stored, and pictures are not uploaded — a relayed picture is listed by its link.");
+        text.AppendLine("- Not the bot: no Discord, nothing stored, and pictures are not uploaded — a relayed picture is listed by its link. "
+                        + "A species map drawn for an answer is listed the same way, on a host that does not exist: the file its link "
+                        + "names is in the `species-maps` folder beside the answer cache.");
 
         if (header.JudgeChain is { } judge)
         {

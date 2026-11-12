@@ -95,6 +95,12 @@ public sealed record KnowledgeQuery
 
     public string? SourceType { get; init; }
 
+    /// <summary>
+    /// A hard filter the other way: nothing of this source type is returned. A member asking for a
+    /// clue "that is not on PlonkIt" was offered nine PlonkIt tips of ten (2026-11-09).
+    /// </summary>
+    public string? ExcludedSourceType { get; init; }
+
     /// <summary>A hard filter on the kind of chunk: only pictures, for the answer's search tool.</summary>
     public KnowledgeChunkKind? ChunkKind { get; init; }
 
@@ -173,14 +179,29 @@ public sealed record KnowledgeHit(
     /// </summary>
     public IReadOnlyList<Guid> MergedChunkIds { get; init; } = [];
 
+    /// <summary>
+    /// The guide most players have read carries a tip like this one. Set only for a question that asks
+    /// for something new (<c>MainGuideOverlap</c>), and said on the excerpt, so the model passes it over.
+    /// </summary>
+    public bool AlsoInMainGuide { get; init; }
+
     /// <summary>Every chunk this hit stands for: its own id, then its merged copies'. Never the empty id.</summary>
     public IEnumerable<Guid> ChunkIds =>
         new[] { Id }.Concat(MergedChunkIds).Where(id => id != Guid.Empty).Distinct();
+
+    /// <summary>A section path this deep names its picture: the guide, a part of it, and the thing itself.</summary>
+    private const int MinDescriptiveSectionDepth = 3;
 
     /// <summary>
     /// A picture whose only text is its guide's title or section heading — what an extractor falls
     /// back to for a picture with no caption, e.g. "Svalbard — Identifying Svalbard". The model knows a
     /// picture only by its text, so it can say nothing about one of these.
+    ///
+    /// Unless the heading is a path that names the picture. "A Unique USA > 7.20 Maryland (MD) > 7.20.1
+    /// Signs > State Route Shield" over a picture with no other words says exactly what it shows, and it
+    /// is what a member asking for Maryland's route shield should be given; "India region guessing doc >
+    /// Sikkim > Sikkim taxis" likewise. A path of <see cref="MinDescriptiveSectionDepth"/> headings or
+    /// more is therefore a caption, as long as it is one.
     /// </summary>
     public bool IsHeadingOnlyPicture
     {
@@ -192,18 +213,31 @@ public sealed record KnowledgeHit(
             }
 
             var text = string.Join(' ', Text.Split(default(char[]), StringSplitOptions.RemoveEmptyEntries));
-            return text.Length < MinTopicalCaptionLength
-                   || text.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(text, Title, StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(text, SectionPath, StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(text.Replace(" — ", " > ", StringComparison.Ordinal), SectionPath,
-                       StringComparison.OrdinalIgnoreCase);
+            if (text.Length < MinTopicalCaptionLength
+                || text.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(text, Title, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var isItsSection = string.Equals(text, SectionPath, StringComparison.OrdinalIgnoreCase)
+                               || string.Equals(text.Replace(" — ", " > ", StringComparison.Ordinal), SectionPath,
+                                   StringComparison.OrdinalIgnoreCase);
+
+            return isItsSection
+                   && text.Split(" > ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length < MinDescriptiveSectionDepth;
         }
     }
 }
 
 /// <summary>A document in the index, identified the same way as its source record.</summary>
 public sealed record IndexedSourceKey(string SourceType, string SourceKey);
+
+/// <summary>What to draw at random from the index (<see cref="IKnowledgeIndex.SampleAsync"/>).</summary>
+/// <param name="Limit">How many chunks to draw.</param>
+/// <param name="Kind">Draw only chunks of this kind; null draws any.</param>
+/// <param name="ExcludedSourceType">Draw nothing of this source type; null leaves none out.</param>
+public sealed record KnowledgeSample(int Limit, KnowledgeChunkKind? Kind = null, string? ExcludedSourceType = null);
 
 /// <summary>
 /// The vector store holding all indexed guide content.
@@ -240,6 +274,35 @@ public interface IKnowledgeIndex
     Task<IReadOnlyList<KnowledgeHit>> ReadChunksAsync(
         IReadOnlyList<Guid> ids,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// For each of <paramref name="hits"/> that is a chunk of the index, the chunk of
+    /// <paramref name="sourceType"/> whose text is nearest its own — among those filed under the hit's
+    /// country, when it has one — with how near as its <see cref="KnowledgeHit.Score"/>. Keyed by the
+    /// hit's id; a hit that is no chunk of the index, or has no such neighbour, is left out.
+    ///
+    /// Costs no embedding request: the chunk's own stored vector is what is searched by. It answers
+    /// "is this clue also in that guide?" — whether a clue from a member's document is one PlonkIt has too.
+    /// </summary>
+    /// <param name="countrySpellings">
+    /// Every spelling the index files a country under, by the spelling a hit carries. Guides spell one
+    /// country differently — a document's <c>usa</c> is PlonkIt's <c>united states</c> — and compared
+    /// under its own spelling alone, a document found no PlonkIt tip of its country at all. A country
+    /// that is no key here is searched as the hit spells it.
+    /// </param>
+    Task<IReadOnlyDictionary<Guid, KnowledgeHit>> ReadNearestOfSourceAsync(
+        IReadOnlyList<KnowledgeHit> hits,
+        string sourceType,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? countrySpellings = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Chunks drawn at random, a different draw each time, without a score. For a question that names
+    /// nothing a search could match — "tell me a clue I don't know yet" — where whatever resembles the
+    /// question's wording is no better than chance, and chance at least differs the next time it is
+    /// asked. Costs no embedding request.
+    /// </summary>
+    Task<IReadOnlyList<KnowledgeHit>> SampleAsync(KnowledgeSample sample, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Removes points of a source that the latest run did not re-produce, identified by carrying a

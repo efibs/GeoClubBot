@@ -43,6 +43,12 @@ public sealed class ExcerptLedger
         RetrievedCount = _hits.Count;
     }
 
+    /// <summary>
+    /// The question asks for something new, so its tool searches leave PlonkIt's own tips out unless
+    /// the model asks for them, as the search that came with the question did.
+    /// </summary>
+    public bool LeavesOutMainGuide { get; init; }
+
     /// <summary>Every excerpt offered, in marker order.</summary>
     public IReadOnlyList<OfferedExcerpt> Offered => _offered;
 
