@@ -54,8 +54,27 @@ public class AiToolsConfiguration : IValidatableObject
     /// <summary>Where a plant species is recorded. See <see cref="AiSpeciesRangeConfiguration"/>.</summary>
     public AiSpeciesRangeConfiguration SpeciesRange { get; set; } = new();
 
+    /// <summary>Naming the plant in a member's screenshot with Pl@ntNet. See <see cref="AiPlantIdentificationConfiguration"/>.</summary>
+    public AiPlantIdentificationConfiguration PlantIdentification { get; set; } = new();
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        var plantResults = new List<ValidationResult>();
+        Validator.TryValidateObject(PlantIdentification, new ValidationContext(PlantIdentification), plantResults, validateAllProperties: true);
+
+        foreach (var result in plantResults)
+        {
+            yield return new ValidationResult(
+                $"{nameof(PlantIdentification)}: {result.ErrorMessage}",
+                [.. result.MemberNames.Select(member => $"{nameof(PlantIdentification)}:{member}")]);
+        }
+
+        if (!Uri.TryCreate(PlantIdentification.BaseUrl, UriKind.Absolute, out _))
+        {
+            yield return new ValidationResult(
+                $"{nameof(PlantIdentification)}:{nameof(AiPlantIdentificationConfiguration.BaseUrl)} must be an absolute URL.");
+        }
+
         // Nested sections are not validated by data annotations on their own.
         var results = new List<ValidationResult>();
         Validator.TryValidateObject(SpeciesRange, new ValidationContext(SpeciesRange), results, validateAllProperties: true);
@@ -169,4 +188,78 @@ public class AiSpeciesRangeMapConfiguration
     /// </summary>
     [Range(1, 60)]
     public int TimeoutSeconds { get; set; } = 8;
+}
+
+/// <summary>
+/// Naming the plant in a member's screenshot with Pl@ntNet's identification API, before the model
+/// answers. Free up to 500 identifications a day per account (reset at 00:00 UTC), commercial use
+/// allowed within that, attribution appreciated and given in the excerpt's source. Asked to name a
+/// plant from a screenshot, the free chat models guessed from look-alike guide pictures and were
+/// often wrong (2026-11-09 feedback); Pl@ntNet names it with a confidence score, and the species it
+/// names goes on to the GBIF range lookup, so the answer says what the plant is, where it grows, and
+/// comes with the map.
+/// </summary>
+public class AiPlantIdentificationConfiguration
+{
+    /// <summary>Whether screenshots are sent to Pl@ntNet at all. Needs <see cref="ApiKey"/> as well.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// A Pl@ntNet API key (my.plantnet.org, free account). Empty leaves the feature off, however
+    /// <see cref="Enabled"/> is set: nothing is sent anywhere without one.
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>Pl@ntNet's API. Changed only to point tests or a mirror elsewhere.</summary>
+    public string BaseUrl { get; set; } = "https://my-api.plantnet.org";
+
+    /// <summary>
+    /// The flora the picture is matched against: "all" lets Pl@ntNet pick the most relevant project,
+    /// which is what a screenshot of anywhere in the world needs. Other names come from /v2/projects.
+    /// </summary>
+    [MinLength(1)]
+    public string Project { get; set; } = "all";
+
+    /// <summary>Language of the common names Pl@ntNet returns (its /v2/languages).</summary>
+    [MinLength(2)]
+    public string Language { get; set; } = "en";
+
+    /// <summary>
+    /// Candidates offered to the model per screenshot, best first. The second and third say how sure
+    /// the first is: a top score of 0.4 over 0.35 is a toss-up, over 0.05 it is the answer.
+    /// </summary>
+    [Range(1, 10)]
+    public int MaxCandidates { get; set; } = 3;
+
+    /// <summary>
+    /// Score of the best candidate from which it is taken for the plant: its range is read from GBIF and
+    /// offered with the map, and the model is told to name it. Below it the candidates are still offered,
+    /// as guesses. Pl@ntNet's scores are probabilities over its flora; a Street View frame is a poor
+    /// photograph of a plant, so a clear best match often scores 0.3–0.6 rather than 0.9.
+    /// </summary>
+    [Range(0.0, 1.0)]
+    public double MinConfidence { get; set; } = 0.25;
+
+    /// <summary>
+    /// Identifications this bot makes a day, under Pl@ntNet's 500 so the account keeps room for the
+    /// maintainer's own use and for a restart's lost count. Past it, members are told the day's
+    /// allowance is spent rather than left to a silent guess.
+    /// </summary>
+    [Range(1, 500)]
+    public int MaxRequestsPerDay { get; set; } = 450;
+
+    /// <summary>Per request, the screenshot's download included. Pl@ntNet answers in a second or two.</summary>
+    [Range(1, 60)]
+    public int RequestTimeoutSeconds { get; set; } = 15;
+
+    /// <summary>
+    /// How long an identification is kept, by the screenshot's link. A follow-up on the same screenshot
+    /// is asked often ("and where does it grow?"), and would otherwise cost another identification.
+    /// </summary>
+    [Range(0, 168)]
+    public int CacheHours { get; set; } = 24;
+
+    /// <summary>Largest screenshot sent, in bytes. Pl@ntNet takes up to 50 MB; a Discord screenshot is a few MB at most.</summary>
+    [Range(100_000, 50_000_000)]
+    public int MaxImageBytes { get; set; } = 10 * 1024 * 1024;
 }

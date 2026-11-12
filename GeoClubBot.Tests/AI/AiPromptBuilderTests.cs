@@ -201,6 +201,7 @@ public sealed class AiPromptBuilderTests
     [InlineData("never explain a clue from its name alone",
         "\"Ohio gap – a telltale gap in pavement or road markings\": the guide says a gap in a road line at a raised pavement marker")]
     [InlineData("name the likeliest species yourself", "\"did it not mention the species\"")]
+    [InlineData("take the Pl@ntNet excerpt's identification when there", "the cactus named from a look-alike guide picture (2026-11-09)")]
     [InlineData("its country is not the screenshot's", "\"it is wrong because it was South Africa\", answered with a Brazilian look-alike")]
     [InlineData("give one from another guide that is not marked \"also on PlonkIt\"",
         "\"Both Ukraine car metas are again on PlonkIt and I knew them very well.\"")]

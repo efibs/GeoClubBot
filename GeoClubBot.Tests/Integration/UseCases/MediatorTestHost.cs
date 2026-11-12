@@ -170,6 +170,7 @@ public sealed class MediatorTestHost : IDisposable
         // Mirrors AiServices: a question asking where a plant is found looks it up before answering,
         // through the substituted species reader, whose default (failed) result offers nothing.
         services.AddSingleton<PlantRangeLookAhead>();
+        services.AddSingleton<PlantIdentificationLookAhead>();
 
         // Mirrors ClubMembersModule: the private-channel handlers share the category placement logic.
         services.AddScoped<MemberPrivateChannelManager>();

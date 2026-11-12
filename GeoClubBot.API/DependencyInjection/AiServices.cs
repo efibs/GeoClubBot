@@ -10,6 +10,7 @@ using Infrastructure.OutputAdapters.AI.Extractors;
 using Infrastructure.OutputAdapters.AI.Gbif;
 using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
+using Infrastructure.OutputAdapters.AI.PlantNet;
 using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
@@ -158,6 +159,18 @@ public static class AiServices
         services.AddSingleton<ISpeciesRangeMap, GbifSpeciesRangeMap>();
         services.AddSingleton<AnswerToolbox>();
         services.AddSingleton<PlantRangeLookAhead>();
+
+        // Pl@ntNet: the screenshot is downloaded from Discord and posted as a file, on one client with
+        // one attempt per call. Nothing is sent without a key; the adapter checks before it is asked.
+        var plantTimeout = TimeSpan.FromSeconds(tools.PlantIdentification.RequestTimeoutSeconds);
+        services.AddHttpClient(PlantNetPlantIdentifier.HttpClientName, client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+            client.Timeout = plantTimeout;
+        });
+        services.AddSingleton<IPlantIdentifier, PlantNetPlantIdentifier>();
+        services.AddSingleton<PlantIdentificationLookAhead>();
 
         // Scoped, like the budget repository it claims requests through.
         services.AddScoped<AiAnswerLoop>();

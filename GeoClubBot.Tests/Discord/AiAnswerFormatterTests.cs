@@ -109,6 +109,19 @@ public sealed class AiAnswerFormatterTests
     }
 
     [Fact]
+    public Task Render_SaysWhatCouldNotBeDoneForTheAnswer_BeneathIt()
+    {
+        // A guess must never pass for a lookup: when the plant service was spent, the member is told.
+        var answer = new AiAnswer("It looks like a pine.", [], [], "test/model", ConversationId: 100, Depth: 1, IsLongThread: false,
+            RetrievedSourceUrls: [], CitedSourceUrls: [])
+        {
+            Notices = ["Plant identification (Pl@ntNet) has used today's allowance; the plant was judged from the picture alone. It resets at midnight UTC."]
+        };
+
+        return Verify(Render(RenderLinked(answer)));
+    }
+
+    [Fact]
     public void Render_KeepsALongPictureTitleWithinDiscordsLimit()
     {
         // Discord rejects the whole message when an embed title runs past 256 characters.
