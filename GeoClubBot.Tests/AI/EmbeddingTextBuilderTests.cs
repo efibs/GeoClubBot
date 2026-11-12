@@ -115,10 +115,38 @@ public sealed class EmbeddingTextBuilderTests
         text.Should().Be("Unclassifiable prose.");
     }
 
-    private static string Build(ExtractedChunk chunk, string? country = null, string? title = null) =>
+    [Fact]
+    public void Build_PutsAGeneratedDescription_AfterTheText_WhereACaptionWouldBe()
+    {
+        // A picture whose only words are its heading is found by nothing; the vision model's description
+        // is what a written question can match, so it goes into the vector — after the guide's own words.
+        var text = Build(Chunk("Tunisia", "Tunisia > Bollards"), country: "Tunisia", title: "Tunisia",
+            generatedCaption: "  A short white bollard with a red reflective band.  ");
+
+        text.Should().Be("Tunisia — Bollards\n\nTunisia\n\nA short white bollard with a red reflective band.");
+    }
+
+    [Fact]
+    public void Build_ChangesNothing_WhenThereIsNoDescription() =>
+        Build(Chunk(Poles, "Tunisia > Poles"), country: "Tunisia", generatedCaption: "  ")
+            .Should().Be(Build(Chunk(Poles, "Tunisia > Poles"), country: "Tunisia"));
+
+    [Fact]
+    public void Build_OverAnIndexedChunk_MatchesTheWriteRecipe()
+    {
+        // The describing run re-embeds a chunk from what the index holds, and must produce the vector a
+        // fresh ingest would — or the same chunk would sit at two places depending on which wrote it last.
+        var fromWrite = Build(Chunk(Poles, "Tunisia > Poles"), country: "Tunisia", title: "Tunisia", generatedCaption: "Two crossarms.");
+        var fromIndex = EmbeddingTextBuilder.Build("Tunisia", "Tunisia", "Tunisia > Poles", Poles, "Two crossarms.");
+
+        fromIndex.Should().Be(fromWrite);
+    }
+
+    private static string Build(ExtractedChunk chunk, string? country = null, string? title = null, string? generatedCaption = null) =>
         EmbeddingTextBuilder.Build(
             new SourceDescriptor("gdoc", "key", new Uri("https://example.invalid/d"), title, country),
-            chunk);
+            chunk,
+            generatedCaption);
 
     private static ExtractedChunk Chunk(string text, string sectionPath) => new("c0", sectionPath, text);
 }

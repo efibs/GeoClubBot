@@ -239,6 +239,23 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         }, ephemeral: true, failureMessage: "Failed to queue the image backfill.");
 
     [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("describe-pictures", "Have a vision model describe indexed guide pictures that have no words of their own")]
+    public Task DescribePicturesAsync(
+        [Summary(description: "How many pictures to describe")] int count = 10) =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new CaptionPicturesCommand(count), ct).ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            await FollowupAsync(AiSourcesFormatter.DescribeCaptionRun(result.Value), ephemeral: true).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to describe guide pictures.");
+
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
     [SlashCommand("sources", "List guide sources that failed, were skipped or are unavailable, and why")]
     public Task SourcesAsync(
         [Summary(description: "Which sources to list")]

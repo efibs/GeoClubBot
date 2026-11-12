@@ -377,8 +377,14 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         // both point at the same fetchable image.
         chunks = await RelayImagesAsync(chunks, cancellationToken).ConfigureAwait(false);
 
+        // Descriptions a vision model wrote for this document's pictures last time round. Each cost a
+        // request, and the pictures have not changed, so a re-ingest keeps them rather than sweeping them
+        // only for the describing run to buy them again. Read before the write replaces the payload.
+        var kept = await ReadKeptCaptionsAsync(source, descriptor, chunks, cancellationToken).ConfigureAwait(false);
+
         var textInputs = chunks
-            .Select(chunk => (EmbeddingInput)new TextEmbeddingInput(EmbeddingTextBuilder.Build(descriptor, chunk)))
+            .Select(chunk => (EmbeddingInput)new TextEmbeddingInput(
+                EmbeddingTextBuilder.Build(descriptor, chunk, kept.GetValueOrDefault(chunk.LocalKey)?.Text)))
             .ToList();
 
         if (!await TryReserveForInputsAsync(textInputs.Count, cancellationToken).ConfigureAwait(false))
@@ -408,6 +414,8 @@ public sealed partial class IngestKnowledgeSourcesHandler(
                 imageVector = embedded;
             }
 
+            var caption = kept.GetValueOrDefault(chunk.LocalKey);
+
             points.Add(new KnowledgePoint(
                 new KnowledgeChunk
                 {
@@ -422,7 +430,9 @@ public sealed partial class IngestKnowledgeSourcesHandler(
                     Country = descriptor.Country,
                     SectionPath = chunk.SectionPath,
                     Author = descriptor.Author,
-                    Priority = descriptor.Priority
+                    Priority = descriptor.Priority,
+                    GeneratedCaption = caption?.Text,
+                    CaptionVersion = caption?.Version ?? 0
                 },
                 textVectors.Value[index],
                 imageVector));
@@ -431,6 +441,62 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         await knowledgeIndex.UpsertAsync(points, ingestRun, cancellationToken).ConfigureAwait(false);
 
         return new WriteResult(points.Count, images.Vectors.Count, images.Deferred, images.RateLimited);
+    }
+
+    /// <summary>
+    /// The descriptions already in the index for the pictures this write is about to replace, by the
+    /// chunk's local key. Only a picture that still has the same picture keeps its description: one
+    /// whose image changed under the same key would otherwise be described by the old picture's words.
+    /// Empty when the source has never been indexed, which costs nothing but one read.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, GeneratedCaption>> ReadKeptCaptionsAsync(
+        KnowledgeSource source,
+        SourceDescriptor descriptor,
+        IReadOnlyList<ExtractedChunk> chunks,
+        CancellationToken cancellationToken)
+    {
+        if (!source.HoldsIndexedPictures || chunks.All(chunk => chunk.ImageUrl is null))
+        {
+            return new Dictionary<string, GeneratedCaption>(StringComparer.Ordinal);
+        }
+
+        var stored = await knowledgeIndex.ReadGeneratedCaptionsAsync(descriptor.SourceType, descriptor.NaturalKey, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (stored.Count == 0)
+        {
+            return new Dictionary<string, GeneratedCaption>(StringComparer.Ordinal);
+        }
+
+        var byId = stored.ToDictionary(caption => caption.Id);
+        var kept = new Dictionary<string, GeneratedCaption>(StringComparer.Ordinal);
+        foreach (var chunk in chunks)
+        {
+            if (chunk.ImageUrl is null)
+            {
+                continue;
+            }
+
+            // The id the picture was written under, so the match is exact and never by text.
+            var id = new KnowledgeChunk
+            {
+                SourceType = descriptor.SourceType,
+                SourceKey = descriptor.NaturalKey,
+                LocalKey = chunk.LocalKey,
+                Kind = KnowledgeChunkKind.Image,
+                Text = chunk.Text,
+                SourceUrl = string.Empty
+            }.PointId;
+
+            // Relayed pictures are named by their content, so the same URL is the same picture.
+            if (byId.TryGetValue(id, out var caption)
+                && string.Equals(caption.ImageUrl, chunk.ImageUrl, StringComparison.Ordinal))
+            {
+                kept[chunk.LocalKey] = caption.Caption;
+            }
+        }
+
+        return kept;
     }
 
     /// <summary>

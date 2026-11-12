@@ -46,5 +46,7 @@ public static class ConfigKeys
 
     public const string AiIngestionCronScheduleConfigurationKey = "AI:IngestionSchedule";
 
+    public const string AiCaptionCronScheduleConfigurationKey = "AI:CaptionSchedule";
+
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

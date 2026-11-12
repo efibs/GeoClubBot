@@ -252,6 +252,52 @@ public sealed class KnowledgeHitFusionTests
     public void IsHeadingOnlyPicture_NeverCallsTextAPicture() =>
         Hit("Distribution").IsHeadingOnlyPicture.Should().BeFalse("prose is never demoted for being short");
 
+    [Fact]
+    public void ADescribedPicture_IsNoLongerUndescribed_ButStillHeadingOnly()
+    {
+        var bare = Picture("Guide");
+        var described = bare with { GeneratedCaption = "A gravel road between eucalyptus trees." };
+        var failed = bare with { GeneratedCaption = "" };
+
+        bare.IsUndescribedPicture.Should().BeTrue();
+        described.IsUndescribedPicture.Should().BeFalse();
+        described.IsHeadingOnlyPicture.Should().BeTrue("the guide's own words have not changed");
+        failed.IsUndescribedPicture.Should().BeTrue("an empty description is none");
+    }
+
+    [Fact]
+    public void Fuse_NoLongerDemotesAPicture_OnceADescriptionHasBeenWrittenForIt()
+    {
+        // The demotion is for pictures the model can say nothing about; a described one it can.
+        var prose = Hit("Bollards are short and white.");
+        var described = Picture("Guide") with { GeneratedCaption = "A short white bollard with a red band." };
+
+        var fused = KnowledgeHitFusion.Fuse([List(1d, described, prose)], 8, headingOnlyPictureWeight: 0.1);
+
+        fused[0].Id.Should().Be(described.Id);
+    }
+
+    [Fact]
+    public void WantsCaption_IsTheWriteSideOfIsHeadingOnlyPicture()
+    {
+        KnowledgeChunk Chunk(KnowledgeChunkKind kind, string text) => new()
+        {
+            SourceType = "gdoc",
+            SourceKey = "x",
+            LocalKey = "p1-img",
+            Kind = kind,
+            Text = text,
+            SourceUrl = "https://guide",
+            Title = "Guide",
+            SectionPath = "Guide > Section"
+        };
+
+        Chunk(KnowledgeChunkKind.Image, "Guide").WantsCaption.Should().BeTrue();
+        Chunk(KnowledgeChunkKind.Image, "Guide > Section").WantsCaption.Should().BeTrue();
+        Chunk(KnowledgeChunkKind.Image, "The tent with 4 straps covers most of central-northern Mongolia.").WantsCaption.Should().BeFalse();
+        Chunk(KnowledgeChunkKind.Text, "Guide").WantsCaption.Should().BeFalse("prose wants no description");
+    }
+
     private static WeightedHitList List(double weight, params KnowledgeHit[] hits) => new(hits, weight);
 
     private static KnowledgeHit Hit(string text) =>
