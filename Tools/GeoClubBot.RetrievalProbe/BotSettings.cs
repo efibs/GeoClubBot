@@ -28,6 +28,8 @@ public sealed class BotSettings
 
     public required AiImageRelayConfiguration ImageRelay { get; init; }
 
+    public required AiCaptionsConfiguration Captions { get; init; }
+
     /// <summary>The overrides applied, as given, for the report.</summary>
     public required IReadOnlyList<string> Overrides { get; init; }
 
@@ -78,10 +80,12 @@ public sealed class BotSettings
         var retrieval = Bind<AiRetrievalConfiguration>(configuration, AiRetrievalConfiguration.SectionName);
         var tools = Bind<AiToolsConfiguration>(configuration, AiToolsConfiguration.SectionName);
         var relay = Bind<AiImageRelayConfiguration>(configuration, AiImageRelayConfiguration.SectionName);
+        var captions = Bind<AiCaptionsConfiguration>(configuration, AiCaptionsConfiguration.SectionName);
 
         // Validated as the bot validates them at start-up: a typo in an override is worth stopping for.
         Validate(retrieval, AiRetrievalConfiguration.SectionName);
         Validate(tools, AiToolsConfiguration.SectionName);
+        Validate(captions, AiCaptionsConfiguration.SectionName);
 
         ai.OpenRouter.ApiKey = string.Empty;
         var fingerprint = ComputeFingerprint(ai, conversation, retrieval, tools);
@@ -94,6 +98,7 @@ public sealed class BotSettings
             Retrieval = retrieval,
             Tools = tools,
             ImageRelay = relay,
+            Captions = captions,
             Overrides = [.. overrides],
             Fingerprint = fingerprint
         };

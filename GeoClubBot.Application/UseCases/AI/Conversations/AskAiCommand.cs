@@ -101,10 +101,14 @@ public sealed partial class AskAiHandler(
     IOptions<AiConfiguration> aiConfiguration,
     IOptions<AiConversationConfiguration> conversationConfiguration,
     IOptions<AiRetrievalConfiguration> retrievalConfiguration,
+    IOptions<AiCaptionsConfiguration> captionsConfiguration,
     TimeProvider timeProvider,
     ILogger<AskAiHandler> logger)
     : IRequestHandler<AskAiCommand, Result<AiAnswer>>
 {
+    /// <summary>What a generated description is marked with under a picture, so a member never takes it for the guide's words.</summary>
+    public const string GeneratedCaptionMark = "AI description: ";
+
     /// <summary>
     /// Guides credited when the model cited none. These are the best matches found for the question
     /// rather than anything the answer pointed at, so a long list would overstate them.
@@ -259,10 +263,12 @@ public sealed partial class AskAiHandler(
 
         return new AiAnswer(
             citations.Text,
-            // Titled as listed beneath the answer, and captioned by what the guide says of the picture.
+            // Titled as listed beneath the answer, and captioned by what the guide says of the picture —
+            // or, when the guide says nothing and the operator allows it, by what a vision model said,
+            // marked as such.
             [.. citations.Images.Select(image => new AiAnswerImage(
                 image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count,
-                image.Excerpt.Caption))],
+                image.Excerpt.Caption ?? ShownGeneratedCaption(image.Excerpt)))],
             sources,
             outcome.Response.ModelUsed,
             ResolveConversationId(context, request),
@@ -594,6 +600,16 @@ public sealed partial class AskAiHandler(
     /// tree at every exchange, so a conversation ends up stored as a chain of two-turn fragments and
     /// both the replayed history and the archived transcript stop at the last one.
     /// </summary>
+    /// <summary>
+    /// The line shown under a picture its guide says nothing about: the vision model's description,
+    /// marked as one — or nothing, when the operator keeps generated descriptions to search and the
+    /// model (<c>AI:Captions:ShowToMembers</c>).
+    /// </summary>
+    private string? ShownGeneratedCaption(OfferedExcerpt excerpt) =>
+        captionsConfiguration.Value.ShowToMembers && !string.IsNullOrWhiteSpace(excerpt.GeneratedCaption)
+            ? GeneratedCaptionMark + excerpt.GeneratedCaption
+            : null;
+
     private static ulong ResolveConversationId(ConversationContext context, AskAiCommand request) =>
         context.ConversationId ?? request.DiscordMessageId;
 

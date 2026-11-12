@@ -41,9 +41,9 @@ public static partial class KnowledgeHitFusion
     public const int RankConstant = 2;
 
     /// <param name="headingOnlyPictureWeight">
-    /// Multiplies the score of a picture whose only text is a heading
-    /// (<see cref="KnowledgeHit.IsHeadingOnlyPicture"/>): the model can say nothing about one, yet a
-    /// heading like "Distribution" matches many a question. One leaves them where they rank.
+    /// Multiplies the score of a picture whose only text is a heading and that no description has been
+    /// written for (<see cref="KnowledgeHit.IsUndescribedPicture"/>): the model can say nothing about
+    /// one, yet a heading like "Distribution" matches many a question. One leaves them where they rank.
     /// </param>
     public static IReadOnlyList<KnowledgeHit> Fuse(
         IReadOnlyList<WeightedHitList> lists,
@@ -76,7 +76,8 @@ public static partial class KnowledgeHitFusion
         {
             foreach (var (id, hit) in hits)
             {
-                if (hit.IsHeadingOnlyPicture)
+                // A described picture is no longer one the model can say nothing about.
+                if (hit.IsUndescribedPicture)
                 {
                     scores[id] *= Math.Max(0d, headingOnlyPictureWeight);
                 }

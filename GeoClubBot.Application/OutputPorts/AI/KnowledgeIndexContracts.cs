@@ -50,11 +50,83 @@ public sealed record KnowledgeChunk
     public int Priority { get; init; }
 
     /// <summary>
+    /// What a vision model said the picture shows, for an image chunk that
+    /// <see cref="WantsCaption">wanted one</see> and has been described; null otherwise. Never the
+    /// guide author's words, which stay in <see cref="Text"/>. Kept across a re-ingest, since the
+    /// picture has not changed, and embedded with the text so a written question finds the picture.
+    /// </summary>
+    public string? GeneratedCaption { get; init; }
+
+    /// <summary>The generation of <see cref="GeneratedCaption"/> (<c>AI:Captions:Version</c>); 0 when there is none.</summary>
+    public int CaptionVersion { get; init; }
+
+    /// <summary>
+    /// A picture whose only words are its guide's title or a short heading: nothing a question could
+    /// match, nothing an answer could say of it. Such pictures are the ones a vision model describes.
+    /// Decided once here, at write time, and stored, so the describing run reads it back instead of
+    /// scanning every picture's text.
+    /// </summary>
+    public bool WantsCaption => Kind == KnowledgeChunkKind.Image && PictureWords.IsOnlyAHeading(Text, Title, SectionPath);
+
+    /// <summary>
     /// Derived, not stored: the same chunk always maps to the same point, so re-ingesting unchanged
     /// content updates in place rather than appending a duplicate.
     /// </summary>
     public Guid PointId => DeterministicGuid.FromName("point", $"{SourceType}|{SourceKey}|{Kind}|{LocalKey}");
 }
+
+/// <summary>
+/// Whether a picture's text says anything its heading does not. Shared by the chunk written and the
+/// hit read back, so what the describing run is given and what retrieval demotes are the same pictures.
+/// </summary>
+public static class PictureWords
+{
+    /// <summary>Shorter captions say nothing a model could use: "Distribution", "Summary :", "Poles :".</summary>
+    public const int MinTopicalCaptionLength = 25;
+
+    /// <summary>A section path this deep names its picture: the guide, a part of it, and the thing itself.</summary>
+    public const int MinDescriptiveSectionDepth = 3;
+
+    /// <summary>
+    /// True for a picture whose only text is its guide's title or section heading — what an extractor
+    /// falls back to for a picture with no caption, e.g. "Svalbard — Identifying Svalbard".
+    ///
+    /// Unless the heading is a path that names the picture. "A Unique USA > 7.20 Maryland (MD) > 7.20.1
+    /// Signs > State Route Shield" over a picture with no other words says exactly what it shows, and it
+    /// is what a member asking for Maryland's route shield should be given; "India region guessing doc >
+    /// Sikkim > Sikkim taxis" likewise. A path of <see cref="MinDescriptiveSectionDepth"/> headings or
+    /// more is therefore a caption, as long as it is one.
+    /// </summary>
+    public static bool IsOnlyAHeading(string? text, string? title, string? sectionPath)
+    {
+        var flat = string.Join(' ', (text ?? string.Empty).Split(default(char[]), StringSplitOptions.RemoveEmptyEntries));
+        if (flat.Length < MinTopicalCaptionLength
+            || flat.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(flat, title, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var isItsSection = string.Equals(flat, sectionPath, StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(flat.Replace(" — ", " > ", StringComparison.Ordinal), sectionPath,
+                               StringComparison.OrdinalIgnoreCase);
+
+        return isItsSection
+               && flat.Split(" > ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length < MinDescriptiveSectionDepth;
+    }
+}
+
+/// <summary>A description a vision model wrote for a picture, as the index stores it beside the chunk.</summary>
+/// <param name="Text">The description; empty when the model could not describe the picture, so it is not asked again until the version changes.</param>
+/// <param name="Version">The generation it was written under (<c>AI:Captions:Version</c>).</param>
+public sealed record GeneratedCaption(string Text, int Version);
+
+/// <summary>
+/// A description to write onto a picture already in the index, with the text vector that now includes
+/// it. The vector is optional: without one the description is stored and shown but the picture is
+/// found no better by a written question until it is embedded.
+/// </summary>
+public sealed record PictureDescription(Guid Id, GeneratedCaption Caption, ReadOnlyMemory<float>? TextVector = null);
 
 /// <summary>
 /// A chunk with its vectors. Text and image vectors are kept apart rather than blended: a combined
@@ -160,8 +232,21 @@ public sealed record KnowledgeHit(
     string? SourceKey = null,
     string? LocalKey = null)
 {
-    /// <summary>Shorter captions say nothing a model could use: "Distribution", "Summary :", "Poles :".</summary>
-    private const int MinTopicalCaptionLength = 25;
+    /// <summary>
+    /// What a vision model said the picture shows (<see cref="KnowledgeChunk.GeneratedCaption"/>);
+    /// null when nothing has described it, or it never needed describing. Empty when the model could not.
+    /// </summary>
+    public string? GeneratedCaption { get; init; }
+
+    /// <summary>A generated description with words in it, ready to be shown or searched.</summary>
+    public bool HasGeneratedCaption => !string.IsNullOrWhiteSpace(GeneratedCaption);
+
+    /// <summary>
+    /// A picture the model can say nothing about: its only text is a heading
+    /// (<see cref="IsHeadingOnlyPicture"/>) and no description has been written for it. Where a picture
+    /// is passed over or demoted for telling nothing, this is the test; a described picture tells plenty.
+    /// </summary>
+    public bool IsUndescribedPicture => IsHeadingOnlyPicture && !HasGeneratedCaption;
 
     /// <summary>
     /// The pictures of copies with the same text that were collapsed into this hit, beyond
@@ -189,45 +274,13 @@ public sealed record KnowledgeHit(
     public IEnumerable<Guid> ChunkIds =>
         new[] { Id }.Concat(MergedChunkIds).Where(id => id != Guid.Empty).Distinct();
 
-    /// <summary>A section path this deep names its picture: the guide, a part of it, and the thing itself.</summary>
-    private const int MinDescriptiveSectionDepth = 3;
-
     /// <summary>
     /// A picture whose only text is its guide's title or section heading — what an extractor falls
-    /// back to for a picture with no caption, e.g. "Svalbard — Identifying Svalbard". The model knows a
-    /// picture only by its text, so it can say nothing about one of these.
-    ///
-    /// Unless the heading is a path that names the picture. "A Unique USA > 7.20 Maryland (MD) > 7.20.1
-    /// Signs > State Route Shield" over a picture with no other words says exactly what it shows, and it
-    /// is what a member asking for Maryland's route shield should be given; "India region guessing doc >
-    /// Sikkim > Sikkim taxis" likewise. A path of <see cref="MinDescriptiveSectionDepth"/> headings or
-    /// more is therefore a caption, as long as it is one.
+    /// back to for a picture with no caption, e.g. "Svalbard — Identifying Svalbard"
+    /// (<see cref="PictureWords.IsOnlyAHeading"/>). Says nothing of whether a description has since
+    /// been written for it: that is <see cref="IsUndescribedPicture"/>.
     /// </summary>
-    public bool IsHeadingOnlyPicture
-    {
-        get
-        {
-            if (Kind != KnowledgeChunkKind.Image)
-            {
-                return false;
-            }
-
-            var text = string.Join(' ', Text.Split(default(char[]), StringSplitOptions.RemoveEmptyEntries));
-            if (text.Length < MinTopicalCaptionLength
-                || text.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(text, Title, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            var isItsSection = string.Equals(text, SectionPath, StringComparison.OrdinalIgnoreCase)
-                               || string.Equals(text.Replace(" — ", " > ", StringComparison.Ordinal), SectionPath,
-                                   StringComparison.OrdinalIgnoreCase);
-
-            return isItsSection
-                   && text.Split(" > ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length < MinDescriptiveSectionDepth;
-        }
-    }
+    public bool IsHeadingOnlyPicture => Kind == KnowledgeChunkKind.Image && PictureWords.IsOnlyAHeading(Text, Title, SectionPath);
 }
 
 /// <summary>A document in the index, identified the same way as its source record.</summary>
@@ -321,4 +374,37 @@ public interface IKnowledgeIndex
     /// pictures from one whose pictures were lost.
     /// </summary>
     Task<IReadOnlyList<IndexedSourceKey>> ReadSourcesMissingImageVectorsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pictures that want a description (<see cref="KnowledgeChunk.WantsCaption"/>) and have none of
+    /// generation <paramref name="version"/> or later, at most <paramref name="limit"/> of them, in no
+    /// particular order and without a score. A picture whose description is empty counts as described:
+    /// the model could not say what it shows, and asking again under the same version would get the same.
+    /// </summary>
+    Task<IReadOnlyList<KnowledgeHit>> ReadPicturesWantingCaptionAsync(
+        int version,
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>How many pictures <see cref="ReadPicturesWantingCaptionAsync"/> would still find, for the run's report.</summary>
+    Task<long> CountPicturesWantingCaptionAsync(int version, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes descriptions onto pictures already in the index, and the new text vector of each that
+    /// brings one. Nothing else about the point changes; an id no longer in the index is skipped.
+    /// </summary>
+    Task WriteCaptionsAsync(IReadOnlyList<PictureDescription> descriptions, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The descriptions already written for a document's pictures, with the picture each describes, so
+    /// a re-ingest of the document keeps them: the pictures have not changed, and each cost a request
+    /// to describe. Pictures without a description are left out.
+    /// </summary>
+    Task<IReadOnlyList<StoredPictureCaption>> ReadGeneratedCaptionsAsync(
+        string sourceType,
+        string sourceKey,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>A description as the index holds it: on which point, and of which picture.</summary>
+public sealed record StoredPictureCaption(Guid Id, string? ImageUrl, GeneratedCaption Caption);

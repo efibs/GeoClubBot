@@ -47,6 +47,13 @@ public sealed record OfferedExcerpt(
 
     /// <summary>What the guide says the excerpt's pictures show, shown under their title (<see cref="PictureCaption"/>); null when only its heading does.</summary>
     public string? Caption { get; init; }
+
+    /// <summary>
+    /// What a vision model said the picture shows, cut like <see cref="Caption"/>, for a picture the
+    /// guide says nothing about; null otherwise. Kept apart from <see cref="Caption"/> so whoever shows
+    /// it can mark it as generated, or leave it out.
+    /// </summary>
+    public string? GeneratedCaption { get; init; }
 }
 
 /// <param name="Excerpts">Every excerpt offered, so a marker in the answer can be resolved to its source.</param>
@@ -374,16 +381,30 @@ public static class AiPromptBuilder
 
         builder.AppendLine();
         builder.AppendLine(hit.Text);
+
+        // Marked as a machine's words, apart from the guide's: the model may lean on it to say what the
+        // picture shows, but must not quote it as what the guide says.
+        if (imageUrl is not null && hit.HasGeneratedCaption)
+        {
+            builder.Append(GeneratedCaptionLead).Append(hit.GeneratedCaption!.Trim()).AppendLine(")");
+        }
+
         builder.Append("(source: ").Append(hit.SourceUrl).Append(')');
 
         offered = new OfferedExcerpt(marker, hit.SourceUrl, heading, imageUrl, hit.Title)
         {
             ExtraImageUrls = extras,
             ChunkIds = [.. hit.ChunkIds],
-            Caption = imageUrl is null ? null : PictureCaption.Of(hit.Text, hit.SectionPath, hit.Title)
+            Caption = imageUrl is null ? null : PictureCaption.Of(hit.Text, hit.SectionPath, hit.Title),
+            GeneratedCaption = imageUrl is null || !hit.HasGeneratedCaption
+                ? null
+                : PictureCaption.Of(hit.GeneratedCaption, sectionPath: null, title: null)
         };
         return builder.ToString();
     }
+
+    /// <summary>What a generated description is introduced with in an excerpt, so the model knows whose words they are.</summary>
+    public const string GeneratedCaptionLead = "(AI description of the picture, not the guide's words: ";
 
     /// <summary>
     /// Whether a chunk is a PlonkIt tip: by its source type, which every indexed chunk carries, or by

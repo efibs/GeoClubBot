@@ -467,6 +467,34 @@ public sealed class AiPromptBuilderTests
         messages[^1].ToPlainText().Should().NotContain("previous answer");
     }
 
+    [Fact]
+    public void FormatExcerpt_ShowsAGeneratedDescription_MarkedAsNotTheGuidesWords()
+    {
+        // A picture under a bare heading used to be offered as "Tunisia" and nothing else; the model
+        // could cite it but say nothing of it. The vision model's words are given, and given as its own.
+        var picture = Hit(KnowledgeChunkKind.Image, "Tunisia", imageUrl: "https://relay/b.png", country: "tunisia")
+            with
+        { GeneratedCaption = "A short white bollard with a red reflective band by a paved road." };
+
+        var formatted = AiPromptBuilder.FormatExcerpt(picture, 3, out var excerpt);
+
+        formatted.Should().Contain(
+            "Tunisia\n(AI description of the picture, not the guide's words: A short white bollard with a red reflective band by a paved road.)\n(source:");
+        excerpt.Caption.Should().BeNull("the guide itself says nothing of the picture");
+        excerpt.GeneratedCaption.Should().Be("A short white bollard with a red reflective band by a paved road.");
+    }
+
+    [Fact]
+    public void FormatExcerpt_LeavesOutAGeneratedDescription_ForAPictureThatCannotBeAttached()
+    {
+        var lost = Hit(KnowledgeChunkKind.Image, "Tunisia", imageUrl: null) with { GeneratedCaption = "A road." };
+
+        var formatted = AiPromptBuilder.FormatExcerpt(lost, 1, out var excerpt);
+
+        formatted.Should().NotContain("AI description");
+        excerpt.GeneratedCaption.Should().BeNull();
+    }
+
     private static KnowledgeHit Hit(
         KnowledgeChunkKind kind,
         string text,

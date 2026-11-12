@@ -247,6 +247,7 @@ public sealed class AnsweringStack : IDisposable
     private readonly IOptions<AiConfiguration> _ai;
     private readonly IOptions<AiConversationConfiguration> _conversation;
     private readonly IOptions<AiRetrievalConfiguration> _retrieval;
+    private readonly IOptions<AiCaptionsConfiguration> _captions;
     private readonly IOptions<AiToolsConfiguration> _tools;
     private readonly IEmbedder _embedder;
     private readonly IKnowledgeIndex _index;
@@ -264,6 +265,7 @@ public sealed class AnsweringStack : IDisposable
         _ai = Options.Create(settings.Ai);
         _conversation = Options.Create(settings.Conversation);
         _retrieval = Options.Create(settings.Retrieval);
+        _captions = Options.Create(settings.Captions);
         _tools = Options.Create(settings.Tools);
 
         var openRouter = settings.Ai.OpenRouter;
@@ -345,7 +347,7 @@ public sealed class AnsweringStack : IDisposable
         return new AskAiHandler(
             conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _mainGuide, _clueSampler, _countries,
             _plannerPause,
-            _ai, _conversation, _retrieval, clock, _logging.CreateLogger<AskAiHandler>());
+            _ai, _conversation, _retrieval, _captions, clock, _logging.CreateLogger<AskAiHandler>());
     }
 
     public void Dispose()

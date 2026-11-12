@@ -48,8 +48,8 @@ public static class GuideReader
         var candidates = inOrder
             .Select((chunk, position) => (Chunk: chunk, Position: position))
             .Where(candidate => !string.IsNullOrWhiteSpace(candidate.Chunk.Text)
-                                // A picture whose only text is a heading tells the model nothing.
-                                && !candidate.Chunk.IsHeadingOnlyPicture
+                                // A picture whose only text is a heading tells the model nothing — unless a description was written for it.
+                                && !candidate.Chunk.IsUndescribedPicture
                                 && !ledger.Holds(candidate.Chunk))
             .OrderBy(candidate => Relation(anchor.SectionPath, candidate.Chunk.SectionPath))
             .ThenBy(candidate => Math.Abs(candidate.Position - anchorPosition + (candidate.Position >= anchorPosition ? 1 : 0)))

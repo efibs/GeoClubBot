@@ -118,6 +118,15 @@ worth knowing:
 | `AI:Ingestion:UnavailableRecheckDays` | 30 | How long a deleted or no-longer-shared source waits before it is checked again. The second check in a row that still finds it deleted removes its chunks |
 | `AI:Ingestion:MaxFailingRetriesPerRun` | 5 | How many sources whose last attempt failed one run retries. They are taken last, fewest failures first |
 | `AI:Ingestion:RemovedSourceGraceDays` | 30 | Days a source can go unlisted by every catalogue before its chunks leave the index; 0 keeps them |
+| `AI:CaptionSchedule` | `0 30 4 * * ?` | When a free vision model describes indexed pictures that have no words of their own. Before `IngestionSchedule`, so its share of the allowance is claimed first |
+| `AI:Captions:Enabled` | true | Turn describing off without touching what is stored |
+| `AI:Captions:MaxDailyBudgetPercent` | 20 | Ceiling on the shared daily counter while describing: one chat request a picture plus one embedding request a batch |
+| `AI:Captions:MaxPicturesPerRun` | 60 | Pictures described per run, whatever the allowance |
+| `AI:Captions:Version` | 1 | The generation of descriptions that is current. Raise it to describe everything again over the following runs |
+| `AI:Captions:MaxCaptionLength` | 400 | Longest description kept, in characters |
+| `AI:Captions:TimeoutSeconds` | 90 | How long one picture may take the model before the next model is asked |
+| `AI:Captions:ShowToMembers` | true | Show a description, marked "AI description", under a picture whose guide says nothing of it. Off, descriptions only serve search and the model |
+| `AI:Captions:MaxConsecutiveFailures` | 3 | Unusable or failed replies in a row before a run stops |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
@@ -1083,6 +1092,55 @@ then re-indexes that have come due, and last those whose previous attempt failed
 fewest failures first, and at most `MaxFailingRetriesPerRun` of them per run, so a backlog of dead
 links cannot crowd out work that will succeed. A source a sync stops listing is tombstoned rather than
 deleted; after `RemovedSourceGraceDays` its chunks are removed from the index.
+
+### Descriptions for pictures without words
+
+Many guide pictures carry no caption and no prose around them: a Google document's picture under a
+bare heading, a slide of nothing but a photograph. Such a chunk's text is its guide's title or its
+section path, which a written question never matches, and when a picture like that is shown the
+answer cannot say what it shows — the model knows a picture only by its text.
+
+A free vision model describes them. Each picture whose only words are a short heading
+(`PictureWords.IsOnlyAHeading`, the same rule retrieval demotes such pictures by) is flagged
+`captionWanted` when it is written. `CaptionPicturesCommand` — the `PictureCaptionJob` at
+`AI:CaptionSchedule` (04:30 UTC, before indexing), or `/ai describe-pictures` — reads flagged pictures
+that have no description of the current `AI:Captions:Version`, sends each inline to the best free
+model that reads pictures (`ChatModelRequirements.NeedsImageInput`, the same ranking a screenshot
+question uses), and stores what comes back as `generatedCaption` on the point, with the version. The
+prompt (`PictureCaptionPrompt`) asks for what a player recognises a place by — poles, bollards,
+signs, script, vegetation, what a map highlights — in at most 60 words, and forbids guessing the
+country, since a guessed one would be searched and shown as if the guide had said it. A reply that is
+a refusal, a safety verdict or token soup is not stored, and the picture waits for another run; after
+`MaxConsecutiveFailures` (3) such replies in a row the run stops, because the model is not describing
+anything today.
+
+Descriptions are embedded: the group's text vectors are rewritten with the description appended to
+the chunk's text (`EmbeddingTextBuilder`, the same recipe a fresh ingest uses), so a question about
+"a white bollard with a red band" now finds a picture that had only "Tunisia" to its name. The one
+embedding request a group of 32 costs is claimed *before* any picture of the group is asked about, so
+a description paid for always gets its vector. A re-ingest of the guide keeps the descriptions of
+pictures whose URL has not changed (`ReadGeneratedCaptionsAsync`), because each cost a request.
+
+What the model and the member see:
+
+- The answering model is shown the description inside the excerpt, after the guide's own text and
+  marked `(AI description of the picture, not the guide's words: …)`, so it can say what a picture
+  shows without quoting the description as the guide's.
+- A member sees it under a picture only when the guide itself says nothing of it, prefixed
+  **AI description:** — and only while `AI:Captions:ShowToMembers` is on. Off, descriptions still make
+  pictures findable and inform the model, and nothing generated is ever shown.
+- A described picture is no longer "heading-only" for retrieval's demotion, the clue sampler or the
+  read-guide tool (`KnowledgeHit.IsUndescribedPicture`); `IsHeadingOnlyPicture` still says what the
+  guide's own words amount to.
+
+Cost and pace: one chat request a picture plus one embedding request a batch, claimed against
+`AI:Captions:MaxDailyBudgetPercent` (20%) of the shared daily counter. The job runs before indexing so
+its share is claimed first; indexing then claims up to its own 60% ceiling and answers have what is
+left. At `MaxPicturesPerRun` 60 a night, a few thousand flagged pictures take a couple of months, which
+is the point of the pace: `/ai describe-pictures count:…` goes faster when the allowance allows, and
+`/ai status` shows what the day has spent. Raising `Version` re-describes everything over the following
+runs — after a prompt change, or once a better free vision model is around. `Enabled: false` stops the
+job and the command without touching what is stored.
 
 ### When a source cannot be read
 

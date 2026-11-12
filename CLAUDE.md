@@ -366,8 +366,15 @@ API + Discord (controllers, slash command modules)
   and `/ai sources`; `/ai source-retry` re-queues. Answers
   can be rated (👍/👎 reaction, or a message context menu for a written comment); a rated conversation
   is **copied** into `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep
-  never touches — that copy is the only permanently stored conversation. See
-  [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
+  never touches — that copy is the only permanently stored conversation. Pictures whose only words
+  are a heading (`PictureWords.IsOnlyAHeading`, stored as `captionWanted`) are described by a free
+  vision model (`CaptionPicturesCommand`, `PictureCaptionJob` before the ingestion run,
+  `/ai describe-pictures`; own share `AI:Captions:MaxDailyBudgetPercent`, resumable, re-done when
+  `AI:Captions:Version` rises): the description is stored as `generatedCaption`, embedded with the
+  text, shown to the model marked as not the guide's words, to members only under a picture the guide
+  says nothing of (`ShowToMembers`), and kept across a re-ingest. `KnowledgeHit.IsUndescribedPicture`
+  is the test for "the model can say nothing about this picture"; `IsHeadingOnlyPicture` only says
+  what the guide wrote. See [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
 - **Country challenges** (optional, `CountryChallenges:Enabled`): themed weekday challenges configured in
   a hand-edited JSON file (`CountryChallengesConfig.example.json`) that is re-read on every run.
   `CountryChallengePlanResolver` fills inherited values (built-in → file → challenge → pool entry) and
