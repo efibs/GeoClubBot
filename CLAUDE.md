@@ -297,6 +297,12 @@ API + Discord (controllers, slash command modules)
   Either comes with a map (`ISpeciesRangeMap` → `GbifSpeciesRangeMap`: GBIF's base and density tiles
   composed with SkiaSharp, framed by `SpeciesMapPlan`/`CountryBounds`, stored in the image relay), which
   makes the excerpt a picture. A common name that is no species falls back to its genus ("cholla").
+  A screenshot's plant is named by **Pl@ntNet** (`IPlantIdentifier` → `PlantNetPlantIdentifier`, named
+  HttpClient `PlantNet`, free 500/day, nothing sent without `AI:Tools:PlantIdentification:ApiKey`) through
+  `PlantIdentificationLookAhead`, only when `PlantIdentificationQuestion` reads the question as "what
+  plant is this" and a picture is at hand (the message's, or the branch's latest); the candidates lead
+  the excerpts, a best match over `MinConfidence` goes on to the GBIF range and map, "no plant" becomes an
+  excerpt saying so, and a spent allowance becomes an `AiAnswer.Notices` line under the answer.
   A question asking for something new (`LesserKnownQuestion`: "not on PlonkIt", "a clue I don't know
   yet", and follow-ups on such a branch) is searched without PlonkIt (`KnowledgeQuery.ExcludedSourceType`),
   and `MainGuideOverlap` marks every excerpt PlonkIt has a tip like, by the index's stored vectors

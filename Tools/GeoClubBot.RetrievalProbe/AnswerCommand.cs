@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Configuration;
 using Infrastructure.OutputAdapters.AI.Gbif;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
+using Infrastructure.OutputAdapters.AI.PlantNet;
 using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -254,6 +255,7 @@ public sealed class AnsweringStack : IDisposable
     private readonly IChatModelClient _chat;
     private readonly AnswerToolbox _toolbox;
     private readonly PlantRangeLookAhead _plantRange;
+    private readonly PlantIdentificationLookAhead _plantIdentification;
     private readonly MainGuideOverlap _mainGuide;
     private readonly ClueSampler _clueSampler;
     private readonly KnowledgeCountryDirectory _countries;
@@ -322,6 +324,10 @@ public sealed class AnsweringStack : IDisposable
         _toolbox = new AnswerToolbox(
             _embedder, _index, speciesReader, speciesMap, _mainGuide, _countries, _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
         _plantRange = new PlantRangeLookAhead(speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
+        // Off unless the bot's settings carry a Pl@ntNet key; a rated screenshot's link has usually expired anyway.
+        var plantIdentifier = new PlantNetPlantIdentifier(clients, _tools, clock, _logging.CreateLogger<PlantNetPlantIdentifier>());
+        _plantIdentification = new PlantIdentificationLookAhead(
+            plantIdentifier, speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantIdentificationLookAhead>());
     }
 
     /// <summary>Shared by every answer, as the bot's singleton is: a model that fails for one is demoted for the next.</summary>
@@ -345,7 +351,7 @@ public sealed class AnsweringStack : IDisposable
         var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
 
         return new AskAiHandler(
-            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _mainGuide, _clueSampler, _countries,
+            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _plantIdentification, _mainGuide, _clueSampler, _countries,
             _plannerPause,
             _ai, _conversation, _retrieval, _captions, clock, _logging.CreateLogger<AskAiHandler>());
     }

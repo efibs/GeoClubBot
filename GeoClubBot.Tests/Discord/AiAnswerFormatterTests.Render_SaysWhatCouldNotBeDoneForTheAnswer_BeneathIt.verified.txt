@@ -1,0 +1,5 @@
+﻿--- message 1 ---
+It looks like a pine.
+
+-# ⚠️ Plant identification (Pl@ntNet) has used today's allowance; the plant was judged from the picture alone. It resets at midnight UTC.
+-# via test/model

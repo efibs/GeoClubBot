@@ -231,6 +231,12 @@ public static class AiAnswerFormatter
             }
         }
 
+        // What could not be done for the answer, said plainly: a guess must never pass for a lookup.
+        foreach (var notice in answer.Notices.Where(notice => !string.IsNullOrWhiteSpace(notice)))
+        {
+            lines.Add($"-# ⚠️ {EscapeFormatting(notice.Trim())}");
+        }
+
         if (answer.IsLongThread)
         {
             lines.Add("-# This thread is getting long — mention me in a new message to start fresh.");

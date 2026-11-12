@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Configuration;
+using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -83,7 +84,14 @@ public sealed record AiAnswer(
     IReadOnlyList<string> CitedSourceUrls,
     IReadOnlyList<AiToolCallSummary>? ToolCalls = null,
     IReadOnlyList<Guid>? OfferedChunkIds = null,
-    IReadOnlyList<Guid>? CitedChunkIds = null);
+    IReadOnlyList<Guid>? CitedChunkIds = null)
+{
+    /// <summary>
+    /// Lines for the member beneath the answer about what could not be done for it — the day's plant
+    /// identifications spent, the service unreachable — so a plain guess is never taken for a lookup.
+    /// </summary>
+    public IReadOnlyList<string> Notices { get; init; } = [];
+}
 
 public sealed partial class AskAiHandler(
     IAiConversationRepository conversations,
@@ -94,6 +102,7 @@ public sealed partial class AskAiHandler(
     IChatModelClient chatClient,
     AiAnswerLoop answerLoop,
     PlantRangeLookAhead plantRange,
+    PlantIdentificationLookAhead plantIdentification,
     MainGuideOverlap mainGuide,
     ClueSampler clueSampler,
     KnowledgeCountryDirectory countryDirectory,
@@ -162,6 +171,11 @@ public sealed partial class AskAiHandler(
         // Also read while the question is searched: a GBIF lookup costs no request, and never fails it.
         var plantRead = plantRange.ReadAsync(request.Content, cancellationToken);
 
+        // And the screenshot's plant, when the question asks what plant it shows: one identification
+        // of Pl@ntNet's day, no AI request, never a failure of the question. A follow-up without a
+        // picture of its own ("and what tree is that?") asks about the branch's latest screenshot.
+        var plantIdRead = plantIdentification.ReadAsync(request.Content, LatestScreenshot(request, context), cancellationToken);
+
         // "A clue I don't know yet", "one that is not on PlonkIt": PlonkIt is what a player knows, so
         // its tips stay out of the search, and what other guides say that PlonkIt says too is marked.
         var lesserKnown = retrievalConfiguration.Value.LesserKnown.Enabled
@@ -201,6 +215,16 @@ public sealed partial class AskAiHandler(
             { } plant => [.. hits.Value, plant.Hit],
             null => hits.Value
         };
+
+        // What the screenshot's plant is comes before everything: it is the question, and a look-alike
+        // guide picture ranked first by its pixels is what the model used to answer with instead.
+        var identified = await plantIdRead.ConfigureAwait(false);
+        if (identified is { Hits.Count: > 0 })
+        {
+            retrieved = [.. identified.Hits, .. retrieved];
+        }
+
+        IReadOnlyList<string> notices = identified?.Notice is { } notice ? [notice] : [];
 
         // The clues the answer before gave are marked too: "give me another one" is no reason to
         // repeat one PlonkIt has.
@@ -283,7 +307,27 @@ public sealed partial class AskAiHandler(
             [.. outcome.Excerpts.SelectMany(excerpt => excerpt.ChunkIds).Distinct()],
             // Only what the prose cites: the guides credited on the model's behalf above are the closest
             // matches, not what a follow-up's "source 2" could mean.
-            [.. citations.CitedExcerpts.SelectMany(excerpt => excerpt.ChunkIds).Distinct()]);
+            [.. citations.CitedExcerpts.SelectMany(excerpt => excerpt.ChunkIds).Distinct()])
+        {
+            Notices = notices
+        };
+    }
+
+    /// <summary>
+    /// The picture a question is about: its own attachment, or else the latest one in the branch it
+    /// continues — "and what tree is that?" under an answer about a screenshot means that screenshot.
+    /// </summary>
+    private static string? LatestScreenshot(AskAiCommand request, ConversationContext context)
+    {
+        if (request.AttachmentImageUrls.Count > 0)
+        {
+            return request.AttachmentImageUrls[0];
+        }
+
+        return context.Turns
+            .Where(turn => turn.Role == AiTurnRole.User && turn.ImageUrls.Count > 0)
+            .Select(turn => turn.ImageUrls[0])
+            .LastOrDefault();
     }
 
     /// <summary>

@@ -186,8 +186,9 @@ public static class AiPromptBuilder
         - When the user attaches a screenshot you can see it. Describe only what is visible, and say so
           when a clue cannot be made out. When they name a country, judge the screenshot against that
           country's clues, and say when it does not match a guide's description.
-        - Asked what plant a screenshot shows, name the likeliest species yourself, with its
-          scientific name, and say how sure you are. A look-alike in a guide is a candidate, and its
+        - Asked what plant a screenshot shows, take the Pl@ntNet excerpt's identification when there
+          is one, with its scientific name and confidence, and cite it; without one, name the likeliest
+          species yourself and say how sure you are. A look-alike in a guide is a candidate, and its
           country is not the screenshot's.
         - PlonkIt is the guide most players have read. Asked for a clue the user does not know yet, or
           one not on PlonkIt, give one from another guide that is not marked "also on PlonkIt", and

@@ -127,6 +127,15 @@ worth knowing:
 | `AI:Captions:TimeoutSeconds` | 90 | How long one picture may take the model before the next model is asked |
 | `AI:Captions:ShowToMembers` | true | Show a description, marked "AI description", under a picture whose guide says nothing of it. Off, descriptions only serve search and the model |
 | `AI:Captions:MaxConsecutiveFailures` | 3 | Unusable or failed replies in a row before a run stops |
+| `AI:Tools:PlantIdentification:Enabled` | true | Name the plant in a screenshot with Pl@ntNet when the question asks what plant it shows. Does nothing without a key |
+| `AI:Tools:PlantIdentification:ApiKey` | empty | A free Pl@ntNet key (my.plantnet.org). **Set it in the stack**; empty leaves the feature off |
+| `AI:Tools:PlantIdentification:MinConfidence` | 0.25 | Score from which the best candidate is taken for the plant and looked up in GBIF; below it the candidates are offered as guesses |
+| `AI:Tools:PlantIdentification:MaxCandidates` | 3 | Candidates offered to the model |
+| `AI:Tools:PlantIdentification:MaxRequestsPerDay` | 450 | This bot's identifications a day, under Pl@ntNet's 500; counted in memory |
+| `AI:Tools:PlantIdentification:CacheHours` | 24 | How long an identification is kept by the screenshot's link |
+| `AI:Tools:PlantIdentification:RequestTimeoutSeconds` | 15 | Per request, the screenshot's download included |
+| `AI:Tools:PlantIdentification:MaxImageBytes` | 10 MB | Largest screenshot sent |
+| `AI:Tools:PlantIdentification:Project` / `Language` | `all` / `en` | Pl@ntNet's flora project and the language of the common names |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
@@ -762,6 +771,42 @@ Thailand–Philippines table against "no Philippine markers in these guides"). T
 where a long prompt led the model to misread an excerpt it already had. `species_range` was not called
 once, not even for the Khasi pine questions, although its description names that case; that is why
 plants are now [looked up before the model answers](#tools-when-the-excerpts-are-not-enough).
+
+### Naming the plant in a screenshot
+
+Asked "what kind of cactus is this?" with a screenshot, the free chat models named the species of a
+look-alike guide picture and gave that guide's country (2026-11-09 feedback). They cannot identify a
+plant reliably and cannot say how sure they are. **Pl@ntNet** can: an image-based plant identification
+service, free up to 500 identifications a day per account (reset at 00:00 UTC), commercial use allowed
+within that, attribution appreciated rather than required (their pricing FAQ and terms, read
+2026-11-12). The excerpt's source line reads "Pl@ntNet" and links to the service, which is the credit.
+
+`PlantIdentificationLookAhead` runs beside retrieval, like the GBIF look-ahead, when three things hold:
+`AI:Tools:PlantIdentification` is on **and has a key** (nothing is ever sent without one), the question
+comes with a picture — its own attachment, or the branch's latest screenshot for a follow-up like "and
+what tree is that?" — and the question asks what plant it shows (`PlantIdentificationQuestion`: a plant
+word plus "what … is this", "identify", "is this a …"). A question about bollards is not sent because a
+tree stands in the frame; each identification is one of the day's 500.
+
+`PlantNetPlantIdentifier` downloads the screenshot (JPEG or PNG, up to `MaxImageBytes`), posts it as a
+file to `POST /v2/identify/{Project}` with the key in the query, and reads the candidates with their
+scores, common names and GBIF keys. What comes back is offered first among the excerpts
+(`PlantIdentificationExcerpt`): the best candidate as *the* identification with its confidence when its
+score clears `MinConfidence` (0.25 — a Street View frame is a poor photograph, so a clear match scores
+0.3–0.6), as a guess below it, and the runners-up either way, so a member can tell a sure identification
+from a toss-up. A best candidate over the bar is also looked up in GBIF by its scientific name and its
+countries and map follow as a second excerpt, exactly as a "where" question gets them. The service's
+"Species not found" becomes an excerpt saying so, so the model does not name a look-alike. The system
+prompt tells the model to take the excerpt's identification and cite it.
+
+Answers are cached by the screenshot's link without its signature (`CacheHours`, 24), so the usual
+follow-up costs nothing. The adapter stops at its own `MaxRequestsPerDay` (450, counted in memory) before
+Pl@ntNet's 500, and once the service answers 429 it asks nothing more that day. In both cases the member
+is told beneath the answer (`AiAnswer.Notices`: "Plant identification (Pl@ntNet) has used today's
+allowance; the plant was judged from the picture alone."), as they are when the service cannot be
+reached; a guess must never pass for a lookup. A picture the service does not take (WebP, too large) is
+only logged. Pl@ntNet keeps the picture in memory for the identification and logs the request, not the
+image.
 
 ### What goes into a vector
 
