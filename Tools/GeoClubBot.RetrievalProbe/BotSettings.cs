@@ -30,6 +30,9 @@ public sealed class BotSettings
 
     public required AiCaptionsConfiguration Captions { get; init; }
 
+    /// <summary>The round review's settings (<c>review</c>).</summary>
+    public required AiRoundReviewConfiguration RoundReview { get; init; }
+
     /// <summary>The overrides applied, as given, for the report.</summary>
     public required IReadOnlyList<string> Overrides { get; init; }
 
@@ -81,6 +84,7 @@ public sealed class BotSettings
         var tools = Bind<AiToolsConfiguration>(configuration, AiToolsConfiguration.SectionName);
         var relay = Bind<AiImageRelayConfiguration>(configuration, AiImageRelayConfiguration.SectionName);
         var captions = Bind<AiCaptionsConfiguration>(configuration, AiCaptionsConfiguration.SectionName);
+        var roundReview = Bind<AiRoundReviewConfiguration>(configuration, AiRoundReviewConfiguration.SectionName);
 
         // Validated as the bot validates them at start-up: a typo in an override is worth stopping for.
         Validate(retrieval, AiRetrievalConfiguration.SectionName);
@@ -99,6 +103,7 @@ public sealed class BotSettings
             Tools = tools,
             ImageRelay = relay,
             Captions = captions,
+            RoundReview = roundReview,
             Overrides = [.. overrides],
             Fingerprint = fingerprint
         };

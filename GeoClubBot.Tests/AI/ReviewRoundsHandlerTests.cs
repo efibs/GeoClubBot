@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Configuration;
 using Entities;
 using FluentAssertions;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Refit;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
@@ -32,6 +34,7 @@ public sealed class ReviewRoundsHandlerTests
     private readonly IClubChallengeRepository _challenges = Substitute.For<IClubChallengeRepository>();
     private readonly IGeoGuessrClient _client = Substitute.For<IGeoGuessrClient>();
     private readonly IRegionBoundaries _boundaries = Substitute.For<IRegionBoundaries>();
+    private readonly IStreetViewGuesser _guesser = Substitute.For<IStreetViewGuesser>();
     private readonly IEmbedder _embedder = Substitute.For<IEmbedder>();
     private readonly IKnowledgeIndex _index = Substitute.For<IKnowledgeIndex>();
     private readonly IChatModelClient _chat = Substitute.For<IChatModelClient>();
@@ -174,6 +177,82 @@ public sealed class ReviewRoundsHandlerTests
         await _chat.DidNotReceiveWithAnyArgs().CompleteAsync(default!, default);
     }
 
+    [Fact]
+    public async Task ReadsGeoGuessrsRealHighscores_RoundsWithTheirCountry_GuessesWithout()
+    {
+        // GET /v3/results/highscores/{token} as GeoGuessr answered it on 2026-11-13 (two players kept,
+        // their names replaced), read the way Refit reads it. Rounds carry streakLocationCode; guesses
+        // carry null there, so the guessed country is always the boundaries' to find.
+        var json = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "AI", "geoguessr-challenge-highscores-20261113.json"));
+        var highscores = JsonSerializer.Deserialize<ChallengeResultHighscoresDto>(json, SystemTextJsonContentSerializer.GetDefaultJsonSerializerOptions())!;
+        var game = highscores.Items[0].Game;
+        game.Rounds.Should().HaveCount(5).And.OnlyContain(round => round.Lat != null && round.Lng != null && round.StreakLocationCode != null);
+        game.Player.Guesses.Should().HaveCount(5).And.OnlyContain(guess => guess.Lat != null && guess.DistanceInMeters != null && guess.RoundScoreInPoints != null && guess.StreakLocationCode == null);
+
+        game.Player.Id = GeoGuessrId;
+        _client.ReadHighscoresAsync(Token, Arg.Any<ReadHighscoresQueryParams>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(highscores));
+        _boundaries.LocateAsync(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<RegionPlace?>(new RegionPlace("KE", "Nairobi")));
+
+        var result = await Handler().Handle(new ReviewRoundsCommand(Discord, Token), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error.Message : null);
+        result.Value.Rounds.Should().HaveCount(5);
+        result.Value.Rounds.Select(round => round.CountryCode).Should().Equal([.. game.Rounds!.Select(round => round.StreakLocationCode!.ToUpperInvariant())]);
+        result.Value.Rounds.Should().OnlyContain(round => round.GuessCountryCode == "KE" && round.Points != null);
+    }
+
+    [Fact]
+    public async Task AsksGeoNN_ForEachPanorama_AsTheGameShowedIt_AndTellsTheModelHowToUseIt()
+    {
+        _guesser.IsAvailable.Returns(true);
+        _guesser.GuessAsync(Arg.Any<PanoramaView>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<PanoramaGuess?>(new PanoramaGuess(21.9, 106.6, [new("VN", 0.94), new("CN", 0.03), new("LA", 0.01), new("TH", 0.01)], "v2")));
+        var game = Game(GeoGuessrId, [Round(21.8, 106.7, "vn")], [Guess(23.5, 108.3, 412_400, 3870)]);
+        game.ForbidRotating = true;
+        game.Rounds![0].PanoId = "7470683379453331676366314D436E61756671565567";
+        game.Rounds[0].Heading = 225;
+        game.Rounds[0].Pitch = -33.5;
+        game.Rounds[0].Zoom = 1.9;
+        Highscores(Token, game);
+
+        var result = await Handler().Handle(new ReviewRoundsCommand(Discord, Token), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.IsFailure ? result.Error.Message : null);
+        await _guesser.Received(1).GuessAsync(
+            new PanoramaView("tph3yE31gcf1MCnaufqVUg", PanoramaViewMode.FixedView, 225, -33.5, 1.9), Arg.Any<CancellationToken>());
+        var reading = result.Value.Rounds.Single().Reading!;
+        reading.Countries.Should().HaveCount(3, "CountriesShown");
+        reading.DistanceKm.Should().BeApproximately(14.9, 0.5);
+        result.Value.Answer.Notices.Should().ContainSingle().Which.Should().Contain("GeoNN (v2)");
+        await _chat.Received(1).CompleteAsync(
+            Arg.Is<AiChatRequest>(request => request.Messages[request.Messages.Count - 1].ToPlainText().Contains("GeoNN read the panorama as Vietnam 94%, China 3%, Laos 1% (its guess 15 km off).")
+                                             && request.Messages[request.Messages.Count - 1].ToPlainText().Contains("never cite it")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReviewsWithoutGeoNN_WhenItIsNotSetUp_OrHasNoReading()
+    {
+        Highscores(Token, Game(GeoGuessrId, [Round(21.8, 106.7, "vn")], [Guess(23.5, 108.3, 412_400, 3870)]));
+        var unset = await Handler().Handle(new ReviewRoundsCommand(Discord, Token), CancellationToken.None);
+        await _guesser.DidNotReceiveWithAnyArgs().GuessAsync(default!, default);
+
+        _guesser.IsAvailable.Returns(true);
+        _guesser.GuessAsync(Arg.Any<PanoramaView>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<PanoramaGuess?>(null));
+        Highscores(Token, Game(GeoGuessrId, [new ChallengeResultRoundDto { Lat = 21.8, Lng = 106.7, PanoId = "abc" }], [Guess(23.5, 108.3, 412_400, 3870)]));
+        var unanswered = await Handler().Handle(new ReviewRoundsCommand(Discord, Token), CancellationToken.None);
+
+        foreach (var result in new[] { unset, unanswered })
+        {
+            result.IsSuccess.Should().BeTrue();
+            result.Value.Rounds.Single().Reading.Should().BeNull();
+            result.Value.Answer.Notices.Should().BeEmpty();
+        }
+
+        await _guesser.Received(1).GuessAsync(Arg.Is<PanoramaView>(view => view.PanoId == "abc" && view.Mode == PanoramaViewMode.FullPanorama), Arg.Any<CancellationToken>());
+        await _chat.DidNotReceive().CompleteAsync(Arg.Is<AiChatRequest>(request => request.Messages[request.Messages.Count - 1].ToPlainText().Contains("GeoNN")), Arg.Any<CancellationToken>());
+    }
+
     private ReviewRoundsHandler Handler()
     {
         var retrieval = Options.Create(new AiRetrievalConfiguration());
@@ -197,7 +276,7 @@ public sealed class ReviewRoundsHandlerTests
         });
 
         return new ReviewRoundsHandler(
-            _users, _challenges, factory, _boundaries, _embedder, _index, countries, loop, _budget,
+            _users, _challenges, factory, _boundaries, _guesser, _embedder, _index, countries, loop, _budget,
             geoGuessr, Options.Create(_ai), Options.Create(_settings), _clock, NullLogger<ReviewRoundsHandler>.Instance);
     }
 

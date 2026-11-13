@@ -3,15 +3,19 @@ using System.Net.Http.Headers;
 using Configuration;
 using Entities;
 using Infrastructure.OutputAdapters.AI.Gbif;
+using Infrastructure.OutputAdapters.AI.GeoNn;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Infrastructure.OutputAdapters.AI.PlantNet;
+using Infrastructure.OutputAdapters.AI.Regions;
 using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.Review;
 using UseCases.UseCases.AI.Tools;
 
 namespace GeoClubBot.RetrievalProbe;
@@ -246,6 +250,9 @@ public sealed class AnsweringStack : IDisposable
     private readonly ILoggerFactory _logging;
     private readonly HttpClient _openRouter;
     private readonly HttpClient _gbif;
+    private readonly HttpClient _naturalEarth;
+    private readonly HttpClient _geoNn;
+    private readonly IHttpClientFactory _clients;
     private readonly EmbeddingsOnlyHandler _guard;
     private readonly IOptions<AiConfiguration> _ai;
     private readonly IOptions<AiConversationConfiguration> _conversation;
@@ -298,14 +305,27 @@ public sealed class AnsweringStack : IDisposable
         };
         _gbif.DefaultRequestHeaders.UserAgent.ParseAdd("GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
 
+        // The region outlines, downloaded once next to the probe, as the bot keeps them in its data directory.
+        _naturalEarth = new HttpClient(new ReadOnlyHttpHandler(new HttpClientHandler())) { Timeout = TimeSpan.FromMinutes(5) };
+        _naturalEarth.DefaultRequestHeaders.UserAgent.ParseAdd("GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+
+        // GeoNN's prediction is a POST that changes nothing; it is the one request its client may send.
+        _geoNn = new HttpClient(new GeoNnPredictOnlyHandler(new HttpClientHandler())) { Timeout = Timeout.InfiniteTimeSpan };
+
         var clients = new NamedClientFactory(new Dictionary<string, HttpClient>(StringComparer.Ordinal)
         {
+            [GeoNnStreetViewGuesser.HttpClientName] = _geoNn,
             [RefitChatModelClient.HttpClientName] = _openRouter,
             [RefitChatModelClient.HealthHttpClientName] = _openRouter,
-            [GbifSpeciesRangeReader.HttpClientName] = _gbif
+            [GbifSpeciesRangeReader.HttpClientName] = _gbif,
+            [NaturalEarthRegionBoundaries.HttpClientName] = _naturalEarth
         });
 
+        _clients = clients;
         var clock = TimeProvider.System;
+        // Kept next to the probe rather than wherever it is run from; read by nothing else.
+        settings.Tools.RegionMap.DataDirectory = Path.Combine(AppContext.BaseDirectory, "ai-data");
+        Boundaries = new NaturalEarthRegionBoundaries(clients, _tools, _logging.CreateLogger<NaturalEarthRegionBoundaries>());
         Judge = new RefitChatModelClient(clients, _logging.CreateLogger<RefitChatModelClient>());
         _chat = new RecordingChatModelClient(Judge);
         _embedder = new OpenRouterEmbedder(clients, _ai, _logging.CreateLogger<OpenRouterEmbedder>());
@@ -342,6 +362,9 @@ public sealed class AnsweringStack : IDisposable
     /// <summary>The chat client without the recording: the judge's requests are not the answer's.</summary>
     public IChatModelClient Judge { get; }
 
+    /// <summary>Natural Earth's region outlines, as the bot reads them (<c>review</c> places rounds and guesses with them).</summary>
+    public IRegionBoundaries Boundaries { get; }
+
     /// <summary>Every request that left for OpenRouter, retries included.</summary>
     public int RequestsSent => _guard.RequestsSent;
 
@@ -364,10 +387,39 @@ public sealed class AnsweringStack : IDisposable
             clock, _logging.CreateLogger<AskAiHandler>());
     }
 
+    /// <summary>
+    /// The round review over the given player and challenge results, the probe's index, models and
+    /// region outlines: the bot's handler, with what it would read from the database and GeoGuessr handed in.
+    /// </summary>
+    public ReviewRoundsHandler CreateReviewHandler(
+        IGeoGuessrUserRepository users,
+        IGeoGuessrClientFactory geoGuessr,
+        InMemoryBudgetRepository budget,
+        AiRoundReviewConfiguration settings)
+    {
+        var clock = TimeProvider.System;
+        var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
+        var mainClub = Options.Create(new GeoGuessrConfiguration
+        {
+            SyncSchedule = "0 0 * * * ?",
+            ActivityNcfaToken = "unused",
+            UserProfileNcfaToken = "unused",
+            Clubs = [new GeoGuessrClubEntry { ClubId = Guid.Empty, IsMain = true, NcfaToken = "unused" }]
+        });
+
+        var options = Options.Create(settings);
+        var guesser = new GeoNnStreetViewGuesser(_clients, options, _logging.CreateLogger<GeoNnStreetViewGuesser>());
+        return new ReviewRoundsHandler(
+            users, ProbeFakes.Refusing<IClubChallengeRepository>(), geoGuessr, Boundaries, guesser, _embedder, _index, _countries, loop, budget,
+            mainClub, _ai, options, clock, _logging.CreateLogger<ReviewRoundsHandler>());
+    }
+
     public void Dispose()
     {
         _openRouter.Dispose();
         _gbif.Dispose();
+        _naturalEarth.Dispose();
+        _geoNn.Dispose();
         _logging.Dispose();
     }
 
@@ -414,4 +466,13 @@ public sealed class ReadOnlyHttpHandler(HttpMessageHandler innerHandler) : Deleg
         request.Method == HttpMethod.Get
             ? base.SendAsync(request, cancellationToken)
             : throw new InvalidOperationException($"GeoClubBot.RetrievalProbe only reads GBIF: refusing to send {request.Method} {request.RequestUri}.");
+}
+
+/// <summary>Lets GeoNN's prediction through and nothing else: <c>POST /api/predict</c>.</summary>
+public sealed class GeoNnPredictOnlyHandler(HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/predict"
+            ? base.SendAsync(request, cancellationToken)
+            : throw new InvalidOperationException($"GeoClubBot.RetrievalProbe only asks GeoNN for predictions: refusing {request.Method} {request.RequestUri}.");
 }

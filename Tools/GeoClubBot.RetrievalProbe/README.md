@@ -44,7 +44,10 @@ stand in for "no references":
    — through handlers built for the planner and for `answer` alone. Nothing else does: no route that
    changes the account, no other method on these. The embedder's handler of `replay` and `compare` never
    lets a chat request through, flag or not. `answer`'s calls to GBIF, for the species-range tool, pass a
-   handler that lets only `GET` through.
+   handler that lets only `GET` through. `review` reads the challenge's results from a file, never from
+   GeoGuessr; the database and GeoGuessr ports it hands the bot's handler are `ProbeFakes`, which throw on
+   every method they were not told to answer; GeoNN's client lets only `POST /api/predict` through, and
+   Natural Earth's only `GET`.
 3. **No verb in the CLI.** Every command reads. There is no option that writes. `extract` fetches a
    guide's page from its own host with GETs only, and answers the requests for a document's pictures
    itself instead of sending them; `map` and `answer` keep the species maps they draw in a folder
@@ -126,7 +129,8 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `--targets <file>` | `replay`/`compare`: count on-target excerpts, place known answers, stand in for expired screenshots (see below) |
 | `--allow-chat` | `replay`/`compare`: let the query planner's chat requests leave the probe — one per question, cached. `replay` then searches with the planner on (it ships off); without it, `compare`'s variants that plan search as the bot does when the planner fails. `answer`: required, since it asks the bot's models |
 | `--planner-models <ids>` | `replay`/`compare`: comma-separated chain the planner asks instead of the bot's own, to measure another model; cached apart |
-| `--set <Key=Value>` | `answer`: overrides one of the bot's AI settings, e.g. `--set AI:Tools:Enabled=false`; repeatable |
+| `--player <nick\|id>` | `review`: whose game is reviewed (default: the leader) |
+| `--set <Key=Value>` | `answer`, `review`: overrides one of the bot's AI settings, e.g. `--set AI:Tools:Enabled=false`; repeatable |
 | `--country <name>` | `map`: the country to count and frame the plant in |
 | `--only <list>` | `answer`, `chunks`: record numbers and ranges, feedback-id prefixes, `after:`/`before:` dates, comma-separated (`1-25,31`, `after:2026-09-27`) |
 | `--parallel <n>` | `answer`: rated answers asked at once (default 2, at most 8) |
@@ -335,6 +339,22 @@ answer attaches, and the excerpts and tool results it was written from. It repli
 `{verdict: better|same|worse, addressesComment: true|false|null, hallucinationRisk: low|medium|high, reasons}`.
 Its verdicts are **indicative**: one free model's reading, blind to pictures, possibly the model that
 wrote the new answer, and not the member who rated the old one. Read the answers too.
+
+### `review`
+
+`/ai review` for real, for any player of a challenge: the bot's `ReviewRoundsHandler`, with the
+production index, the bot's models, Natural Earth's outlines (downloaded once into `ai-data/` beside the
+binary) and, when named, GeoNN. Save the challenge's results with the ApiProbe first; its output (request
+line, JSON, census) is read as it is:
+
+```bash
+dotnet run --project Tools/GeoClubBot.ApiProbe -- raw "/v3/results/highscores/<token>?friends=false&limit=26&minRounds=1" > ai_feedback/challenge.txt
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- review ai_feedback/challenge.txt --player <nick> --allow-chat \
+    --set AI:RoundReview:StreetViewGuesser:BaseUrl=http://127.0.0.1:8765
+```
+
+It prints the rounds as placed (location, guess, ✗ for a wrong country), the review as the model wrote
+it with its sources, and what it cost: one embedding and a chat request or more, as the command costs.
 
 ## Adding a command
 

@@ -148,7 +148,9 @@ the query planner's chat requests out); `grep` answers "is it in the index at al
 a re-worded chunk. `chunks <export>` prints the excerpts each rated answer was shown, in full (or, with
 `--source`, every chunk of one guide); `extract <link>` shows how a guide would be indexed now, without
 indexing it; `overlap --source` shows how much of a guide PlonkIt has too; `map <plant>` draws the
-species map the bot would attach (needs no index).
+species map the bot would attach (needs no index); `review <highscores> --player <nick> --allow-chat` runs
+`/ai review` for real for any player, from a challenge's results saved by the ApiProbe (`raw
+/v3/results/highscores/<token>`), with GeoNN when `--set AI:RoundReview:StreetViewGuesser:BaseUrl=…` names it.
 
 `answer` goes one step further and asks every rated question again through the bot's real answering
 code (`AskAiHandler`, the read-only index, the live roster, the tool loop, GBIF), with
@@ -311,9 +313,13 @@ API + Discord (controllers, slash command modules)
   shades regions by a share per region. `/ai review [challenge]` (`ReviewRoundsCommand`, `AI:RoundReview`)
   reads a challenge's highscores with the main club's account, finds the member's game by their linked
   account, places rounds and guesses (`streakLocationCode`, else `IRegionBoundaries.LocateAsync` point in
-  polygon), searches the guides per round in one embedding request and asks the model once through
-  `AiAnswerLoop` (`RoundReviewPrompt`, pure); the highscores' round/guess fields
-  (`ChallengeResultRoundDto`) are optional and unverified live. The **clue of the day** (`AI:ClueOfTheDay`, off until a channel
+  polygon, the nearest region within 0.1° for a point off the coarse coastline; a guess's own code is
+  always null), searches the guides per round in one embedding request and asks the model once through
+  `AiAnswerLoop` (`RoundReviewPrompt`, pure); the highscores' round/guess fields were read live on
+  2026-11-13 (`ChallengeResultRoundDto`, `panoId` hex-encoded → `GeoGuessrPanoId`). Optionally **GeoNN**
+  (`AI:RoundReview:StreetViewGuesser:BaseUrl`, empty = off; `IStreetViewGuesser` → `GeoNnStreetViewGuesser`,
+  `POST /api/predict` of GeoNN's `play.py` on a GPU machine) reads each round's panorama as the game showed
+  it, and its likeliest countries tell the model how plainly the round showed its country, never a source. The **clue of the day** (`AI:ClueOfTheDay`, off until a channel
   is set; `AiClueOfTheDayJob` on `AI:ClueOfTheDaySchedule`/`TimeZone`, `/ai clue-now`) posts one
   `ClueSampler` draw not posted within `NoRepeatDays` (`AiCluePosts`) as an `AiAnswer`
   (`ClueOfTheDayPost`, pure) through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses

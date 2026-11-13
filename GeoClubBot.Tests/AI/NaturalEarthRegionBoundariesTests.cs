@@ -76,7 +76,19 @@ public sealed class NaturalEarthRegionBoundariesTests : IDisposable
         (await boundaries.LocateAsync(21.8, 106.5)).Should().Be(new RegionPlace("VN", "Lang Son"));
         (await boundaries.LocateAsync(42.55, 21.1)).Should().Be(new RegionPlace("XK", "Pristina"));
         (await boundaries.LocateAsync(0, -30)).Should().BeNull("the Atlantic is nobody's region");
-        (await boundaries.LocateAsync(21.8, 107.5)).Should().BeNull("just outside the outline");
+        (await boundaries.LocateAsync(21.8, 107.5)).Should().BeNull("half a degree off the outline is the sea");
+    }
+
+    [Fact]
+    public async Task Locate_PlacesAPointJustOffTheOutline_InTheNearestRegion()
+    {
+        // Street View stands on the shore, and the outlines miss some of it: a round on Mannar Island
+        // lay 2 km off Sri Lanka's (2026-11-13).
+        var boundaries = CreateBoundaries(Sample);
+
+        (await boundaries.LocateAsync(21.8, 107.03)).Should().Be(new RegionPlace("VN", "Lang Son"), "3 km off the coast");
+        (await boundaries.LocateAsync(22.05, 106.5)).Should().Be(new RegionPlace("VN", "Lang Son"), "5 km north of it");
+        (await boundaries.LocateAsync(21.8, 107.15)).Should().BeNull("15 km off is further than the outlines miss");
     }
 
     [Fact]
