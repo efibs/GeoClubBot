@@ -129,6 +129,26 @@ internal sealed record SpeciesMapPlan(MapBounds Frame, int Zoom, IReadOnlyList<M
         }
     }
 
+    /// <summary>The plan for a map of one country, framed as <see cref="FrameOf"/> frames a range counted in it; null for a country the table does not know.</summary>
+    public static SpeciesMapPlan? ForCountry(string? countryCode) =>
+        CountryBounds.Of(countryCode) is { } bounds ? For(Shape(bounds)) : null;
+
+    /// <summary>
+    /// Where a point of the world lands on the picture, in pixels from its top-left corner. The tiles
+    /// are in plain latitude and longitude, so it is a scale and an offset and nothing else.
+    /// </summary>
+    public (float X, float Y) ToPicture(double longitude, double latitude)
+    {
+        var span = 180d / (1 << Zoom);
+        var pixelsPerDegree = TileSize / span;
+        var canvasWest = Tiles.Min(tile => tile.X) * span - 180;
+        var canvasNorth = 90 - Tiles.Min(tile => tile.Y) * span;
+
+        return (
+            (float)((longitude - canvasWest) * pixelsPerDegree - CropX),
+            (float)((canvasNorth - latitude) * pixelsPerDegree - CropY));
+    }
+
     /// <summary>Whether any of a tile ends up in the picture: one wholly outside the crop need not be fetched.</summary>
     public bool Shows(MapTile tile) =>
         tile.CanvasX < CropX + Width && tile.CanvasX + TileSize > CropX

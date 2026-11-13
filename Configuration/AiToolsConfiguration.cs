@@ -57,8 +57,27 @@ public class AiToolsConfiguration : IValidatableObject
     /// <summary>Naming the plant in a member's screenshot with Pl@ntNet. See <see cref="AiPlantIdentificationConfiguration"/>.</summary>
     public AiPlantIdentificationConfiguration PlantIdentification { get; set; } = new();
 
+    /// <summary>A map of the regions an answer names. See <see cref="AiRegionMapConfiguration"/>.</summary>
+    public AiRegionMapConfiguration RegionMap { get; set; } = new();
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        var regionResults = new List<ValidationResult>();
+        Validator.TryValidateObject(RegionMap, new ValidationContext(RegionMap), regionResults, validateAllProperties: true);
+
+        foreach (var result in regionResults)
+        {
+            yield return new ValidationResult(
+                $"{nameof(RegionMap)}: {result.ErrorMessage}",
+                [.. result.MemberNames.Select(member => $"{nameof(RegionMap)}:{member}")]);
+        }
+
+        if (!Uri.TryCreate(RegionMap.BoundariesUrl, UriKind.Absolute, out _))
+        {
+            yield return new ValidationResult(
+                $"{nameof(RegionMap)}:{nameof(AiRegionMapConfiguration.BoundariesUrl)} must be an absolute URL.");
+        }
+
         var plantResults = new List<ValidationResult>();
         Validator.TryValidateObject(PlantIdentification, new ValidationContext(PlantIdentification), plantResults, validateAllProperties: true);
 
@@ -262,4 +281,60 @@ public class AiPlantIdentificationConfiguration
     /// <summary>Largest screenshot sent, in bytes. Pl@ntNet takes up to 50 MB; a Discord screenshot is a few MB at most.</summary>
     [Range(100_000, 50_000_000)]
     public int MaxImageBytes { get; set; } = 10 * 1024 * 1024;
+}
+
+/// <summary>
+/// A small map of a country with the first-level regions an answer names highlighted — "far
+/// north-eastern Vietnam: Lạng Sơn and Quảng Ninh" means little to a player who does not know where
+/// those are. Boundaries come from Natural Earth's admin-1 states and provinces (public domain),
+/// downloaded once; the base map is GBIF's, as for the species maps. Drawn after the answer, from the
+/// region names in it, and also on the model's request through the <c>region_map</c> tool, which can
+/// shade regions by how common a clue is in each.
+/// </summary>
+public class AiRegionMapConfiguration
+{
+    /// <summary>Whether maps are drawn at all. Off, nothing is downloaded either.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Whether the model may ask for a map itself (<c>region_map</c>), with a share per region — darker
+    /// where a clue is more common. The map after the answer needs no call and highlights evenly.
+    /// </summary>
+    public bool ToolEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Natural Earth's 1:10m admin-1 states and provinces as GeoJSON (about 40 MB, public domain). The
+    /// 1:50m file covers only a dozen large countries, which is why the full one is taken. Downloaded
+    /// once into <see cref="DataDirectory"/>; delete the file to fetch it again.
+    /// </summary>
+    public string BoundariesUrl { get; set; } =
+        "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson";
+
+    /// <summary>Where the boundaries file is kept, like the image relay's pictures. Relative to the working directory.</summary>
+    [MinLength(1)]
+    public string DataDirectory { get; set; } = "ai-data";
+
+    /// <summary>
+    /// How far, in degrees, a boundary may be straightened when the file is read (Douglas–Peucker). A
+    /// country map is a few pixels per hundredth of a degree, so a hundredth is invisible and cuts the
+    /// points kept in memory by an order of magnitude.
+    /// </summary>
+    [Range(0.0, 1.0)]
+    public double SimplifyToleranceDegrees { get; set; } = 0.01;
+
+    /// <summary>Most regions highlighted on one map. Past it the map is a country coloured in, and says nothing.</summary>
+    [Range(1, 60)]
+    public int MaxRegions { get; set; } = 15;
+
+    /// <summary>Seconds the map after an answer may take; past this the answer goes out without it.</summary>
+    [Range(1, 60)]
+    public int TimeoutSeconds { get; set; } = 8;
+
+    /// <summary>How long a drawn map is kept, by its country and regions. The same regions come up again and again.</summary>
+    [Range(0, 168)]
+    public int CacheHours { get; set; } = 24;
+
+    /// <summary>Seconds the one-off download of the boundaries file may take.</summary>
+    [Range(10, 3600)]
+    public int DownloadTimeoutSeconds { get; set; } = 300;
 }

@@ -11,6 +11,7 @@ using Infrastructure.OutputAdapters.AI.Gbif;
 using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Infrastructure.OutputAdapters.AI.PlantNet;
+using Infrastructure.OutputAdapters.AI.Regions;
 using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
@@ -171,6 +172,20 @@ public static class AiServices
         });
         services.AddSingleton<IPlantIdentifier, PlantNetPlantIdentifier>();
         services.AddSingleton<PlantIdentificationLookAhead>();
+
+        // Natural Earth's admin-1 boundaries, downloaded once (about 40 MB) and read on a background
+        // task; the map's tiles come from GBIF on its client. One instance serves names and outlines.
+        services.AddHttpClient(NaturalEarthRegionBoundaries.HttpClientName, client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+            client.Timeout = TimeSpan.FromSeconds(tools.RegionMap.DownloadTimeoutSeconds + 5);
+        });
+        services.AddSingleton<NaturalEarthRegionBoundaries>();
+        services.AddSingleton<IRegionBoundaries>(provider => provider.GetRequiredService<NaturalEarthRegionBoundaries>());
+        services.AddSingleton<IRegionMapDrawer, RegionMapDrawer>();
+        services.AddSingleton<RegionLocator>();
+        services.AddHostedService<RegionBoundariesWarmup>();
 
         // Scoped, like the budget repository it claims requests through.
         services.AddScoped<AiAnswerLoop>();

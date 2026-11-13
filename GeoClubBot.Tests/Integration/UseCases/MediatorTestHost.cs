@@ -171,6 +171,7 @@ public sealed class MediatorTestHost : IDisposable
         // through the substituted species reader, whose default (failed) result offers nothing.
         services.AddSingleton<PlantRangeLookAhead>();
         services.AddSingleton<PlantIdentificationLookAhead>();
+        services.AddSingleton<RegionLocator>();
 
         // Mirrors ClubMembersModule: the private-channel handlers share the category placement logic.
         services.AddScoped<MemberPrivateChannelManager>();

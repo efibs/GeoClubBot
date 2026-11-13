@@ -103,6 +103,7 @@ public sealed partial class AskAiHandler(
     AiAnswerLoop answerLoop,
     PlantRangeLookAhead plantRange,
     PlantIdentificationLookAhead plantIdentification,
+    RegionLocator regionLocator,
     MainGuideOverlap mainGuide,
     ClueSampler clueSampler,
     KnowledgeCountryDirectory countryDirectory,
@@ -254,6 +255,14 @@ public sealed partial class AskAiHandler(
         // attaches exactly like one it was given with the question.
         var citations = CitationResolver.Resolve(outcome.Response.Text, outcome.Excerpts, config.MaxImagesInReply);
 
+        // The regions the answer names, on a map of their country, after everything the model cited:
+        // "Lạng Sơn and Quảng Ninh" means little to a player who does not know where they are. Costs
+        // no request; the answer waits a few seconds for it at most. Not drawn when the model already
+        // asked for a region map itself.
+        var regionMap = citations.Images.Any(image => image.Excerpt.SourceUrl == RegionMapExcerpt.SourceUrl)
+            ? null
+            : await regionLocator.LocateAsync(citations.Text, request.Content, cancellationToken).ConfigureAwait(false);
+
         var sources = citations.Sources
             .Select(citation => new AiAnswerSource(
                 citation.Number, citation.Excerpt.Label, citation.Excerpt.SourceUrl, citation.IsImage))
@@ -285,14 +294,26 @@ public sealed partial class AskAiHandler(
 
         var depth = context.ParentDepth + 1;
 
+        var images = citations.Images.Select(image => new AiAnswerImage(
+                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count,
+                image.Excerpt.Caption ?? ShownGeneratedCaption(image.Excerpt)))
+            .ToList();
+
+        if (regionMap is not null)
+        {
+            // Numbered after the last source, and listed with them, so its embed and its line read alike.
+            var marker = Math.Max(sources.Max(source => source.Marker) ?? 0, images.Count == 0 ? 0 : images.Max(image => image.Marker)) + 1;
+            images.Add(new AiAnswerImage(marker, regionMap.ImageUrl, RegionMapExcerpt.SourceUrl, regionMap.Title,
+                Caption: $"Where the answer's regions lie in {regionMap.CountryName}, from Natural Earth boundaries."));
+            sources = [.. sources, new AiAnswerSource(marker, regionMap.Title, RegionMapExcerpt.SourceUrl, IsImage: true)];
+        }
+
         return new AiAnswer(
             citations.Text,
             // Titled as listed beneath the answer, and captioned by what the guide says of the picture —
             // or, when the guide says nothing and the operator allows it, by what a vision model said,
             // marked as such.
-            [.. citations.Images.Select(image => new AiAnswerImage(
-                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count,
-                image.Excerpt.Caption ?? ShownGeneratedCaption(image.Excerpt)))],
+            images,
             sources,
             outcome.Response.ModelUsed,
             ResolveConversationId(context, request),

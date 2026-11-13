@@ -256,6 +256,7 @@ public sealed class AnsweringStack : IDisposable
     private readonly AnswerToolbox _toolbox;
     private readonly PlantRangeLookAhead _plantRange;
     private readonly PlantIdentificationLookAhead _plantIdentification;
+    private readonly RegionLocator _regionLocator;
     private readonly MainGuideOverlap _mainGuide;
     private readonly ClueSampler _clueSampler;
     private readonly KnowledgeCountryDirectory _countries;
@@ -322,12 +323,15 @@ public sealed class AnsweringStack : IDisposable
         _mainGuide = new MainGuideOverlap(_index, _countries, _retrieval, _logging.CreateLogger<MainGuideOverlap>());
         _clueSampler = new ClueSampler(_index, _mainGuide, _retrieval, _logging.CreateLogger<ClueSampler>());
         _toolbox = new AnswerToolbox(
-            _embedder, _index, speciesReader, speciesMap, _mainGuide, _countries, _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
+            _embedder, _index, speciesReader, speciesMap, new NoRegionBoundaries(), new NoRegionMapDrawer(), _mainGuide, _countries,
+            _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
         _plantRange = new PlantRangeLookAhead(speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
         // Off unless the bot's settings carry a Pl@ntNet key; a rated screenshot's link has usually expired anyway.
         var plantIdentifier = new PlantNetPlantIdentifier(clients, _tools, clock, _logging.CreateLogger<PlantNetPlantIdentifier>());
         _plantIdentification = new PlantIdentificationLookAhead(
             plantIdentifier, speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantIdentificationLookAhead>());
+        // The probe reports answers as text; a region map would only be a link to a picture it cannot show.
+        _regionLocator = new RegionLocator(new NoRegionBoundaries(), new NoRegionMapDrawer(), _countries, _tools, clock, _logging.CreateLogger<RegionLocator>());
     }
 
     /// <summary>Shared by every answer, as the bot's singleton is: a model that fails for one is demoted for the next.</summary>
@@ -351,7 +355,7 @@ public sealed class AnsweringStack : IDisposable
         var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
 
         return new AskAiHandler(
-            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _plantIdentification, _mainGuide, _clueSampler, _countries,
+            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _plantIdentification, _regionLocator, _mainGuide, _clueSampler, _countries,
             _plannerPause,
             _ai, _conversation, _retrieval, _captions, clock, _logging.CreateLogger<AskAiHandler>());
     }
@@ -361,6 +365,17 @@ public sealed class AnsweringStack : IDisposable
         _openRouter.Dispose();
         _gbif.Dispose();
         _logging.Dispose();
+    }
+
+    private sealed class NoRegionBoundaries : IRegionBoundaries
+    {
+        public Task<IReadOnlyList<RegionName>> ReadNamesAsync(string countryCode, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RegionName>>([]);
+    }
+
+    private sealed class NoRegionMapDrawer : IRegionMapDrawer
+    {
+        public Task<string?> DrawAsync(RegionMapRequest request, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 
     private sealed class NamedClientFactory(IReadOnlyDictionary<string, HttpClient> clients) : IHttpClientFactory
