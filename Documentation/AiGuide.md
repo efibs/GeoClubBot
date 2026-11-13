@@ -144,6 +144,13 @@ worth knowing:
 | `AI:Tools:RegionMap:MaxRegions` | 15 | Most regions on one map |
 | `AI:Tools:RegionMap:TimeoutSeconds` | 8 | Seconds the map after an answer may take |
 | `AI:Tools:RegionMap:CacheHours` | 24 | How long a drawn map is kept |
+| `AI:ClueOfTheDaySchedule` | `0 0 17 * * ?` | When the clue of the day is posted, in `AI:ClueOfTheDayTimeZone` (`Europe/Berlin`; empty is UTC) |
+| `AI:ClueOfTheDay:Enabled` | false | Post a lesser-known clue with its picture on the schedule. Needs `TextChannelId` |
+| `AI:ClueOfTheDay:TextChannelId` | empty | The channel it is posted to |
+| `AI:ClueOfTheDay:NoRepeatDays` | 180 | Days before the same clue may be posted again |
+| `AI:ClueOfTheDay:ExcludeMainGuideClues` | true | Leave out clues PlonkIt has a tip like |
+| `AI:ClueOfTheDay:Draws` | 8 | Clues drawn per post to choose from |
+| `AI:ClueOfTheDay:Heading` | `🧭 **Clue of the day** — from *{{guide}}*` | What the post opens with |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
@@ -851,6 +858,27 @@ in, numbered after the last source and listed with the sources as a picture.
 
 Everything here costs no AI request. The map after an answer has `TimeoutSeconds` (8); whatever fails,
 the answer goes out without it.
+
+### The clue of the day
+
+The lesser-known clues in the indexed guides are only seen when someone happens to ask the right
+question. `AiClueOfTheDayJob` (`AI:ClueOfTheDaySchedule`, read in `AI:ClueOfTheDayTimeZone`) posts one to
+`AI:ClueOfTheDay:TextChannelId` on a schedule; `/ai clue-now` posts one at once, in the configured channel
+or — `here: true` — in the channel the command is given in, which works before the feature is turned on.
+
+`PostClueOfTheDayCommand` draws clues the way a question for "a clue I don't know yet" does
+(`ClueSampler.DrawAsync(count, excludeMainGuideClues)`: random picture chunks of the guides other than
+PlonkIt, with words of their own, one per guide, those PlonkIt has a tip like left out while
+`ExcludeMainGuideClues` is on), takes the first not posted within `NoRepeatDays` (180; the posts are kept
+in `AiCluePosts`), and posts it shaped like an answer (`ClueOfTheDayPost`, pure): the `Heading` with the
+guide's title, the guide's own words of the picture (cut at a sentence past 900 characters), the picture
+as **[1]**, uploaded from the relay exactly as an answer's pictures are, and the guide cited beneath. The
+posting goes through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses the gateway's
+answer-posting code without a message to reply to. The post is recorded whether or not the message went
+out, so a failed post does not make the same clue the next day's. Costs no AI request.
+
+Off by default: a channel has to be chosen first (`Enabled` with no `TextChannelId` fails start-up
+validation). The schedule key must be present even while the feature is off, as every job's must.
 
 ### What goes into a vector
 

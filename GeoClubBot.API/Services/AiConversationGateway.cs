@@ -223,8 +223,22 @@ public sealed partial class AiConversationGateway(
     /// <see cref="AiAnswerPicturePlanner"/> for why), and every file opened for that is closed again
     /// whichever way the post goes.
     /// </summary>
-    internal static async Task<PostedAnswer> PostAsync(
+    internal static Task<PostedAnswer> PostAsync(
         IUserMessage question,
+        AiAnswer answer,
+        IImageRelay imageRelay,
+        AiImageRelayConfiguration relaySettings,
+        ILogger logger) =>
+        PostAsync(question.Channel, question, answer, imageRelay, relaySettings, logger);
+
+    /// <summary>
+    /// Posts an answer into <paramref name="channel"/>: as a reply to <paramref name="question"/> when
+    /// there is one, as a message of its own otherwise (the clue of the day). Every chunk after the
+    /// first replies to the one before, so a long answer reads as one thread either way.
+    /// </summary>
+    internal static async Task<PostedAnswer> PostAsync(
+        IMessageChannel channel,
+        IUserMessage? question,
         AiAnswer answer,
         IImageRelay imageRelay,
         AiImageRelayConfiguration relaySettings,
@@ -249,9 +263,9 @@ public sealed partial class AiConversationGateway(
 
             var rendering = AiAnswerFormatter.Render(answer, plan);
 
-            IUserMessage replyTarget = question;
+            var replyTarget = question;
             IUserMessage? lastMessage = null;
-            var lastMessageId = question.Id;
+            var lastMessageId = question?.Id ?? 0;
             var earlierMessageIds = new List<ulong>();
 
             for (var index = 0; index < rendering.MessageChunks.Count; index++)
@@ -260,9 +274,9 @@ public sealed partial class AiConversationGateway(
 
                 // Guide images ride on the final chunk so they appear beneath the whole answer.
                 var posted = index < rendering.MessageChunks.Count - 1
-                    ? await ReplyWithEmbedsAsync(replyTarget, chunk, embeds: []).ConfigureAwait(false)
+                    ? await SendWithEmbedsAsync(channel, replyTarget, chunk, embeds: []).ConfigureAwait(false)
                     : await PostFinalChunkAsync(
-                        replyTarget, chunk, rendering, files,
+                        channel, replyTarget, chunk, rendering, files,
                         () => AiAnswerFormatter.Render(answer, plan.WithoutUploads()).Embeds,
                         logger).ConfigureAwait(false);
 
@@ -318,7 +332,8 @@ public sealed partial class AiConversationGateway(
     /// because Discord.Net's <c>ReplyAsync</c> takes no attachments; the message reference keeps it a reply.
     /// </summary>
     private static async Task<IUserMessage> PostFinalChunkAsync(
-        IUserMessage replyTarget,
+        IMessageChannel channel,
+        IUserMessage? replyTarget,
         string text,
         AiAnswerRendering rendering,
         IReadOnlyDictionary<string, RelayedImageContent> files,
@@ -327,7 +342,7 @@ public sealed partial class AiConversationGateway(
     {
         if (rendering.Uploads.Count == 0)
         {
-            return await ReplyWithEmbedsAsync(replyTarget, text, rendering.Embeds).ConfigureAwait(false);
+            return await SendWithEmbedsAsync(channel, replyTarget, text, rendering.Embeds).ConfigureAwait(false);
         }
 
         var attachments = rendering.Uploads
@@ -336,20 +351,20 @@ public sealed partial class AiConversationGateway(
 
         try
         {
-            return await replyTarget.Channel.SendFilesAsync(
+            return await channel.SendFilesAsync(
                 attachments,
                 text,
                 embeds: [.. rendering.Embeds],
                 // Nothing the model writes may ping anyone.
                 allowedMentions: AllowedMentions.None,
-                messageReference: new MessageReference(replyTarget.Id)).ConfigureAwait(false);
+                messageReference: replyTarget is null ? null : new MessageReference(replyTarget.Id)).ConfigureAwait(false);
         }
         catch (Exception exception) when (IsFailedUpload(exception))
         {
             // A failed upload must not cost the answer. Linked pictures may still show; an answer that
             // never arrives shows nothing, and leaves no message a follow-up could reply to.
-            LogUploadFailed(logger, replyTarget.Id, rendering.Uploads.Count, exception);
-            return await ReplyWithEmbedsAsync(replyTarget, text, linkedEmbeds()).ConfigureAwait(false);
+            LogUploadFailed(logger, replyTarget?.Id ?? 0, rendering.Uploads.Count, exception);
+            return await SendWithEmbedsAsync(channel, replyTarget, text, linkedEmbeds()).ConfigureAwait(false);
         }
     }
 
@@ -376,12 +391,18 @@ public sealed partial class AiConversationGateway(
             or ArgumentOutOfRangeException
             or OperationCanceledException;
 
-    private static Task<IUserMessage> ReplyWithEmbedsAsync(IUserMessage replyTarget, string text, IReadOnlyList<Embed> embeds) =>
-        replyTarget.ReplyAsync(
-            text,
-            embeds: embeds.Count > 0 ? [.. embeds] : null,
-            // Nothing the model writes may ping anyone.
-            allowedMentions: AllowedMentions.None);
+    /// <summary>A chunk as a reply to <paramref name="replyTarget"/>, or as a plain message of the channel when there is none.</summary>
+    private static Task<IUserMessage> SendWithEmbedsAsync(IMessageChannel channel, IUserMessage? replyTarget, string text, IReadOnlyList<Embed> embeds) =>
+        replyTarget is not null
+            ? replyTarget.ReplyAsync(
+                text,
+                embeds: embeds.Count > 0 ? [.. embeds] : null,
+                // Nothing the model writes may ping anyone.
+                allowedMentions: AllowedMentions.None)
+            : channel.SendMessageAsync(
+                text,
+                embeds: embeds.Count > 0 ? [.. embeds] : null,
+                allowedMentions: AllowedMentions.None);
 
     /// <summary>
     /// A relayed picture that is linked rather than uploaded may not show, so each one is logged. A

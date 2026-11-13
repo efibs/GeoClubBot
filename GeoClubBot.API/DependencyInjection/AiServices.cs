@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
+using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
@@ -186,6 +187,9 @@ public static class AiServices
         services.AddSingleton<IRegionMapDrawer, RegionMapDrawer>();
         services.AddSingleton<RegionLocator>();
         services.AddHostedService<RegionBoundariesWarmup>();
+
+        // The clue of the day posts into a channel of its own through the same rendering and uploads as an answer.
+        services.AddSingleton<IAiChannelPublisher, DiscordAiChannelPublisher>();
 
         // Scoped, like the budget repository it claims requests through.
         services.AddScoped<AiAnswerLoop>();
