@@ -4,6 +4,7 @@ using Infrastructure.OutputAdapters.AI.Regions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using UseCases.OutputPorts.AI;
 using Xunit;
 
 namespace GeoClubBot.Tests.AI;
@@ -65,6 +66,17 @@ public sealed class NaturalEarthRegionBoundariesTests : IDisposable
 
         var pristina = (await boundaries.ReadShapesAsync("XK", CancellationToken.None)).Single();
         pristina.Rings.Should().HaveCount(2, "every part of a multipolygon is drawn");
+    }
+
+    [Fact]
+    public async Task Locate_FindsTheRegionAPointLiesIn_AndNothingForTheSea()
+    {
+        var boundaries = CreateBoundaries(Sample);
+
+        (await boundaries.LocateAsync(21.8, 106.5)).Should().Be(new RegionPlace("VN", "Lang Son"));
+        (await boundaries.LocateAsync(42.55, 21.1)).Should().Be(new RegionPlace("XK", "Pristina"));
+        (await boundaries.LocateAsync(0, -30)).Should().BeNull("the Atlantic is nobody's region");
+        (await boundaries.LocateAsync(21.8, 107.5)).Should().BeNull("just outside the outline");
     }
 
     [Fact]

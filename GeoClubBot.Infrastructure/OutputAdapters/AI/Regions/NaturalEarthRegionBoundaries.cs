@@ -9,7 +9,50 @@ using UseCases.OutputPorts.AI;
 namespace Infrastructure.OutputAdapters.AI.Regions;
 
 /// <summary>One region's outline: its rings, each a run of longitude/latitude pairs, the first the outer edge.</summary>
-internal sealed record RegionShape(string Id, string Name, IReadOnlyList<string> Aliases, IReadOnlyList<IReadOnlyList<(double Longitude, double Latitude)>> Rings, double LabelLongitude, double LabelLatitude);
+internal sealed record RegionShape(string Id, string Name, IReadOnlyList<string> Aliases, IReadOnlyList<IReadOnlyList<(double Longitude, double Latitude)>> Rings, double LabelLongitude, double LabelLatitude)
+{
+    /// <summary>The rectangle around every ring, so a point far from the region is turned away without walking its rings.</summary>
+    public (double West, double South, double East, double North) Bounds { get; } = BoundsOf(Rings);
+
+    /// <summary>Whether the point lies inside the region: the even-odd rule over its rings, holes included.</summary>
+    public bool Contains(double longitude, double latitude)
+    {
+        if (longitude < Bounds.West || longitude > Bounds.East || latitude < Bounds.South || latitude > Bounds.North)
+        {
+            return false;
+        }
+
+        var inside = false;
+        foreach (var ring in Rings)
+        {
+            for (int i = 0, j = ring.Count - 1; i < ring.Count; j = i++)
+            {
+                var (xi, yi) = ring[i];
+                var (xj, yj) = ring[j];
+                if (yi > latitude != yj > latitude && longitude < (xj - xi) * (latitude - yi) / (yj - yi) + xi)
+                {
+                    inside = !inside;
+                }
+            }
+        }
+
+        return inside;
+    }
+
+    private static (double, double, double, double) BoundsOf(IReadOnlyList<IReadOnlyList<(double Longitude, double Latitude)>> rings)
+    {
+        double west = double.MaxValue, south = double.MaxValue, east = double.MinValue, north = double.MinValue;
+        foreach (var (longitude, latitude) in rings.SelectMany(ring => ring))
+        {
+            west = Math.Min(west, longitude);
+            east = Math.Max(east, longitude);
+            south = Math.Min(south, latitude);
+            north = Math.Max(north, latitude);
+        }
+
+        return (west, south, east, north);
+    }
+}
 
 /// <summary>
 /// Natural Earth's admin-1 states and provinces (public domain), read from the GeoJSON the project
@@ -40,6 +83,40 @@ public sealed partial class NaturalEarthRegionBoundaries(
     {
         var shapes = await ReadShapesAsync(countryCode, cancellationToken).ConfigureAwait(false);
         return [.. shapes.Select(shape => new RegionName(shape.Id, shape.Name, shape.Aliases))];
+    }
+
+    public async Task<RegionPlace?> LocateAsync(double latitude, double longitude, CancellationToken cancellationToken = default)
+    {
+        if (!configuration.Value.RegionMap.Enabled || double.IsNaN(latitude) || double.IsNaN(longitude))
+        {
+            return null;
+        }
+
+        try
+        {
+            var byCountry = await LoadAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var (code, shapes) in byCountry)
+            {
+                foreach (var shape in shapes)
+                {
+                    if (shape.Contains(longitude, latitude))
+                    {
+                        return new RegionPlace(code, shape.Name);
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            LogUnavailable(logger, exception);
+            return null;
+        }
     }
 
     /// <summary>A country's regions with their outlines; empty when unknown, or when the file is not read yet.</summary>

@@ -149,6 +149,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<AiRoundReviewConfiguration>()
+            .Bind(config.GetSection(AiRoundReviewConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<AiClueOfTheDayConfiguration>()
             .Bind(config.GetSection(AiClueOfTheDayConfiguration.SectionName))
             .ValidateDataAnnotations()

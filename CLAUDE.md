@@ -308,7 +308,12 @@ API + Discord (controllers, slash command modules)
   40 MB GeoJSON downloaded once into `AI:Tools:RegionMap:DataDirectory`, warmed at start-up) and
   `RegionMapDrawer` attaches a map of the country with them coloured in (GBIF tiles, framed by
   `SpeciesMapPlan.ForCountry`), numbered after the last source; the model's own `region_map` tool
-  shades regions by a share per region. The **clue of the day** (`AI:ClueOfTheDay`, off until a channel
+  shades regions by a share per region. `/ai review [challenge]` (`ReviewRoundsCommand`, `AI:RoundReview`)
+  reads a challenge's highscores with the main club's account, finds the member's game by their linked
+  account, places rounds and guesses (`streakLocationCode`, else `IRegionBoundaries.LocateAsync` point in
+  polygon), searches the guides per round in one embedding request and asks the model once through
+  `AiAnswerLoop` (`RoundReviewPrompt`, pure); the highscores' round/guess fields
+  (`ChallengeResultRoundDto`) are optional and unverified live. The **clue of the day** (`AI:ClueOfTheDay`, off until a channel
   is set; `AiClueOfTheDayJob` on `AI:ClueOfTheDaySchedule`/`TimeZone`, `/ai clue-now`) posts one
   `ClueSampler` draw not posted within `NoRepeatDays` (`AiCluePosts`) as an `AiAnswer`
   (`ClueOfTheDayPost`, pure) through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses

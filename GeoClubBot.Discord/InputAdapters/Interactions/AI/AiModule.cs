@@ -11,10 +11,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.AI.ClueOfTheDay;
 using UseCases.UseCases.AI.Feedback;
 using UseCases.UseCases.AI.Ingestion;
 using UseCases.UseCases.AI.Quiz;
+using UseCases.UseCases.AI.Review;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
 
@@ -173,6 +175,29 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         var score = serviceProvider.GetRequiredService<QuizStreaks>().Record(Context.User.Id, right);
         return FollowupAsync(AiQuizFormatter.Score(score, right), ephemeral: true);
     }
+
+    [SlashCommand("review", "Review a challenge you played: the clues that point to each round, and what to study")]
+    public Task ReviewAsync(
+        [Summary(description: "The challenge link or token; leave empty for the latest daily challenge")] string? challenge = null) =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new ReviewRoundsCommand(Context.User.Id, challenge), ct).ConfigureAwait(false);
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            var review = result.Value;
+            var posted = await serviceProvider.GetRequiredService<IAiChannelPublisher>()
+                .PostAsync(Context.Channel.Id, review.Answer, ct).ConfigureAwait(false);
+
+            await FollowupAsync(
+                posted is null
+                    ? "The review could not be posted here."
+                    : $"Reviewed {review.Rounds.Count} round(s) of challenge `{review.ChallengeToken}` — {review.Missed} with the wrong country.",
+                ephemeral: true).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "The review could not be written just now.");
 
     [SlashCommand("feedback", "Show how people have rated my answers")]
     public Task FeedbackAsync(

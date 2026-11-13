@@ -11,7 +11,17 @@ public interface IRegionBoundaries
     /// dataset is not loaded yet. Never throws: a map is a nicety, never worth failing an answer for.
     /// </summary>
     Task<IReadOnlyList<RegionName>> ReadNamesAsync(string countryCode, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The country and first-level region a point lies in, or null when it lies in none the dataset
+    /// draws (the sea, or the dataset not loaded yet). Never throws.
+    /// </summary>
+    Task<RegionPlace?> LocateAsync(double latitude, double longitude, CancellationToken cancellationToken = default);
 }
+
+/// <param name="CountryCode">ISO 3166 alpha-2.</param>
+/// <param name="RegionName">The region's shown name.</param>
+public sealed record RegionPlace(string CountryCode, string RegionName);
 
 /// <param name="Id">The dataset's own id for the region, which a map request names it by.</param>
 /// <param name="Name">The name to show: the English one where the dataset has it, else the local one.</param>
