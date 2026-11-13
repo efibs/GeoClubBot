@@ -147,6 +147,11 @@ worth knowing:
 | `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's rounds with the clues that point to each |
 | `AI:RoundReview:MaxRounds` / `ExcerptsPerRound` / `MaxExcerpts` | 10 / 3 / 12 | Rounds reviewed; excerpts searched per round and offered in all |
 | `AI:RoundReview:HighscoresLimit` | 100 | Places of the highscores read to find the player |
+| `AI:KnowledgeGapsSchedule` | `0 0 8 ? * MON` | When old weak retrievals are forgotten and, with `PostReport`, the knowledge-gap report is posted |
+| `AI:KnowledgeGaps:RecordWeakRetrievals` | true | Record questions with a weak retrieval as they are asked |
+| `AI:KnowledgeGaps:RetentionDays` / `ReportDays` | 90 / 30 | How long a weak retrieval is kept; the period the report covers |
+| `AI:KnowledgeGaps:MaxGroups` / `ExamplesPerGroup` | 15 / 2 | Country-and-topic groups listed; example questions each |
+| `AI:KnowledgeGaps:PostReport` / `TextChannelId` | false / empty | Post the report weekly to a channel (needs the channel) |
 | `AI:ClueOfTheDaySchedule` | `0 0 17 * * ?` | When the clue of the day is posted, in `AI:ClueOfTheDayTimeZone` (`Europe/Berlin`; empty is UTC) |
 | `AI:ClueOfTheDay:Enabled` | false | Post a lesser-known clue with its picture on the schedule. Needs `TextChannelId` |
 | `AI:ClueOfTheDay:TextChannelId` | empty | The channel it is posted to |
@@ -899,6 +904,25 @@ judges for themselves (`QuizStreaks`: streak, best streak and tally, in memory s
 a quiz is practice, not a league), answered ephemerally; *Another* draws again with the same filters.
 Costs no AI request. `AI:Quiz:OnlyInAllowedChannels` keeps it to `AI:AllowedChannelIds` when that list
 is set.
+
+### Knowledge gaps: which guides to add
+
+Admins could not see which questions the index answers badly. Every question is judged as it is answered
+(`WeakRetrieval`, pure) and recorded in `AiRetrievalGaps` when its retrieval was weak, because the
+conversation itself is swept by retention:
+
+- **nothing found** — the index offered no excerpt at all;
+- **nothing from the country** — the question names one country (the guides' gazetteer, every spelling
+  the index files it under) and no excerpt offered was from it: the clearest sign a guide is missing;
+- **nothing cited** — excerpts were offered and the answer cited none of them.
+
+Fused scores are ranks, not similarities, so no score bar is used. Each record keeps the question (cut to
+500 characters), its country and its topic (`ChunkTopicClassifier`, the ingestion's own reading of
+"poles", "bollards", …). `/ai gaps [days]` (`ReadKnowledgeGapReportQuery`, admin) groups those records and
+the answers rated 👎 in the feedback archive (with their comments) by country and topic, largest group
+first, with a couple of example questions each (`KnowledgeGapReportText`, pure). `AiKnowledgeGapReportJob`
+(`AI:KnowledgeGapsSchedule`) forgets records past `RetentionDays` and, with `PostReport` and a
+`TextChannelId`, posts the same report weekly. Costs no AI request.
 
 ### `/ai review`: a played challenge, round by round
 
