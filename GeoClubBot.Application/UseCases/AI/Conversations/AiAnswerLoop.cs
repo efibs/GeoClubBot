@@ -17,6 +17,7 @@ namespace UseCases.UseCases.AI.Conversations;
 /// <param name="StartedAt">When it arrived: <see cref="AiToolsConfiguration.AnswerDeadlineSeconds"/> counts from here.</param>
 /// <param name="CarriedCount">How many of <paramref name="Hits"/>, from the first, the previous answer cited (<see cref="CarriedExcerpts"/>).</param>
 /// <param name="CarriedSourceNumbers">The numbers the reader saw those under, when not their own (<see cref="FollowUpExcerpts.CarriedSourceNumbers"/>).</param>
+/// <param name="LesserKnown">The question asks for something the user does not know yet: PlonkIt's tips stay out of its excerpts and its searches.</param>
 public sealed record AnswerRequest(
     ConversationContext Context,
     string Question,
@@ -25,7 +26,8 @@ public sealed record AnswerRequest(
     DateOnly BudgetDay,
     DateTimeOffset StartedAt,
     int CarriedCount = 0,
-    IReadOnlyList<int>? CarriedSourceNumbers = null);
+    IReadOnlyList<int>? CarriedSourceNumbers = null,
+    bool LesserKnown = false);
 
 /// <param name="Response">The completion that answered.</param>
 /// <param name="Excerpts">Every excerpt offered, the retrieved ones first: citations resolve against these.</param>
@@ -105,7 +107,7 @@ public sealed partial class AiAnswerLoop(
 
         var prompt = AiPromptBuilder.Build(
             request.Context, request.Question, request.AttachmentImageUrls, request.Hits, request.CarriedCount,
-            request.CarriedSourceNumbers);
+            request.CarriedSourceNumbers, request.LesserKnown);
 
         // A vision-capable model only when a picture actually travels with the request — the question's
         // own attachment, or a screenshot replayed from earlier in the branch, which a follow-up sends
@@ -135,7 +137,7 @@ public sealed partial class AiAnswerLoop(
             return single.IsFailure ? single.Error : new AnswerOutcome(single.Value.Response, prompt.Excerpts, []);
         }
 
-        var definitions = AnswerTools.Definitions(tools.SpeciesRange.Enabled);
+        var definitions = AnswerTools.Definitions(tools.SpeciesRange.Enabled, tools.RegionMap is { Enabled: true, ToolEnabled: true });
         var toolPrompt = AiPromptBuilder.AppendToSystemPrompt(prompt, AnswerTools.SystemPrompt);
         var withTools = new Asking(toolPrompt.Messages, requirements with { NeedsTools = true }, definitions);
 
@@ -175,7 +177,7 @@ public sealed partial class AiAnswerLoop(
         AiToolsConfiguration tools,
         CancellationToken cancellationToken)
     {
-        var ledger = new ExcerptLedger(request.Hits);
+        var ledger = new ExcerptLedger(request.Hits) { LeavesOutMainGuide = request.LesserKnown };
         var conversation = new List<AiChatMessage>(toolMessages);
         var summaries = new List<AiToolCallSummary>();
         var deadline = request.StartedAt + TimeSpan.FromSeconds(tools.AnswerDeadlineSeconds);
@@ -345,7 +347,7 @@ public sealed partial class AiAnswerLoop(
 
         var everything = AiPromptBuilder.Build(
             request.Context, request.Question, request.AttachmentImageUrls, ledger.Hits, request.CarriedCount,
-            request.CarriedSourceNumbers);
+            request.CarriedSourceNumbers, request.LesserKnown);
         var completion = await chatClient
             .CompleteAsync(new AiChatRequest(chain, everything.Messages, Temperature), cancellationToken)
             .ConfigureAwait(false);
@@ -536,12 +538,14 @@ public sealed partial class AiAnswerLoop(
     }
 
     /// <summary>
-    /// Whether a completion is an answer: some text, not a tool call written out as text, not a
-    /// classifier's verdict, and not from a model that should never have been asked. A classifier the
-    /// description rules did not recognise is kept out until restart, and named in the log so it can be
-    /// blocked for good. A model that wrote a call as text is not: it is a formatting slip of a model
-    /// that answers well, and it fails as <see cref="ChatErrorCodes.ToolCallMarkup"/>, so the last call
-    /// can ask it again without tools.
+    /// Whether a completion is an answer: some text, not a tool call written out as text, not token
+    /// soup, not a classifier's verdict, and not from a model that should never have been asked. A
+    /// classifier the description rules did not recognise is kept out until restart, and named in the
+    /// log so it can be blocked for good. A model that wrote a call as text is not: it is a formatting
+    /// slip of a model that answers well, and it fails as <see cref="ChatErrorCodes.ToolCallMarkup"/>,
+    /// so the last call can ask it again without tools. Nor is one whose reply came out garbled
+    /// (<see cref="GarbledTextDetector"/>): that is its provider's bad moment, so other models are
+    /// asked this once and the model answers the next question as before.
     /// </summary>
     private bool IsUsable(AiChatResponse response, out Error failure)
     {
@@ -555,6 +559,14 @@ public sealed partial class AiAnswerLoop(
         {
             LogToolCallMarkup(logger, response.ModelUsed);
             failure = Error.Unexpected(ChatErrorCodes.ToolCallMarkup,
+                "The AI model I reached couldn't give a real answer just now. Please ask again in a moment.");
+            return false;
+        }
+
+        if (GarbledTextDetector.IsGarbled(response.Text))
+        {
+            LogGarbledAnswer(logger, response.ModelUsed);
+            failure = Error.Unexpected(ChatErrorCodes.UnusableAnswer,
                 "The AI model I reached couldn't give a real answer just now. Please ask again in a moment.");
             return false;
         }
@@ -630,6 +642,10 @@ public sealed partial class AiAnswerLoop(
 
     [LoggerMessage(LogLevel.Warning, "AI model {ModelId} wrote a tool call as text instead of answering; discarding it.")]
     static partial void LogToolCallMarkup(ILogger logger, string modelId);
+
+    [LoggerMessage(LogLevel.Warning,
+        "AI model {ModelId} returned garbled text — words that change alphabet half-way — instead of an answer; discarding it.")]
+    static partial void LogGarbledAnswer(ILogger logger, string modelId);
 
     [LoggerMessage(LogLevel.Information, "Retrying an AI answer after {ErrorCode}, now asking {Chain}.")]
     static partial void LogRetrying(ILogger logger, string errorCode, string chain);

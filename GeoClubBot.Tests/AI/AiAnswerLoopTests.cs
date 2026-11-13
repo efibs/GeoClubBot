@@ -33,7 +33,7 @@ public sealed class AiAnswerLoopTests
 
         result.IsSuccess.Should().BeTrue();
         var request = fixture.Chat.Requests.Should().ContainSingle().Subject;
-        request.Tools.Should().NotBeNull().And.HaveCount(3);
+        request.Tools.Should().NotBeNull().And.HaveCount(4, "search, read, species range and the region map");
         request.ToolChoice.Should().Be(AiToolChoice.Auto);
         request.Messages[0].ToPlainText().Should().StartWith(AiPromptBuilder.SystemPrompt).And.EndWith(AnswerTools.SystemPrompt);
         fixture.Budget.Spent.Should().Be(Fixture.QuestionCost, "a question answered straight away costs what it always did");
@@ -157,6 +157,77 @@ public sealed class AiAnswerLoopTests
             .And.Contain("Chiang Mai 40")
             .And.Contain("(source: https://www.gbif.org/species/5285824)");
         result.Value.Excerpts[^1].SourceUrl.Should().Be("https://www.gbif.org/species/5285824");
+    }
+
+    [Fact]
+    public async Task OffersTheMapOfAPlantsRecords_AsAPictureTheAnswerCanAttach()
+    {
+        // "Please show the GBIF distribution": the counts were offered as text, and nothing could be shown.
+        var fixture = new Fixture();
+        var range = new SpeciesRange(
+            5285824, "Pinus kesiya Royle ex Gordon", "Pinus kesiya", "SPECIES", MatchedByCommonName: true, FuzzyMatch: false,
+            null, [new SpeciesRangeArea("PH", 256), new SpeciesRangeArea("TH", 87)], 1061);
+        fixture.Species.ReadAsync(Arg.Any<SpeciesRangeQuery>(), Arg.Any<CancellationToken>()).Returns(Result<SpeciesRange>.Success(range));
+        fixture.SpeciesMap.DrawAsync(range, Arg.Any<CancellationToken>()).Returns("https://bot.example/api/v1/ai/images/khasi.jpg");
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SpeciesRange, """{"name": "khasi pine"}""")))
+            .Then(Answer("Across south-east Asia [3]."));
+
+        var result = await fixture.AskAsync();
+
+        fixture.Chat.Requests[1].Messages[^1].ToPlainText().Should()
+            .StartWith("[3] (picture) Where Pinus kesiya is recorded (GBIF)")
+            .And.Contain("The picture is a map of these records");
+        result.Value.Excerpts[^1].ImageUrl.Should().Be("https://bot.example/api/v1/ai/images/khasi.jpg");
+    }
+
+    [Fact]
+    public async Task SearchesPlonkItAlone_WhenTheModelChecksWhatItCarries()
+    {
+        var fixture = new Fixture();
+        var tip = Hit("Metal poles with a mesh pattern are commonly found in Sikkim.", "https://www.plonkit.net/india#p0le", "india", "p0le", "India > Regional clues");
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([tip]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "Sikkim metal poles", "source": "plonkit"}""")))
+            .Then(Answer("PlonkIt has it [3]."));
+
+        await fixture.AskAsync();
+
+        var query = fixture.Index.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<KnowledgeQuery>().Single();
+        query.SourceType.Should().Be("plonkit");
+        query.ExcludedSourceType.Should().BeNull();
+        fixture.Chat.Requests[1].Messages[^1].ToPlainText().Should().StartWith("Searched PlonkIt alone");
+    }
+
+    [Fact]
+    public async Task LeavesPlonkItOutOfItsSearches_ForAQuestionAskingForSomethingNew_AndSaysWhatPlonkItHasToo()
+    {
+        // "tell me a reliable clue I don't know yet": three answers running gave clues PlonkIt carries.
+        var fixture = new Fixture { LesserKnown = true };
+        var poles = Hit("These metal telephone poles are pretty much exclusively found in Sikkim.", "https://docs.google.com/document/d/india/edit", "india", "p502", "India doc > Sikkim") with { SourceType = "gdoc" };
+        var forestCar = Hit("The Dasuya forest has been covered with a very unusual car.", "https://docs.google.com/document/d/india/edit", "india", "p478", "India doc > Punjab") with { SourceType = "gdoc" };
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>()).Returns([poles, forestCar]);
+        fixture.Index.ReadNearestOfSourceAsync(default!, default!, default, default).ReturnsForAnyArgs(
+            Task.FromResult<IReadOnlyDictionary<Guid, KnowledgeHit>>(new Dictionary<Guid, KnowledgeHit>
+            {
+                [poles.Id] = Hit("Metal poles with a mesh pattern.", "https://www.plonkit.net/india#p0le") with { Score = 0.61f },
+                [forestCar.Id] = Hit("Canola is mostly found in Rajasthan.", "https://www.plonkit.net/india#c4n") with { Score = 0.44f }
+            }));
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "unique car free 5k"}""")))
+            .Then(Answer("The Dasuya forest car [4]."));
+
+        await fixture.AskAsync("tell me a reliable clue I don't know yet.");
+
+        fixture.Chat.Requests[0].Messages[^1].ToPlainText().Should()
+            .Contain("PlonkIt is the guide every player has read", "the model is told what the question is after");
+
+        var query = fixture.Index.ReceivedCalls().Select(call => call.GetArguments()[0]).OfType<KnowledgeQuery>().Single();
+        query.ExcludedSourceType.Should().Be("plonkit");
+
+        var told = fixture.Chat.Requests[1].Messages[^1].ToPlainText();
+        told.Should().StartWith("Searched every guide but PlonkIt.");
+        told.Should().Contain("[3] India doc > Sikkim (also on PlonkIt)").And.Contain("[4] India doc > Punjab\n");
     }
 
     [Theory]
@@ -317,6 +388,41 @@ public sealed class AiAnswerLoopTests
     }
 
     [Fact]
+    public async Task AsksOtherModels_WhenTheReplyIsGarbled_WithoutCallingTheModelUnfit()
+    {
+        // What nemotron-3-ultra returned as an answer on 2026-11-11: a valid completion, so nothing
+        // failed and it would have been posted. The day before, it had answered the same question well.
+        var fixture = new Fixture();
+        fixture.Chat
+            .Then(Answer(".reurs(.\u0924uotfrac\u2500\u2500\u03b6 Beliaufu \u251c\u2500\u2500\u03c3\u2014\u00bf\u03c3filmstokens Wed\u0142ugNum\u00e9ro\u03b8", "a/model"))
+            .Then(Answer("Pole supports are rare in Ceará [1].", "b/model"));
+
+        var result = await fixture.AskAsync();
+
+        result.Value.Response.ModelUsed.Should().Be("b/model");
+        fixture.Catalog.DidNotReceive().ReportUnfit(Arg.Any<string>());
+        await fixture.Catalog.Received().ReadChainAsync(
+            Arg.Is<ChatModelRequirements>(r => r.ExcludedModelIds != null && r.ExcludedModelIds.Contains("a/model")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task NeverPostsAGarbledReply_WrittenAfterTheToolRounds()
+    {
+        var fixture = new Fixture();
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "poles"}""")))
+            .Then(Answer("the\u0924 roa\u0434 of \u03c3igns", "a/model"))
+            .Then(Answer("Pole supports are rare in Ceará [1].", "b/model"));
+
+        var result = await fixture.AskAsync();
+
+        result.Value.Response.Text.Should().Be("Pole supports are rare in Ceará [1].");
+        fixture.Chat.Requests[2].ModelChain.Should().NotContain("a/model", "a garbled reply is not asked of the same model twice");
+        fixture.Chat.Requests[2].Tools.Should().BeNull("the rescue asks with everything gathered, without tools");
+    }
+
+    [Fact]
     public async Task NeverPostsACallWrittenAsText_EvenWhenTheLastCallWritesOneToo()
     {
         var fixture = new Fixture();
@@ -472,6 +578,47 @@ public sealed class AiAnswerLoopTests
         rescue.ModelChain.Should().NotContain(new[] { "a/model", "b/model", "c/model" }, "the chain that failed is not asked again");
         fixture.Budget.Spent.Should().Be(Fixture.QuestionCost + 3, "the failed call, the embedding and the last call");
         fixture.Catalog.Received().ReportChainOutcome(Arg.Is<IReadOnlyList<string>>(chain => chain.Contains("a/model")), null);
+    }
+
+    [Fact]
+    public async Task AsksOtherModels_WhenTheFirstNeverFinishesItsAnswer_AndDemotesOnlyThatOne()
+    {
+        // 2026-11-11: nemotron-3-ultra held a completion open for 57 minutes. Cut off, it is the head's
+        // failure alone — the provider only moves down the chain on an error — so the two behind it are
+        // not demoted, and none of the three is asked this question again.
+        var fixture = new Fixture();
+        fixture.Chat
+            .Then(Failure(ChatErrorCodes.TimedOut))
+            .Then(Answer("Rare in the north [2].", "d/model"));
+
+        var result = await fixture.AskAsync();
+
+        result.Value.Response.ModelUsed.Should().Be("d/model");
+        fixture.Chat.Requests[1].ModelChain.Should().NotContain(["a/model", "b/model", "c/model"]);
+        fixture.Catalog.Received(1).ReportFailure("a/model");
+        fixture.Catalog.DidNotReceive().ReportFailure(Arg.Is<string>(model => model != "a/model"));
+        fixture.Catalog.DidNotReceive().ReportChainOutcome(Arg.Any<IReadOnlyList<string>>(), null);
+    }
+
+    [Fact]
+    public async Task StillAnswers_WhenALaterCallNeverFinishes_WithoutTheModelThatStalled()
+    {
+        var fixture = new Fixture();
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Ceará poles have no supports.", "https://www.plonkit.net/brazil#u4vX", localKey: "u4vX")]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "pole supports"}""")))
+            .Then(Failure(ChatErrorCodes.TimedOut))
+            .Then(Answer("Ceará [3].", "b/model"));
+
+        var result = await fixture.AskAsync();
+
+        result.Value.Response.Text.Should().Be("Ceará [3].");
+        var rescue = fixture.Chat.Requests[2];
+        rescue.Tools.Should().BeNull();
+        rescue.ModelChain.Should().NotContain("a/model", "it had all the time a reply may take and did not answer");
+        rescue.ModelChain.Should().Contain("b/model", "the models behind it were never reached");
+        fixture.Catalog.Received(1).ReportFailure("a/model");
     }
 
     [Fact]
@@ -817,6 +964,9 @@ public sealed class AiAnswerLoopTests
 
         public ISpeciesRangeReader Species { get; } = Substitute.For<ISpeciesRangeReader>();
 
+        /// <summary>Draws no map unless a test says so: a substitute answers null.</summary>
+        public ISpeciesRangeMap SpeciesMap { get; } = Substitute.For<ISpeciesRangeMap>();
+
         public AiToolsConfiguration Tools { get; } = new();
 
         public FixedTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 10, 25, 12, 0, 0, TimeSpan.Zero));
@@ -828,6 +978,9 @@ public sealed class AiAnswerLoopTests
 
         /// <summary>How many of <see cref="Hits"/> the previous answer cited, as the handler says.</summary>
         public int Carried { get; init; }
+
+        /// <summary>The question asks for something the user does not know yet, as the handler says.</summary>
+        public bool LesserKnown { get; init; }
 
         public IReadOnlyList<KnowledgeHit> Hits { get; init; } =
         [
@@ -862,11 +1015,16 @@ public sealed class AiAnswerLoopTests
 
             var retrieval = Options.Create(new AiRetrievalConfiguration());
             var tools = Options.Create(Tools);
+            var countries = new KnowledgeCountryDirectory(Index, retrieval, Clock, NullLogger<KnowledgeCountryDirectory>.Instance);
             var toolbox = new AnswerToolbox(
                 Embedder,
                 Index,
                 Species,
-                new KnowledgeCountryDirectory(Index, retrieval, Clock, NullLogger<KnowledgeCountryDirectory>.Instance),
+                SpeciesMap,
+                Substitute.For<IRegionBoundaries>(),
+                Substitute.For<IRegionMapDrawer>(),
+                new MainGuideOverlap(Index, countries, retrieval, NullLogger<MainGuideOverlap>.Instance),
+                countries,
                 retrieval,
                 tools,
                 NullLogger<AnswerToolbox>.Instance);
@@ -882,7 +1040,7 @@ public sealed class AiAnswerLoopTests
                 NullLogger<AiAnswerLoop>.Instance);
 
             return loop.AnswerAsync(
-                new AnswerRequest(ConversationContext.Empty, question, [], Hits, Today, Clock.GetUtcNow(), Carried),
+                new AnswerRequest(ConversationContext.Empty, question, [], Hits, Today, Clock.GetUtcNow(), Carried, LesserKnown: LesserKnown),
                 CancellationToken.None);
         }
     }

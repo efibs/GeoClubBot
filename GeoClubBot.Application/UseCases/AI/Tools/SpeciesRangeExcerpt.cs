@@ -31,9 +31,28 @@ public static class SpeciesRangeExcerpt
     public static string SourceUrlOf(SpeciesRange range) =>
         $"https://www.gbif.org/species/{range.TaxonKey.ToString(CultureInfo.InvariantCulture)}";
 
+    /// <summary>
+    /// Said of the map when there is one, so the model knows what the excerpt's picture is. A
+    /// description, not an instruction: "cite this excerpt to show where the plant is found" came back
+    /// in an answer as "citing it will attach the map to this reply" (replay of 2026-11-11). That
+    /// pictures are shown by citing them is the system prompt's to say.
+    /// </summary>
+    private const string MapNote = "The picture is a map of these records.";
+
+    /// <summary>
+    /// The same of a map framed on one country, which shows the neighbours' records within the frame
+    /// too: said so the model does not read a state's worth of records into what lies across a border.
+    /// </summary>
+    private static string CountryMapNote(string country) =>
+        $"The picture is a map of its records in and around {country}; the counts above are for {country} alone.";
+
     /// <param name="askedName">The name the model asked about, to say how it was matched.</param>
     /// <param name="maxAreas">Most countries or regions listed, most records first.</param>
-    public static KnowledgeHit ToHit(SpeciesRange range, string askedName, int maxAreas)
+    /// <param name="mapUrl">
+    /// The link of a map of the records (<see cref="ISpeciesRangeMap"/>), or null. With one the excerpt
+    /// comes with a picture, attached like any guide's when the answer cites it.
+    /// </param>
+    public static KnowledgeHit ToHit(SpeciesRange range, string askedName, int maxAreas, string? mapUrl = null)
     {
         ArgumentNullException.ThrowIfNull(range);
 
@@ -72,16 +91,24 @@ public static class SpeciesRangeExcerpt
                 .Append(country is null ? " records in all)." : $" records in {country} in all).");
             text.AppendLine();
             text.Append(Caveat);
+
+            if (!string.IsNullOrWhiteSpace(mapUrl))
+            {
+                text.AppendLine();
+                text.Append(country is null ? MapNote : CountryMapNote(country));
+            }
         }
+
+        var hasMap = areas.Count > 0 && !string.IsNullOrWhiteSpace(mapUrl);
 
         return new KnowledgeHit(
             // The same species and scope is the same excerpt, so asking twice offers it once.
             DeterministicGuid.FromName("gbif", $"{range.TaxonKey}|{range.CountryCode}"),
             Score: 0f,
-            KnowledgeChunkKind.Text,
+            hasMap ? KnowledgeChunkKind.Image : KnowledgeChunkKind.Text,
             text.ToString(),
             SourceUrlOf(range),
-            ImageUrl: null,
+            ImageUrl: hasMap ? mapUrl : null,
             SourceTitle,
             Country: null,
             SectionPath: heading,

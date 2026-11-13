@@ -14,8 +14,11 @@ This document covers what it is, what it costs, how to turn it on, and what it d
 - **Reply to its answer** to ask a follow-up. No mention needed.
 - Several people can reply to the same answer. Each reply starts an independent branch, so two people
   digging into the same answer never see each other's follow-ups.
-- Answers cite the guides they used and attach the guide images they relied on. Pictures the bot has
-  copied are uploaded with the answer, so they show even when the bot's public address does not.
+- Answers cite the guides they used and attach the guide images they relied on, each under its
+  number and heading with a line saying what it shows. Pictures the bot has copied are uploaded with
+  the answer, so they show even when the bot's public address does not.
+- A question about where a plant grows gets a map of where it is recorded (see
+  [Tools](#tools-when-the-excerpts-are-not-enough)).
 - When the guides it was given only answer part of a question, the model can search them again in
   other words, read more of a guide, or look up where a plant grows (see [Tools](#tools-when-the-excerpts-are-not-enough)).
 - Each answer's footer names the model that produced it.
@@ -98,6 +101,7 @@ worth knowing:
 
 | Setting | Default | Why you would change it |
 |---|---|---|
+| `AI:ResponseTimeoutSeconds` | 90 | Longest a model may take to write one reply once the provider has started answering. One still going is cut off and demoted for a while, and other models are asked. Of 385 replayed replies that answered, the slowest ordinary one took 68 s; the two beyond that were a runaway of 63,000 tokens (145 s) and one of 180 s. Lower it to recover from a stalled model sooner (at 60 s the fallback nemotron-3.5-lightning, which needs 64–65 s, never answers); raise it to wait for slow models, keeping `AI:OverallTimeoutSeconds` well above it |
 | `AI:OpenRouter:DailyRequestBudget` | 45 | Raise to ~950 after the $10 top-up |
 | `AI:OpenRouter:PreferredModelPrefixes` | `["nvidia/nemotron-3-ultra", "nvidia/nemotron-3.5-super-vl"]` | Families to put first, **best first**: an earlier prefix outranks a later one. A preference orders the models that qualify; it never lets in one the size or uptime bar keeps out, and a preferred model that keeps failing still falls behind |
 | `AI:OpenRouter:BlockedModelIds` | the two Inkling models | Exclude a model that answers badly or refuses the bot, or one `/ai status` lists as excluded until restart |
@@ -110,21 +114,75 @@ worth knowing:
 | `AI:Ingestion:SourceOverallTimeoutSeconds` | 300 | Lower only if a guide host should be given up on sooner; it bounds a whole fetch, the download included |
 | `AI:Ingestion:MaxDocumentExportBytes` | 32 MB | Past this a Google Docs export is abandoned and the text-only export indexed instead |
 | `AI:Ingestion:MaxDeckExportBytes` | 512 MB | Past this a slide deck's text export is indexed instead (no pictures, notes or slide links). Decks are far heavier than documents: a median of 19 MB across the library's 41 indexed decks, 339 MB for the largest. A deck is held in memory while it is read |
+| `AI:Ingestion:DocumentPicturePixels` | 1600 | Longest side a Google document's pictures are downloaded at. Lower it to save disk (about 270 kB a picture at 1600) |
 | `AI:Ingestion:UnavailableRecheckDays` | 30 | How long a deleted or no-longer-shared source waits before it is checked again. The second check in a row that still finds it deleted removes its chunks |
 | `AI:Ingestion:MaxFailingRetriesPerRun` | 5 | How many sources whose last attempt failed one run retries. They are taken last, fewest failures first |
 | `AI:Ingestion:RemovedSourceGraceDays` | 30 | Days a source can go unlisted by every catalogue before its chunks leave the index; 0 keeps them |
+| `AI:CaptionSchedule` | `0 30 4 * * ?` | When a free vision model describes indexed pictures that have no words of their own. Before `IngestionSchedule`, so its share of the allowance is claimed first |
+| `AI:Captions:Enabled` | true | Turn describing off without touching what is stored |
+| `AI:Captions:MaxDailyBudgetPercent` | 20 | Ceiling on the shared daily counter while describing: one chat request a picture plus one embedding request a batch |
+| `AI:Captions:MaxPicturesPerRun` | 60 | Pictures described per run, whatever the allowance |
+| `AI:Captions:Version` | 1 | The generation of descriptions that is current. Raise it to describe everything again over the following runs |
+| `AI:Captions:MaxCaptionLength` | 400 | Longest description kept, in characters |
+| `AI:Captions:TimeoutSeconds` | 90 | How long one picture may take the model before the next model is asked |
+| `AI:Captions:ShowToMembers` | true | Show a description, marked "AI description", under a picture whose guide says nothing of it. Off, descriptions only serve search and the model |
+| `AI:Captions:MaxConsecutiveFailures` | 3 | Unusable or failed replies in a row before a run stops |
+| `AI:Tools:PlantIdentification:Enabled` | true | Name the plant in a screenshot with Pl@ntNet when the question asks what plant it shows. Does nothing without a key |
+| `AI:Tools:PlantIdentification:ApiKey` | empty | A free Pl@ntNet key (my.plantnet.org). **Set it in the stack**; empty leaves the feature off |
+| `AI:Tools:PlantIdentification:MinConfidence` | 0.25 | Score from which the best candidate is taken for the plant and looked up in GBIF; below it the candidates are offered as guesses |
+| `AI:Tools:PlantIdentification:MaxCandidates` | 3 | Candidates offered to the model |
+| `AI:Tools:PlantIdentification:MaxRequestsPerDay` | 450 | This bot's identifications a day, under Pl@ntNet's 500; counted in memory |
+| `AI:Tools:PlantIdentification:CacheHours` | 24 | How long an identification is kept by the screenshot's link |
+| `AI:Tools:PlantIdentification:RequestTimeoutSeconds` | 15 | Per request, the screenshot's download included |
+| `AI:Tools:PlantIdentification:MaxImageBytes` | 10 MB | Largest screenshot sent |
+| `AI:Tools:PlantIdentification:Project` / `Language` | `all` / `en` | Pl@ntNet's flora project and the language of the common names |
+| `AI:Tools:RegionMap:Enabled` | true | Attach a map of the regions an answer names. Needs the image relay |
+| `AI:Tools:RegionMap:ToolEnabled` | true | Let the model ask for a shaded map itself (`region_map`) |
+| `AI:Tools:RegionMap:BoundariesUrl` | Natural Earth 10m admin-1 GeoJSON | Downloaded once (about 40 MB) into `DataDirectory` |
+| `AI:Tools:RegionMap:DataDirectory` | `ai-data` | Where the boundaries file is kept (`/app/ai-data` in the container, the `ai-data` volume); delete the file to fetch it again |
+| `AI:Tools:RegionMap:SimplifyToleranceDegrees` | 0.01 | How far a boundary may be straightened when read |
+| `AI:Tools:RegionMap:MaxRegions` | 15 | Most regions on one map |
+| `AI:Tools:RegionMap:TimeoutSeconds` | 8 | Seconds the map after an answer may take |
+| `AI:Tools:RegionMap:CacheHours` | 24 | How long a drawn map is kept |
+| `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's rounds with the clues that point to each |
+| `AI:RoundReview:MaxRounds` / `ExcerptsPerRound` / `MaxExcerpts` | 10 / 3 / 12 | Rounds reviewed; excerpts searched per round and offered in all |
+| `AI:RoundReview:HighscoresLimit` | 100 | Places of the highscores read to find the player |
+| `AI:RoundReview:StreetViewGuesser:BaseUrl` | "" | GeoNN's `play.py` (`http://host:8765`); empty, reviews do without it |
+| `AI:RoundReview:StreetViewGuesser:Model` / `TimeoutSeconds` / `CountriesShown` | "" / 30 / 3 | GeoNN's model folder (empty: its newest), one round's deadline, countries shown per round |
+| `AI:KnowledgeGapsSchedule` | `0 0 8 ? * MON` | When old weak retrievals are forgotten and, with `PostReport`, the knowledge-gap report is posted |
+| `AI:KnowledgeGaps:RecordWeakRetrievals` | true | Record questions with a weak retrieval as they are asked |
+| `AI:KnowledgeGaps:RetentionDays` / `ReportDays` | 90 / 30 | How long a weak retrieval is kept; the period the report covers |
+| `AI:KnowledgeGaps:MaxGroups` / `ExamplesPerGroup` | 15 / 2 | Country-and-topic groups listed; example questions each |
+| `AI:KnowledgeGaps:PostReport` / `TextChannelId` | false / empty | Post the report weekly to a channel (needs the channel) |
+| `AI:ClueOfTheDaySchedule` | `0 0 17 * * ?` | When the clue of the day is posted, in `AI:ClueOfTheDayTimeZone` (`Europe/Berlin`; empty is UTC) |
+| `AI:ClueOfTheDay:Enabled` | false | Post a lesser-known clue with its picture on the schedule. Needs `TextChannelId` |
+| `AI:ClueOfTheDay:TextChannelId` | empty | The channel it is posted to |
+| `AI:ClueOfTheDay:NoRepeatDays` | 180 | Days before the same clue may be posted again |
+| `AI:ClueOfTheDay:ExcludeMainGuideClues` | true | Leave out clues PlonkIt has a tip like |
+| `AI:ClueOfTheDay:Draws` | 8 | Clues drawn per post to choose from |
+| `AI:ClueOfTheDay:Heading` | `🧭 **Clue of the day** — from *{{guide}}*` | What the post opens with |
+| `AI:Quiz:Enabled` | true | `/ai quiz`: a random captioned guide picture with the answer behind a spoiler |
+| `AI:Quiz:Draws` | 24 | Pictures drawn per question to find one with words of its own |
+| `AI:Quiz:OnlyInAllowedChannels` | true | Keep the quiz to `AI:AllowedChannelIds` when that list is set |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
 | `AI:Retrieval:QueryPlanner:Enabled` | `false` | Turn on to spend one more request per question on rewriting it; see [How a question becomes searches](#how-a-question-becomes-searches-measured-on-the-2026-10-23-feedback) |
 | `AI:Retrieval:CountryBoost:Weight` | 2 | How strongly a named country's guides are preferred |
 | `AI:Retrieval:CountryBoost:Aliases` | `{}` | Extra names for a country or region, e.g. `{ "sabah": ["Malaysia"] }` |
+| `AI:Retrieval:LesserKnown:Enabled` | `true` | Off treats "a clue I don't know yet" like any other question; see [Questions asking for something new](#questions-asking-for-something-new) |
+| `AI:Retrieval:LesserKnown:SameClueSimilarity` | 0.57 | How alike an excerpt and a PlonkIt tip must be to count as the same clue. Lower marks more |
+| `AI:Retrieval:LesserKnown:RandomPicks` | 6 | Picture clues drawn at random for a question asking for something new that names nothing to look for; they lead the excerpts. 0 draws none |
 | `AI:Tools:Enabled` | `true` | Off answers every question in one call |
 | `AI:Tools:MaxToolRounds` | 2 | Rounds of tool calls per answer; the call after the last one has to answer (1–6) |
 | `AI:Tools:MaxToolCallsPerRound` | 4 | Calls run per round; more are answered "not run" (1–8) |
 | `AI:Tools:AnswerDeadlineSeconds` | 90 | After this many seconds from the question, no more tools are offered (10–600) |
 | `AI:Tools:SpeciesRange:Enabled` | `true` | The GBIF plant-range tool (free, no key, no AI request) |
 | `AI:Tools:SpeciesRange:LookUpWhereQuestions` | `true` | Look the plant up before answering when a question asks where in the world it is found, rather than waiting for the model to call the tool |
+| `AI:Tools:SpeciesRange:MinRecordsInCountry` | 500 | Fewest records a plant needs in one country before its records there are offered for a question about that country |
+| `AI:Tools:SpeciesRange:Map:Enabled` | `true` | Draws the plant's records as a map and attaches it. Needs the image relay |
+| `AI:Tools:SpeciesRange:Map:BaseMapStyle` | `osm-bright-en` | GBIF's base-map style. This one names states and provinces; `gbif-light` is calmer and names nothing |
+| `AI:Tools:SpeciesRange:Map:TimeoutSeconds` | 8 | How long an answer waits for the map before going out without it |
 | `AI:ImageRelay:PublicBaseUrl` | empty | **Required for images from blocked hosts** — see below |
 | `AI:ImageRelay:MaxUploadBytesPerAnswer` | 8 MiB | Bytes of relayed pictures uploaded with one answer; pictures past it are linked. Keep it below the server's upload limit (10 MiB without boosts). 0 links every picture |
 | `AI:ImageRelay:MaxUploadBytesPerPicture` | 8 MiB | Largest single picture uploaded; a bigger one is linked |
@@ -241,6 +299,18 @@ but a JSON call of one of the bot's tools) is not an answer either, and is never
 (`ToolCallMarkupDetector`, `ai.tool_call_markup`). It never marks the model unfit: it is a good model
 mis-formatting, see [Tools](#tools-when-the-excerpts-are-not-enough).
 
+Nor is a reply that is no language at all (`GarbledTextDetector`). A provider serving a broken copy of
+a model returns a valid completion made of tokens from everywhere at once: on 2026-11-11
+nemotron-3-ultra, the model that answers most questions, replied
+`.reurs(.तuotfrac────ζ Beliaufu … ├── tomon0première WedługNuméroθ` three seconds after being asked
+for a clue. Nothing failed, so it would have been posted. The sign looked for is one no language
+produces: words whose letters change alphabet half-way ("तuotfrac", "WedługNuméroθ"). A reply with two
+or more of them, at least one word in twenty-five, is discarded and other models are asked; the model
+is **not** excluded, since the day before it had answered the same question well. A real answer quoting
+a Cyrillic place name or a Greek sign is untouched: those are words of their own, and scripts written
+without spaces (Chinese, Japanese, Korean, Thai, Lao, Khmer, Burmese) never count, since "JR東日本" runs
+Latin letters into them as a matter of course.
+
 Two failures look like a refused request or our own rate limit, but belong to one model. The response
 body tells them apart (`OpenRouterFailureClassifier`):
 - **403 "only available on agentic harnesses".** OpenRouter reserves some free models (the Inkling
@@ -252,6 +322,21 @@ body tells them apart (`OpenRouterFailureClassifier`):
   Only the first model is demoted, the retry goes to other models, and the resilience pipeline does not
   wait out the window for it.
 
+A third belongs to one model and looks like nothing at all: **a completion that opens and never ends**
+(`ai.model_timed_out`). OpenRouter answers a chat request at once — status and headers — and keeps the
+response open with blank padding while the model works. Refit takes a response at its headers and reads
+the body afterwards, so neither the client's timeout nor the pipeline's attempt timeout was still
+counting: on 2026-11-11 nemotron-3-ultra stalled mid-request and the response stayed open for 57
+minutes, then ended empty. In Discord that is "is typing" for an hour, with one of the
+`MaxConcurrentRequests` answer slots held throughout. `ResponseBodyDeadlineHandler` now reads every
+response from OpenRouter to its end inside the HTTP pipeline and gives up on a body that has not arrived
+`AI:ResponseTimeoutSeconds` (90) after its headers. It sits outside the resilience pipeline on purpose: the
+client's overall timeout still counts while the body is read, and the pipeline never sends the request
+again, which would only wait on the same model while spending the provider's daily requests. Only the
+first model is demoted — OpenRouter moves down the chain on an error, not on silence — and the question
+goes to other models, slow attempt or not. A later call of a tool-using answer that stalls is replaced
+by the last call without tools, asked of a chain without that model.
+
 When the first chain fails, or its answer is discarded, the question is retried once against models
 it has not tried yet. A chain whose first model gave a verdict still has two untried models, so they
 stay in play. The retry claims its own request from the daily allowance. It is skipped when:
@@ -260,7 +345,8 @@ stay in play. The retry claims its own request from the daily allowance. It is s
 - the provider refused the request as sent (a 4xx other than 408 or 429, such as a replayed
   screenshot whose Discord link has expired, but not the agentic-harness 403 above): it would fail the
   same way against any model. For the same reason the models are not demoted for it;
-- the first attempt was slow: a struggling provider would only double the wait;
+- the first attempt was slow: a struggling provider would only double the wait (a model cut off for
+  not finishing is the exception, see above: the provider had answered at once);
 - no untried model remains: this costs nothing, because the retry chain is read before its request is
   claimed.
 
@@ -321,10 +407,25 @@ pictures from one album are two attachments with two numbers.
 An excerpt can carry several pictures: identical text captioning several pictures of one slide is one
 excerpt. Its pictures are folded together only when they come from the same link and section; a
 picture whose text merely matches another guide's is dropped, never shown under the wrong guide.
-Discord merges consecutive embeds that share a URL into one gallery that shows only the first title,
-so pictures sharing a link are posted together under one title, "[1] Title (3 pictures)", or
-"[1][3] Title (2 pictures)" when two cited excerpts share it. A picture's title is its source line's
-label; PlonkIt pictures have no title of their own and used to read "Guide image".
+
+**Each cited excerpt's pictures are a gallery of their own.** Discord draws embeds that share a link
+as one embed, under the first one's title, with at most four pictures. Pictures used to be grouped by
+their guide's link and titled as the group they became: five clues cited from one Google Doc stood
+under "[2][3][4][5][6] 28 Secret US Metas (5 pictures)" — "it is hard to understand which image is
+which clue" — and the fifth was not drawn at all (2026-11-09). Now:
+- every excerpt's pictures get a link no other gallery has: the guide's, told apart by a `_=n` query
+  parameter placed before the fragment, so the link still opens at the section it names;
+- a gallery is titled with its number and the heading it is listed under beneath the answer
+  ("[2] USA · 28 Secret US Metas › Useful metas"), never the document's name alone, and with
+  "(3 pictures)" when it shows several;
+- under the title stands what the guide says the pictures show (`PictureCaption`: the start of the
+  excerpt's text, at most 200 characters, as plain text);
+- an excerpt with more than four pictures takes a second gallery ("pictures 5–7 of 7").
+
+Discord adds up the titles and descriptions of a message's embeds and refuses the whole message past
+6,000 characters. Every embed of a gallery carries the title, so ten pictures under long headings use
+a good part of that before any caption. Captions are therefore given in reading order while they fit;
+one that no longer fits is left out whole, and its pictures still stand under their heading.
 
 **Models cite in every style going, and all of them are understood**: `[2]`, `[image 2]`,
 `**[image 2]**`, `【image 2】` and `【2】`, `[1, 3, 5]`, `[7-8]`, `[^2]`, `【4:0†source】`, and a citation
@@ -387,6 +488,17 @@ reported, in the first round of feedback and in the 49 rated answers of 2026-10-
   of its own starting "Not from the guides:". "Say which part is not from the guides" alone was
   ignored: on 2026-10-29 unflagged claims ("Philippine roads typically have solid white outer edge
   lines") read as the guides' own; on 2026-10-30, 9 tools-on answers used the marker.
+
+The feedback of 2026-11-09 added four, which took the prompt from 510 to about 660 words:
+- **Show a clue, and never explain it from its name.** "Ohio gap" was answered as "a telltale gap in
+  pavement or road markings"; the guide says a gap in a road line at a raised pavement marker.
+- **Name the plant in a screenshot yourself.** Asked what cactus a screenshot showed, the model
+  answered with the Brazilian cactus of a look-alike slide: "it was South Africa", and "it did not
+  mention the species". A look-alike is a candidate, and its country is not the screenshot's.
+- **PlonkIt is what a player already knows**: see
+  [Questions asking for something new](#questions-asking-for-something-new).
+- **Practice maps.** Guides name GeoGuessr maps to practise on; their links are the one kind the
+  model may write.
 
 With tools offered, a short paragraph (`AnswerTools.SystemPrompt`) is added: see
 [Tools](#tools-when-the-excerpts-are-not-enough).
@@ -494,6 +606,53 @@ unless the planner runs. The probe's measured table for each step is in its
   - Key phrases search the chunks that contain the phrase literally. Without a full-text index that is
     a case-sensitive substring match, so their effect is small.
 
+#### Questions asking for something new
+
+"Tell me a reliable clue I don't know yet", "a good USA clue that is not on PlonkIt". To a player,
+"a clue I don't know" means one PlonkIt does not carry: it is the guide everybody has read. Asked
+exactly that on 2026-11-09, the bot was offered nine PlonkIt tips of ten, and answered three times
+running with clues PlonkIt has: Sikkim's metal poles, then two Ukrainian car metas ("Both Ukraine car
+metas are again on PlonkIt and I knew them very well"). The model is shown ten excerpts, not a guide,
+so it could not have known.
+
+- **`LesserKnownQuestion`** reads such a question by its shape ("not on PlonkIt", "I don't know yet",
+  "lesser-known", "obscure", "niche", "secret" …), and a follow-up keeps asking it: "give me another
+  one, maybe outside India" counts when one of the three questions before it on its branch did.
+- **PlonkIt's own tips are left out** of the search (`KnowledgeQuery.ExcludedSourceType`), and of the
+  model's tool searches unless it asks for `source: "plonkit"`.
+- **What other guides tell that PlonkIt tells too is marked** (`MainGuideOverlap`). Each excerpt is
+  compared with PlonkIt's tips for its country, under every spelling of the country, by the text
+  vector it already has: one read of the index, no embedding request. An excerpt at or above
+  `SameClueSimilarity` reads "(also on PlonkIt)" in the prompt, and the model is told to pass those
+  over. The excerpts carried from the previous answer are marked too.
+- **A question that names nothing to look for gets picture clues drawn at random** (`ClueSampler`,
+  `RandomPicks`). "Tell me a reliable clue I don't know yet" gives a search only its wording to go by,
+  and what is worded like it is no clue: replayed on 2026-11-11 it was offered a document's legend and
+  answered "the guide maps each meta by region, using dark red for where it's most common" — no clue,
+  and no picture, which the member had asked for. So when every word of the question is one a request
+  for a clue is made of (`LesserKnownQuestion.NamesNoSubject`: no country, no "bollard", no number, no
+  screenshot), the index draws picture chunks at random from every guide but PlonkIt
+  (`IKnowledgeIndex.SampleAsync`, Qdrant's own random sample). Kept are pictures with words of their
+  own — not a bare heading — one per guide, and not those PlonkIt has a tip like; `RandomPicks` of them
+  lead the excerpts, and what the search found fills the places left. The same question then got
+  raised lane-line tabs in Florida and Texas, with their picture. It costs no AI request, differs
+  each time it is asked, and a failed draw only means the question is answered from its search. A
+  follow-up ("another one please") is drawn for only when the questions before it named nothing
+  either: after "any lesser-known bollard clues?" it is still about bollards, and is searched.
+
+The bar was read off real pairs with the probe's `overlap` command (2026-11-10):
+
+| Pair | Similarity |
+|---|---|
+| Meghalaya's taxis, in a document and on PlonkIt | 0.83 |
+| Oregon's bollard ("28 Secret US Metas") | 0.69 |
+| Sikkim's metal poles | 0.61 |
+| Ukraine's flag car / leaf car (a slide's five-word caption) | 0.59 / 0.58 |
+| Two different tips of one country | up to about 0.55, the odd one-line remark 0.61 |
+
+At 0.57 about a ninth of one India document's chunks are marked, nearly all of them clues PlonkIt does
+carry. It errs towards marking: a clue wrongly passed over costs one candidate of many.
+
 ### Tools: when the excerpts are not enough
 
 The question is still retrieved and sent with its excerpts first. Alongside it, the model is offered
@@ -501,9 +660,10 @@ three tools (`Application/UseCases/AI/Tools/`). They used to be ruled out becaus
 support would exclude most free models; on 2026-10-23 all 17 free text-only, non-guardrail models
 advertised `tools`.
 
-- **`search_guides(query, country?, pictures_only?)`** runs the bot's own search (the same lists,
-  fusion and country boost) in the model's words. A named country is preferred, never required. It
-  returns up to 6 new excerpts.
+- **`search_guides(query, country?, pictures_only?, source?)`** runs the bot's own search (the same
+  lists, fusion and country boost) in the model's words. A named country is preferred, never required.
+  `source` reads PlonkIt alone (`"plonkit"`, to check whether it carries a clue) or every other guide
+  (`"other"`). It returns up to 6 new excerpts.
 - **`read_guide(excerpt)`** reads more of the guide excerpt n came from: the same section first, then
   sibling sections, then the sections it sits in, then the rest. It returns at most 8 chunks or 6,000
   characters, and skips pictures whose only text is a heading. "Neighbours" are exact only for Google
@@ -513,7 +673,12 @@ advertised `tools`.
   vernacular names ("khasi pine" → *Pinus kesiya*). Records are counted per country, or per state or
   province when a country is given (Yucca filifera in Mexico: Nuevo León 384, Zacatecas 247 …). The
   result is one citable excerpt linking `gbif.org/species/{key}`, and its text says these are
-  occurrence records, not abundance.
+  occurrence records, not abundance. It comes with a **map** of the records, attached when the answer
+  cites it (below).
+  - A common name that is no one species is read as the genus most species carrying it belong to:
+    "cholla" is 49 species of *Cylindropuntia* against 16 of *Grusonia*. A genus is taken with at
+    least 3 species and 60 % of those carrying the name, which leaves "pine", "bamboo" and "cactus"
+    unanswered, as they should be.
 
 **Plants are also looked up before the model answers** (`PlantRangeLookAhead`). Left to the model, the
 tool was called in none of the 49 replayed answers on 2026-10-30, through two rewordings of its
@@ -533,8 +698,34 @@ something else costs only a GBIF read or two.
   the top province, and none of the top eight in Negros, which grows most of it. Across the world the
   same counts do say where a plant is: Khasi pine in the Philippines, China, Thailand, India, Vietnam and
   Myanmar.
+- **A question about one country is looked up within it** ("where in the US can you see cholla?",
+  "where can I find tree yucca in Mexico?"), when the place is a country and GBIF holds at least
+  `MinRecordsInCountry` (500) records of the plant there. Below that the records say where somebody
+  looked: 308 of sugar cane in the Philippines, none of the top eight provinces in Negros, which grows
+  most of it. Such an excerpt follows the guides instead of leading them. Until 2026-11-10 a question
+  with the country between "where" and the verb was not read as a plant question at all.
 - A taxon with fewer than 25 records is not offered, and the lookup gives up after 6 s. GBIF failing
   never fails the question.
+
+**The map** (`GbifSpeciesRangeMap`). Members asked for it twice: "Please show the GBIF distribution",
+"I would have liked a distribution map". It is drawn from GBIF's own tiles, free and without a key:
+its base map (`tile.gbif.org`, from OpenStreetMap data, credited in the picture's footer) and over it
+the density of the species' records in hexagons, purple for few and yellow for many, a little
+translucent so the names under them still read.
+- The frame is the country counted (its mainland: the lower 48 states for the US, from
+  `CountryBounds`, computed from Natural Earth's public-domain outlines), or the countries holding at
+  least 5 % of the records each. A range that keeps to one part of the world is then cut down to
+  where its records are, and drawn again at a finer zoom when that leaves less than 1,000 pixels; the
+  world and a single country are shown whole.
+- GBIF's density tiles take one filter, and it is the species. A map framed on one country therefore
+  shows the neighbours' records within the frame too — cholla's map of the United States is purple
+  well into Mexico — and its title says "records in and around United States". The counts in the
+  excerpt's text are the country's alone.
+- The picture is stored in the image relay and uploaded with the answer like any relayed picture, so
+  it needs `AI:ImageRelay:PublicBaseUrl`. Maps are kept as long as the counts (`CacheHours`).
+- It takes about a second (12 to 30 small tile requests) and has `Map:TimeoutSeconds` (8); whatever
+  goes wrong, the range is offered in words.
+- Look at one with the probe: `map "khasi pine"`, `map cholla --country US`.
 
 Tool results are numbered excerpts that continue after the last number, in the prompt's own format.
 Anything already offered is skipped. They are cited, listed and attached like any other excerpt, and
@@ -609,6 +800,178 @@ where a long prompt led the model to misread an excerpt it already had. `species
 once, not even for the Khasi pine questions, although its description names that case; that is why
 plants are now [looked up before the model answers](#tools-when-the-excerpts-are-not-enough).
 
+### Naming the plant in a screenshot
+
+Asked "what kind of cactus is this?" with a screenshot, the free chat models named the species of a
+look-alike guide picture and gave that guide's country (2026-11-09 feedback). They cannot identify a
+plant reliably and cannot say how sure they are. **Pl@ntNet** can: an image-based plant identification
+service, free up to 500 identifications a day per account (reset at 00:00 UTC), commercial use allowed
+within that, attribution appreciated rather than required (their pricing FAQ and terms, read
+2026-11-12). The excerpt's source line reads "Pl@ntNet" and links to the service, which is the credit.
+
+`PlantIdentificationLookAhead` runs beside retrieval, like the GBIF look-ahead, when three things hold:
+`AI:Tools:PlantIdentification` is on **and has a key** (nothing is ever sent without one), the question
+comes with a picture — its own attachment, or the branch's latest screenshot for a follow-up like "and
+what tree is that?" — and the question asks what plant it shows (`PlantIdentificationQuestion`: a plant
+word plus "what … is this", "identify", "is this a …"). A question about bollards is not sent because a
+tree stands in the frame; each identification is one of the day's 500.
+
+`PlantNetPlantIdentifier` downloads the screenshot (JPEG or PNG, up to `MaxImageBytes`), posts it as a
+file to `POST /v2/identify/{Project}` with the key in the query, and reads the candidates with their
+scores, common names and GBIF keys. What comes back is offered first among the excerpts
+(`PlantIdentificationExcerpt`): the best candidate as *the* identification with its confidence when its
+score clears `MinConfidence` (0.25 — a Street View frame is a poor photograph, so a clear match scores
+0.3–0.6), as a guess below it, and the runners-up either way, so a member can tell a sure identification
+from a toss-up. A best candidate over the bar is also looked up in GBIF by its scientific name and its
+countries and map follow as a second excerpt, exactly as a "where" question gets them. The service's
+"Species not found" becomes an excerpt saying so, so the model does not name a look-alike. The system
+prompt tells the model to take the excerpt's identification and cite it.
+
+Answers are cached by the screenshot's link without its signature (`CacheHours`, 24), so the usual
+follow-up costs nothing. The adapter stops at its own `MaxRequestsPerDay` (450, counted in memory) before
+Pl@ntNet's 500, and once the service answers 429 it asks nothing more that day. In both cases the member
+is told beneath the answer (`AiAnswer.Notices`: "Plant identification (Pl@ntNet) has used today's
+allowance; the plant was judged from the picture alone."), as they are when the service cannot be
+reached; a guess must never pass for a lookup. A picture the service does not take (WebP, too large) is
+only logged. Pl@ntNet keeps the picture in memory for the identification and logs the request, not the
+image.
+
+### A map of the regions an answer names
+
+Answers often name first-level regions — "far north-eastern Vietnam: Lạng Sơn and Quảng Ninh" — and a
+player who does not know where those are learns little from the names. After the answer is written,
+`RegionLocator` reads it for region names and attaches a small map of their country with them coloured
+in, numbered after the last source and listed with the sources as a picture.
+
+- **Boundaries**: Natural Earth's 1:10m admin-1 states and provinces (public domain; the 1:50m file
+  covers only a dozen large countries). `NaturalEarthRegionBoundaries` downloads the GeoJSON (about
+  40 MB) once into `AI:Tools:RegionMap:DataDirectory` (`ai-data`), reads it on a background task
+  started at host start-up (`RegionBoundariesWarmup`) and keeps each region's names (English, local,
+  alternatives, the geonames one) and its outline, straightened by `SimplifyToleranceDegrees` (0.01°,
+  invisible on a country map, a tenth of the points). A country's ISO code comes from `iso_a2`, or from
+  the `iso_3166_2` prefix where Natural Earth writes `-1`. An answer never waits for the file: while it
+  loads, there is no map.
+- **Matching** (`RegionMention`, pure): the answer's and the question's countries come from the
+  guides' gazetteer, as retrieval finds them; for each (at most three) the answer's text is searched
+  for the country's region names — accents and case aside, whole words, the longest name winning
+  ("North Sumatra" is not Sumatra). Names that are plain words (Ghana's *Central*, *Northern*, many a
+  *Capital*) count only beside "region", "province" and the like. The country with the most regions
+  named gets the map; one map an answer, at most `MaxRegions` (15) regions on it.
+- **Drawing** (`RegionMapDrawer`): GBIF's base-map tiles framed on the country exactly as a species map
+  is (`SpeciesMapPlan.ForCountry`, the same `CountryBounds`), the outlines filled red over them, each
+  region labelled at Natural Earth's label point, the title and the credits (OpenStreetMap, OpenMapTiles,
+  GBIF, Natural Earth) underneath; stored in the image relay like the species maps, so it needs
+  `AI:ImageRelay:PublicBaseUrl`. Cached by country and regions for `CacheHours`.
+- **Shades for how common something is**: the model can ask for a map itself through the `region_map`
+  tool (`ToolEnabled`), giving each region a share from 0 to 1; the map shades them, darker where the
+  share is higher, labels each with its percentage, and its title says so. Its description tells the
+  model to call it when a clue is more common in some regions than in others, and not for regions named
+  in passing, which the map after the answer covers without a call. When the model asked for one, the
+  map after the answer is not drawn again.
+
+Everything here costs no AI request. The map after an answer has `TimeoutSeconds` (8); whatever fails,
+the answer goes out without it.
+
+### The clue of the day
+
+The lesser-known clues in the indexed guides are only seen when someone happens to ask the right
+question. `AiClueOfTheDayJob` (`AI:ClueOfTheDaySchedule`, read in `AI:ClueOfTheDayTimeZone`) posts one to
+`AI:ClueOfTheDay:TextChannelId` on a schedule; `/ai clue-now` posts one at once, in the configured channel
+or — `here: true` — in the channel the command is given in, which works before the feature is turned on.
+
+`PostClueOfTheDayCommand` draws clues the way a question for "a clue I don't know yet" does
+(`ClueSampler.DrawAsync(count, excludeMainGuideClues)`: random picture chunks of the guides other than
+PlonkIt, with words of their own, one per guide, those PlonkIt has a tip like left out while
+`ExcludeMainGuideClues` is on), takes the first not posted within `NoRepeatDays` (180; the posts are kept
+in `AiCluePosts`), and posts it shaped like an answer (`ClueOfTheDayPost`, pure): the `Heading` with the
+guide's title, the guide's own words of the picture (cut at a sentence past 900 characters), the picture
+as **[1]**, uploaded from the relay exactly as an answer's pictures are, and the guide cited beneath. The
+posting goes through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses the gateway's
+answer-posting code without a message to reply to. The post is recorded whether or not the message went
+out, so a failed post does not make the same clue the next day's. Costs no AI request.
+
+Off by default: a channel has to be chosen first (`Enabled` with no `TextChannelId` fails start-up
+validation). The schedule key must be present even while the feature is off, as every job's must.
+### `/ai quiz`
+
+A way to practise with the pictures the club has chosen to index. `/ai quiz [country] [lesser-known]`
+draws one captioned guide picture at random (`DrawQuizQuestionQuery`: `IKnowledgeIndex.SampleAsync`
+within the country when one is named — resolved through the guides' gazetteer, every spelling the index
+files it under tried — keeping only pictures with words of their own, `ClueSampler.IsAClue`; with
+`lesser-known`, PlonkIt's pictures and the clues PlonkIt has a tip like are left out) and posts it with
+the picture uploaded from the relay. The answer — the country the guide files it under, the guide and
+section, what the guide says of the picture, and the source link — sits behind **one spoiler**
+(`AiQuizFormatter`, pure). Three buttons follow: *I got it* and *I missed* record a score the member
+judges for themselves (`QuizStreaks`: streak, best streak and tally, in memory since the last restart —
+a quiz is practice, not a league), answered ephemerally; *Another* draws again with the same filters.
+Costs no AI request. `AI:Quiz:OnlyInAllowedChannels` keeps it to `AI:AllowedChannelIds` when that list
+is set.
+
+### Knowledge gaps: which guides to add
+
+Admins could not see which questions the index answers badly. Every question is judged as it is answered
+(`WeakRetrieval`, pure) and recorded in `AiRetrievalGaps` when its retrieval was weak, because the
+conversation itself is swept by retention:
+
+- **nothing found** — the index offered no excerpt at all;
+- **nothing from the country** — the question names one country (the guides' gazetteer, every spelling
+  the index files it under) and no excerpt offered was from it: the clearest sign a guide is missing;
+- **nothing cited** — excerpts were offered and the answer cited none of them.
+
+Fused scores are ranks, not similarities, so no score bar is used. Each record keeps the question (cut to
+500 characters), its country and its topic (`ChunkTopicClassifier`, the ingestion's own reading of
+"poles", "bollards", …). `/ai gaps [days]` (`ReadKnowledgeGapReportQuery`, admin) groups those records and
+the answers rated 👎 in the feedback archive (with their comments) by country and topic, largest group
+first, with a couple of example questions each (`KnowledgeGapReportText`, pure). `AiKnowledgeGapReportJob`
+(`AI:KnowledgeGapsSchedule`) forgets records past `RetentionDays` and, with `PostReport` and a
+`TextChannelId`, posts the same report weekly. Costs no AI request.
+
+### `/ai review`: a played challenge, round by round
+
+After a game a player sees where they were wrong, but not which clues would have told them.
+`/ai review [challenge]` (`ReviewRoundsCommand`) takes a challenge link or token — or, with none, the
+club's latest daily challenges — reads its highscores with the main club's account (as the country
+challenges are evaluated), finds the member's own game by their linked GeoGuessr account (`/link`), and
+reviews it:
+
+- Each round and guess is placed in a country and region. A round carries GeoGuessr's own
+  `streakLocationCode`; a guess never does (its field is always `null`), so the guess — and the round's
+  region — come from the Natural Earth boundaries (`IRegionBoundaries.LocateAsync`, point in polygon over
+  the admin-1 outlines the region maps use). Street View stands on the shore and the 10m outlines are
+  coarser than that (a round on Sri Lanka's Mannar Island lay 2 km off them), so a point inside no outline
+  goes to the nearest region within 0.1° (about 11 km); further out is the sea. The review can then say
+  "Lạng Sơn, Vietnam" and "you guessed Guangxi, China, 410 km away".
+- The highscores' shape was read live on 2026-11-13 (two challenges, 15 players; an anonymised copy is
+  `GeoClubBot.Tests/Fixtures/AI/geoguessr-challenge-highscores-20261113.json`): `game.rounds[]` has
+  `lat`, `lng`, `panoId` (hex-encoded: `GeoGuessrPanoId.Decode`), `heading`, `pitch`, `zoom`,
+  `streakLocationCode`, `startTime`; `game.player.guesses[]` has `lat`, `lng`, `timedOut`,
+  `timedOutWithGuess`, `skippedRound`, `roundScoreInPoints`, `distanceInMeters`, `time`; the game carries
+  `forbidMoving` / `forbidZooming` / `forbidRotating`. Every round field stays optional: a game without
+  them is reported as having no rounds rather than reviewed wrong.
+- **GeoNN** (optional, `AI:RoundReview:StreetViewGuesser`): the maintainer's own GeoGuessr model looks at
+  each round's panorama (`IStreetViewGuesser` → `GeoNnStreetViewGuesser`, `POST {BaseUrl}/api/predict` of
+  GeoNN's `scripts/play.py`, which fetches the panorama from Google itself), shown as the game showed it:
+  one view at the round's heading, pitch and zoom when rotating was forbidden (`nmpz`), else the whole
+  panorama (`nm`). Its likeliest countries go into the round's line ("GeoNN read the panorama as Kenya
+  94%, …"), and the model is told to use them only to say how plainly the round showed its country — sure
+  and right: the clues were there; unsure or wrong: a hard round — never as a source. A notice under the
+  review says GeoNN looked. All rounds are asked while the guides are searched; a round GeoNN cannot read
+  is reviewed without it. On 2026-11-13 (RTX A5000, model `v2`) a no-move challenge read 5 of 5 countries
+  right at 76–99 %, a pan-and-zoom NMPZ map 2 of 5 at under 40 % — that map aims the camera up or down and
+  zooms in, and its best player scored 9,973. About 0.7 s a round, 5 s for the first while the model loads.
+- The guides are searched once per round, within the round's country under every spelling the index
+  files it under ("How to recognise Lạng Sơn, Vietnam: distinctive clues of the region"), every round's
+  wording in **one** embedding request; the rounds take turns at the excerpts up to `MaxExcerpts` (12).
+- The model is asked once through the same answer loop a question goes through (`AiAnswerLoop`: tools,
+  screening, retries), with the rounds written out (`RoundReviewPrompt`, pure) and told to name, per
+  round, the clues that would have given the country and region and what sets the right country apart
+  from the guessed one, ending with what to practise first. Citations, pictures and the source list come
+  out as for an answer; the review is posted into the channel through `IAiChannelPublisher`.
+
+Cost: two requests of the day's allowance (the embedding and the completion), claimed up front, plus the
+tool rounds the model takes — the same as a question. GeoNN costs no request; it runs on the maintainer's
+own GPU, and without it the review works from the rounds' places alone.
+
 ### What goes into a vector
 
 A chunk is not embedded as written. It is prefixed with the country it applies to and what it is
@@ -659,6 +1022,37 @@ mean) are indexed too, and a guide's opening picture is captioned as its summary
 changed the chunk text of 137 of the 138 guides and added 147 chunks. Each guide is re-embedded when
 its re-check comes due: about 240 text requests and about 570 picture requests in all, since relayed
 pictures travel inline at about 0.5 MB each and only about 11 fit in one 8 MiB request.
+
+**Google Docs are read from their page.** Until 2026-11-10 a Doc was read from its archive export,
+whose pictures are the originals: "A Learnable Colombia" exports 218 MB for 171 pictures, and past
+`MaxDocumentExportBytes` (32 MB) the text export was indexed instead. Measured on production, that was
+**86 of the 185 indexed Docs without a single picture** — "A Unique USA" with its 1,044 among them —
+and it is what members rated down ("I would have liked an image", of a clue whose document had lost
+all of them). The Doc's mobile page (`/mobilebasic`) is the same document as half a megabyte to two of
+HTML, read in about a second, with each picture a link that serves it at the size asked for
+(`DocumentPicturePixels`, as a JPEG of about 270 kB). The archive and the text export remain, in that
+order, for a page that cannot be read. `GoogleDocHtml` reads either HTML:
+- **Sections nest as the headings do**, up to three deep: "A Unique USA › 7.20 Maryland (MD) › 7.20.1
+  Signs › State Route Shield". Filed under the nearest heading alone, the same "State Route Shield"
+  of every state said nothing of which state. A heading above the document's first is held at its
+  level (authors mixing two heading styles), and a bold line above a paragraph is a heading too
+  ("4. Oil Palms:"), taking the place of an open heading numbered like it ("Chapter 2" after "Chapter
+  1"). The text export knows headings only by a line's shape: where two stood together, the ocotillo's
+  range was filed without its name, and answered as the range of the cholla, and of the tree yucca.
+- **A picture takes the words around it, and they are no paragraphs of their own.** Guides are written
+  as cards: a title line, the picture, what it shows. The caption is the line above and, when that
+  only introduces the picture, the paragraph below if it speaks of the same thing or points back at
+  it; credits under a picture go with it; in a table row, the row's words. Captioned by its title
+  alone, a picture reached the model as "Ohio gap **", and the model made up the rest.
+- **A heading that can be linked to is** (`#heading=h.…`), so each cited section is a link of its own.
+- A picture under a heading three levels deep with no other words is described by the path, and no
+  longer counts as a heading-only picture.
+
+Look at how a Doc would be indexed, without indexing it, with the probe's `extract <link>`. **Every
+Google Doc is re-embedded once** after this release (its chunks and keys change): about 900 embedding
+requests in all for roughly 15,000 to 20,000 pictures, at 25 sources a night unless
+`/ai ingest source-type: gdoc force: true` is run. Downloading the pictures is paced at two requests a
+second, so the largest Doc takes about nine minutes. The relay's disk grows by a few gigabytes.
 
 **Google Doc section names.** A Doc that marks its sections with three or more heading elements is read
 by those alone, and a heading element is refused only when it is a URL, a credit or has no words. A Doc
@@ -839,6 +1233,9 @@ only contribute pictures when the relay is on.
 Stored images live in `AI:ImageRelay:Directory`, backed by the `ai-images` volume in `compose.yaml`
 so they survive a redeploy. Losing them would leave every stored image URL pointing at a 404 until
 the library was re-indexed, and answers would fall back to linking them, with a Warning per picture.
+The region maps' Natural Earth outlines are kept the same way, in `/app/ai-data` on the `ai-data`
+volume; without it they are only downloaded again (about 40 MB) after a redeploy. Both folders are
+created in the image, owned by the app's user, so a new named volume mounted over them is writable.
 
 **What the endpoint deliberately does not do.** `GET /api/v1/ai/images/{hash}` is anonymous, because
 neither fetcher can carry a credential. It serves *only* bytes already written to disk during
@@ -875,7 +1272,7 @@ After that a nightly job drains the queue on its own.
 | plonkit.net country guides | Full text **and** images. Discovered from the site's own sitemap (~157 pages). Each tip is one chunk: its prose and its one picture, under the guide's divider and subsection titles. Captioned pictures and the prose between tips are indexed too; videos and navigation buttons are not. |
 | rmrg.me country guides | Full text **and** images. Discovered from the site's own sitemap (13 guides). Fewer countries than plonkit and far more detail in each — ~30–180 clues per country, every one a picture paired with the prose describing it. Its images need no relay entry: they are served to anyone who asks. Both the original markup and the redesign live since October 2026 are read; the redesign's picture URLs carry a site-wide release token, so they are stored by the stable `rmrg.me/guides/{path}?v=<guide's update date>` address instead, or every site deploy would re-embed every picture. |
 | imgur albums | Infographics — often the most useful artefact for a meta. Images indexed. |
-| Google Docs | Text, plus embedded images when the relay is configured. An export too large to take — 332 MB for one library document, and Google refuses to build some at all — is indexed as text only. |
+| Google Docs | Text under its nested headings, plus its pictures when the relay is configured, each captioned by the words around it. Read from the document's mobile page, so no document is too large; the archive export and then the text export are read only when the page cannot be. |
 | Google Slides | Text, speaker notes, and embedded images when the relay is configured. A deck Google refuses to export (413) or larger than `MaxDeckExportBytes`, and every deck when the relay is off, is indexed from its text export instead: no pictures, speaker notes or slide links. |
 | Google Sheets | Rows grouped into blocks, each carrying the header. |
 | Direct image links | Captioned from the catalogue entry. |
@@ -908,6 +1305,55 @@ fewest failures first, and at most `MaxFailingRetriesPerRun` of them per run, so
 links cannot crowd out work that will succeed. A source a sync stops listing is tombstoned rather than
 deleted; after `RemovedSourceGraceDays` its chunks are removed from the index.
 
+### Descriptions for pictures without words
+
+Many guide pictures carry no caption and no prose around them: a Google document's picture under a
+bare heading, a slide of nothing but a photograph. Such a chunk's text is its guide's title or its
+section path, which a written question never matches, and when a picture like that is shown the
+answer cannot say what it shows — the model knows a picture only by its text.
+
+A free vision model describes them. Each picture whose only words are a short heading
+(`PictureWords.IsOnlyAHeading`, the same rule retrieval demotes such pictures by) is flagged
+`captionWanted` when it is written. `CaptionPicturesCommand` — the `PictureCaptionJob` at
+`AI:CaptionSchedule` (04:30 UTC, before indexing), or `/ai describe-pictures` — reads flagged pictures
+that have no description of the current `AI:Captions:Version`, sends each inline to the best free
+model that reads pictures (`ChatModelRequirements.NeedsImageInput`, the same ranking a screenshot
+question uses), and stores what comes back as `generatedCaption` on the point, with the version. The
+prompt (`PictureCaptionPrompt`) asks for what a player recognises a place by — poles, bollards,
+signs, script, vegetation, what a map highlights — in at most 60 words, and forbids guessing the
+country, since a guessed one would be searched and shown as if the guide had said it. A reply that is
+a refusal, a safety verdict or token soup is not stored, and the picture waits for another run; after
+`MaxConsecutiveFailures` (3) such replies in a row the run stops, because the model is not describing
+anything today.
+
+Descriptions are embedded: the group's text vectors are rewritten with the description appended to
+the chunk's text (`EmbeddingTextBuilder`, the same recipe a fresh ingest uses), so a question about
+"a white bollard with a red band" now finds a picture that had only "Tunisia" to its name. The one
+embedding request a group of 32 costs is claimed *before* any picture of the group is asked about, so
+a description paid for always gets its vector. A re-ingest of the guide keeps the descriptions of
+pictures whose URL has not changed (`ReadGeneratedCaptionsAsync`), because each cost a request.
+
+What the model and the member see:
+
+- The answering model is shown the description inside the excerpt, after the guide's own text and
+  marked `(AI description of the picture, not the guide's words: …)`, so it can say what a picture
+  shows without quoting the description as the guide's.
+- A member sees it under a picture only when the guide itself says nothing of it, prefixed
+  **AI description:** — and only while `AI:Captions:ShowToMembers` is on. Off, descriptions still make
+  pictures findable and inform the model, and nothing generated is ever shown.
+- A described picture is no longer "heading-only" for retrieval's demotion, the clue sampler or the
+  read-guide tool (`KnowledgeHit.IsUndescribedPicture`); `IsHeadingOnlyPicture` still says what the
+  guide's own words amount to.
+
+Cost and pace: one chat request a picture plus one embedding request a batch, claimed against
+`AI:Captions:MaxDailyBudgetPercent` (20%) of the shared daily counter. The job runs before indexing so
+its share is claimed first; indexing then claims up to its own 60% ceiling and answers have what is
+left. At `MaxPicturesPerRun` 60 a night, a few thousand flagged pictures take a couple of months, which
+is the point of the pace: `/ai describe-pictures count:…` goes faster when the allowance allows, and
+`/ai status` shows what the day has spent. Raising `Version` re-describes everything over the following
+runs — after a prompt change, or once a better free vision model is around. `Enabled: false` stops the
+job and the command without touching what is stored.
+
 ### When a source cannot be read
 
 Every extractor classifies a failed fetch the same way (`SourceFetch`), and the run acts on each kind
@@ -919,7 +1365,7 @@ every night.
 | 404 / 410: deleted. Google answers 410 on every endpoint of a deleted file; imgur answers 200 with an empty list | Unavailable | Checked again after `UnavailableRecheckDays`. The second check in a row that still finds it deleted removes its chunks, so answers stop citing a dead link |
 | 401 / 403 from Google: not shared publicly | Unavailable | Checked again after `UnavailableRecheckDays`, and back by itself once shared again. Its chunks are kept |
 | 401 / 403 from a guide site (PlonkIt, rmrg, imgur) | Left untouched | The site refuses us as a whole, so the rest of that host is left for the next run |
-| 413, or an export over the size cap | Docs and Slides: text export indexed. Others: Skipped | Text only, no pictures |
+| 413, or an export over the size cap | Slides: text export indexed. Docs: only reached when the page could not be read; then the text export. Others: Skipped | Text only, no pictures |
 | 429 after the retries, or the circuit breaker is open | Left untouched | The rest of that host is left for the next run; the source keeps its place in the queue, and its slot goes to other hosts' sources |
 | 5xx / 408 / timeout | Failed | Retried with backoff (2, 4, 8 … 64 hours). Docs and Slides read the text export meanwhile; if pictures are already indexed they are kept and the attempt counts as failed |
 | Read, but not a guide or empty | Skipped | Not retried until `/ai source-retry` |
@@ -1009,7 +1455,16 @@ runs re-embed them.
   contradicted an excerpt it already had ("Roraima Antenna common" read as "no antenna"), where the
   same model without tools read it correctly.
 - **Species counts are records, not abundance**: observation effort, herbaria, gardens and plantations
-  all count.
+  all count, and the map shows the same records. Crops are hardly recorded at all, which is why a
+  plant needs `MinRecordsInCountry` records before a country question is answered from them.
+- **A picture's caption is read from the layout, not seen.** `GoogleDocHtml` decides by the lines
+  around a picture which of them describe it. A picture nobody describes in words (a map under "Ex:
+  Silver car" and "Credits to cron") is still found only by what stands near it and by its pixels.
+- **"Also on PlonkIt" is a similarity, not a reading.** Two different clues of one state that share
+  their words can be marked (North Carolina's white lines beside its white signs), and a clue PlonkIt
+  tells in other words can be missed.
+- **A screenshot's plant is named by a free vision model**, which can be wrong; the GBIF lookup then
+  shows where that guess grows.
 - **The planner still guesses countries** for questions that name none (Khasi pines → India), and
   vocabulary misses remain: Mongolia's "four band / open tent" against the guide's "4 straps / open
   zipper". Literal phrases would need a full-text index on `text`, which is not created on an existing
@@ -1052,12 +1507,18 @@ runs re-embed them.
 | An answer reads `User Safety: safe` | A safety classifier answered and screening did not recognise the format — add the model named in the footer to `AI:OpenRouter:BlockedModelIds` |
 | Log: "… is excluded until restart" | A model answered with a classifier's verdict and was caught by its answer; `/ai status` lists it. Add it to `AI:OpenRouter:BlockedModelIds` to keep it out after a restart |
 | "The AI model I reached couldn't give a real answer" | Both attempts came back as something that is not an answer; the log names the models |
+| "The AI model I tried took too long to answer", or the log says "… did not finish its completion" | A model began a reply and stalled, or was simply slow; it was cut off after `AI:ResponseTimeoutSeconds`, demoted for a while, and other models were asked. The member sees the message only when the models asked next failed too. If replies you would have waited for are cut off, raise the setting, and keep `AI:OverallTimeoutSeconds` well above it |
+| Log: "… returned garbled text — words that change alphabet half-way" | A provider served token soup as a valid completion; the reply was discarded and other models asked. Nothing to do unless one model does it often: then add it to `AI:OpenRouter:BlockedModelIds` |
 | Text or a source label shows `&##128128;` where an emoji belongs | Indexed before emoji were decoded correctly (HtmlAgilityPack's `DeEntitize` cannot decode them; `HtmlText.Decode` replaced it). The guide's text changed, so it re-embeds at its next re-check; `/ai ingest force: true` does it sooner |
 | `/ai ingest` stopped early, "kept rate-limiting" | Something else is using the same API key — check for a dev instance with the production key |
 | Indexing is slow even after the $10 top-up | `MaxSourcesPerRun` caps each run at 25 sources; raise it |
 | Image search misses pictures that should be indexed | Run `/ai backfill-images` once; images lost before failed batches were retried are re-queued |
 | A guide has no images at all, but its text is indexed | Its pictures are vectors (`.svgz`), which no part of this pipeline can use — expected, not a fault |
-| A Google Doc is indexed but has no images | Its export was too large to take, or Google refused to build it; the text is indexed and the log says so at Information |
+| A Google Doc is indexed but has no images | It was indexed before Docs were read from their page: it is re-read at its next check, or at once with `/ai ingest source-type: gdoc force: true`. If it still has none, its page could not be read and its archive was too large; the log says so |
+| Log: "Stopped downloading the pictures of Google document …" | Five pictures in a row failed, or Google answered 429. What was read is indexed and the rest left for a later run; a copy already indexed with its pictures is kept |
+| Log: "The page of Google document … holds no document" | The page answered with something else (an uploaded Office file, a sign-in form); the exports were read instead |
+| A plant question got no map | The plant has fewer than `MinRecordsInCountry` records in the country asked about, the relay has no `PublicBaseUrl`, or the log says "The GBIF map of … took over 8 s" / "could not be drawn" |
+| Log: "The question asks for something the user does not know yet …" | Informational: PlonkIt's tips were left out of that question's search |
 | "The archive export of Google document … failed" or "The PowerPoint export of Google Slides deck … failed" | Google timed out or failed building the export. The text is indexed instead; a source that already has pictures keeps them, and the attempt is retried with backoff |
 | `/ai sources` shows a guide Unavailable, "no longer exists (HTTP 410)" | Its owner deleted it. Nothing to do: it is rechecked every `UnavailableRecheckDays` and its chunks are removed on the second check |
 | Unavailable, "not publicly readable (HTTP 403)" | Its owner stopped sharing it. It comes back by itself within `UnavailableRecheckDays` of being shared again, or at once with `/ai source-retry key:<type:key>` |

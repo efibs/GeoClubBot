@@ -62,6 +62,9 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
         if (collections.Any(name => name == collectionName))
         {
+            // Added after the production collection was created, so they are ensured on an existing one
+            // too. Creating an index that exists is a no-op to Qdrant.
+            await EnsureCaptionIndexesAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -87,7 +90,32 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
                 schemaType: PayloadSchemaType.Keyword,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
+
+        await EnsureCaptionIndexesAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Indexes for the describing run's scroll: which pictures want a description, and which generation
+    /// of one they have. Without them each run scanned the whole collection.
+    /// </summary>
+    private async Task EnsureCaptionIndexesAsync(CancellationToken cancellationToken)
+    {
+        await client.CreatePayloadIndexAsync(
+            collectionName: collectionName,
+            fieldName: CaptionWantedKey,
+            schemaType: PayloadSchemaType.Bool,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        await client.CreatePayloadIndexAsync(
+            collectionName: collectionName,
+            fieldName: CaptionVersionKey,
+            schemaType: PayloadSchemaType.Integer,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    private const string CaptionWantedKey = "captionWanted";
+    private const string CaptionVersionKey = "captionVersion";
+    private const string GeneratedCaptionKey = "generatedCaption";
 
     public Task UpsertAsync(
         IReadOnlyList<KnowledgePoint> points,
@@ -127,6 +155,12 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         CancellationToken cancellationToken = default)
     {
         var filter = BuildFilter(query.Country, query.SourceType, ingestRun: null, sourceKey: null, query.ChunkKind);
+        if (!string.IsNullOrWhiteSpace(query.ExcludedSourceType))
+        {
+            filter ??= new Filter();
+            filter.MustNot.Add(KeywordCondition("sourceType", query.ExcludedSourceType));
+        }
+
         var searches = new List<(QueryPoints Search, double Weight, string Name)>();
 
         // The boosts narrow the hard filter rather than replace it, so /ai search's country still holds.
@@ -280,6 +314,99 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         ];
     }
 
+    public async Task<IReadOnlyDictionary<Guid, KnowledgeHit>> ReadNearestOfSourceAsync(
+        IReadOnlyList<KnowledgeHit> hits,
+        string sourceType,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? countrySpellings = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Only what the index holds can be searched by: a tool's result (a species range) has no vector.
+        var asked = hits
+            .Where(hit => hit.Id != Guid.Empty && !string.IsNullOrWhiteSpace(hit.SourceType) && !string.IsNullOrWhiteSpace(hit.SourceKey))
+            .DistinctBy(hit => hit.Id)
+            .ToList();
+
+        if (asked.Count == 0 || string.IsNullOrWhiteSpace(sourceType))
+        {
+            return new Dictionary<Guid, KnowledgeHit>();
+        }
+
+        var searches = asked.Select(hit => new QueryPoints
+        {
+            CollectionName = collectionName,
+            // The chunk's own stored text vector, so nothing is embedded.
+            Query = hit.Id,
+            Using = TextVectorName,
+            Filter = InCountryOf(hit, sourceType, countrySpellings),
+            Limit = 1,
+            WithPayload = new WithPayloadSelector { Enable = true },
+            Params = new SearchParams { Exact = true }
+        }).ToList();
+
+        var results = await client.QueryBatchAsync(collectionName, searches, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var nearest = new Dictionary<Guid, KnowledgeHit>();
+        for (var index = 0; index < asked.Count && index < results.Count; index++)
+        {
+            if (results[index].Result.FirstOrDefault() is { } point)
+            {
+                nearest[asked[index].Id] = ToHit(point);
+            }
+        }
+
+        return nearest;
+    }
+
+    public async Task<IReadOnlyList<KnowledgeHit>> SampleAsync(
+        KnowledgeSample sample,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+
+        if (sample.Limit <= 0)
+        {
+            return [];
+        }
+
+        var filter = BuildFilter(sample.Country, sourceType: null, ingestRun: null, sourceKey: null, sample.Kind) ?? new Filter();
+        if (!string.IsNullOrWhiteSpace(sample.ExcludedSourceType))
+        {
+            filter.MustNot.Add(KeywordCondition("sourceType", sample.ExcludedSourceType));
+        }
+
+        // The store's own random draw (Qdrant 1.11 and later): no vector to search by, so nothing is embedded.
+        var points = await client.QueryAsync(
+            collectionName,
+            query: new Query { Sample = Sample.Random },
+            filter: filter,
+            limit: (ulong)sample.Limit,
+            payloadSelector: true,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        // A draw has no ranking: whatever number the store attaches is not a similarity.
+        return [.. points.Select(ToHit).Where(hit => hit.Id != Guid.Empty).Select(hit => hit with { Score = 0f })];
+    }
+
+    /// <summary>The chunks of a source type filed under a hit's country, however that country is spelt; all of them for a hit with none.</summary>
+    private static Filter InCountryOf(
+        KnowledgeHit hit,
+        string sourceType,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? countrySpellings)
+    {
+        var filter = BuildFilter(country: null, sourceType, ingestRun: null, sourceKey: null)!;
+        if (string.IsNullOrWhiteSpace(hit.Country))
+        {
+            return filter;
+        }
+
+        return WithCountries(
+            filter,
+            countrySpellings is not null && countrySpellings.TryGetValue(hit.Country, out var spellings) && spellings.Count > 0
+                ? spellings
+                : [hit.Country]);
+    }
+
     public async Task<int> SweepAsync(
         string sourceType,
         string sourceKey,
@@ -430,6 +557,181 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             .ThenBy(source => source.SourceKey, StringComparer.Ordinal)];
     }
 
+    public async Task<IReadOnlyList<KnowledgeHit>> ReadPicturesWantingCaptionAsync(
+        int version,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0 || !await CollectionExistsAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return [];
+        }
+
+        var hits = new List<KnowledgeHit>(limit);
+        var offset = default(PointId);
+        do
+        {
+            var page = await client.ScrollAsync(
+                collectionName: collectionName,
+                filter: WantingCaption(version),
+                limit: (uint)Math.Min(limit - hits.Count, ScrollPageSize),
+                payloadSelector: true,
+                vectorsSelector: false,
+                offset: offset,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            hits.AddRange(page.Result
+                .Select(point => ToHit(point.Id, score: 0f, point.Payload))
+                .Where(hit => hit.Id != Guid.Empty));
+
+            offset = page.NextPageOffset;
+        }
+        while (offset is not null && hits.Count < limit);
+
+        return hits;
+    }
+
+    public async Task<long> CountPicturesWantingCaptionAsync(int version, CancellationToken cancellationToken = default)
+    {
+        if (!await CollectionExistsAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return 0;
+        }
+
+        return (long)await client.CountAsync(collectionName, WantingCaption(version), exact: true, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task WriteCaptionsAsync(IReadOnlyList<PictureDescription> descriptions, CancellationToken cancellationToken = default)
+    {
+        if (descriptions.Count == 0)
+        {
+            return;
+        }
+
+        // Only points still there: a guide re-indexed between the read and this write may have swept
+        // one, and Qdrant refuses a payload write to an id it does not hold rather than skipping it.
+        var existing = (await client.RetrieveAsync(
+                collectionName,
+                [.. descriptions.Select(description => new PointId { Uuid = description.Id.ToString() })],
+                withPayload: false,
+                withVectors: false,
+                cancellationToken: cancellationToken).ConfigureAwait(false))
+            .Select(point => Guid.TryParse(point.Id?.Uuid, out var id) ? id : Guid.Empty)
+            .ToHashSet();
+
+        descriptions = [.. descriptions.Where(description => existing.Contains(description.Id))];
+        if (descriptions.Count == 0)
+        {
+            return;
+        }
+
+        // The payload first, so a point that lost its vector update still carries its description;
+        // the vector is only how well a question finds it.
+        foreach (var description in descriptions)
+        {
+            await client.SetPayloadAsync(
+                collectionName,
+                new Dictionary<string, Value>
+                {
+                    [GeneratedCaptionKey] = description.Caption.Text,
+                    [CaptionVersionKey] = description.Caption.Version
+                },
+                description.Id,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        var vectors = descriptions
+            .Where(description => description.TextVector is not null)
+            .Select(description => new PointVectors
+            {
+                Id = new PointId { Uuid = description.Id.ToString() },
+                Vectors = new Dictionary<string, float[]> { [TextVectorName] = description.TextVector!.Value.ToArray() }
+            })
+            .ToList();
+
+        if (vectors.Count > 0)
+        {
+            await client.UpdateVectorsAsync(collectionName, vectors, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task<IReadOnlyList<StoredPictureCaption>> ReadGeneratedCaptionsAsync(
+        string sourceType,
+        string sourceKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await CollectionExistsAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return [];
+        }
+
+        var filter = BuildFilter(country: null, sourceType, ingestRun: null, sourceKey, KnowledgeChunkKind.Image)!;
+        filter.Must.Add(new Condition
+        {
+            Field = new FieldCondition { Key = CaptionVersionKey, Range = new Qdrant.Client.Grpc.Range { Gte = 1 } }
+        });
+
+        var payloadSelector = new WithPayloadSelector
+        {
+            Include = new PayloadIncludeSelector { Fields = { "imageUrl", GeneratedCaptionKey, CaptionVersionKey } }
+        };
+
+        var captions = new List<StoredPictureCaption>();
+        var offset = default(PointId);
+        do
+        {
+            var page = await client.ScrollAsync(
+                collectionName: collectionName,
+                filter: filter,
+                limit: ScrollPageSize,
+                payloadSelector: payloadSelector,
+                vectorsSelector: false,
+                offset: offset,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            foreach (var point in page.Result)
+            {
+                if (Guid.TryParse(point.Id?.Uuid, out var id))
+                {
+                    captions.Add(new StoredPictureCaption(
+                        id,
+                        NullIfEmpty(ReadString(point.Payload, "imageUrl")),
+                        new GeneratedCaption(ReadString(point.Payload, GeneratedCaptionKey), (int)ReadInteger(point.Payload, CaptionVersionKey))));
+                }
+            }
+
+            offset = page.NextPageOffset;
+        }
+        while (offset is not null);
+
+        return captions;
+    }
+
+    /// <summary>
+    /// Pictures flagged as wanting a description that have none of <paramref name="version"/> or later.
+    /// A point never described has no version at all, which the must-not range leaves in.
+    /// </summary>
+    private static Filter WantingCaption(int version) =>
+        new()
+        {
+            Must =
+            {
+                KeywordCondition("chunkKind", "image"),
+                new Condition { Field = new FieldCondition { Key = CaptionWantedKey, Match = new Match { Boolean = true } } }
+            },
+            MustNot =
+            {
+                new Condition { Field = new FieldCondition { Key = CaptionVersionKey, Range = new Qdrant.Client.Grpc.Range { Gte = version } } }
+            }
+        };
+
+    private async Task<bool> CollectionExistsAsync(CancellationToken cancellationToken)
+    {
+        var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        return collections.Any(name => name == collectionName);
+    }
+
     private QueryPoints BuildSearch(ReadOnlyMemory<float> vector, string vectorName, Filter? filter, bool exact)
     {
         var search = new QueryPoints
@@ -474,7 +776,12 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             ["sectionPath"] = chunk.SectionPath ?? string.Empty,
             ["author"] = chunk.Author ?? string.Empty,
             ["priority"] = chunk.Priority,
-            ["ingestRun"] = ingestRun
+            ["ingestRun"] = ingestRun,
+            // Decided at write time and stored, so the describing run scrolls a flag instead of
+            // reading every picture's text.
+            [CaptionWantedKey] = chunk.WantsCaption,
+            [GeneratedCaptionKey] = chunk.GeneratedCaption ?? string.Empty,
+            [CaptionVersionKey] = chunk.CaptionVersion
         };
 
         var vectors = new Dictionary<string, float[]> { [TextVectorName] = point.TextVector.ToArray() };
@@ -605,7 +912,16 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             // Where the chunk came from, so the rest of its guide can be read back.
             NullIfEmpty(ReadString(payload, "sourceType")),
             NullIfEmpty(ReadString(payload, "sourceKey")),
-            NullIfEmpty(ReadString(payload, "localKey")));
+            NullIfEmpty(ReadString(payload, "localKey")))
+        {
+            // Null when never described; empty when described and the model could not say.
+            GeneratedCaption = payload.ContainsKey(CaptionVersionKey) && ReadInteger(payload, CaptionVersionKey) > 0
+                ? ReadString(payload, GeneratedCaptionKey)
+                : null
+        };
+
+    private static long ReadInteger(IReadOnlyDictionary<string, Value> payload, string key) =>
+        payload.TryGetValue(key, out var value) && value.KindCase == Value.KindOneofCase.IntegerValue ? value.IntegerValue : 0;
 
     /// <summary>
     /// Reads a payload string defensively. A point written by an older schema version is missing keys

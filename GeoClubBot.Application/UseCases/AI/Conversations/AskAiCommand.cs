@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using Configuration;
+using Entities;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.AI.KnowledgeGaps;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
 using Utilities;
@@ -32,13 +34,15 @@ public sealed record AskAiCommand(
 /// shows pictures sharing a link as one grid under one title, so this only tells their files apart.
 /// </param>
 /// <param name="Count">How many of its excerpt's pictures are attached.</param>
+/// <param name="Caption">What the guide says the picture shows, in a line; null when only its title does.</param>
 public sealed record AiAnswerImage(
     int Marker,
     string ImageUrl,
     string SourceUrl,
     string? Title,
     int Position = 1,
-    int Count = 1);
+    int Count = 1,
+    string? Caption = null);
 
 /// <param name="Marker">
 /// The number the answer's prose cites, so the two line up — or <c>null</c> when the model cited
@@ -81,7 +85,14 @@ public sealed record AiAnswer(
     IReadOnlyList<string> CitedSourceUrls,
     IReadOnlyList<AiToolCallSummary>? ToolCalls = null,
     IReadOnlyList<Guid>? OfferedChunkIds = null,
-    IReadOnlyList<Guid>? CitedChunkIds = null);
+    IReadOnlyList<Guid>? CitedChunkIds = null)
+{
+    /// <summary>
+    /// Lines for the member beneath the answer about what could not be done for it — the day's plant
+    /// identifications spent, the service unreachable — so a plain guess is never taken for a lookup.
+    /// </summary>
+    public IReadOnlyList<string> Notices { get; init; } = [];
+}
 
 public sealed partial class AskAiHandler(
     IAiConversationRepository conversations,
@@ -92,15 +103,25 @@ public sealed partial class AskAiHandler(
     IChatModelClient chatClient,
     AiAnswerLoop answerLoop,
     PlantRangeLookAhead plantRange,
+    PlantIdentificationLookAhead plantIdentification,
+    RegionLocator regionLocator,
+    MainGuideOverlap mainGuide,
+    ClueSampler clueSampler,
     KnowledgeCountryDirectory countryDirectory,
     QueryPlannerPause plannerPause,
     IOptions<AiConfiguration> aiConfiguration,
     IOptions<AiConversationConfiguration> conversationConfiguration,
     IOptions<AiRetrievalConfiguration> retrievalConfiguration,
+    IOptions<AiCaptionsConfiguration> captionsConfiguration,
+    IOptions<AiKnowledgeGapsConfiguration> gapsConfiguration,
+    IAiRetrievalGapRepository retrievalGaps,
     TimeProvider timeProvider,
     ILogger<AskAiHandler> logger)
     : IRequestHandler<AskAiCommand, Result<AiAnswer>>
 {
+    /// <summary>What a generated description is marked with under a picture, so a member never takes it for the guide's words.</summary>
+    public const string GeneratedCaptionMark = "AI description: ";
+
     /// <summary>
     /// Guides credited when the model cited none. These are the best matches found for the question
     /// rather than anything the answer pointed at, so a long list would overstate them.
@@ -154,9 +175,32 @@ public sealed partial class AskAiHandler(
         // Also read while the question is searched: a GBIF lookup costs no request, and never fails it.
         var plantRead = plantRange.ReadAsync(request.Content, cancellationToken);
 
+        // And the screenshot's plant, when the question asks what plant it shows: one identification
+        // of Pl@ntNet's day, no AI request, never a failure of the question. A follow-up without a
+        // picture of its own ("and what tree is that?") asks about the branch's latest screenshot.
+        var plantIdRead = plantIdentification.ReadAsync(request.Content, LatestScreenshot(request, context), cancellationToken);
+
+        // "A clue I don't know yet", "one that is not on PlonkIt": PlonkIt is what a player knows, so
+        // its tips stay out of the search, and what other guides say that PlonkIt says too is marked.
+        var lesserKnown = retrievalConfiguration.Value.LesserKnown.Enabled
+                          && LesserKnownQuestion.Asks(request.Content, context.Turns);
+
+        // "Tell me a reliable clue I don't know yet" names nothing a search could match. Picture clues
+        // drawn at random from the other guides lead its excerpts; what the search found fills the rest.
+        // Drawn while the question is searched: it costs no request, and never fails the question.
+        var drawRead = lesserKnown
+                       && request.AttachmentImageUrls.Count == 0
+                       && LesserKnownQuestion.NamesNoSubject(request.Content, context.Turns)
+            ? clueSampler.DrawAsync(cancellationToken)
+            : Task.FromResult<IReadOnlyList<KnowledgeHit>>([]);
+
         // Deliberately not released on later failure: by this point at least one upstream call has
         // usually been made, and over-counting is far safer than a 429 storm from under-counting.
-        var hits = await RetrieveAsync(request, context, config, now, cancellationToken).ConfigureAwait(false);
+        var searched = await RetrieveAsync(request, context, config, now, lesserKnown, cancellationToken).ConfigureAwait(false);
+        var hits = searched.IsSuccess
+            ? Result<IReadOnlyList<KnowledgeHit>>.Success(
+                ClueSampler.Lead(await drawRead.ConfigureAwait(false), searched.Value, retrievalConfiguration.Value.ExcerptLimit))
+            : searched;
         if (hits.IsFailure)
         {
             // Deliberately not answered anyway. An empty hit list reads to the model as "the guides do
@@ -168,17 +212,38 @@ public sealed partial class AskAiHandler(
 
         // A plant's countries lead the excerpts found for the question: they answer its "where", while
         // the guides found beside them cover a country or two (Khasi pines: India and Vietnam only).
-        IReadOnlyList<KnowledgeHit> retrieved = await plantRead.ConfigureAwait(false) is { } plant
-            ? [plant, .. hits.Value]
-            : hits.Value;
+        // Counted within the one country a question names, its records follow the guides instead.
+        IReadOnlyList<KnowledgeHit> retrieved = await plantRead.ConfigureAwait(false) switch
+        {
+            { LeadsTheGuides: true } plant => [plant.Hit, .. hits.Value],
+            { } plant => [.. hits.Value, plant.Hit],
+            null => hits.Value
+        };
 
-        var offered = CarriedExcerpts.Combine(
-            await carriedRead.ConfigureAwait(false), retrieved, maxCarried, context.PreviousCitedChunkIds);
+        // What the screenshot's plant is comes before everything: it is the question, and a look-alike
+        // guide picture ranked first by its pixels is what the model used to answer with instead.
+        var identified = await plantIdRead.ConfigureAwait(false);
+        if (identified is { Hits.Count: > 0 })
+        {
+            retrieved = [.. identified.Hits, .. retrieved];
+        }
+
+        IReadOnlyList<string> notices = identified?.Notice is { } notice ? [notice] : [];
+
+        // The clues the answer before gave are marked too: "give me another one" is no reason to
+        // repeat one PlonkIt has.
+        var carriedOver = await carriedRead.ConfigureAwait(false);
+        if (lesserKnown)
+        {
+            carriedOver = await mainGuide.MarkAsync(carriedOver, cancellationToken).ConfigureAwait(false);
+        }
+
+        var offered = CarriedExcerpts.Combine(carriedOver, retrieved, maxCarried, context.PreviousCitedChunkIds);
 
         var completion = await answerLoop.AnswerAsync(
                 new AnswerRequest(
                     context, request.Content, request.AttachmentImageUrls, offered.Hits,
-                    DateOnly.FromDateTime(now.UtcDateTime), startedAt, offered.Carried, offered.CarriedSourceNumbers),
+                    DateOnly.FromDateTime(now.UtcDateTime), startedAt, offered.Carried, offered.CarriedSourceNumbers, lesserKnown),
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -192,6 +257,18 @@ public sealed partial class AskAiHandler(
         // Tool excerpts included: a number the answer cites from a search it made resolves, lists and
         // attaches exactly like one it was given with the question.
         var citations = CitationResolver.Resolve(outcome.Response.Text, outcome.Excerpts, config.MaxImagesInReply);
+
+        // A weak retrieval is counted now, while the question is at hand: the conversation itself is
+        // swept by retention, and the knowledge-gap report is what tells admins which guides to add.
+        await RecordRetrievalGapAsync(request.Content, offered.Hits, citations.CitedExcerpts.Count, now, cancellationToken).ConfigureAwait(false);
+
+        // The regions the answer names, on a map of their country, after everything the model cited:
+        // "Lạng Sơn and Quảng Ninh" means little to a player who does not know where they are. Costs
+        // no request; the answer waits a few seconds for it at most. Not drawn when the model already
+        // asked for a region map itself.
+        var regionMap = citations.Images.Any(image => image.Excerpt.SourceUrl == RegionMapExcerpt.SourceUrl)
+            ? null
+            : await regionLocator.LocateAsync(citations.Text, request.Content, cancellationToken).ConfigureAwait(false);
 
         var sources = citations.Sources
             .Select(citation => new AiAnswerSource(
@@ -224,11 +301,26 @@ public sealed partial class AskAiHandler(
 
         var depth = context.ParentDepth + 1;
 
+        var images = citations.Images.Select(image => new AiAnswerImage(
+                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count,
+                image.Excerpt.Caption ?? ShownGeneratedCaption(image.Excerpt)))
+            .ToList();
+
+        if (regionMap is not null)
+        {
+            // Numbered after the last source, and listed with them, so its embed and its line read alike.
+            var marker = Math.Max(sources.Max(source => source.Marker) ?? 0, images.Count == 0 ? 0 : images.Max(image => image.Marker)) + 1;
+            images.Add(new AiAnswerImage(marker, regionMap.ImageUrl, RegionMapExcerpt.SourceUrl, regionMap.Title,
+                Caption: $"Where the answer's regions lie in {regionMap.CountryName}, from Natural Earth boundaries."));
+            sources = [.. sources, new AiAnswerSource(marker, regionMap.Title, RegionMapExcerpt.SourceUrl, IsImage: true)];
+        }
+
         return new AiAnswer(
             citations.Text,
-            // Titled as listed beneath the answer when the source has no title of its own.
-            [.. citations.Images.Select(image => new AiAnswerImage(
-                image.Number, image.ImageUrl, image.Excerpt.SourceUrl, image.Excerpt.PictureTitle, image.Position, image.Count))],
+            // Titled as listed beneath the answer, and captioned by what the guide says of the picture —
+            // or, when the guide says nothing and the operator allows it, by what a vision model said,
+            // marked as such.
+            images,
             sources,
             outcome.Response.ModelUsed,
             ResolveConversationId(context, request),
@@ -243,7 +335,27 @@ public sealed partial class AskAiHandler(
             [.. outcome.Excerpts.SelectMany(excerpt => excerpt.ChunkIds).Distinct()],
             // Only what the prose cites: the guides credited on the model's behalf above are the closest
             // matches, not what a follow-up's "source 2" could mean.
-            [.. citations.CitedExcerpts.SelectMany(excerpt => excerpt.ChunkIds).Distinct()]);
+            [.. citations.CitedExcerpts.SelectMany(excerpt => excerpt.ChunkIds).Distinct()])
+        {
+            Notices = notices
+        };
+    }
+
+    /// <summary>
+    /// The picture a question is about: its own attachment, or else the latest one in the branch it
+    /// continues — "and what tree is that?" under an answer about a screenshot means that screenshot.
+    /// </summary>
+    private static string? LatestScreenshot(AskAiCommand request, ConversationContext context)
+    {
+        if (request.AttachmentImageUrls.Count > 0)
+        {
+            return request.AttachmentImageUrls[0];
+        }
+
+        return context.Turns
+            .Where(turn => turn.Role == AiTurnRole.User && turn.ImageUrls.Count > 0)
+            .Select(turn => turn.ImageUrls[0])
+            .LastOrDefault();
     }
 
     /// <summary>
@@ -330,11 +442,13 @@ public sealed partial class AskAiHandler(
     /// branch, the planner's rewrite and phrasings — all embedded in one request, so a follow-up costs
     /// no more embedding than a fresh question.
     /// </summary>
+    /// <param name="lesserKnown">Leave PlonkIt's tips out, and mark what other guides say that PlonkIt says too.</param>
     private async Task<Result<IReadOnlyList<KnowledgeHit>>> RetrieveAsync(
         AskAiCommand request,
         ConversationContext context,
         AiConfiguration config,
         DateTimeOffset now,
+        bool lesserKnown,
         CancellationToken cancellationToken)
     {
         var settings = retrievalConfiguration.Value;
@@ -378,14 +492,21 @@ public sealed partial class AskAiHandler(
         }
 
         var query = searchPlan.ToQuery([.. embeddings.Value.Take(textCount)], imageVector, settings);
+        if (lesserKnown)
+        {
+            query = query with { ExcludedSourceType = MainGuideOverlap.MainGuide };
+            LogLesserKnown(logger);
+        }
 
         LogRetrieving(logger, searchPlan.Lead.Name, searchPlan.Others.Count,
             string.Join(", ", searchPlan.Countries.Select(country => country.Name)), searchPlan.KeyPhrases.Count);
 
         try
         {
+            var found = await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false);
+
             return Result<IReadOnlyList<KnowledgeHit>>.Success(
-                await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false));
+                lesserKnown ? await mainGuide.MarkAsync(found, cancellationToken).ConfigureAwait(false) : found);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -551,6 +672,37 @@ public sealed partial class AskAiHandler(
     /// tree at every exchange, so a conversation ends up stored as a chain of two-turn fragments and
     /// both the replayed history and the archived transcript stop at the last one.
     /// </summary>
+    /// <summary>
+    /// The line shown under a picture its guide says nothing about: the vision model's description,
+    /// marked as one — or nothing, when the operator keeps generated descriptions to search and the
+    /// model (<c>AI:Captions:ShowToMembers</c>).
+    /// </summary>
+    private string? ShownGeneratedCaption(OfferedExcerpt excerpt) =>
+        captionsConfiguration.Value.ShowToMembers && !string.IsNullOrWhiteSpace(excerpt.GeneratedCaption)
+            ? GeneratedCaptionMark + excerpt.GeneratedCaption
+            : null;
+
+    /// <summary>Records the question when its retrieval was weak (<see cref="WeakRetrieval"/>). Never fails the answer.</summary>
+    private async Task RecordRetrievalGapAsync(
+        string question,
+        IReadOnlyList<KnowledgeHit> offered,
+        int cited,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (!gapsConfiguration.Value.RecordWeakRetrievals || string.IsNullOrWhiteSpace(question))
+        {
+            return;
+        }
+
+        var gazetteer = await countryDirectory.ReadAsync(cancellationToken).ConfigureAwait(false);
+        var subject = WeakRetrieval.Subject(question, gazetteer);
+        if (WeakRetrieval.Judge(subject, offered, cited) is { } reason)
+        {
+            retrievalGaps.Add(AiRetrievalGap.Create(now, question.Trim(), subject.IndexNames.FirstOrDefault() ?? subject.Country, subject.Topic, reason));
+        }
+    }
+
     private static ulong ResolveConversationId(ConversationContext context, AskAiCommand request) =>
         context.ConversationId ?? request.DiscordMessageId;
 
@@ -565,6 +717,10 @@ public sealed partial class AskAiHandler(
     [LoggerMessage(LogLevel.Warning,
         "Guide index search failed (text vector: {TextVectorLength}, image vector: {ImageVectorLength}).")]
     static partial void LogSearchFailed(ILogger logger, int textVectorLength, int imageVectorLength, Exception exception);
+
+    [LoggerMessage(LogLevel.Information,
+        "The question asks for something the user does not know yet: searching every guide but PlonkIt.")]
+    static partial void LogLesserKnown(ILogger logger);
 
     [LoggerMessage(LogLevel.Debug,
         "Searching the guides by the {Lead} wording and {OtherCount} more, countries [{Countries}], {PhraseCount} key phrase(s).")]

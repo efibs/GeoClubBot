@@ -41,20 +41,32 @@ public static partial class EmbeddingTextBuilder
 
     private static readonly string[] PlaceholderSegments = ["document", "slides", "spreadsheet", "untitled"];
 
-    public static string Build(SourceDescriptor descriptor, ExtractedChunk chunk)
+    /// <param name="generatedCaption">
+    /// What a vision model said the chunk's picture shows, for a picture with no words of its own. Put
+    /// after the text, where a caption the guide wrote would be: it is what a written question can
+    /// match, since the heading alone matched nothing.
+    /// </param>
+    public static string Build(SourceDescriptor descriptor, ExtractedChunk chunk, string? generatedCaption = null) =>
+        Build(descriptor.Country, descriptor.Title, chunk.SectionPath, chunk.Text, generatedCaption);
+
+    /// <summary>
+    /// The recipe over an indexed chunk read back, for re-embedding it once a description has been
+    /// written: the same fields the write used, so the vector is what a fresh ingest would produce.
+    /// </summary>
+    public static string Build(string? country, string? title, string? sectionPath, string text, string? generatedCaption)
     {
         var parts = new List<string>();
 
-        if (!string.IsNullOrWhiteSpace(descriptor.Country))
+        if (!string.IsNullOrWhiteSpace(country))
         {
-            parts.Add(descriptor.Country);
+            parts.Add(country);
         }
 
         // The source's own headings beat a guessed topic when they exist, so the guess is only used
         // to fill a gap — never to duplicate what the section already says.
-        var section = CleanSection(descriptor, chunk.SectionPath);
+        var section = CleanSection(country, title, sectionPath);
 
-        if (ChunkTopicClassifier.Classify(chunk.Text) is { } topic
+        if (ChunkTopicClassifier.Classify(text) is { } topic
             && (section is null || !section.Contains(topic, StringComparison.OrdinalIgnoreCase)))
         {
             parts.Add(topic);
@@ -65,7 +77,9 @@ public static partial class EmbeddingTextBuilder
             parts.Add(section);
         }
 
-        return parts.Count == 0 ? chunk.Text : $"{string.Join(" — ", parts)}\n\n{chunk.Text}";
+        var body = string.IsNullOrWhiteSpace(generatedCaption) ? text : $"{text}\n\n{generatedCaption.Trim()}";
+
+        return parts.Count == 0 ? body : $"{string.Join(" — ", parts)}\n\n{body}";
     }
 
     /// <summary>
@@ -73,7 +87,7 @@ public static partial class EmbeddingTextBuilder
     /// its own title, a slide number, an author's handle — is removed, because it labels nothing and
     /// measurably lowers similarity.
     /// </summary>
-    private static string? CleanSection(SourceDescriptor descriptor, string? sectionPath)
+    private static string? CleanSection(string? country, string? title, string? sectionPath)
     {
         if (string.IsNullOrWhiteSpace(sectionPath))
         {
@@ -82,13 +96,13 @@ public static partial class EmbeddingTextBuilder
 
         var kept = sectionPath
             .Split('>', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(segment => IsTopical(descriptor, segment))
+            .Where(segment => IsTopical(country, title, segment))
             .ToList();
 
         return kept.Count == 0 ? null : string.Join(" > ", kept);
     }
 
-    private static bool IsTopical(SourceDescriptor descriptor, string segment)
+    private static bool IsTopical(string? country, string? title, string segment)
     {
         if (segment.Length == 0 || segment.Length > MaxSectionSegmentLength)
         {
@@ -96,8 +110,8 @@ public static partial class EmbeddingTextBuilder
         }
 
         // Repeated on every chunk of the source, so it separates nothing.
-        if (segment.Equals(descriptor.Country, StringComparison.OrdinalIgnoreCase)
-            || segment.Equals(descriptor.Title, StringComparison.OrdinalIgnoreCase))
+        if (segment.Equals(country, StringComparison.OrdinalIgnoreCase)
+            || segment.Equals(title, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

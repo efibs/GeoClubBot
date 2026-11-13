@@ -31,6 +31,7 @@ public static class AnswerTools
     public const string SearchGuides = "search_guides";
     public const string ReadGuide = "read_guide";
     public const string SpeciesRange = "species_range";
+    public const string RegionMap = "region_map";
 
     /// <summary>
     /// Added to the system prompt only when tools are offered — a model told of tools it cannot call
@@ -71,8 +72,9 @@ public static class AnswerTools
         "Search the community GeoGuessr guides again, in your own words. Use it when the excerpts answer only "
         + "part of the question: it asks for every, all or exactly which places and they name only some; it uses "
         + "other terms than the guides (they say \"snow poles\" where a player says \"snow bollards\"); it names a "
-        + "country or region they miss; or they describe something related but different. Returns up to 6 new "
-        + "numbered excerpts, cited like the others, and says so when none of them is from the country searched. "
+        + "country or region they miss; or they describe something related but different. With source it reads "
+        + "PlonkIt alone, the guide every player knows, or every other guide. Returns up to 6 new numbered "
+        + "excerpts, cited like the others, and says so when none of them is from the country searched. "
         + "Don't use it when the excerpts fully answer the question.",
         """
         {
@@ -80,7 +82,8 @@ public static class AnswerTools
           "properties": {
             "query": { "type": "string", "description": "What to look for, in the words a guide would use, e.g. \"pole supports\"." },
             "country": { "type": "string", "description": "Optional. A country to prefer, e.g. \"Brazil\"; guides of other countries can still come back." },
-            "pictures_only": { "type": "boolean", "description": "Optional. True to find only excerpts that come with a picture." }
+            "pictures_only": { "type": "boolean", "description": "Optional. True to find only excerpts that come with a picture." },
+            "source": { "type": "string", "enum": ["plonkit", "other"], "description": "Optional. \"plonkit\" to search PlonkIt alone, e.g. to check whether it has a clue; \"other\" to search every guide but PlonkIt, for a clue players are less likely to know." }
           },
           "required": ["query"]
         }
@@ -105,10 +108,11 @@ public static class AnswerTools
     private static readonly AiToolDefinition SpeciesRangeTool = new(
         SpeciesRange,
         "Where a plant, tree or crop species is recorded, by country, or by region within one country, "
-        + "from the GBIF biodiversity database. Use it for any question about where a plant, tree or crop grows "
-        + "or in which countries or regions it is found: guides rarely list every country, so excerpts naming "
-        + "some are a reason to call it, not to skip it. Returns one numbered excerpt, cited like the others. "
-        + "Don't use it for anything but a plant.",
+        + "from the GBIF biodiversity database, with a map of the records. Use it for any question about where "
+        + "a plant, tree or crop grows or in which countries or regions it is found, and when you have named the "
+        + "plant in a user's screenshot: guides rarely list every country, so excerpts naming some are a reason "
+        + "to call it, not to skip it. Returns one numbered excerpt, cited like the others; citing it attaches "
+        + "the map. Don't use it for anything but a plant.",
         """
         {
           "type": "object",
@@ -120,10 +124,53 @@ public static class AnswerTools
         }
         """);
 
-    /// <summary>Every tool's name, declared or not: a reply that writes a call of any of them out as text is not an answer.</summary>
-    public static IReadOnlyList<string> Names { get; } = [SearchGuides, ReadGuide, SpeciesRange];
+    private static readonly AiToolDefinition RegionMapTool = new(
+        RegionMap,
+        "A map of one country with some of its first-level regions (states, provinces) coloured in, for the "
+        + "user to see where they are. Use it when your answer says a clue is found in some regions of a country "
+        + "and not others, above all when it is more common in some than in others: give each region a share "
+        + "from 0 to 1 and the map shades it, darker where the share is higher. Returns one numbered excerpt, "
+        + "cited like the others; citing it attaches the map. Don't call it for a whole country, or for regions "
+        + "you only list in passing: a map of regions named evenly is drawn for you without a call.",
+        """
+        {
+          "type": "object",
+          "properties": {
+            "country": { "type": "string", "description": "The country, e.g. \"Vietnam\"." },
+            "regions": {
+              "type": "array",
+              "description": "The regions to colour, each with how common the thing is there.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "description": "The region's name, e.g. \"Lạng Sơn\"." },
+                  "share": { "type": "number", "description": "0 to 1: 1 where it is most common, 0.2 where it is rare." }
+                },
+                "required": ["name"]
+              }
+            }
+          },
+          "required": ["country", "regions"]
+        }
+        """);
 
-    /// <summary>The tools to declare, <see cref="SpeciesRange"/> only when it is on.</summary>
-    public static IReadOnlyList<AiToolDefinition> Definitions(bool speciesRange) =>
-        speciesRange ? [SearchGuidesTool, ReadGuideTool, SpeciesRangeTool] : [SearchGuidesTool, ReadGuideTool];
+    /// <summary>Every tool's name, declared or not: a reply that writes a call of any of them out as text is not an answer.</summary>
+    public static IReadOnlyList<string> Names { get; } = [SearchGuides, ReadGuide, SpeciesRange, RegionMap];
+
+    /// <summary>The tools to declare, <see cref="SpeciesRange"/> and <see cref="RegionMap"/> only when they are on.</summary>
+    public static IReadOnlyList<AiToolDefinition> Definitions(bool speciesRange, bool regionMap = false)
+    {
+        var tools = new List<AiToolDefinition> { SearchGuidesTool, ReadGuideTool };
+        if (speciesRange)
+        {
+            tools.Add(SpeciesRangeTool);
+        }
+
+        if (regionMap)
+        {
+            tools.Add(RegionMapTool);
+        }
+
+        return tools;
+    }
 }

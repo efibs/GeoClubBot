@@ -1,13 +1,21 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using Configuration;
+using Entities;
 using Infrastructure.OutputAdapters.AI.Gbif;
+using Infrastructure.OutputAdapters.AI.GeoNn;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
+using Infrastructure.OutputAdapters.AI.PlantNet;
+using Infrastructure.OutputAdapters.AI.Regions;
+using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.OutputPorts.GeoGuessr;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.Review;
 using UseCases.UseCases.AI.Tools;
 
 namespace GeoClubBot.RetrievalProbe;
@@ -233,24 +241,33 @@ public static class AnswerCommand
 
 /// <summary>
 /// The bot's answering services, built as its host builds them, over clients the probe guards: OpenRouter
-/// behind <see cref="EmbeddingsOnlyHandler"/> (embeddings, chat, the roster and model health only) and
-/// <see cref="PacedRetryHandler"/>, GBIF behind a handler that only reads.
+/// behind <see cref="EmbeddingsOnlyHandler"/> (embeddings, chat, the roster and model health only),
+/// <see cref="PacedRetryHandler"/> and the bot's <see cref="ResponseBodyDeadlineHandler"/>, GBIF behind a
+/// handler that only reads.
 /// </summary>
 public sealed class AnsweringStack : IDisposable
 {
     private readonly ILoggerFactory _logging;
     private readonly HttpClient _openRouter;
     private readonly HttpClient _gbif;
+    private readonly HttpClient _naturalEarth;
+    private readonly HttpClient _geoNn;
+    private readonly IHttpClientFactory _clients;
     private readonly EmbeddingsOnlyHandler _guard;
     private readonly IOptions<AiConfiguration> _ai;
     private readonly IOptions<AiConversationConfiguration> _conversation;
     private readonly IOptions<AiRetrievalConfiguration> _retrieval;
+    private readonly IOptions<AiCaptionsConfiguration> _captions;
     private readonly IOptions<AiToolsConfiguration> _tools;
     private readonly IEmbedder _embedder;
     private readonly IKnowledgeIndex _index;
     private readonly IChatModelClient _chat;
     private readonly AnswerToolbox _toolbox;
     private readonly PlantRangeLookAhead _plantRange;
+    private readonly PlantIdentificationLookAhead _plantIdentification;
+    private readonly RegionLocator _regionLocator;
+    private readonly MainGuideOverlap _mainGuide;
+    private readonly ClueSampler _clueSampler;
     private readonly KnowledgeCountryDirectory _countries;
     private readonly QueryPlannerPause _plannerPause;
 
@@ -260,12 +277,20 @@ public sealed class AnsweringStack : IDisposable
         _ai = Options.Create(settings.Ai);
         _conversation = Options.Create(settings.Conversation);
         _retrieval = Options.Create(settings.Retrieval);
+        _captions = Options.Create(settings.Captions);
         _tools = Options.Create(settings.Tools);
 
         var openRouter = settings.Ai.OpenRouter;
+        var attemptTimeout = TimeSpan.FromSeconds(settings.Ai.RequestTimeoutSeconds);
         _guard = new EmbeddingsOnlyHandler(new HttpClientHandler(), allowChat: true);
-        _openRouter = new HttpClient(new PacedRetryHandler(
-            _guard, openRouter.PerMinuteRequestBudget, TimeSpan.FromSeconds(settings.Ai.RequestTimeoutSeconds)))
+
+        // The bot's own guard against a response that opens and never ends, outside the pacing and the
+        // retries as the bot has it outside its pipeline: without it one stalled model held a replay
+        // for 57 minutes (2026-11-11), and the bot's answer to it could not be seen.
+        _openRouter = new HttpClient(new ResponseBodyDeadlineHandler(TimeSpan.FromSeconds(Math.Max(1, settings.Ai.ResponseTimeoutSeconds)))
+        {
+            InnerHandler = new PacedRetryHandler(_guard, openRouter.PerMinuteRequestBudget, attemptTimeout)
+        })
         {
             BaseAddress = new Uri(openRouter.BaseUrl),
             Timeout = TimeSpan.FromSeconds(Math.Max(settings.Ai.OverallTimeoutSeconds, settings.Ai.RequestTimeoutSeconds))
@@ -280,14 +305,27 @@ public sealed class AnsweringStack : IDisposable
         };
         _gbif.DefaultRequestHeaders.UserAgent.ParseAdd("GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
 
+        // The region outlines, downloaded once next to the probe, as the bot keeps them in its data directory.
+        _naturalEarth = new HttpClient(new ReadOnlyHttpHandler(new HttpClientHandler())) { Timeout = TimeSpan.FromMinutes(5) };
+        _naturalEarth.DefaultRequestHeaders.UserAgent.ParseAdd("GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+
+        // GeoNN's prediction is a POST that changes nothing; it is the one request its client may send.
+        _geoNn = new HttpClient(new GeoNnPredictOnlyHandler(new HttpClientHandler())) { Timeout = Timeout.InfiniteTimeSpan };
+
         var clients = new NamedClientFactory(new Dictionary<string, HttpClient>(StringComparer.Ordinal)
         {
+            [GeoNnStreetViewGuesser.HttpClientName] = _geoNn,
             [RefitChatModelClient.HttpClientName] = _openRouter,
             [RefitChatModelClient.HealthHttpClientName] = _openRouter,
-            [GbifSpeciesRangeReader.HttpClientName] = _gbif
+            [GbifSpeciesRangeReader.HttpClientName] = _gbif,
+            [NaturalEarthRegionBoundaries.HttpClientName] = _naturalEarth
         });
 
+        _clients = clients;
         var clock = TimeProvider.System;
+        // Kept next to the probe rather than wherever it is run from; read by nothing else.
+        settings.Tools.RegionMap.DataDirectory = Path.Combine(AppContext.BaseDirectory, "ai-data");
+        Boundaries = new NaturalEarthRegionBoundaries(clients, _tools, _logging.CreateLogger<NaturalEarthRegionBoundaries>());
         Judge = new RefitChatModelClient(clients, _logging.CreateLogger<RefitChatModelClient>());
         _chat = new RecordingChatModelClient(Judge);
         _embedder = new OpenRouterEmbedder(clients, _ai, _logging.CreateLogger<OpenRouterEmbedder>());
@@ -297,9 +335,25 @@ public sealed class AnsweringStack : IDisposable
         _plannerPause = new QueryPlannerPause(clock);
         // One reader for the tool and the lookup before answering, as the bot's singleton is shared.
         var speciesReader = new GbifSpeciesRangeReader(clients, _tools, clock, _logging.CreateLogger<GbifSpeciesRangeReader>());
+
+        // The bot's own map renderer, reading GBIF's tiles through the same GET-only client; what it
+        // draws is kept in a folder instead of the bot's image relay.
+        var speciesMap = new GbifSpeciesRangeMap(
+            clients, new SpeciesMapFolder(Path.Combine(AppContext.BaseDirectory, "species-maps")), _tools, clock,
+            _logging.CreateLogger<GbifSpeciesRangeMap>());
+
+        _mainGuide = new MainGuideOverlap(_index, _countries, _retrieval, _logging.CreateLogger<MainGuideOverlap>());
+        _clueSampler = new ClueSampler(_index, _mainGuide, _retrieval, _logging.CreateLogger<ClueSampler>());
         _toolbox = new AnswerToolbox(
-            _embedder, _index, speciesReader, _countries, _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
-        _plantRange = new PlantRangeLookAhead(speciesReader, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
+            _embedder, _index, speciesReader, speciesMap, new NoRegionBoundaries(), new NoRegionMapDrawer(), _mainGuide, _countries,
+            _retrieval, _tools, _logging.CreateLogger<AnswerToolbox>());
+        _plantRange = new PlantRangeLookAhead(speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
+        // Off unless the bot's settings carry a Pl@ntNet key; a rated screenshot's link has usually expired anyway.
+        var plantIdentifier = new PlantNetPlantIdentifier(clients, _tools, clock, _logging.CreateLogger<PlantNetPlantIdentifier>());
+        _plantIdentification = new PlantIdentificationLookAhead(
+            plantIdentifier, speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantIdentificationLookAhead>());
+        // The probe reports answers as text; a region map would only be a link to a picture it cannot show.
+        _regionLocator = new RegionLocator(new NoRegionBoundaries(), new NoRegionMapDrawer(), _countries, _tools, clock, _logging.CreateLogger<RegionLocator>());
     }
 
     /// <summary>Shared by every answer, as the bot's singleton is: a model that fails for one is demoted for the next.</summary>
@@ -307,6 +361,9 @@ public sealed class AnsweringStack : IDisposable
 
     /// <summary>The chat client without the recording: the judge's requests are not the answer's.</summary>
     public IChatModelClient Judge { get; }
+
+    /// <summary>Natural Earth's region outlines, as the bot reads them (<c>review</c> places rounds and guesses with them).</summary>
+    public IRegionBoundaries Boundaries { get; }
 
     /// <summary>Every request that left for OpenRouter, retries included.</summary>
     public int RequestsSent => _guard.RequestsSent;
@@ -323,15 +380,74 @@ public sealed class AnsweringStack : IDisposable
         var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
 
         return new AskAiHandler(
-            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _countries, _plannerPause,
-            _ai, _conversation, _retrieval, clock, _logging.CreateLogger<AskAiHandler>());
+            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _plantIdentification, _regionLocator, _mainGuide, _clueSampler, _countries,
+            _plannerPause,
+            _ai, _conversation, _retrieval, _captions,
+            Options.Create(new AiKnowledgeGapsConfiguration { RecordWeakRetrievals = false }), new NoRetrievalGaps(),
+            clock, _logging.CreateLogger<AskAiHandler>());
+    }
+
+    /// <summary>
+    /// The round review over the given player and challenge results, the probe's index, models and
+    /// region outlines: the bot's handler, with what it would read from the database and GeoGuessr handed in.
+    /// </summary>
+    public ReviewRoundsHandler CreateReviewHandler(
+        IGeoGuessrUserRepository users,
+        IGeoGuessrClientFactory geoGuessr,
+        InMemoryBudgetRepository budget,
+        AiRoundReviewConfiguration settings)
+    {
+        var clock = TimeProvider.System;
+        var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
+        var mainClub = Options.Create(new GeoGuessrConfiguration
+        {
+            SyncSchedule = "0 0 * * * ?",
+            ActivityNcfaToken = "unused",
+            UserProfileNcfaToken = "unused",
+            Clubs = [new GeoGuessrClubEntry { ClubId = Guid.Empty, IsMain = true, NcfaToken = "unused" }]
+        });
+
+        var options = Options.Create(settings);
+        var guesser = new GeoNnStreetViewGuesser(_clients, options, _logging.CreateLogger<GeoNnStreetViewGuesser>());
+        return new ReviewRoundsHandler(
+            users, ProbeFakes.Refusing<IClubChallengeRepository>(), geoGuessr, Boundaries, guesser, _embedder, _index, _countries, loop, budget,
+            mainClub, _ai, options, clock, _logging.CreateLogger<ReviewRoundsHandler>());
     }
 
     public void Dispose()
     {
         _openRouter.Dispose();
         _gbif.Dispose();
+        _naturalEarth.Dispose();
+        _geoNn.Dispose();
         _logging.Dispose();
+    }
+
+    /// <summary>The probe records nothing: it replays questions, it does not ask them.</summary>
+    private sealed class NoRetrievalGaps : IAiRetrievalGapRepository
+    {
+        public void Add(AiRetrievalGap gap)
+        {
+        }
+
+        public Task<IReadOnlyList<AiRetrievalGap>> ReadSinceAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AiRetrievalGap>>([]);
+
+        public Task<int> DeleteOlderThanAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
+
+    private sealed class NoRegionBoundaries : IRegionBoundaries
+    {
+        public Task<IReadOnlyList<RegionName>> ReadNamesAsync(string countryCode, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RegionName>>([]);
+
+        public Task<RegionPlace?> LocateAsync(double latitude, double longitude, CancellationToken cancellationToken = default) =>
+            Task.FromResult<RegionPlace?>(null);
+    }
+
+    private sealed class NoRegionMapDrawer : IRegionMapDrawer
+    {
+        public Task<string?> DrawAsync(RegionMapRequest request, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 
     private sealed class NamedClientFactory(IReadOnlyDictionary<string, HttpClient> clients) : IHttpClientFactory
@@ -350,4 +466,13 @@ public sealed class ReadOnlyHttpHandler(HttpMessageHandler innerHandler) : Deleg
         request.Method == HttpMethod.Get
             ? base.SendAsync(request, cancellationToken)
             : throw new InvalidOperationException($"GeoClubBot.RetrievalProbe only reads GBIF: refusing to send {request.Method} {request.RequestUri}.");
+}
+
+/// <summary>Lets GeoNN's prediction through and nothing else: <c>POST /api/predict</c>.</summary>
+public sealed class GeoNnPredictOnlyHandler(HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/predict"
+            ? base.SendAsync(request, cancellationToken)
+            : throw new InvalidOperationException($"GeoClubBot.RetrievalProbe only asks GeoNN for predictions: refusing {request.Method} {request.RequestUri}.");
 }

@@ -54,8 +54,46 @@ public class AiToolsConfiguration : IValidatableObject
     /// <summary>Where a plant species is recorded. See <see cref="AiSpeciesRangeConfiguration"/>.</summary>
     public AiSpeciesRangeConfiguration SpeciesRange { get; set; } = new();
 
+    /// <summary>Naming the plant in a member's screenshot with Pl@ntNet. See <see cref="AiPlantIdentificationConfiguration"/>.</summary>
+    public AiPlantIdentificationConfiguration PlantIdentification { get; set; } = new();
+
+    /// <summary>A map of the regions an answer names. See <see cref="AiRegionMapConfiguration"/>.</summary>
+    public AiRegionMapConfiguration RegionMap { get; set; } = new();
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        var regionResults = new List<ValidationResult>();
+        Validator.TryValidateObject(RegionMap, new ValidationContext(RegionMap), regionResults, validateAllProperties: true);
+
+        foreach (var result in regionResults)
+        {
+            yield return new ValidationResult(
+                $"{nameof(RegionMap)}: {result.ErrorMessage}",
+                [.. result.MemberNames.Select(member => $"{nameof(RegionMap)}:{member}")]);
+        }
+
+        if (!Uri.TryCreate(RegionMap.BoundariesUrl, UriKind.Absolute, out _))
+        {
+            yield return new ValidationResult(
+                $"{nameof(RegionMap)}:{nameof(AiRegionMapConfiguration.BoundariesUrl)} must be an absolute URL.");
+        }
+
+        var plantResults = new List<ValidationResult>();
+        Validator.TryValidateObject(PlantIdentification, new ValidationContext(PlantIdentification), plantResults, validateAllProperties: true);
+
+        foreach (var result in plantResults)
+        {
+            yield return new ValidationResult(
+                $"{nameof(PlantIdentification)}: {result.ErrorMessage}",
+                [.. result.MemberNames.Select(member => $"{nameof(PlantIdentification)}:{member}")]);
+        }
+
+        if (!Uri.TryCreate(PlantIdentification.BaseUrl, UriKind.Absolute, out _))
+        {
+            yield return new ValidationResult(
+                $"{nameof(PlantIdentification)}:{nameof(AiPlantIdentificationConfiguration.BaseUrl)} must be an absolute URL.");
+        }
+
         // Nested sections are not validated by data annotations on their own.
         var results = new List<ValidationResult>();
         Validator.TryValidateObject(SpeciesRange, new ValidationContext(SpeciesRange), results, validateAllProperties: true);
@@ -71,6 +109,23 @@ public class AiToolsConfiguration : IValidatableObject
         {
             yield return new ValidationResult(
                 $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.BaseUrl)} must be an absolute URL.");
+        }
+
+        var map = SpeciesRange.Map;
+        var mapResults = new List<ValidationResult>();
+        Validator.TryValidateObject(map, new ValidationContext(map), mapResults, validateAllProperties: true);
+
+        foreach (var result in mapResults)
+        {
+            yield return new ValidationResult(
+                $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.Map)}: {result.ErrorMessage}",
+                [.. result.MemberNames.Select(member => $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.Map)}:{member}")]);
+        }
+
+        if (!Uri.TryCreate(map.TileBaseUrl, UriKind.Absolute, out _))
+        {
+            yield return new ValidationResult(
+                $"{nameof(SpeciesRange)}:{nameof(AiSpeciesRangeConfiguration.Map)}:{nameof(AiSpeciesRangeMapConfiguration.TileBaseUrl)} must be an absolute URL.");
         }
     }
 }
@@ -107,4 +162,179 @@ public class AiSpeciesRangeConfiguration
     /// <summary>Countries, or regions of one, listed per answer, most records first.</summary>
     [Range(1, 30)]
     public int MaxAreas { get; set; } = 15;
+
+    /// <summary>
+    /// Fewest records a plant needs in one country before its records there are offered, with their
+    /// map, for a question about that country ("where in the US can you see cholla?").
+    ///
+    /// Within a country the records follow who went looking more than where the plant grows, and a crop
+    /// is hardly recorded at all: 308 records of sugar cane in the Philippines, none of the top eight
+    /// provinces in Negros, which grows most of it (measured 2026-10-30). A plant people do record has
+    /// thousands — the cholla genus has tens of thousands in the United States — so few records are
+    /// taken to mean the database does not know, and the question is left to the guides.
+    /// </summary>
+    [Range(1, 1_000_000)]
+    public int MinRecordsInCountry { get; set; } = 500;
+
+    /// <summary>The map drawn of a plant's records. See <see cref="AiSpeciesRangeMapConfiguration"/>.</summary>
+    public AiSpeciesRangeMapConfiguration Map { get; set; } = new();
+}
+
+/// <summary>
+/// The map of where a plant is recorded, drawn from GBIF's own map tiles: its base map, and over it
+/// the density of the species' records. Free and without a key, like the counts; the picture is kept in
+/// the image relay, so it needs <c>AI:ImageRelay:PublicBaseUrl</c> to be set.
+/// </summary>
+public class AiSpeciesRangeMapConfiguration
+{
+    /// <summary>Draws the map. Off, a plant's range is offered in words alone.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>GBIF's base-map tile server. Changed only to point tests or a mirror elsewhere.</summary>
+    public string TileBaseUrl { get; set; } = "https://tile.gbif.org";
+
+    /// <summary>
+    /// The base map's style. <c>osm-bright-en</c> draws state and province borders and names them in
+    /// English, which is what makes a range readable as "southern Arizona, not Nevada"; GBIF's own
+    /// <c>gbif-light</c> is calmer and names nothing.
+    /// </summary>
+    [Required]
+    public string BaseMapStyle { get; set; } = "osm-bright-en";
+
+    /// <summary>
+    /// Seconds the whole map may take: a dozen tiles or so, fetched side by side. The answer waits for
+    /// it, so past this the range is offered without a map.
+    /// </summary>
+    [Range(1, 60)]
+    public int TimeoutSeconds { get; set; } = 8;
+}
+
+/// <summary>
+/// Naming the plant in a member's screenshot with Pl@ntNet's identification API, before the model
+/// answers. Free up to 500 identifications a day per account (reset at 00:00 UTC), commercial use
+/// allowed within that, attribution appreciated and given in the excerpt's source. Asked to name a
+/// plant from a screenshot, the free chat models guessed from look-alike guide pictures and were
+/// often wrong (2026-11-09 feedback); Pl@ntNet names it with a confidence score, and the species it
+/// names goes on to the GBIF range lookup, so the answer says what the plant is, where it grows, and
+/// comes with the map.
+/// </summary>
+public class AiPlantIdentificationConfiguration
+{
+    /// <summary>Whether screenshots are sent to Pl@ntNet at all. Needs <see cref="ApiKey"/> as well.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// A Pl@ntNet API key (my.plantnet.org, free account). Empty leaves the feature off, however
+    /// <see cref="Enabled"/> is set: nothing is sent anywhere without one.
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>Pl@ntNet's API. Changed only to point tests or a mirror elsewhere.</summary>
+    public string BaseUrl { get; set; } = "https://my-api.plantnet.org";
+
+    /// <summary>
+    /// The flora the picture is matched against: "all" lets Pl@ntNet pick the most relevant project,
+    /// which is what a screenshot of anywhere in the world needs. Other names come from /v2/projects.
+    /// </summary>
+    [MinLength(1)]
+    public string Project { get; set; } = "all";
+
+    /// <summary>Language of the common names Pl@ntNet returns (its /v2/languages).</summary>
+    [MinLength(2)]
+    public string Language { get; set; } = "en";
+
+    /// <summary>
+    /// Candidates offered to the model per screenshot, best first. The second and third say how sure
+    /// the first is: a top score of 0.4 over 0.35 is a toss-up, over 0.05 it is the answer.
+    /// </summary>
+    [Range(1, 10)]
+    public int MaxCandidates { get; set; } = 3;
+
+    /// <summary>
+    /// Score of the best candidate from which it is taken for the plant: its range is read from GBIF and
+    /// offered with the map, and the model is told to name it. Below it the candidates are still offered,
+    /// as guesses. Pl@ntNet's scores are probabilities over its flora; a Street View frame is a poor
+    /// photograph of a plant, so a clear best match often scores 0.3–0.6 rather than 0.9.
+    /// </summary>
+    [Range(0.0, 1.0)]
+    public double MinConfidence { get; set; } = 0.25;
+
+    /// <summary>
+    /// Identifications this bot makes a day, under Pl@ntNet's 500 so the account keeps room for the
+    /// maintainer's own use and for a restart's lost count. Past it, members are told the day's
+    /// allowance is spent rather than left to a silent guess.
+    /// </summary>
+    [Range(1, 500)]
+    public int MaxRequestsPerDay { get; set; } = 450;
+
+    /// <summary>Per request, the screenshot's download included. Pl@ntNet answers in a second or two.</summary>
+    [Range(1, 60)]
+    public int RequestTimeoutSeconds { get; set; } = 15;
+
+    /// <summary>
+    /// How long an identification is kept, by the screenshot's link. A follow-up on the same screenshot
+    /// is asked often ("and where does it grow?"), and would otherwise cost another identification.
+    /// </summary>
+    [Range(0, 168)]
+    public int CacheHours { get; set; } = 24;
+
+    /// <summary>Largest screenshot sent, in bytes. Pl@ntNet takes up to 50 MB; a Discord screenshot is a few MB at most.</summary>
+    [Range(100_000, 50_000_000)]
+    public int MaxImageBytes { get; set; } = 10 * 1024 * 1024;
+}
+
+/// <summary>
+/// A small map of a country with the first-level regions an answer names highlighted — "far
+/// north-eastern Vietnam: Lạng Sơn and Quảng Ninh" means little to a player who does not know where
+/// those are. Boundaries come from Natural Earth's admin-1 states and provinces (public domain),
+/// downloaded once; the base map is GBIF's, as for the species maps. Drawn after the answer, from the
+/// region names in it, and also on the model's request through the <c>region_map</c> tool, which can
+/// shade regions by how common a clue is in each.
+/// </summary>
+public class AiRegionMapConfiguration
+{
+    /// <summary>Whether maps are drawn at all. Off, nothing is downloaded either.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Whether the model may ask for a map itself (<c>region_map</c>), with a share per region — darker
+    /// where a clue is more common. The map after the answer needs no call and highlights evenly.
+    /// </summary>
+    public bool ToolEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Natural Earth's 1:10m admin-1 states and provinces as GeoJSON (about 40 MB, public domain). The
+    /// 1:50m file covers only a dozen large countries, which is why the full one is taken. Downloaded
+    /// once into <see cref="DataDirectory"/>; delete the file to fetch it again.
+    /// </summary>
+    public string BoundariesUrl { get; set; } =
+        "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson";
+
+    /// <summary>Where the boundaries file is kept, like the image relay's pictures. Relative to the working directory.</summary>
+    [MinLength(1)]
+    public string DataDirectory { get; set; } = "ai-data";
+
+    /// <summary>
+    /// How far, in degrees, a boundary may be straightened when the file is read (Douglas–Peucker). A
+    /// country map is a few pixels per hundredth of a degree, so a hundredth is invisible and cuts the
+    /// points kept in memory by an order of magnitude.
+    /// </summary>
+    [Range(0.0, 1.0)]
+    public double SimplifyToleranceDegrees { get; set; } = 0.01;
+
+    /// <summary>Most regions highlighted on one map. Past it the map is a country coloured in, and says nothing.</summary>
+    [Range(1, 60)]
+    public int MaxRegions { get; set; } = 15;
+
+    /// <summary>Seconds the map after an answer may take; past this the answer goes out without it.</summary>
+    [Range(1, 60)]
+    public int TimeoutSeconds { get; set; } = 8;
+
+    /// <summary>How long a drawn map is kept, by its country and regions. The same regions come up again and again.</summary>
+    [Range(0, 168)]
+    public int CacheHours { get; set; } = 24;
+
+    /// <summary>Seconds the one-off download of the boundaries file may take.</summary>
+    [Range(10, 3600)]
+    public int DownloadTimeoutSeconds { get; set; } = 300;
 }

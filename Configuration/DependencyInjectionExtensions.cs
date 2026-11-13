@@ -144,6 +144,33 @@ public static class DependencyInjectionExtensions
 
         // Validated at start-up although the feature is optional: every value has a working default, so
         // one out of range is a typo worth failing on whether or not the feature is on.
+        services.AddOptions<AiCaptionsConfiguration>()
+            .Bind(config.GetSection(AiCaptionsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<AiKnowledgeGapsConfiguration>()
+            .Bind(config.GetSection(AiKnowledgeGapsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<AiRoundReviewConfiguration>()
+            .Bind(config.GetSection(AiRoundReviewConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<AiClueOfTheDayConfiguration>()
+            .Bind(config.GetSection(AiClueOfTheDayConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddOptions<AiQuizConfiguration>()
+            .Bind(config.GetSection(AiQuizConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // Validated at start-up although the feature is optional: every value has a working default, so
+        // one out of range is a typo worth failing on whether or not the feature is on.
         services.AddOptions<AiRetrievalConfiguration>()
             .Bind(config.GetSection(AiRetrievalConfiguration.SectionName))
             .ValidateDataAnnotations()

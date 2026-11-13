@@ -38,12 +38,22 @@ public sealed record OfferedExcerpt(
     public IReadOnlyList<string> ImageUrls => ImageUrl is null ? [] : [ImageUrl, .. ExtraImageUrls];
 
     /// <summary>
-    /// What an attached picture is titled: the source's own title, or — for a picture without one, as
-    /// every PlonkIt picture is — the heading it is listed under beneath the answer. Its embeds read
-    /// "Guide image" in 101 places of the 2026-10-29 replay, beside a source list naming the same
-    /// picture "Brazil > Regional and state-specific clues".
+    /// What an attached picture is titled: the heading it is listed under beneath the answer, so the
+    /// picture and its line in the source list read alike. A document's own title named every picture
+    /// of it the same — five clues of "28 Secret US Metas" stood under that one name (2026-11-09) —
+    /// and before that, embeds read "Guide image" in 101 places of the 2026-10-29 replay.
     /// </summary>
-    public string PictureTitle => string.IsNullOrWhiteSpace(Title) ? Label : Title;
+    public string PictureTitle => string.IsNullOrWhiteSpace(Label) ? Title ?? string.Empty : Label;
+
+    /// <summary>What the guide says the excerpt's pictures show, shown under their title (<see cref="PictureCaption"/>); null when only its heading does.</summary>
+    public string? Caption { get; init; }
+
+    /// <summary>
+    /// What a vision model said the picture shows, cut like <see cref="Caption"/>, for a picture the
+    /// guide says nothing about; null otherwise. Kept apart from <see cref="Caption"/> so whoever shows
+    /// it can mark it as generated, or leave it out.
+    /// </summary>
+    public string? GeneratedCaption { get; init; }
 }
 
 /// <param name="Excerpts">Every excerpt offered, so a marker in the answer can be resolved to its source.</param>
@@ -77,6 +87,19 @@ public static class AiPromptBuilder
     /// <summary>What a PlonkIt picture is marked with: about 70 % of them carry a small distribution map.</summary>
     public const string DistributionMapNote = "usually with a distribution map";
 
+    /// <summary>What an excerpt telling a clue PlonkIt tells too is marked with, for a question that asks for something new.</summary>
+    public const string AlsoOnMainGuideNote = "also on PlonkIt";
+
+    /// <summary>
+    /// Said above the excerpts of a question that asks for something new. The model is shown excerpts,
+    /// not guides, so it cannot know what PlonkIt carries unless it is told: asked for "a clue I don't
+    /// know yet" it gave three that PlonkIt has (2026-11-09).
+    /// </summary>
+    private const string LesserKnownNote =
+        "(The user asks for something they do not know yet. PlonkIt is the guide every player has read, so its own "
+        + "tips are left out of these excerpts, and an excerpt marked \"" + AlsoOnMainGuideNote + "\" tells a clue PlonkIt "
+        + "has too: pass those over.)";
+
     /// <summary>
     /// Each line answers something users reported, most of it in the rated answers of the 2026-10-23
     /// feedback export. Kept to one short, concrete instruction per lesson, because the free models
@@ -108,6 +131,16 @@ public static class AiPromptBuilder
     /// like 99.9% of the license plates are fully blurred".</item>
     /// <item>The guides are a floor, not a ceiling: answers stopped at what one guide said ("Khasi pines
     /// are also found outside India") or declined a list the guides only partly cover.</item>
+    /// <item>A clue is shown, and not explained from its name: five clues came without a way to tell
+    /// which picture was which, one without its picture, and "Ohio gap" as "a telltale gap in pavement or
+    /// road markings" — the guide says a gap in a road line at a raised pavement marker (2026-11-09).</item>
+    /// <item>A plant in a screenshot is named by the model, which can see it: asked "what kind of cactus
+    /// is this and where is it found?", it answered with the Brazilian cactus of a look-alike slide —
+    /// "it was South Africa", and "it did not mention the species".</item>
+    /// <item>PlonkIt is what a player already knows: see <see cref="LesserKnownNote"/>.</item>
+    /// <item>Practice maps are part of how a guide teaches, and their links sat unused in the excerpts.</item>
+    /// <item>How citing works is the model's business, not the reader's: "The map in [1] visualizes this
+    /// distribution; citing it will attach the map to this reply" (replay of 2026-11-11).</item>
     /// <item>What is not from the guides is marked where it stands. "Say which part is not from the
     /// guides" was not enough: in the 2026-10-29 replay "In practice, Philippine roads typically have
     /// solid white outer edge lines" (#35) and "darker soil … often overcast" (#30) read as the guides'
@@ -128,10 +161,13 @@ public static class AiPromptBuilder
         You can show pictures, and you should. Excerpts marked (picture) or (N pictures) come with
         them, and citing the excerpt's number attaches its pictures to your reply. For "where", "which
         region" or distribution questions, cite a picture that shows the distribution; those marked
-        "usually with a distribution map" mostly do. When the user asks to see something, cite a
-        picture of it. Never say you are unable to display images, and never say a picture is attached
-        unless you cite it. You cannot see those pictures yourself, only their text, so never describe
-        a detail the text does not mention.
+        "usually with a distribution map" mostly do, and a GBIF excerpt's picture is a map of where a
+        plant is recorded. When the user asks to see something, cite a picture of it, and when you
+        name a clue, cite an excerpt that shows it.
+        Never say you are unable to display images, never say a picture is attached unless you cite
+        it, and never tell the user how citing works. You cannot see those pictures yourself, only
+        their text, so never describe a detail the text does not mention, and never explain a clue
+        from its name alone.
 
         How to answer:
         - Lead with the direct answer to the exact question, then the specifics that back it. No
@@ -150,6 +186,15 @@ public static class AiPromptBuilder
         - When the user attaches a screenshot you can see it. Describe only what is visible, and say so
           when a clue cannot be made out. When they name a country, judge the screenshot against that
           country's clues, and say when it does not match a guide's description.
+        - Asked what plant a screenshot shows, take the Pl@ntNet excerpt's identification when there
+          is one, with its scientific name and confidence, and cite it; without one, name the likeliest
+          species yourself and say how sure you are. A look-alike in a guide is a candidate, and its
+          country is not the screenshot's.
+        - PlonkIt is the guide most players have read. Asked for a clue the user does not know yet, or
+          one not on PlonkIt, give one from another guide that is not marked "also on PlonkIt", and
+          prefer one that holds across a region to one seen on a single road.
+        - Asked how to learn or practise a place, name the practice maps the guides mention, with
+          their link: the one kind of link you may write.
         - Prefer clues visible in coverage: poles, bollards, road lines, signs, vegetation,
           architecture, the Google car and its generation. Licence plates and faces are blurred in
           Street View, so plate letters are rarely usable.
@@ -176,13 +221,18 @@ public static class AiPromptBuilder
     /// the user's "[2]" means the reader's [2], and the answer it was written under is replayed without
     /// its numbers.
     /// </param>
+    /// <param name="lesserKnown">
+    /// The question asks for something the user does not know yet (<c>LesserKnownQuestion</c>), which
+    /// the model is told above the excerpts.
+    /// </param>
     public static AiPrompt Build(
         ConversationContext context,
         string question,
         IReadOnlyList<string> attachmentImageUrls,
         IReadOnlyList<KnowledgeHit> hits,
         int carried = 0,
-        IReadOnlyList<int>? carriedSourceNumbers = null)
+        IReadOnlyList<int>? carriedSourceNumbers = null,
+        bool lesserKnown = false)
     {
         var messages = new List<AiChatMessage> { AiChatMessage.System(SystemPrompt) };
 
@@ -218,6 +268,11 @@ public static class AiPromptBuilder
             if (DescribeCarried(carried, hits.Count, sourceNumbers is not null) is { } note)
             {
                 prompt.AppendLine(note);
+            }
+
+            if (lesserKnown)
+            {
+                prompt.AppendLine(LesserKnownNote);
             }
 
             prompt.AppendLine(excerpts).AppendLine();
@@ -315,22 +370,42 @@ public static class AiPromptBuilder
         }
 
         builder.Append(heading);
-        if (!string.IsNullOrWhiteSpace(note))
+
+        // Said after the heading, and nowhere else: the reply names the excerpt by its heading alone.
+        var notes = new[] { note, hit.AlsoInMainGuide ? AlsoOnMainGuideNote : null }
+            .Where(said => !string.IsNullOrWhiteSpace(said))
+            .ToList();
+        if (notes.Count > 0)
         {
-            builder.Append(" (").Append(note).Append(')');
+            builder.Append(" (").Append(string.Join("; ", notes)).Append(')');
         }
 
         builder.AppendLine();
         builder.AppendLine(hit.Text);
+
+        // Marked as a machine's words, apart from the guide's: the model may lean on it to say what the
+        // picture shows, but must not quote it as what the guide says.
+        if (imageUrl is not null && hit.HasGeneratedCaption)
+        {
+            builder.Append(GeneratedCaptionLead).Append(hit.GeneratedCaption!.Trim()).AppendLine(")");
+        }
+
         builder.Append("(source: ").Append(hit.SourceUrl).Append(')');
 
         offered = new OfferedExcerpt(marker, hit.SourceUrl, heading, imageUrl, hit.Title)
         {
             ExtraImageUrls = extras,
-            ChunkIds = [.. hit.ChunkIds]
+            ChunkIds = [.. hit.ChunkIds],
+            Caption = imageUrl is null ? null : PictureCaption.Of(hit.Text, hit.SectionPath, hit.Title),
+            GeneratedCaption = imageUrl is null || !hit.HasGeneratedCaption
+                ? null
+                : PictureCaption.Of(hit.GeneratedCaption, sectionPath: null, title: null)
         };
         return builder.ToString();
     }
+
+    /// <summary>What a generated description is introduced with in an excerpt, so the model knows whose words they are.</summary>
+    public const string GeneratedCaptionLead = "(AI description of the picture, not the guide's words: ";
 
     /// <summary>
     /// Whether a chunk is a PlonkIt tip: by its source type, which every indexed chunk carries, or by

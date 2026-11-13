@@ -14,6 +14,11 @@
       - type: volume
         source: ai-images
         target: /app/ai-images
+      # Natural Earth's region outlines (~40 MB), downloaded once for the region maps and kept, so a
+      # redeploy does not fetch them again.
+      - type: volume
+        source: ai-data
+        target: /app/ai-data
   postgresqldb:
     image: postgres:17.5
     ports:
@@ -69,5 +74,6 @@ secrets:
     file: .env.postgresqldb-password
 volumes:
   ai-images:
+  ai-data:
   qdrant-data:
   postgresqldb-data:

@@ -24,6 +24,15 @@ public class AiIngestionConfiguration
     public int MaxDocumentExportBytes { get; set; } = 32 * 1024 * 1024;
 
     /// <summary>
+    /// The longest side, in pixels, a Google document's pictures are asked for at.
+    ///
+    /// A document's page links each picture at any size up to its original; 800 is what the page itself
+    /// shows. A picture is as often a map with small print as a photograph, so twice that is asked for:
+    /// about 270 kB a picture as a JPEG, where the originals in the archive export run to megabytes.
+    /// </summary>
+    public int DocumentPicturePixels { get; set; } = 1600;
+
+    /// <summary>
     /// Largest Google Slides deck downloaded, in bytes. A deck past it is indexed from its text export,
     /// without pictures, speaker notes or slide links.
     ///

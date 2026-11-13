@@ -36,6 +36,15 @@ public sealed class AnswerAttemptPolicyTests
                 Error.Unexpected(ChatErrorCodes.RequestFailed, "x"), TimeSpan.FromSeconds(61), Patience)
             .Should().BeFalse();
 
+    [Fact]
+    public void ShouldRetry_AfterAModelWasCutOffForNotFinishing_HoweverLongThatTook() =>
+        // Cut off after as long as a reply may take, so it is always "slow" — and that says nothing about
+        // the provider, which had answered at once and was only waiting for that one model. On
+        // 2026-11-11 nemotron-3-ultra stalled while the models after it answered in seconds.
+        AnswerAttemptPolicy.ShouldRetry(
+                Error.Unexpected(ChatErrorCodes.TimedOut, "x"), TimeSpan.FromSeconds(61), Patience)
+            .Should().BeTrue();
+
     [Theory]
     [InlineData(ChatErrorCodes.ModelGated)]
     [InlineData(ChatErrorCodes.ModelRateLimited)]
@@ -50,6 +59,8 @@ public sealed class AnswerAttemptPolicyTests
     [InlineData(ChatErrorCodes.RequestFailed, AnswerFailureBlame.WholeChain)]
     [InlineData(ChatErrorCodes.EmptyResponse, AnswerFailureBlame.WholeChain)]
     [InlineData(ChatErrorCodes.ModelRateLimited, AnswerFailureBlame.FirstModel)]
+    // The provider leaves a model for the next only on an error, so the one that stalled is the first.
+    [InlineData(ChatErrorCodes.TimedOut, AnswerFailureBlame.FirstModel)]
     [InlineData(ChatErrorCodes.ModelGated, AnswerFailureBlame.FirstModelUnfit)]
     [InlineData(ChatErrorCodes.RateLimited, AnswerFailureBlame.None)]
     [InlineData(ChatErrorCodes.Unreachable, AnswerFailureBlame.None)]

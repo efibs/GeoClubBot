@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Infrastructure.OutputAdapters.AI.OpenRouter.Dtos;
+using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Refit;
 using UseCases.OutputPorts.AI;
@@ -190,6 +191,15 @@ public partial class RefitChatModelClient(
                 _ => Error.Unexpected(ChatErrorCodes.RequestFailed,
                     "The AI provider could not answer that right now.")
             };
+        }
+        catch (ApiRequestException ex) when (ex.InnerException is ResponseBodyTimeoutException)
+        {
+            // The provider answered and the completion never came: see ResponseBodyDeadlineHandler. It
+            // is the model's doing, unlike everything the handler below reports, so the caller demotes
+            // the head and asks others.
+            LogCompletionStalled(logger, request.ModelChain[0], ex.InnerException.Message);
+            return Error.Unexpected(ChatErrorCodes.TimedOut,
+                "The AI model I tried took too long to answer. Please ask again in a moment.");
         }
         catch (ApiRequestException ex)
         {
@@ -499,6 +509,9 @@ public partial class RefitChatModelClient(
 
     [LoggerMessage(LogLevel.Warning, "AI model {Model} returned an empty completion.")]
     static partial void LogCompletionEmpty(ILogger logger, string model);
+
+    [LoggerMessage(LogLevel.Warning, "AI model {Model} did not finish its completion: {Reason}")]
+    static partial void LogCompletionStalled(ILogger logger, string model, string reason);
 
     [LoggerMessage(LogLevel.Information,
         "AI provider reported {Kind} without naming the head of the chain (it named {Model}); treating it as a failed request.")]

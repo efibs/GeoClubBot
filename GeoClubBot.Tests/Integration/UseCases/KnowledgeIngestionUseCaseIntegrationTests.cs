@@ -177,6 +177,68 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
+    public async Task Ingest_KeepsTheDescriptionsAVisionModelWrote_WhenASourceIsIndexedAgain()
+    {
+        // Each description cost a chat request. A re-index writes the same points again, and without
+        // this the write would clear every description only for the describing run to buy them back.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key, title: "Tunisia"));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        var same = Chunk("p1-img", "Tunisia", imageUrl: "https://relay/same.png");
+        var changed = Chunk("p2-img", "Tunisia", imageUrl: "https://relay/new.png");
+        var index = ArrangeExtraction(host, same, changed);
+
+        // First run: nothing described yet.
+        (await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10))).Value.Ingested.Should().Be(1);
+        await index.DidNotReceiveWithAnyArgs().ReadGeneratedCaptionsAsync(default!, default!, default);
+
+        // Since then the describing run wrote one for each; the second picture has changed under its key.
+        var sameId = PointIdOf(key, same);
+        index.ReadGeneratedCaptionsAsync("plonkit", key, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<StoredPictureCaption>>(
+            [
+                new StoredPictureCaption(sameId, "https://relay/same.png", new GeneratedCaption("A short white bollard.", 1)),
+                new StoredPictureCaption(PointIdOf(key, changed), "https://relay/old.png", new GeneratedCaption("An older picture.", 1))
+            ]));
+
+        var written = new List<KnowledgePoint>();
+        var embedded = new List<string>();
+        index.UpsertAsync(Arg.Do<IReadOnlyList<KnowledgePoint>>(written.AddRange), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        host.Mock<IEmbedder>().EmbedAsync(
+                Arg.Do<IReadOnlyList<EmbeddingInput>>(inputs => embedded.AddRange(inputs.OfType<TextEmbeddingInput>().Select(input => input.Text))),
+                Arg.Any<CancellationToken>())
+            .Returns(call => EmbedEverything((IReadOnlyList<EmbeddingInput>)call[0]));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10, Force: true));
+
+        result.Value.Ingested.Should().Be(1);
+        var kept = written.Single(point => point.Chunk.LocalKey == "p1-img").Chunk;
+        kept.GeneratedCaption.Should().Be("A short white bollard.");
+        kept.CaptionVersion.Should().Be(1);
+        embedded.Should().Contain(text => text.EndsWith("A short white bollard."), "the description goes into the vector");
+
+        var replaced = written.Single(point => point.Chunk.LocalKey == "p2-img").Chunk;
+        replaced.GeneratedCaption.Should().BeNull("the picture under that key is a different one");
+        replaced.CaptionVersion.Should().Be(0);
+    }
+
+    private static Guid PointIdOf(string sourceKey, ExtractedChunk chunk) =>
+        new KnowledgeChunk
+        {
+            SourceType = "plonkit",
+            SourceKey = sourceKey,
+            LocalKey = chunk.LocalKey,
+            Kind = KnowledgeChunkKind.Image,
+            Text = chunk.Text,
+            SourceUrl = string.Empty
+        }.PointId;
+
+    [Fact]
     public async Task Ingest_SweepsStalePointsOnlyAfterWriting()
     {
         await ResetSourcesAsync();

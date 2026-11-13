@@ -97,7 +97,8 @@ and per payload index, and the default limit is exhausted part-way through a run
   guide's link; the guide-source schedule, whose next attempt shown is exactly when the queue takes the
   source; the club chat splitter, whose parts never pass GeoGuessr's limit and lose nothing; the
   country pool rotation, where every round must be a permutation of the
-  pool; the leaderboard ranking, where ties share a rank) over thousands of
+  pool; the leaderboard ranking, where ties share a rank; the garbled-reply screen, which must never
+  discard text whose words each keep to one alphabet) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
 
@@ -144,7 +145,12 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- replay ai_feedback/<expo
 `replay` shows what each question is offered and where every excerpt came from. `compare` counts
 alternative fusion weights (`--targets`, `--variants` of `AI:Retrieval` settings, `--allow-chat` to let
 the query planner's chat requests out); `grep` answers "is it in the index at all?"; `similarity` tries
-a re-worded chunk.
+a re-worded chunk. `chunks <export>` prints the excerpts each rated answer was shown, in full (or, with
+`--source`, every chunk of one guide); `extract <link>` shows how a guide would be indexed now, without
+indexing it; `overlap --source` shows how much of a guide PlonkIt has too; `map <plant>` draws the
+species map the bot would attach (needs no index); `review <highscores> --player <nick> --allow-chat` runs
+`/ai review` for real for any player, from a challenge's results saved by the ApiProbe (`raw
+/v3/results/highscores/<token>`), with GeoNN when `--set AI:RoundReview:StreetViewGuesser:BaseUrl=…` names it.
 
 `answer` goes one step further and asks every rated question again through the bot's real answering
 code (`AskAiHandler`, the read-only index, the live roster, the tool loop, GBIF), with
@@ -287,8 +293,51 @@ API + Discord (controllers, slash command modules)
   HttpClient `Gbif`, successes cached 24 h). Each tool's "when to call" lives in its description;
   `AnswerTools.SystemPrompt` holds only what applies to all of them. Because the model never called
   species_range on its own, `PlantRangeLookAhead` (singleton) asks GBIF up front, in parallel with
-  retrieval, when `PlantRangeQuestion` reads a question as "where in the world is X found", and puts the
-  plant's countries first among the excerpts. Ports live in
+  retrieval, when `PlantRangeQuestion` reads a question as "where is X found", and puts the plant's
+  countries first among the excerpts; a question naming one country ("where in the US…") is counted
+  within it when GBIF holds `MinRecordsInCountry` records there, and that excerpt follows the guides.
+  Either comes with a map (`ISpeciesRangeMap` → `GbifSpeciesRangeMap`: GBIF's base and density tiles
+  composed with SkiaSharp, framed by `SpeciesMapPlan`/`CountryBounds`, stored in the image relay), which
+  makes the excerpt a picture. A common name that is no species falls back to its genus ("cholla").
+  A screenshot's plant is named by **Pl@ntNet** (`IPlantIdentifier` → `PlantNetPlantIdentifier`, named
+  HttpClient `PlantNet`, free 500/day, nothing sent without `AI:Tools:PlantIdentification:ApiKey`) through
+  `PlantIdentificationLookAhead`, only when `PlantIdentificationQuestion` reads the question as "what
+  plant is this" and a picture is at hand (the message's, or the branch's latest); the candidates lead
+  the excerpts, a best match over `MinConfidence` goes on to the GBIF range and map, "no plant" becomes an
+  excerpt saying so, and a spent allowance becomes an `AiAnswer.Notices` line under the answer.
+  After an answer, `RegionLocator` finds the first-level regions it names (`RegionMention`, pure; the
+  country from the gazetteer) in Natural Earth's admin-1 boundaries (`NaturalEarthRegionBoundaries`,
+  40 MB GeoJSON downloaded once into `AI:Tools:RegionMap:DataDirectory`, warmed at start-up) and
+  `RegionMapDrawer` attaches a map of the country with them coloured in (GBIF tiles, framed by
+  `SpeciesMapPlan.ForCountry`), numbered after the last source; the model's own `region_map` tool
+  shades regions by a share per region. `/ai review [challenge]` (`ReviewRoundsCommand`, `AI:RoundReview`)
+  reads a challenge's highscores with the main club's account, finds the member's game by their linked
+  account, places rounds and guesses (`streakLocationCode`, else `IRegionBoundaries.LocateAsync` point in
+  polygon, the nearest region within 0.1° for a point off the coarse coastline; a guess's own code is
+  always null), searches the guides per round in one embedding request and asks the model once through
+  `AiAnswerLoop` (`RoundReviewPrompt`, pure); the highscores' round/guess fields were read live on
+  2026-11-13 (`ChallengeResultRoundDto`, `panoId` hex-encoded → `GeoGuessrPanoId`). Optionally **GeoNN**
+  (`AI:RoundReview:StreetViewGuesser:BaseUrl`, empty = off; `IStreetViewGuesser` → `GeoNnStreetViewGuesser`,
+  `POST /api/predict` of GeoNN's `play.py` on a GPU machine) reads each round's panorama as the game showed
+  it, and its likeliest countries tell the model how plainly the round showed its country, never a source. The **clue of the day** (`AI:ClueOfTheDay`, off until a channel
+  is set; `AiClueOfTheDayJob` on `AI:ClueOfTheDaySchedule`/`TimeZone`, `/ai clue-now`) posts one
+  `ClueSampler` draw not posted within `NoRepeatDays` (`AiCluePosts`) as an `AiAnswer`
+  (`ClueOfTheDayPost`, pure) through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses
+  `AiConversationGateway.PostAsync` without a message to reply to. Weak retrievals (`WeakRetrieval`, pure:
+  nothing found, nothing from the one country the question names, nothing cited) are recorded as asked in
+  `AiRetrievalGaps`; `/ai gaps` (`ReadKnowledgeGapReportQuery`, `AI:KnowledgeGaps`) groups them with 👎
+  answers by country and topic, and `AiKnowledgeGapReportJob` prunes them and optionally posts the report.
+  `/ai quiz [country] [lesser-known]` (`DrawQuizQuestionQuery`,
+  `AI:Quiz`) posts a random captioned picture (`SampleAsync` with `KnowledgeSample.Country`,
+  `ClueSampler.IsAClue`) with the answer behind one spoiler (`AiQuizFormatter`, pure) and buttons that
+  record an in-memory score (`QuizStreaks`) or draw again.
+  A question asking for something new (`LesserKnownQuestion`: "not on PlonkIt", "a clue I don't know
+  yet", and follow-ups on such a branch) is searched without PlonkIt (`KnowledgeQuery.ExcludedSourceType`),
+  and `MainGuideOverlap` marks every excerpt PlonkIt has a tip like, by the index's stored vectors
+  (`IKnowledgeIndex.ReadNearestOfSourceAsync`, no embedding request; the bar was measured, see the guide).
+  One that names nothing to look for (`LesserKnownQuestion.NamesNoSubject`: every word is one a request
+  is made of) is led by picture clues drawn at random (`ClueSampler` → `IKnowledgeIndex.SampleAsync`),
+  since a search has only its wording to go by. Ports live in
   `Application/OutputPorts/AI/` (`IChatModelClient`, `IEmbedder`, `IKnowledgeIndex`,
   `ISourceExtractor`), adapters in `Infrastructure/OutputAdapters/AI/`. Conversations are a tree of
   Discord reply edges, so sibling branches stay independent; each answer turn stores the chunk ids it
@@ -306,18 +355,28 @@ API + Discord (controllers, slash command modules)
   `RelayedImageUrl` (Application/OutputPorts/AI), shared by the relay, `AiImageController` and the
   Discord side; keep them off `IImageRelay`, whose substitute in the integration host would answer `""`. In the
   OpenRouter resilience pipeline, retry must stay *outside* the rate limiter (every attempt takes a
-  token); `OpenRouterResiliencePipelineTests` pins this. The fallback router `openrouter/free` picks a
+  token); `OpenRouterResiliencePipelineTests` pins this. Refit takes a response at its headers, and
+  OpenRouter opens a completion's at once and pads it while the model works, so no timeout bounded the
+  body (57 minutes, once): `ResponseBodyDeadlineHandler` (Infrastructure/OutputAdapters/Http) reads it
+  inside the client, *outside* that pipeline so it is never retried, and gives up
+  `AI:ResponseTimeoutSeconds` (90, the user's choice) after the headers — `ai.model_timed_out`, the
+  head's failure alone, retried against other models however slow it was; `OpenRouterHttpClientsTests`
+  pins the registration. The fallback router `openrouter/free` picks a
   **random** free model (safety classifiers and 2B models included) and cannot exclude any, so chains
   reach it only when too few vetted models qualify; every answer is screened
-  (`GuardrailVerdictDetector`, `IChatModelCatalog.IsUnfitToAnswer`, `ToolCallMarkupDetector`) and a
-  failed or unusable first chain is retried once against untried models. The ranking
+  (`GuardrailVerdictDetector`, `IChatModelCatalog.IsUnfitToAnswer`, `ToolCallMarkupDetector`,
+  `GarbledTextDetector` for token soup: words that change alphabet half-way, which never marks the
+  model unfit) and a failed or unusable first chain is retried once against untried models. The ranking
   (`ChatModelSelector`) leads with effective model size, √(total × active), parsed by
   `ModelParameterCountParser`; it drops models below `MinEffectiveParametersBillions` and models whose
   provider uptime (public `/models/{id}/endpoints`, read through the separate `OpenRouterHealth` client
   with no circuit breaker) is below `MinProviderUptimePercent`. `OpenRouterFailureClassifier` reads
   error bodies: a 403 "agentic harness" on the head is `ModelGated` (excluded until restart), an
   upstream shared-pool 429 is `ModelRateLimited` (head demoted, never waited out). Model citations are
-  rewritten by `CitationResolver` into one `[n]` numbering, pictures included; text is numbered per link
+  rewritten by `CitationResolver` into one `[n]` numbering, pictures included; each cited excerpt's
+  pictures are a gallery of their own in `AiAnswerFormatter` (Discord merges embeds sharing a link into
+  one of at most four, so galleries are told apart by `?_=n` before the fragment), titled by the
+  excerpt's label and captioned by `PictureCaption`; text is numbered per link
   **and** section label (`KeyOf`), labels are cleaned at answer time by `SectionLabel` (which the Docs
   extractor also uses to reject non-headings), and `CarriedExcerpts` recovers the reader's numbers by the
   same rule. Retrieval fuses its per-vector searches client-side
@@ -329,7 +388,10 @@ API + Discord (controllers, slash command modules)
   index's country names, cached by the singleton `KnowledgeCountryDirectory`) are a soft boost through
   country-filtered twin lists, while `KnowledgeQuery.Country` stays `/ai search`'s hard filter. The
   optional query planner (`RetrievalQueryPlanner`, `AI:Retrieval:QueryPlanner`, **off** by default,
-  paused after a timeout by the singleton `QueryPlannerPause`) costs one chat request. Ingestion
+  paused after a timeout by the singleton `QueryPlannerPause`) costs one chat request. Google Docs are
+  read from their mobile page (`GoogleDocSourceExtractor` → `GoogleDocHtml`, pure): pictures fetched one
+  by one, sections nested as the headings are, a picture captioned by the words around it, which are
+  then no chunk of their own; the archive and text exports are only its stand-ins. Ingestion
   classifies fetch failures through `SourceFetch` (codes in `SourceExtractionErrorCodes`): 404/410 and
   Google's 401/403 become `KnowledgeSourceStatus.Unavailable`, rechecked after
   `AI:Ingestion:UnavailableRecheckDays` (a second "gone" sweeps the chunks); a guide site's 401/403, a
@@ -338,8 +400,15 @@ API + Discord (controllers, slash command modules)
   and `/ai sources`; `/ai source-retry` re-queues. Answers
   can be rated (👍/👎 reaction, or a message context menu for a written comment); a rated conversation
   is **copied** into `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep
-  never touches — that copy is the only permanently stored conversation. See
-  [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
+  never touches — that copy is the only permanently stored conversation. Pictures whose only words
+  are a heading (`PictureWords.IsOnlyAHeading`, stored as `captionWanted`) are described by a free
+  vision model (`CaptionPicturesCommand`, `PictureCaptionJob` before the ingestion run,
+  `/ai describe-pictures`; own share `AI:Captions:MaxDailyBudgetPercent`, resumable, re-done when
+  `AI:Captions:Version` rises): the description is stored as `generatedCaption`, embedded with the
+  text, shown to the model marked as not the guide's words, to members only under a picture the guide
+  says nothing of (`ShowToMembers`), and kept across a re-ingest. `KnowledgeHit.IsUndescribedPicture`
+  is the test for "the model can say nothing about this picture"; `IsHeadingOnlyPicture` only says
+  what the guide wrote. See [`Documentation/AiGuide.md`](Documentation/AiGuide.md).
 - **Country challenges** (optional, `CountryChallenges:Enabled`): themed weekday challenges configured in
   a hand-edited JSON file (`CountryChallengesConfig.example.json`) that is re-read on every run.
   `CountryChallengePlanResolver` fills inherited values (built-in → file → challenge → pool entry) and

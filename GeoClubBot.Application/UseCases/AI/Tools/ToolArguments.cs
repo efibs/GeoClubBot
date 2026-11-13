@@ -4,9 +4,20 @@ using System.Text.RegularExpressions;
 
 namespace UseCases.UseCases.AI.Tools;
 
+/// <summary>Which guides a search reads.</summary>
+public enum GuideSource
+{
+    /// <summary>PlonkIt alone: what every player has read, searched to check whether it carries a clue.</summary>
+    MainGuide,
+
+    /// <summary>Every guide but PlonkIt: where a clue a player does not know yet is found.</summary>
+    Others
+}
+
 /// <param name="Query">What to search for, trimmed to <see cref="ToolArguments.MaxQueryLength"/>.</param>
 /// <param name="Country">The country to prefer, as the model wrote it, or null.</param>
-public sealed record SearchGuidesArguments(string Query, string? Country, bool PicturesOnly);
+/// <param name="Source">The guides to search, or null for all of them.</param>
+public sealed record SearchGuidesArguments(string Query, string? Country, bool PicturesOnly, GuideSource? Source = null);
 
 /// <param name="Excerpt">The marker of the excerpt whose guide to read.</param>
 public sealed record ReadGuideArguments(int Excerpt);
@@ -14,6 +25,14 @@ public sealed record ReadGuideArguments(int Excerpt);
 /// <param name="Name">The species' scientific or common name, trimmed to <see cref="ToolArguments.MaxNameLength"/>.</param>
 /// <param name="Country">The country whose regions to count, as the model wrote it, or null.</param>
 public sealed record SpeciesRangeArguments(string Name, string? Country);
+
+/// <param name="Name">The region as the model wrote it.</param>
+/// <param name="Share">How common the thing is there, 0 to 1; 1 when the model gave none.</param>
+public sealed record RegionShare(string Name, double Share);
+
+/// <param name="Country">The country, as the model wrote it.</param>
+/// <param name="Regions">The regions to highlight, at most <see cref="ToolArguments.MaxRegionsPerMap"/>.</param>
+public sealed record RegionMapArguments(string Country, IReadOnlyList<RegionShare> Regions);
 
 /// <summary>
 /// Reads the arguments a model wrote for a tool call. They are the model's, not ours: missing, of the
@@ -51,8 +70,30 @@ public static partial class ToolArguments
         arguments = new SearchGuidesArguments(
             query,
             ReadText(root, "country", MaxCountryLength),
-            ReadFlag(root, "pictures_only"));
+            ReadFlag(root, "pictures_only"),
+            ReadSource(ReadText(root, "source", MaxCountryLength)));
         return true;
+    }
+
+    /// <summary>
+    /// The guides a search names, however the model put it: "plonkit" and "plonk it" are PlonkIt,
+    /// "other", "others" and "not plonkit" the rest. Anything else searches every guide, as no value does:
+    /// a source the bot cannot read is not worth refusing a search for.
+    /// </summary>
+    private static GuideSource? ReadSource(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return null;
+        }
+
+        var named = string.Concat(source.Where(char.IsLetter)).ToLowerInvariant();
+        return named switch
+        {
+            "plonkit" or "plonkitnet" or "plonkitonly" or "onlyplonkit" => GuideSource.MainGuide,
+            "other" or "others" or "notplonkit" or "nonplonkit" or "noplonkit" or "withoutplonkit" or "exceptplonkit" => GuideSource.Others,
+            _ => null
+        };
     }
 
     public static bool TryReadReadGuide(string? json, out ReadGuideArguments arguments, out string error)
@@ -92,6 +133,96 @@ public static partial class ToolArguments
 
         arguments = new SpeciesRangeArguments(name, ReadText(root, "country", MaxCountryLength));
         return true;
+    }
+
+    /// <summary>Regions one map call may name. More is a country coloured in.</summary>
+    public const int MaxRegionsPerMap = 30;
+
+    /// <summary>
+    /// Reads a <c>region_map</c> call: a country and its regions, each as a name or as an object with a
+    /// name and a share. A share written as a percentage (40) is read as a fraction (0.4).
+    /// </summary>
+    public static bool TryReadRegionMap(string? json, out RegionMapArguments arguments, out string error)
+    {
+        const string example = """{"country": "Vietnam", "regions": [{"name": "Lạng Sơn", "share": 0.7}, {"name": "Quảng Ninh", "share": 0.3}]}""";
+
+        arguments = new RegionMapArguments(string.Empty, []);
+        if (!TryReadObject(json, out var root, out error))
+        {
+            error = Problem(AnswerTools.RegionMap, error, example);
+            return false;
+        }
+
+        var country = ReadText(root, "country", MaxCountryLength);
+        if (country is null)
+        {
+            error = Problem(AnswerTools.RegionMap, "'country' is required", example);
+            return false;
+        }
+
+        if (!TryGetProperty(root, "regions", out var regionsElement) || regionsElement.ValueKind != JsonValueKind.Array)
+        {
+            error = Problem(AnswerTools.RegionMap, "'regions' must be a list of region names, or of objects with a name and a share", example);
+            return false;
+        }
+
+        var regions = new List<RegionShare>();
+        foreach (var element in regionsElement.EnumerateArray())
+        {
+            if (regions.Count >= MaxRegionsPerMap)
+            {
+                break;
+            }
+
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.String when !string.IsNullOrWhiteSpace(element.GetString()):
+                    regions.Add(new RegionShare(Shorten(element.GetString()!.Trim(), MaxNameLength), 1d));
+                    break;
+
+                case JsonValueKind.Object:
+                    {
+                        var name = ReadText(element, "name", MaxNameLength) ?? ReadText(element, "region", MaxNameLength);
+                        if (name is null)
+                        {
+                            continue;
+                        }
+
+                        var share = ReadFraction(element, "share") ?? ReadFraction(element, "weight") ?? ReadFraction(element, "frequency") ?? 1d;
+                        if (share > 1d)
+                        {
+                            share /= 100d;
+                        }
+
+                        regions.Add(new RegionShare(name, Math.Clamp(share, 0d, 1d)));
+                        break;
+                    }
+            }
+        }
+
+        if (regions.Count == 0)
+        {
+            error = Problem(AnswerTools.RegionMap, "'regions' names no region", example);
+            return false;
+        }
+
+        arguments = new RegionMapArguments(country, regions);
+        return true;
+    }
+
+    private static double? ReadFraction(JsonElement root, string name)
+    {
+        if (!TryGetProperty(root, name, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetDouble(out var number) => number,
+            JsonValueKind.String when double.TryParse(value.GetString()?.TrimEnd('%', ' '), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) => parsed,
+            _ => null
+        };
     }
 
     /// <summary>The arguments in one line and at most <paramref name="maxLength"/> characters, for logs and summaries.</summary>

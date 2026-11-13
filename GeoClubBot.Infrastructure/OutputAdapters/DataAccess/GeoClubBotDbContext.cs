@@ -45,6 +45,10 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<ClubApplicationNotification> ClubApplicationNotifications { get; set; }
 
+    public DbSet<AiCluePost> AiCluePosts { get; set; }
+
+    public DbSet<AiRetrievalGap> AiRetrievalGaps { get; set; }
+
     public DbSet<ClubChatForward> ClubChatForwards { get; set; }
 
     public DbSet<AiDailyBudget> AiDailyBudgets { get; set; }

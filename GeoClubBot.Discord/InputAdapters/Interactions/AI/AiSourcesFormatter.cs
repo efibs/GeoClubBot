@@ -88,6 +88,47 @@ public static class AiSourcesFormatter
         return message.ToString();
     }
 
+    /// <summary>One run of the picture-describing command, as the admin who asked for it is told.</summary>
+    public static string DescribeCaptionRun(CaptionReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        if (report.NoModel)
+        {
+            return "No free model that reads pictures is available right now — nothing was described. "
+                   + $"**{report.Remaining}** picture(s) are waiting.";
+        }
+
+        if (report is { Attempted: 0, Remaining: 0 })
+        {
+            return "Every indexed picture that has no words of its own has been described — nothing to do.";
+        }
+
+        var message = new StringBuilder()
+            .AppendLine($"Described **{report.Described}** of **{report.Attempted}** picture(s) asked about.")
+            .AppendLine($"Unusable replies: {report.Unusable} · Failed requests: {report.Failed} · "
+                        + $"Still waiting: {report.Remaining}");
+
+        if (report.BudgetExhausted)
+        {
+            message.AppendLine("\n⚠️ Stopped early — describing has used its share of today's AI allowance "
+                               + "(`AI:Captions:MaxDailyBudgetPercent`). The nightly run carries on.");
+        }
+
+        if (report.StoppedForFailures)
+        {
+            message.AppendLine("\n⚠️ Stopped early — every reply in a row was unusable or failed; the rest is left "
+                               + "for a later run.");
+        }
+
+        if (report.RateLimited)
+        {
+            message.AppendLine("\n⚠️ Stopped early — the AI provider kept rate-limiting even after waiting out its window.");
+        }
+
+        return message.ToString();
+    }
+
     /// <summary>
     /// The listed sources, as many as fit, each with its reason and its schedule. What did not fit is
     /// counted rather than dropped silently.

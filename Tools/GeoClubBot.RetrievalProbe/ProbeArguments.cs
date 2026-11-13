@@ -44,7 +44,8 @@ public sealed record ProbeArguments(
     bool Judge = false,
     IReadOnlyList<string>? JudgeModels = null,
     RecordFilter? Only = null,
-    int Parallelism = ProbeArguments.DefaultParallelism)
+    int Parallelism = ProbeArguments.DefaultParallelism,
+    string? Country = null)
 {
     /// <summary>Two at a time: an answer waits on the model most of the time, and two stay well inside 18 requests a minute.</summary>
     public const int DefaultParallelism = 2;
@@ -61,7 +62,7 @@ public sealed record ProbeArguments(
 
         var command = args[0];
         string? target = null, qdrant = null, collection = null, rating = null, targets = null;
-        string? question = null, source = null, output = null, variantsPath = null;
+        string? question = null, source = null, output = null, variantsPath = null, country = null;
         var variants = new List<string>();
         var plannerModels = new List<string>();
         var overrides = new List<string>();
@@ -123,11 +124,13 @@ public sealed record ProbeArguments(
                 case "--collection":
                 case "--targets":
                 case "--question":
+                case "--player":
                 case "--source":
                 case "--variant":
                 case "--variants":
                 case "--planner-models":
                 case "--judge-model":
+                case "--country":
                 case "--out":
                     if (!TryTake(args, ref i, out var value))
                     {
@@ -141,7 +144,9 @@ public sealed record ProbeArguments(
                         case "--collection": collection = value; break;
                         case "--targets": targets = value; break;
                         case "--question": question = value; break;
+                        case "--player": question = value; break;
                         case "--source": source = value; break;
+                        case "--country": country = value; break;
                         case "--variant": variants.Add(value!); break;
                         case "--variants": variantsPath = value; break;
                         case "--planner-models":
@@ -205,7 +210,7 @@ public sealed record ProbeArguments(
 
         return new ProbeArguments(
             command, target, qdrant, collection, limit, rating, targets, question, source, variants, max, output,
-            allowChat, variantsPath, plannerModels, overrides, judge || judgeModels.Count > 0, judgeModels, only, parallelism);
+            allowChat, variantsPath, plannerModels, overrides, judge || judgeModels.Count > 0, judgeModels, only, parallelism, country);
     }
 
     public static void PrintUsage() =>
@@ -228,6 +233,21 @@ public sealed record ProbeArguments(
               answer <export.jsonl>   Every rated answer asked again through the bot's own answering code -
                                       retrieval, the model chain, tool calls - and shown as Discord would
                                       show it, beside the rated one. Needs --allow-chat.
+              chunks <export.jsonl>   The excerpts each rated answer was shown, in full, read back by the
+                                      chunk ids the export kept; with --source instead of an export,
+                                      every chunk the index holds of one guide, in reading order.
+              extract <guide link>    What a guide would be indexed as, read now by the bot's own
+                                      extractor - its sections, chunks and picture captions - without
+                                      indexing anything or downloading its pictures.
+              overlap                 How much of a guide (--source) PlonkIt has too: each chunk's
+                                      nearest PlonkIt tip of the same country, and how near.
+              review <highscores>     /ai review run for real for any player of a challenge: the results
+                                      as the ApiProbe saved them (raw /v3/results/highscores/<token>),
+                                      placed by Natural Earth's outlines, searched in the index and
+                                      answered by the bot's models. Needs --allow-chat; --player picks
+                                      whom to review (nick or id, default the leader).
+              map <plant name>        The map the bot would attach for a plant, drawn by its own GBIF
+                                      reader and renderer; --country frames one country. Needs no index.
 
             Options:
               --qdrant <url>          Qdrant's gRPC address (default: QDRANT_GRPC_URL, appsettings.Local.json,
@@ -243,8 +263,9 @@ public sealed record ProbeArguments(
                                       answer: required - it asks the bot's models, a few requests each
               --set <Key=Value>       answer: overrides a setting of the bot's appsettings.json, e.g.
                                       --set AI:Tools:Enabled=false (repeatable)
-              --only <list>           answer: record numbers, ranges, feedback-id prefixes, after:/before:
-                                      dates, comma-separated (e.g. 1-25,31 or after:2026-09-27)
+              --only <list>           answer/chunks: record numbers, ranges, feedback-id prefixes,
+                                      after:/before: dates, comma-separated (e.g. 1-25,31 or
+                                      after:2026-09-27)
               --parallel <n>          answer: rated answers asked at once (default 2)
               --judge                 answer: a model compares each new answer with the rated one
               --judge-model <ids>     answer: comma-separated chain the judge asks (implies --judge;
@@ -254,9 +275,13 @@ public sealed record ProbeArguments(
               --variants <file>       compare: JSON of { "name": { retrieval settings } } to compare
                                       instead of the built-in steps; see README.md
               --question <text>       similarity: the question
-              --source <url>          similarity: the chunk's source URL, as listed under an answer
+              --player <nick|id>      review: the player whose game is reviewed
+              --source <url>          similarity: the chunk's source URL, as listed under an answer;
+                                      chunks: a guide's link, or its type and key (plonkit:india)
               --variant <text>        similarity: re-worded chunk text to try (repeatable)
-              --max <n>               grep: matches to show (default 20)
+              --country <name>        map: the country to count and frame the plant in (default: its range)
+              --max <n>               grep: matches to show (default 20); chunks --source and extract:
+                                      chunks to show
               --out <file>            Also write the report to a file
 
             Questions are embedded with OpenRouter (key: OPENROUTER_API_KEY, appsettings.Local.json, or the

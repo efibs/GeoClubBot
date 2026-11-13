@@ -157,6 +157,11 @@ public sealed class MediatorTestHost : IDisposable
         services.AddSingleton<KnowledgeCountryDirectory>();
         services.AddSingleton<QueryPlannerPause>();
 
+        // Mirrors AiServices: a question asking for a clue that is not common knowledge has what
+        // PlonkIt tells too marked, by a read of the substituted index.
+        services.AddSingleton<MainGuideOverlap>();
+        services.AddSingleton<ClueSampler>();
+
         // Mirrors AiServices: the answer's tool calls run through the toolbox, against the substituted
         // index, embedder and species database, and the loop claims each further call from the budget.
         services.AddSingleton<AnswerToolbox>();
@@ -165,6 +170,8 @@ public sealed class MediatorTestHost : IDisposable
         // Mirrors AiServices: a question asking where a plant is found looks it up before answering,
         // through the substituted species reader, whose default (failed) result offers nothing.
         services.AddSingleton<PlantRangeLookAhead>();
+        services.AddSingleton<PlantIdentificationLookAhead>();
+        services.AddSingleton<RegionLocator>();
 
         // Mirrors ClubMembersModule: the private-channel handlers share the category placement logic.
         services.AddScoped<MemberPrivateChannelManager>();

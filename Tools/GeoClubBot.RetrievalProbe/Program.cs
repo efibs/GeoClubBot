@@ -17,16 +17,10 @@ if (arguments is null)
     return 1;
 }
 
-if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity" or "answer"))
+if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity" or "answer" or "chunks" or "extract" or "map" or "overlap" or "review"))
 {
     Console.Error.WriteLine($"Unknown command '{arguments.Command}'.");
     ProbeArguments.PrintUsage();
-    return 1;
-}
-
-var settings = ProbeSettings.Resolve(arguments);
-if (settings is null)
-{
     return 1;
 }
 
@@ -36,6 +30,34 @@ Console.CancelKeyPress += (_, e) =>
     e.Cancel = true;
     cancellation.Cancel();
 };
+
+// Reads GBIF alone, so it runs without an index to connect to.
+if (arguments.Command == "map")
+{
+    var mapReport = new ProbeReport();
+    try
+    {
+        await MapCommand.RunAsync(arguments, mapReport, cancellation.Token).ConfigureAwait(false);
+    }
+    catch (ProbeException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 1;
+    }
+
+    if (arguments.OutputPath is not null)
+    {
+        await File.WriteAllTextAsync(arguments.OutputPath, mapReport.ToString(), cancellation.Token).ConfigureAwait(false);
+    }
+
+    return 0;
+}
+
+var settings = ProbeSettings.Resolve(arguments);
+if (settings is null)
+{
+    return 1;
+}
 
 using var qdrant = ReadOnlyQdrantInterceptor.Connect(settings.QdrantAddress);
 var report = new ProbeReport();
@@ -68,6 +90,10 @@ try
         "compare" => CompareCommand.RunAsync(context),
         "grep" => GrepCommand.RunAsync(context),
         "answer" => AnswerCommand.RunAsync(context),
+        "chunks" => ChunksCommand.RunAsync(context),
+        "extract" => ExtractCommand.RunAsync(context),
+        "overlap" => OverlapCommand.RunAsync(context),
+        "review" => ReviewCommand.RunAsync(context),
         _ => SimilarityCommand.RunAsync(context)
     }).ConfigureAwait(false);
 }

@@ -14,7 +14,8 @@ namespace GeoClubBot.Tests.Api;
 /// Pins how the OpenRouter clients are wired, through the real registrations and resilience handlers:
 /// the provider health reads a catalog refresh makes share the questions' rate limiter, and nothing else
 /// of their pipeline. Through the chat pipeline, an endpoints route failing on its own opened the circuit
-/// breaker by itself, and every question then failed for two minutes although chat was answering.
+/// breaker by itself, and every question then failed for two minutes although chat was answering. And a
+/// completion that opens and never ends is cut off, which nothing did before 2026-11-11.
 /// </summary>
 public sealed class OpenRouterHttpClientsTests
 {
@@ -61,13 +62,38 @@ public sealed class OpenRouterHttpClientsTests
         upstream.Requests.Should().ContainSingle();
     }
 
-    private static ServiceProvider BuildProvider(RoutingHandler upstream, int requestsPerMinute)
+    [Fact]
+    public async Task ACompletionThatOpensAndNeverEnds_IsCutOff_AsTheModelsFailure_AndNotSentAgain()
     {
+        // OpenRouter answers a completion at once and pads the response while the model works. The
+        // client's timeout and the pipeline's attempt timeout both stop counting at the headers, so a
+        // model that stalled held the answer for 57 minutes. A second for the reply here, in real time,
+        // with the attempt and the call left at a minute and three: it is the registration that is
+        // under test, with every handler the bot has.
+        var upstream = new RoutingHandler(_ => HttpStatusCode.OK, () => new StalledBody());
+        await using var provider = BuildProvider(upstream, requestsPerMinute: 6_000, responseTimeoutSeconds: 1);
+        var client = provider.GetRequiredService<IChatModelClient>();
+
+        var answer = await client.CompleteAsync(new AiChatRequest(["a/model:free"], [AiChatMessage.User("hi")]));
+
+        answer.IsFailure.Should().BeTrue("the body would have gone on for far longer than a reply may take");
+        answer.Error.Code.Should().Be(ChatErrorCodes.TimedOut, "the provider answered; it is the model that stalled");
+        upstream.Requests.Should().ContainSingle("asking the same stalled model again would only wait again");
+    }
+
+    private static ServiceProvider BuildProvider(RoutingHandler upstream, int requestsPerMinute, int? responseTimeoutSeconds = null)
+    {
+        var settings = new Dictionary<string, string?>
+        {
+            ["AI:OpenRouter:PerMinuteRequestBudget"] = requestsPerMinute.ToString(CultureInfo.InvariantCulture)
+        };
+        if (responseTimeoutSeconds is { } seconds)
+        {
+            settings["AI:ResponseTimeoutSeconds"] = seconds.ToString(CultureInfo.InvariantCulture);
+        }
+
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["AI:OpenRouter:PerMinuteRequestBudget"] = requestsPerMinute.ToString(CultureInfo.InvariantCulture)
-            })
+            .AddInMemoryCollection(settings)
             .Build();
 
         var services = new ServiceCollection();
@@ -86,8 +112,34 @@ public sealed class OpenRouterHttpClientsTests
         {"model": "a/model:free", "choices": [{"message": {"role": "assistant", "content": "An answer."}}]}
         """;
 
+    /// <summary>
+    /// Padding, and then nothing: the body of the night a model stalled. It does end — with an answer,
+    /// after far longer than the test allows a request — so that a guard gone missing fails the test
+    /// instead of hanging the run.
+    /// </summary>
+    private sealed class StalledBody : HttpContent
+    {
+        private static readonly TimeSpan FarTooLong = TimeSpan.FromSeconds(20);
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
+        {
+            await stream.WriteAsync("\n\n\n"u8.ToArray(), cancellationToken);
+            await Task.Delay(FarTooLong, cancellationToken);
+            await stream.WriteAsync(System.Text.Encoding.UTF8.GetBytes(ChatBody), cancellationToken);
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+    }
+
     /// <summary>Answers each request with the status its path is given, recording every path that reached it.</summary>
-    private sealed class RoutingHandler(Func<string, HttpStatusCode> statusFor) : HttpMessageHandler
+    private sealed class RoutingHandler(Func<string, HttpStatusCode> statusFor, Func<HttpContent>? body = null) : HttpMessageHandler
     {
         private readonly List<string> _requests = [];
 
@@ -112,7 +164,7 @@ public sealed class OpenRouterHttpClientsTests
 
             return Task.FromResult(new HttpResponseMessage(statusFor(path))
             {
-                Content = new StringContent(ChatBody),
+                Content = body?.Invoke() ?? new StringContent(ChatBody),
                 RequestMessage = request
             });
         }

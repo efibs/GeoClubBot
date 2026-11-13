@@ -79,6 +79,40 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("AiAnswerFeedbacks");
                 });
 
+            modelBuilder.Entity("Entities.AiCluePost", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<Guid>("ChunkId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("MessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<DateTimeOffset>("PostedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChunkId");
+
+                    b.HasIndex("PostedAtUtc");
+
+                    b.ToTable("AiCluePosts");
+                });
+
             modelBuilder.Entity("Entities.AiConversationTurn", b =>
                 {
                     b.Property<Guid>("TurnId")
@@ -245,6 +279,40 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .IsUnique();
 
                     b.ToTable("AiFeedbackTurns");
+                });
+
+            modelBuilder.Entity("Entities.AiRetrievalGap", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("AskedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Topic")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AskedAtUtc");
+
+                    b.ToTable("AiRetrievalGaps");
                 });
 
             modelBuilder.Entity("Entities.Club", b =>

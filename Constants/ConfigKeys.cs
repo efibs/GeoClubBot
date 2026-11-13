@@ -46,5 +46,13 @@ public static class ConfigKeys
 
     public const string AiIngestionCronScheduleConfigurationKey = "AI:IngestionSchedule";
 
+    public const string AiCaptionCronScheduleConfigurationKey = "AI:CaptionSchedule";
+
+    public const string AiClueOfTheDayCronScheduleConfigurationKey = "AI:ClueOfTheDaySchedule";
+
+    public const string AiClueOfTheDayTimeZoneConfigurationKey = "AI:ClueOfTheDayTimeZone";
+
+    public const string AiKnowledgeGapsCronScheduleConfigurationKey = "AI:KnowledgeGapsSchedule";
+
     public const string SqlMigrateConfigurationKey = "SQL:Migrate";
 }

@@ -410,6 +410,61 @@ public sealed class RetrievalProbeAnswerTests
     }
 
     [Fact]
+    public async Task SpeciesMaps_AreKeptAsFiles_UnderLinksTheBotsOwnFormatterTakes()
+    {
+        // Discord's embeds take http(s) links only. A map kept under a file link threw while the report
+        // was rendered, after every answer had been paid for (2026-11-11).
+        var directory = Path.Combine(Path.GetTempPath(), $"probe-maps-{Guid.NewGuid():N}");
+        var folder = new SpeciesMapFolder(directory);
+        byte[] map = [0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3];
+
+        var stored = await folder.StoreAsync(map, "image/jpeg");
+
+        stored.IsSuccess.Should().BeTrue();
+        RelayedImageUrl.TryReadName(stored.Value, out var name).Should().BeTrue("the planner and the report read it as a relayed picture");
+        folder.PathOf(stored.Value).Should().Be(Path.Combine(directory, name!));
+        (await File.ReadAllBytesAsync(folder.PathOf(stored.Value)!)).Should().Equal(map);
+        folder.PathOf("https://bot.example/api/v1/ai/images/" + new string('a', 64) + ".jpg").Should().BeNull("not a link this folder gave out");
+        folder.PathOf(null).Should().BeNull();
+
+        var rated = Parse(Record(("user", "where can I find Khasi pines?", null), ("assistant", "Meghalaya [1].", null)));
+        var answer = Answer("See the map [1].") with
+        {
+            Images = [new AiAnswerImage(1, stored.Value, "https://www.gbif.org/species/5285159", "Pinus kesiya · GBIF", Caption: "Records by country.")],
+            Sources = [new AiAnswerSource(1, "Pinus kesiya · GBIF", "https://www.gbif.org/species/5285159", IsImage: true)]
+        };
+
+        var report = AnswerReport.Render(Header(judged: false), [new AnswerReportRow(rated, Run(rated, answer), null)]);
+
+        report.Should().Contain($"[1] Pinus kesiya · GBIF — <{stored.Value}> (relayed: production uploads it from its disk)")
+            .And.Contain("the `species-maps` folder beside the answer cache");
+    }
+
+    [Fact]
+    public void Report_ListsPicturesInTheOrderTheGalleriesShowThem()
+    {
+        // The formatter shows each cited excerpt's pictures together; the list beside it must pair every
+        // title with its own picture, also when the excerpts share a guide's link.
+        var rated = Parse(Record(("user", "q?", null), ("assistant", "a.", null)));
+        var answer = Answer("Poles [1] and bollards [2].") with
+        {
+            Images =
+            [
+                new AiAnswerImage(1, "https://i.imgur.com/pole-a.png", "https://docs/guide", "Poles"),
+                new AiAnswerImage(2, "https://i.imgur.com/bollard.png", "https://docs/guide", "Bollards"),
+                new AiAnswerImage(1, "https://i.imgur.com/pole-b.png", "https://docs/guide", "Poles")
+            ]
+        };
+
+        var (_, pictures) = AnswerReport.Posted(answer, new AiImageRelayConfiguration());
+
+        pictures.Should().HaveCount(3);
+        pictures[0].Should().StartWith("[1] Poles (2 pictures) — <https://i.imgur.com/pole-a.png>");
+        pictures[1].Should().StartWith("[1] Poles (2 pictures) — <https://i.imgur.com/pole-b.png>");
+        pictures[2].Should().StartWith("[2] Bollards — <https://i.imgur.com/bollard.png>");
+    }
+
+    [Fact]
     public void Report_WithoutTheJudge_HasNoVerdictColumns()
     {
         var rated = Parse(Record(("user", "q?", null), ("assistant", "a.", null)));

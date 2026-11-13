@@ -50,6 +50,7 @@ COPY --from=publish /app/publish .
 
 # Created here, owned by the non-root runtime user, so that a named volume mounted over it inherits
 # that ownership when Docker first seeds it. Without the directory existing in the image, the volume
-# is created root-owned and the app cannot write relayed guide images into it.
-RUN mkdir -p /app/ai-images
+# is created root-owned and the app cannot write into it: relayed guide images (ai-images), and
+# Natural Earth's region outlines, downloaded once (ai-data, AI:Tools:RegionMap:DataDirectory).
+RUN mkdir -p /app/ai-images /app/ai-data
 ENTRYPOINT ["dotnet", "GeoClubBot.API.dll"]

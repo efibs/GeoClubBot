@@ -310,6 +310,145 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
     }
 
     [Fact]
+    public async Task ReadPicturesWantingCaption_FindsBareHeadedPictures_WithoutADescriptionOfTheCurrentVersion()
+    {
+        // The flag is written with the point; the version decides whether an older description still counts.
+        var index = await CreateIndexAsync();
+
+        var bare = Chunk("bare", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/bare.png");
+        var old = Chunk("old", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/old.png") with
+        {
+            GeneratedCaption = "An older description.",
+            CaptionVersion = 1
+        };
+        var current = Chunk("current", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/current.png") with
+        {
+            GeneratedCaption = "A current description.",
+            CaptionVersion = 2
+        };
+        var gaveUp = Chunk("gave-up", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/gave-up.png") with
+        {
+            GeneratedCaption = "",
+            CaptionVersion = 2
+        };
+        var captioned = Chunk("captioned", KnowledgeChunkKind.Image,
+            text: "The tent with 4 straps covers most of central-northern Mongolia.", imageUrl: "https://relay/tent.png");
+        var prose = Chunk("prose", KnowledgeChunkKind.Text, text: "Tunisia");
+
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(bare, Axis(0), Axis(1)),
+            new KnowledgePoint(old, Axis(2), Axis(3)),
+            new KnowledgePoint(current, Axis(4), Axis(5)),
+            new KnowledgePoint(gaveUp, Axis(6), Axis(7)),
+            new KnowledgePoint(captioned, Axis(8), Axis(9)),
+            new KnowledgePoint(prose, Axis(10))
+        ], "run-1");
+
+        var wanting = await index.ReadPicturesWantingCaptionAsync(version: 2, limit: 10);
+
+        wanting.Select(hit => hit.LocalKey).Should().BeEquivalentTo(["bare", "old"]);
+        wanting.Should().OnlyContain(hit => hit.Kind == KnowledgeChunkKind.Image && hit.ImageUrl != null);
+        (await index.CountPicturesWantingCaptionAsync(2)).Should().Be(2);
+        (await index.CountPicturesWantingCaptionAsync(1)).Should().Be(1, "under version 1 the old description still counts");
+
+        (await index.ReadPicturesWantingCaptionAsync(2, limit: 1)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task WriteCaptions_StoresTheDescription_AndTheNewTextVector_WithoutTouchingTheRest()
+    {
+        var index = await CreateIndexAsync();
+        var picture = Chunk("bare", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/bare.png");
+        await index.UpsertAsync([new KnowledgePoint(picture, Axis(0), Axis(1))], "run-1");
+
+        await index.WriteCaptionsAsync(
+        [
+            new PictureDescription(picture.PointId, new GeneratedCaption("A short white bollard.", 2), Axis(5)),
+            new PictureDescription(Guid.NewGuid(), new GeneratedCaption("Nothing is here.", 2), Axis(6))
+        ]);
+
+        // Found by the new text vector, and read back with its description; the image vector is untouched.
+        var byNewText = await index.SearchAsync(new KnowledgeQuery { TextVector = Axis(5), Limit = 1 });
+        byNewText.Should().ContainSingle().Which.GeneratedCaption.Should().Be("A short white bollard.");
+        byNewText[0].Text.Should().Be("Tunisia", "the guide's own words are kept apart");
+        byNewText[0].IsUndescribedPicture.Should().BeFalse();
+
+        var byPixels = await index.SearchAsync(new KnowledgeQuery { ImageVector = Axis(1), Limit = 1 });
+        byPixels.Should().ContainSingle().Which.Id.Should().Be(picture.PointId);
+
+        (await index.ReadPicturesWantingCaptionAsync(2, 10)).Should().BeEmpty();
+        (await index.CountAsync()).Should().Be(1, "a description for an unknown id creates nothing");
+    }
+
+    [Fact]
+    public async Task WriteCaptions_WithoutAVector_LeavesThePictureWhereItWas()
+    {
+        var index = await CreateIndexAsync();
+        var picture = Chunk("bare", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/bare.png");
+        await index.UpsertAsync([new KnowledgePoint(picture, Axis(0), Axis(1))], "run-1");
+
+        await index.WriteCaptionsAsync([new PictureDescription(picture.PointId, new GeneratedCaption("A road.", 2))]);
+
+        var hit = (await index.SearchAsync(new KnowledgeQuery { TextVector = Axis(0), Limit = 1 })).Single();
+        hit.GeneratedCaption.Should().Be("A road.");
+        hit.Id.Should().Be(picture.PointId, "the text vector is unchanged, so the old vector still finds it");
+        (await index.ReadChunksAsync([picture.PointId])).Single().GeneratedCaption.Should().Be("A road.");
+    }
+
+    [Fact]
+    public async Task ReadGeneratedCaptions_ReadsADocumentsDescriptions_WithThePictureEachIsOf()
+    {
+        var index = await CreateIndexAsync();
+        var described = Chunk("p1-img", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/one.png", sourceKey: "doc-a") with
+        {
+            GeneratedCaption = "A road.",
+            CaptionVersion = 2
+        };
+        var bare = Chunk("p2-img", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/two.png", sourceKey: "doc-a");
+        var elsewhere = Chunk("p1-img", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/three.png", sourceKey: "doc-b") with
+        {
+            GeneratedCaption = "A sign.",
+            CaptionVersion = 2
+        };
+
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(described, Axis(0), Axis(1)),
+            new KnowledgePoint(bare, Axis(2), Axis(3)),
+            new KnowledgePoint(elsewhere, Axis(4), Axis(5))
+        ], "run-1");
+
+        var captions = await index.ReadGeneratedCaptionsAsync("plonkit", "doc-a");
+
+        captions.Should().Equal(new StoredPictureCaption(described.PointId, "https://relay/one.png", new GeneratedCaption("A road.", 2)));
+    }
+
+    [Fact]
+    public async Task CaptionReads_AreEmpty_BeforeTheCollectionExists()
+    {
+        var index = fixture.CreateKnowledgeIndex(QdrantFixture.NewCollectionName(), VectorSize);
+
+        (await index.ReadPicturesWantingCaptionAsync(1, 10)).Should().BeEmpty();
+        (await index.CountPicturesWantingCaptionAsync(1)).Should().Be(0);
+        (await index.ReadGeneratedCaptionsAsync("plonkit", "tunisia")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task EnsureCollection_AddsTheCaptionIndexes_ToACollectionCreatedBeforeThem()
+    {
+        // The production collection predates the flag; ensuring on an existing collection must add the
+        // indexes rather than return at once, and doing it twice must be harmless.
+        var index = await CreateIndexAsync();
+        await index.EnsureCollectionAsync();
+
+        var picture = Chunk("bare", KnowledgeChunkKind.Image, text: "Tunisia", imageUrl: "https://relay/bare.png");
+        await index.UpsertAsync([new KnowledgePoint(picture, Axis(0), Axis(1))], "run-1");
+
+        (await index.CountPicturesWantingCaptionAsync(1)).Should().Be(1);
+    }
+
+    [Fact]
     public async Task ReadSourcesMissingImageVectors_IsEmpty_BeforeTheCollectionExists()
     {
         var index = fixture.CreateKnowledgeIndex(QdrantFixture.NewCollectionName(), VectorSize);
@@ -633,6 +772,136 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
         var hits = await index.SearchAsync(new KnowledgeQuery { TextVector = Axis(0), ChunkKind = KnowledgeChunkKind.Image });
 
         hits.Should().ContainSingle().Which.LocalKey.Should().Be("picture");
+    }
+
+    [Fact]
+    public async Task Search_LeavesOutASourceType_WhenAskedTo()
+    {
+        // "A clue that is not on PlonkIt" was offered nine PlonkIt tips of ten.
+        var index = await CreateIndexAsync();
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(Chunk("tip", KnowledgeChunkKind.Text, text: "PlonkIt's tip"), Axis(0)),
+            new KnowledgePoint(Chunk("doc", KnowledgeChunkKind.Text, text: "A document's clue") with { SourceType = "gdoc", SourceKey = "doc1" }, Axis(0))
+        ], "run-1");
+
+        var hits = await index.SearchAsync(new KnowledgeQuery { TextVector = Axis(0), ExcludedSourceType = "plonkit" });
+
+        hits.Should().ContainSingle().Which.Text.Should().Be("A document's clue");
+    }
+
+    [Fact]
+    public async Task ReadNearestOfSource_FindsTheTipMostLikeAChunk_WithinItsCountryHoweverSpelt()
+    {
+        // A document files the United States as "usa", PlonkIt as "united states".
+        var index = await CreateIndexAsync();
+        var clue = Chunk("clue", KnowledgeChunkKind.Text, text: "Oregon bollard", country: "usa") with { SourceType = "gdoc", SourceKey = "doc1" };
+        var lonely = Chunk("lonely", KnowledgeChunkKind.Text, text: "Nothing like it", country: "usa") with { SourceType = "gdoc", SourceKey = "doc1" };
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(clue, Axis(0)),
+            new KnowledgePoint(lonely, Axis(3)),
+            new KnowledgePoint(Chunk("same", KnowledgeChunkKind.Text, text: "The Oregon bollard tip", country: "united states", sourceKey: "united-states"), Between(0, 1)),
+            new KnowledgePoint(Chunk("other", KnowledgeChunkKind.Text, text: "Another US tip", country: "united states", sourceKey: "united-states"), Axis(2)),
+            new KnowledgePoint(Chunk("abroad", KnowledgeChunkKind.Text, text: "The same words in Tunisia", country: "tunisia"), Axis(0))
+        ], "run-1");
+
+        var asked = await index.ReadChunksAsync([clue.PointId, lonely.PointId]);
+        var spellings = new Dictionary<string, IReadOnlyList<string>> { ["usa"] = ["usa", "united states"] };
+
+        var nearest = await index.ReadNearestOfSourceAsync(asked, "plonkit", spellings);
+
+        nearest[clue.PointId].Text.Should().Be("The Oregon bollard tip", "the tip of its own country, not the identical one filed under another");
+        nearest[clue.PointId].Score.Should().BeApproximately(0.707f, 0.01f);
+        nearest[lonely.PointId].Score.Should().BeApproximately(0f, 0.01f);
+
+        // Under its own spelling alone there is no PlonkIt tip of that country to compare with.
+        (await index.ReadNearestOfSourceAsync(asked, "plonkit")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReadNearestOfSource_ComparesAChunkWithoutACountry_WithEveryTip_AndSkipsWhatIsNoChunk()
+    {
+        var index = await CreateIndexAsync();
+        var clue = Chunk("clue", KnowledgeChunkKind.Text, text: "A clue of many countries") with { SourceType = "gdoc", SourceKey = "doc1", Country = null };
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(clue, Axis(0)),
+            new KnowledgePoint(Chunk("tip", KnowledgeChunkKind.Text, text: "A Tunisian tip"), Axis(0))
+        ], "run-1");
+
+        var asked = await index.ReadChunksAsync([clue.PointId]);
+        var speciesRange = new KnowledgeHit(Guid.NewGuid(), 0f, KnowledgeChunkKind.Text, "Pinus kesiya", "https://www.gbif.org/species/1", null, "GBIF", null, null, null, 0);
+
+        var nearest = await index.ReadNearestOfSourceAsync([.. asked, speciesRange], "plonkit");
+
+        nearest.Should().ContainSingle().Which.Value.Text.Should().Be("A Tunisian tip");
+    }
+
+    [Fact]
+    public async Task Sample_DrawsChunksAtRandom_OfTheKindAsked_LeavingOutASourceType()
+    {
+        // "Tell me a clue I don't know yet" names nothing to search by; a draw offers picture clues
+        // from the guides other than PlonkIt, and others the next time.
+        var index = await CreateIndexAsync();
+        var points = new List<KnowledgePoint>
+        {
+            new(Chunk("tip-picture", KnowledgeChunkKind.Image, text: "PlonkIt's own picture", imageUrl: "https://relay/tip.png"), Axis(0), Axis(1)),
+            new(Chunk("doc-text", KnowledgeChunkKind.Text, text: "A document's words") with { SourceType = "gdoc", SourceKey = "doc0" }, Axis(0))
+        };
+        points.AddRange(Enumerable.Range(0, 40).Select(number => new KnowledgePoint(
+            Chunk($"slide-{number}", KnowledgeChunkKind.Image, text: $"Slide clue {number}", imageUrl: $"https://relay/{number}.png") with
+            {
+                SourceType = "gslides",
+                SourceKey = $"deck{number % 8}"
+            },
+            Axis(number), Axis(number + 1))));
+        await index.UpsertAsync(points, "run-1");
+
+        var draws = new List<IReadOnlyList<KnowledgeHit>>();
+        for (var draw = 0; draw < 6; draw++)
+        {
+            draws.Add(await index.SampleAsync(new KnowledgeSample(5, KnowledgeChunkKind.Image, "plonkit")));
+        }
+
+        draws.Should().OnlyContain(draw => draw.Count == 5);
+        draws.SelectMany(draw => draw).Should().OnlyContain(hit =>
+            hit.SourceType == "gslides" && hit.Kind == KnowledgeChunkKind.Image && hit.ImageUrl != null && hit.Score == 0f
+            && hit.SourceKey != null && hit.LocalKey != null && hit.Text.StartsWith("Slide clue"));
+        draws.Should().OnlyContain(draw => draw.Select(hit => hit.Id).Distinct().Count() == 5, "a draw holds no chunk twice");
+        draws.Select(draw => string.Join(',', draw.Select(hit => hit.LocalKey).Order(StringComparer.Ordinal))).Distinct()
+            .Should().HaveCountGreaterThan(1, "five of forty drawn six times are not the same five each time");
+    }
+
+    [Fact]
+    public async Task Sample_KeepsToOneCountry_WhenAsked()
+    {
+        var index = await CreateIndexAsync();
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(Chunk("vn", KnowledgeChunkKind.Image, text: "A Vietnamese pole with a white band.", imageUrl: "https://relay/vn.png", country: "Vietnam"), Axis(0), Axis(1)),
+            new KnowledgePoint(Chunk("th", KnowledgeChunkKind.Image, text: "A Thai pole with a yellow band.", imageUrl: "https://relay/th.png", country: "Thailand"), Axis(2), Axis(3))
+        ], "run-1");
+
+        var drawn = await index.SampleAsync(new KnowledgeSample(10, KnowledgeChunkKind.Image, Country: "vietnam"));
+
+        drawn.Should().ContainSingle().Which.LocalKey.Should().Be("vn");
+    }
+
+    [Fact]
+    public async Task Sample_DrawsWhatThereIs_AndNothingForNothing()
+    {
+        var index = await CreateIndexAsync();
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(Chunk("a", KnowledgeChunkKind.Image, imageUrl: "https://relay/a.png"), Axis(0), Axis(1)),
+            new KnowledgePoint(Chunk("b", KnowledgeChunkKind.Text), Axis(1))
+        ], "run-1");
+
+        (await index.SampleAsync(new KnowledgeSample(10))).Select(hit => hit.LocalKey).Should().BeEquivalentTo("a", "b");
+        (await index.SampleAsync(new KnowledgeSample(10, KnowledgeChunkKind.Image))).Should().ContainSingle().Which.LocalKey.Should().Be("a");
+        (await index.SampleAsync(new KnowledgeSample(10, ExcludedSourceType: "plonkit"))).Should().BeEmpty();
+        (await index.SampleAsync(new KnowledgeSample(0))).Should().BeEmpty();
     }
 
     private async Task<Infrastructure.OutputAdapters.AI.QdrantKnowledgeIndex> CreateIndexAsync()

@@ -40,6 +40,8 @@ public static class PersistenceModule
         services.AddTransient<IMissionBoardAlertRepository, EfMissionBoardAlertRepository>();
         services.AddTransient<IMissionClaimRepository, EfMissionClaimRepository>();
         services.AddTransient<IClubApplicationNotificationRepository, EfClubApplicationNotificationRepository>();
+        services.AddTransient<IAiCluePostRepository, EfAiCluePostRepository>();
+        services.AddTransient<IAiRetrievalGapRepository, EfAiRetrievalGapRepository>();
         services.AddTransient<IClubChatForwardRepository, EfClubChatForwardRepository>();
         services.AddTransient<IHistoryRepository, EfHistoryRepository>();
         services.AddTransient<IAiBudgetRepository, EfAiBudgetRepository>();

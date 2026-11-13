@@ -67,7 +67,11 @@ public sealed record PlannedToolCall(
     ReadGuideArguments? Read,
     SpeciesRangeArguments? Species,
     string? Problem,
-    AiToolCallOutcome ProblemOutcome);
+    AiToolCallOutcome ProblemOutcome)
+{
+    /// <summary>A <c>region_map</c> call's arguments, when it is one.</summary>
+    public RegionMapArguments? Region { get; init; }
+}
 
 /// <summary>A round's calls before they run: what they ask for, and what that costs.</summary>
 public sealed record ToolRoundPlan(int Round, IReadOnlyList<PlannedToolCall> Calls)
@@ -116,6 +120,10 @@ public sealed partial class AnswerToolbox(
     IEmbedder embedder,
     IKnowledgeIndex knowledgeIndex,
     ISpeciesRangeReader speciesRange,
+    ISpeciesRangeMap speciesMap,
+    IRegionBoundaries regionBoundaries,
+    IRegionMapDrawer regionMapDrawer,
+    MainGuideOverlap mainGuide,
     KnowledgeCountryDirectory countryDirectory,
     IOptions<AiRetrievalConfiguration> retrievalConfiguration,
     IOptions<AiToolsConfiguration> toolsConfiguration,
@@ -175,8 +183,12 @@ public sealed partial class AnswerToolbox(
                     ToolArguments.TryReadSpeciesRange(call.ArgumentsJson, out var species, out var problem)
                         ? new PlannedToolCall(call, null, null, species, null, default)
                         : Refused(call, problem, AiToolCallOutcome.InvalidArguments),
+                AnswerTools.RegionMap when settings.RegionMap is { Enabled: true, ToolEnabled: true } =>
+                    ToolArguments.TryReadRegionMap(call.ArgumentsJson, out var region, out var problem)
+                        ? new PlannedToolCall(call, null, null, null, null, default) { Region = region }
+                        : Refused(call, problem, AiToolCallOutcome.InvalidArguments),
                 _ => Refused(call,
-                    $"There is no tool called '{call.Name}'. The tools are {string.Join(", ", AnswerTools.Definitions(settings.SpeciesRange.Enabled).Select(tool => tool.Name))}.",
+                    $"There is no tool called '{call.Name}'. The tools are {string.Join(", ", AnswerTools.Definitions(settings.SpeciesRange.Enabled, settings.RegionMap is { Enabled: true, ToolEnabled: true }).Select(tool => tool.Name))}.",
                     AiToolCallOutcome.InvalidArguments)
             });
         }
@@ -202,7 +214,7 @@ public sealed partial class AnswerToolbox(
 
         // Read once for the round: searches and species lookups both resolve countries with it. Never
         // fails; an unread list only means no country is recognised.
-        var gazetteer = plan.Calls.Any(call => call.Search is not null || call.Species?.Country is not null)
+        var gazetteer = plan.Calls.Any(call => call.Search is not null || call.Species?.Country is not null || call.Region is not null)
             ? await countryDirectory.ReadAsync(cancellationToken).ConfigureAwait(false)
             : CountryGazetteer.Empty;
 
@@ -220,6 +232,7 @@ public sealed partial class AnswerToolbox(
                 { Search: { } search } => SearchAsync(search, vectors, searchIndex++, searchAllowed, gazetteer, ledger, cancellationToken),
                 { Read: { } read } => ReadGuideAsync(read, ledger, cancellationToken),
                 { Species: { } species } => ReadSpeciesAsync(species, gazetteer, cancellationToken),
+                { Region: { } region } => DrawRegionMapAsync(region, gazetteer, cancellationToken),
                 _ => Task.FromResult<CallData>(new CallData.Refused("Not run.", AiToolCallOutcome.NotRun))
             });
         }
@@ -314,20 +327,43 @@ public sealed partial class AnswerToolbox(
             var named = search.Country is null ? [] : gazetteer.Resolve(search.Country);
             var countries = composed.Countries.Concat(named).Distinct().ToList();
 
+            // A question asking for something new keeps PlonkIt out of its searches, as the search it
+            // came with did, unless the model asks for PlonkIt by name — to check what it carries.
+            var source = search.Source ?? (ledger.LeavesOutMainGuide ? GuideSource.Others : (GuideSource?)null);
+
             var query = composed.ToQuery([vectors[index]], imageVector: null, settings) with
             {
                 BoostCountries = countries.Count <= settings.CountryBoost.MaxCountries
                     ? [.. countries.SelectMany(country => country.IndexNames).Distinct(StringComparer.Ordinal)]
                     : [],
                 ChunkKind = search.PicturesOnly ? KnowledgeChunkKind.Image : null,
+                SourceType = source == GuideSource.MainGuide ? MainGuideOverlap.MainGuide : null,
+                ExcludedSourceType = source == GuideSource.Others ? MainGuideOverlap.MainGuide : null,
                 // Enough to find new ones past every excerpt already offered.
                 Limit = Math.Min(MaxSearchCandidates, ledger.Count + MaxSearchExcerpts)
             };
 
             var hits = await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false) ?? [];
-            var note = search.Country is not null && named.Count == 0
-                ? $"No guides are filed under '{search.Country}', so every country was searched."
-                : null;
+            if (source == GuideSource.Others)
+            {
+                // Said on each excerpt PlonkIt has a tip like, which the model cannot know otherwise.
+                hits = await mainGuide.MarkAsync(hits, cancellationToken).ConfigureAwait(false);
+            }
+
+            var notes = new[]
+            {
+                search.Country is not null && named.Count == 0
+                    ? $"No guides are filed under '{search.Country}', so every country was searched."
+                    : null,
+                source switch
+                {
+                    GuideSource.MainGuide => "Searched PlonkIt alone: what it has is what players already know.",
+                    GuideSource.Others =>
+                        $"Searched every guide but PlonkIt. An excerpt marked \"{Conversations.AiPromptBuilder.AlsoOnMainGuideNote}\" tells a clue PlonkIt has too.",
+                    _ => null
+                }
+            }.Where(said => said is not null).ToList();
+            var note = notes.Count == 0 ? null : string.Join(" ", notes);
 
             // What the search is about: the country it names, else those its words name; none when it
             // names none, since it then looks across countries on purpose.
@@ -401,8 +437,11 @@ public sealed partial class AnswerToolbox(
 
             if (range.IsSuccess && range.Value is { } found)
             {
+                // Best effort, like the lookup before the answer: without a map the counts still stand.
+                var map = await speciesMap.DrawAsync(found, cancellationToken).ConfigureAwait(false);
+
                 return new CallData.Found(
-                    [SpeciesRangeExcerpt.ToHit(found, species.Name, toolsConfiguration.Value.SpeciesRange.MaxAreas)], 1, null, null);
+                    [SpeciesRangeExcerpt.ToHit(found, species.Name, toolsConfiguration.Value.SpeciesRange.MaxAreas, map)], 1, null, null);
             }
 
             return range.Error.Type == ErrorType.NotFound && range.Error.Code is not null
@@ -431,6 +470,74 @@ public sealed partial class AnswerToolbox(
         + "are all taken. Answer with the excerpts you have.";
 
     /// <summary>Offers what a call found, in call order, and says what the model is shown.</summary>
+    /// <summary>
+    /// Draws the regions the model names onto their country, shaded by the shares it gives. A region
+    /// the dataset does not know under that name is left out and named in the note, so the model can
+    /// say so or try another spelling; a call naming none it knows is refused.
+    /// </summary>
+    private async Task<CallData> DrawRegionMapAsync(
+        RegionMapArguments arguments,
+        CountryGazetteer gazetteer,
+        CancellationToken cancellationToken)
+    {
+        var code = IsoCountries.Resolve(arguments.Country, gazetteer);
+        if (code is null)
+        {
+            return new CallData.Refused($"'{arguments.Country}' is not one country. Name a single country.", AiToolCallOutcome.InvalidArguments);
+        }
+
+        try
+        {
+            var names = await regionBoundaries.ReadNamesAsync(code, cancellationToken).ConfigureAwait(false);
+            if (names.Count == 0)
+            {
+                return CallData.Unavailable($"No region boundaries are available for {IsoCountries.NameOf(code)} just now. Answer with what you have.");
+            }
+
+            var highlights = new List<RegionHighlight>();
+            var unknown = new List<string>();
+            foreach (var asked in arguments.Regions)
+            {
+                var found = RegionMention.Find(asked.Name, names).FirstOrDefault();
+                if (found is null)
+                {
+                    unknown.Add(asked.Name);
+                }
+                else if (highlights.All(highlight => highlight.Id != found.Id))
+                {
+                    highlights.Add(new RegionHighlight(found.Id, found.Name, asked.Share));
+                }
+            }
+
+            if (highlights.Count == 0)
+            {
+                return new CallData.Refused(
+                    $"None of {string.Join(", ", unknown)} is a first-level region of {IsoCountries.NameOf(code)} under that name. Use the province or state names.",
+                    AiToolCallOutcome.InvalidArguments);
+            }
+
+            highlights = [.. highlights.Take(Math.Max(1, toolsConfiguration.Value.RegionMap.MaxRegions))];
+            var shaded = highlights.Select(highlight => highlight.Weight).Distinct().Count() > 1;
+            var countryName = IsoCountries.NameOf(code);
+            var title = RegionMapExcerpt.Title(countryName, [.. highlights.Select(highlight => highlight.Label)])
+                        + (shaded ? " (darker: more common)" : string.Empty);
+
+            var url = await regionMapDrawer.DrawAsync(new RegionMapRequest(code, highlights, title, shaded), cancellationToken).ConfigureAwait(false);
+            if (url is null)
+            {
+                return CallData.Unavailable("The map could not be drawn just now. Answer with what you have.");
+            }
+
+            var note = unknown.Count == 0 ? null : $"Not on the map, as no region of {countryName} goes by that name: {string.Join(", ", unknown)}.";
+            return new CallData.Found([RegionMapExcerpt.ToHit(code, countryName, highlights, url, shaded)], 1, note, null);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogToolThrew(logger, AnswerTools.RegionMap, exception);
+            return CallData.Unavailable("The map could not be drawn just now. Answer with what you have.");
+        }
+    }
+
     private static (string Result, AiToolCallOutcome Outcome, int Offered) Offer(
         CallData data,
         ExcerptLedger ledger,
