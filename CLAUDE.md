@@ -303,6 +303,12 @@ API + Discord (controllers, slash command modules)
   plant is this" and a picture is at hand (the message's, or the branch's latest); the candidates lead
   the excerpts, a best match over `MinConfidence` goes on to the GBIF range and map, "no plant" becomes an
   excerpt saying so, and a spent allowance becomes an `AiAnswer.Notices` line under the answer.
+  After an answer, `RegionLocator` finds the first-level regions it names (`RegionMention`, pure; the
+  country from the gazetteer) in Natural Earth's admin-1 boundaries (`NaturalEarthRegionBoundaries`,
+  40 MB GeoJSON downloaded once into `AI:Tools:RegionMap:DataDirectory`, warmed at start-up) and
+  `RegionMapDrawer` attaches a map of the country with them coloured in (GBIF tiles, framed by
+  `SpeciesMapPlan.ForCountry`), numbered after the last source; the model's own `region_map` tool
+  shades regions by a share per region.
   A question asking for something new (`LesserKnownQuestion`: "not on PlonkIt", "a clue I don't know
   yet", and follow-ups on such a branch) is searched without PlonkIt (`KnowledgeQuery.ExcludedSourceType`),
   and `MainGuideOverlap` marks every excerpt PlonkIt has a tip like, by the index's stored vectors

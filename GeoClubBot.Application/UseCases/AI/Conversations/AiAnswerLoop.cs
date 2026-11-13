@@ -137,7 +137,7 @@ public sealed partial class AiAnswerLoop(
             return single.IsFailure ? single.Error : new AnswerOutcome(single.Value.Response, prompt.Excerpts, []);
         }
 
-        var definitions = AnswerTools.Definitions(tools.SpeciesRange.Enabled);
+        var definitions = AnswerTools.Definitions(tools.SpeciesRange.Enabled, tools.RegionMap is { Enabled: true, ToolEnabled: true });
         var toolPrompt = AiPromptBuilder.AppendToSystemPrompt(prompt, AnswerTools.SystemPrompt);
         var withTools = new Asking(toolPrompt.Messages, requirements with { NeedsTools = true }, definitions);
 

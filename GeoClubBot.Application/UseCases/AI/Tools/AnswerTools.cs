@@ -31,6 +31,7 @@ public static class AnswerTools
     public const string SearchGuides = "search_guides";
     public const string ReadGuide = "read_guide";
     public const string SpeciesRange = "species_range";
+    public const string RegionMap = "region_map";
 
     /// <summary>
     /// Added to the system prompt only when tools are offered — a model told of tools it cannot call
@@ -123,10 +124,53 @@ public static class AnswerTools
         }
         """);
 
-    /// <summary>Every tool's name, declared or not: a reply that writes a call of any of them out as text is not an answer.</summary>
-    public static IReadOnlyList<string> Names { get; } = [SearchGuides, ReadGuide, SpeciesRange];
+    private static readonly AiToolDefinition RegionMapTool = new(
+        RegionMap,
+        "A map of one country with some of its first-level regions (states, provinces) coloured in, for the "
+        + "user to see where they are. Use it when your answer says a clue is found in some regions of a country "
+        + "and not others, above all when it is more common in some than in others: give each region a share "
+        + "from 0 to 1 and the map shades it, darker where the share is higher. Returns one numbered excerpt, "
+        + "cited like the others; citing it attaches the map. Don't call it for a whole country, or for regions "
+        + "you only list in passing: a map of regions named evenly is drawn for you without a call.",
+        """
+        {
+          "type": "object",
+          "properties": {
+            "country": { "type": "string", "description": "The country, e.g. \"Vietnam\"." },
+            "regions": {
+              "type": "array",
+              "description": "The regions to colour, each with how common the thing is there.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "description": "The region's name, e.g. \"Lạng Sơn\"." },
+                  "share": { "type": "number", "description": "0 to 1: 1 where it is most common, 0.2 where it is rare." }
+                },
+                "required": ["name"]
+              }
+            }
+          },
+          "required": ["country", "regions"]
+        }
+        """);
 
-    /// <summary>The tools to declare, <see cref="SpeciesRange"/> only when it is on.</summary>
-    public static IReadOnlyList<AiToolDefinition> Definitions(bool speciesRange) =>
-        speciesRange ? [SearchGuidesTool, ReadGuideTool, SpeciesRangeTool] : [SearchGuidesTool, ReadGuideTool];
+    /// <summary>Every tool's name, declared or not: a reply that writes a call of any of them out as text is not an answer.</summary>
+    public static IReadOnlyList<string> Names { get; } = [SearchGuides, ReadGuide, SpeciesRange, RegionMap];
+
+    /// <summary>The tools to declare, <see cref="SpeciesRange"/> and <see cref="RegionMap"/> only when they are on.</summary>
+    public static IReadOnlyList<AiToolDefinition> Definitions(bool speciesRange, bool regionMap = false)
+    {
+        var tools = new List<AiToolDefinition> { SearchGuidesTool, ReadGuideTool };
+        if (speciesRange)
+        {
+            tools.Add(SpeciesRangeTool);
+        }
+
+        if (regionMap)
+        {
+            tools.Add(RegionMapTool);
+        }
+
+        return tools;
+    }
 }

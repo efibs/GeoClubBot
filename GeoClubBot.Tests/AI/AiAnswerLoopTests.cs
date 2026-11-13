@@ -33,7 +33,7 @@ public sealed class AiAnswerLoopTests
 
         result.IsSuccess.Should().BeTrue();
         var request = fixture.Chat.Requests.Should().ContainSingle().Subject;
-        request.Tools.Should().NotBeNull().And.HaveCount(3);
+        request.Tools.Should().NotBeNull().And.HaveCount(4, "search, read, species range and the region map");
         request.ToolChoice.Should().Be(AiToolChoice.Auto);
         request.Messages[0].ToPlainText().Should().StartWith(AiPromptBuilder.SystemPrompt).And.EndWith(AnswerTools.SystemPrompt);
         fixture.Budget.Spent.Should().Be(Fixture.QuestionCost, "a question answered straight away costs what it always did");
@@ -1021,6 +1021,8 @@ public sealed class AiAnswerLoopTests
                 Index,
                 Species,
                 SpeciesMap,
+                Substitute.For<IRegionBoundaries>(),
+                Substitute.For<IRegionMapDrawer>(),
                 new MainGuideOverlap(Index, countries, retrieval, NullLogger<MainGuideOverlap>.Instance),
                 countries,
                 retrieval,

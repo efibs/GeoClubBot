@@ -136,6 +136,14 @@ worth knowing:
 | `AI:Tools:PlantIdentification:RequestTimeoutSeconds` | 15 | Per request, the screenshot's download included |
 | `AI:Tools:PlantIdentification:MaxImageBytes` | 10 MB | Largest screenshot sent |
 | `AI:Tools:PlantIdentification:Project` / `Language` | `all` / `en` | Pl@ntNet's flora project and the language of the common names |
+| `AI:Tools:RegionMap:Enabled` | true | Attach a map of the regions an answer names. Needs the image relay |
+| `AI:Tools:RegionMap:ToolEnabled` | true | Let the model ask for a shaded map itself (`region_map`) |
+| `AI:Tools:RegionMap:BoundariesUrl` | Natural Earth 10m admin-1 GeoJSON | Downloaded once (about 40 MB) into `DataDirectory` |
+| `AI:Tools:RegionMap:DataDirectory` | `ai-data` | Where the boundaries file is kept; delete the file to fetch it again |
+| `AI:Tools:RegionMap:SimplifyToleranceDegrees` | 0.01 | How far a boundary may be straightened when read |
+| `AI:Tools:RegionMap:MaxRegions` | 15 | Most regions on one map |
+| `AI:Tools:RegionMap:TimeoutSeconds` | 8 | Seconds the map after an answer may take |
+| `AI:Tools:RegionMap:CacheHours` | 24 | How long a drawn map is kept |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
@@ -807,6 +815,42 @@ allowance; the plant was judged from the picture alone."), as they are when the 
 reached; a guess must never pass for a lookup. A picture the service does not take (WebP, too large) is
 only logged. Pl@ntNet keeps the picture in memory for the identification and logs the request, not the
 image.
+
+### A map of the regions an answer names
+
+Answers often name first-level regions — "far north-eastern Vietnam: Lạng Sơn and Quảng Ninh" — and a
+player who does not know where those are learns little from the names. After the answer is written,
+`RegionLocator` reads it for region names and attaches a small map of their country with them coloured
+in, numbered after the last source and listed with the sources as a picture.
+
+- **Boundaries**: Natural Earth's 1:10m admin-1 states and provinces (public domain; the 1:50m file
+  covers only a dozen large countries). `NaturalEarthRegionBoundaries` downloads the GeoJSON (about
+  40 MB) once into `AI:Tools:RegionMap:DataDirectory` (`ai-data`), reads it on a background task
+  started at host start-up (`RegionBoundariesWarmup`) and keeps each region's names (English, local,
+  alternatives, the geonames one) and its outline, straightened by `SimplifyToleranceDegrees` (0.01°,
+  invisible on a country map, a tenth of the points). A country's ISO code comes from `iso_a2`, or from
+  the `iso_3166_2` prefix where Natural Earth writes `-1`. An answer never waits for the file: while it
+  loads, there is no map.
+- **Matching** (`RegionMention`, pure): the answer's and the question's countries come from the
+  guides' gazetteer, as retrieval finds them; for each (at most three) the answer's text is searched
+  for the country's region names — accents and case aside, whole words, the longest name winning
+  ("North Sumatra" is not Sumatra). Names that are plain words (Ghana's *Central*, *Northern*, many a
+  *Capital*) count only beside "region", "province" and the like. The country with the most regions
+  named gets the map; one map an answer, at most `MaxRegions` (15) regions on it.
+- **Drawing** (`RegionMapDrawer`): GBIF's base-map tiles framed on the country exactly as a species map
+  is (`SpeciesMapPlan.ForCountry`, the same `CountryBounds`), the outlines filled red over them, each
+  region labelled at Natural Earth's label point, the title and the credits (OpenStreetMap, OpenMapTiles,
+  GBIF, Natural Earth) underneath; stored in the image relay like the species maps, so it needs
+  `AI:ImageRelay:PublicBaseUrl`. Cached by country and regions for `CacheHours`.
+- **Shades for how common something is**: the model can ask for a map itself through the `region_map`
+  tool (`ToolEnabled`), giving each region a share from 0 to 1; the map shades them, darker where the
+  share is higher, labels each with its percentage, and its title says so. Its description tells the
+  model to call it when a clue is more common in some regions than in others, and not for regions named
+  in passing, which the map after the answer covers without a call. When the model asked for one, the
+  map after the answer is not drawn again.
+
+Everything here costs no AI request. The map after an answer has `TimeoutSeconds` (8); whatever fails,
+the answer goes out without it.
 
 ### What goes into a vector
 
