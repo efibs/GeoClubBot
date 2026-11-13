@@ -139,7 +139,7 @@ worth knowing:
 | `AI:Tools:RegionMap:Enabled` | true | Attach a map of the regions an answer names. Needs the image relay |
 | `AI:Tools:RegionMap:ToolEnabled` | true | Let the model ask for a shaded map itself (`region_map`) |
 | `AI:Tools:RegionMap:BoundariesUrl` | Natural Earth 10m admin-1 GeoJSON | Downloaded once (about 40 MB) into `DataDirectory` |
-| `AI:Tools:RegionMap:DataDirectory` | `ai-data` | Where the boundaries file is kept; delete the file to fetch it again |
+| `AI:Tools:RegionMap:DataDirectory` | `ai-data` | Where the boundaries file is kept (`/app/ai-data` in the container, the `ai-data` volume); delete the file to fetch it again |
 | `AI:Tools:RegionMap:SimplifyToleranceDegrees` | 0.01 | How far a boundary may be straightened when read |
 | `AI:Tools:RegionMap:MaxRegions` | 15 | Most regions on one map |
 | `AI:Tools:RegionMap:TimeoutSeconds` | 8 | Seconds the map after an answer may take |
@@ -1233,6 +1233,9 @@ only contribute pictures when the relay is on.
 Stored images live in `AI:ImageRelay:Directory`, backed by the `ai-images` volume in `compose.yaml`
 so they survive a redeploy. Losing them would leave every stored image URL pointing at a 404 until
 the library was re-indexed, and answers would fall back to linking them, with a Warning per picture.
+The region maps' Natural Earth outlines are kept the same way, in `/app/ai-data` on the `ai-data`
+volume; without it they are only downloaded again (about 40 MB) after a redeploy. Both folders are
+created in the image, owned by the app's user, so a new named volume mounted over them is writable.
 
 **What the endpoint deliberately does not do.** `GET /api/v1/ai/images/{hash}` is anonymous, because
 neither fetcher can carry a credential. It serves *only* bytes already written to disk during
