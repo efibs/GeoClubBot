@@ -37,6 +37,12 @@ public class ComponentIds
     public const string CountryChallengeImportStandingsTextInputId =
         "country-challenge-import-input";
 
+    public const string AiQuizRightButtonId = "ai-quiz-right";
+
+    public const string AiQuizWrongButtonId = "ai-quiz-wrong";
+
+    public const string AiQuizAgainButtonId = "ai-quiz-again";
+
     public const string SelfRolesSelectButtonId =
         "self-roles-select-btn";
     public const string SelfRolesSelectMenuId =

@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using Configuration;
+using Constants;
 using Discord;
 using Discord.Interactions;
 using Entities;
@@ -7,10 +9,12 @@ using GeoClubBot.Discord.InputAdapters.Interactions.Base;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
 using UseCases.UseCases.AI.ClueOfTheDay;
 using UseCases.UseCases.AI.Feedback;
 using UseCases.UseCases.AI.Ingestion;
+using UseCases.UseCases.AI.Quiz;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
 
@@ -103,6 +107,73 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         }, ephemeral: true, failureMessage: "Failed to search the guide index.");
 
     [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("quiz", "A random guide picture: where is it, and what gives it away? The answer waits behind a spoiler")]
+    public Task QuizAsync(
+        [Summary(description: "Only pictures of one country, e.g. Vietnam")] string? country = null,
+        [Summary(name: "lesser-known", description: "Only clues PlonkIt does not have")] bool lesserKnown = false) =>
+        ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ct), failureMessage: "The quiz could not draw a picture just now.");
+
+    [ComponentInteraction($"{ComponentIds.AiQuizAgainButtonId}:*:*", ignoreGroupNames: true)]
+    public Task QuizAgainAsync(string lesserKnown, string country) =>
+        ExecuteAsync(ct => PostQuizAsync(string.IsNullOrWhiteSpace(country) ? null : country, lesserKnown == "1", ct),
+            failureMessage: "The quiz could not draw a picture just now.");
+
+    [ComponentInteraction(ComponentIds.AiQuizRightButtonId, ignoreGroupNames: true)]
+    public Task QuizRightAsync() => ExecuteAsync(_ => JudgeQuizAsync(right: true), ephemeral: true);
+
+    [ComponentInteraction(ComponentIds.AiQuizWrongButtonId, ignoreGroupNames: true)]
+    public Task QuizWrongAsync() => ExecuteAsync(_ => JudgeQuizAsync(right: false), ephemeral: true);
+
+    /// <summary>
+    /// Draws a question and posts it with its picture: uploaded from the relay when the picture is a
+    /// relayed one, so it shows whether or not Discord can reach this host; linked otherwise.
+    /// </summary>
+    private async Task PostQuizAsync(string? country, bool lesserKnown, CancellationToken cancellationToken)
+    {
+        var quiz = serviceProvider.GetRequiredService<IOptions<AiQuizConfiguration>>().Value;
+        var ai = serviceProvider.GetRequiredService<IOptions<AiConfiguration>>().Value;
+        if (quiz.OnlyInAllowedChannels && ai.AllowedChannelIds.Count > 0 && !ai.AllowedChannelIds.Contains(Context.Channel.Id))
+        {
+            await FollowupAsync("The quiz is only played in the channels the assistant answers in.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var result = await Mediator.Send(new DrawQuizQuestionQuery(country, lesserKnown), cancellationToken).ConfigureAwait(false);
+        if (result.IsFailure)
+        {
+            await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+            return;
+        }
+
+        var question = result.Value;
+        var text = AiQuizFormatter.Question(question, country);
+        var buttons = AiQuizFormatter.Buttons(country, lesserKnown);
+        var imageUrl = question.Clue.ImageUrl!;
+
+        var imageRelay = serviceProvider.GetRequiredService<IImageRelay>();
+        if (RelayedImageUrl.TryReadName(imageUrl, out var storedName)
+            && await imageRelay.ReadAsync(storedName, cancellationToken).ConfigureAwait(false) is { } stored)
+        {
+            await using (stored.Content.ConfigureAwait(false))
+            {
+                var extension = RelayedImageUrl.TrySplitName(storedName, out _, out var ext) && !string.IsNullOrEmpty(ext) ? ext : ".jpg";
+                await FollowupWithFileAsync(stored.Content, $"quiz{extension}", text, components: buttons, allowedMentions: AllowedMentions.None)
+                    .ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        var embed = new EmbedBuilder().WithImageUrl(imageUrl).Build();
+        await FollowupAsync(text, embed: embed, components: buttons, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+    }
+
+    private Task JudgeQuizAsync(bool right)
+    {
+        var score = serviceProvider.GetRequiredService<QuizStreaks>().Record(Context.User.Id, right);
+        return FollowupAsync(AiQuizFormatter.Score(score, right), ephemeral: true);
+    }
+
     [SlashCommand("feedback", "Show how people have rated my answers")]
     public Task FeedbackAsync(
         [Summary(description: "Days to count over; 0 counts everything")] int days = 30) =>

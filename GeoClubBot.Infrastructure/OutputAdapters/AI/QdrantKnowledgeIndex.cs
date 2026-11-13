@@ -369,7 +369,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             return [];
         }
 
-        var filter = BuildFilter(country: null, sourceType: null, ingestRun: null, sourceKey: null, sample.Kind) ?? new Filter();
+        var filter = BuildFilter(sample.Country, sourceType: null, ingestRun: null, sourceKey: null, sample.Kind) ?? new Filter();
         if (!string.IsNullOrWhiteSpace(sample.ExcludedSourceType))
         {
             filter.MustNot.Add(KeywordCondition("sourceType", sample.ExcludedSourceType));

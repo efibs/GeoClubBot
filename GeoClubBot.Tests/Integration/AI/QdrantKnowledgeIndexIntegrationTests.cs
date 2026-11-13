@@ -874,6 +874,21 @@ public sealed class QdrantKnowledgeIndexIntegrationTests(QdrantFixture fixture)
     }
 
     [Fact]
+    public async Task Sample_KeepsToOneCountry_WhenAsked()
+    {
+        var index = await CreateIndexAsync();
+        await index.UpsertAsync(
+        [
+            new KnowledgePoint(Chunk("vn", KnowledgeChunkKind.Image, text: "A Vietnamese pole with a white band.", imageUrl: "https://relay/vn.png", country: "Vietnam"), Axis(0), Axis(1)),
+            new KnowledgePoint(Chunk("th", KnowledgeChunkKind.Image, text: "A Thai pole with a yellow band.", imageUrl: "https://relay/th.png", country: "Thailand"), Axis(2), Axis(3))
+        ], "run-1");
+
+        var drawn = await index.SampleAsync(new KnowledgeSample(10, KnowledgeChunkKind.Image, Country: "vietnam"));
+
+        drawn.Should().ContainSingle().Which.LocalKey.Should().Be("vn");
+    }
+
+    [Fact]
     public async Task Sample_DrawsWhatThereIs_AndNothingForNothing()
     {
         var index = await CreateIndexAsync();
