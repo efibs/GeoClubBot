@@ -41,10 +41,22 @@ public sealed partial class ClueSampler(
     private const int MinClueLength = 60;
 
     /// <summary>The clues drawn, at most <see cref="AiLesserKnownConfiguration.RandomPicks"/>; empty when off or when the draw fails.</summary>
-    public async Task<IReadOnlyList<KnowledgeHit>> DrawAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<KnowledgeHit>> DrawAsync(CancellationToken cancellationToken)
     {
         var settings = retrievalConfiguration.Value.LesserKnown;
-        if (!settings.Enabled || settings.RandomPicks <= 0)
+        return !settings.Enabled || settings.RandomPicks <= 0
+            ? Task.FromResult<IReadOnlyList<KnowledgeHit>>([])
+            : DrawAsync(settings.RandomPicks, excludeMainGuideClues: true, cancellationToken);
+    }
+
+    /// <summary>
+    /// At most <paramref name="count"/> clues drawn, whatever the question settings say: what the clue of
+    /// the day asks for. With <paramref name="excludeMainGuideClues"/> off, a clue PlonkIt has a tip like
+    /// is kept, and marked.
+    /// </summary>
+    public async Task<IReadOnlyList<KnowledgeHit>> DrawAsync(int count, bool excludeMainGuideClues, CancellationToken cancellationToken)
+    {
+        if (count <= 0)
         {
             return [];
         }
@@ -53,7 +65,7 @@ public sealed partial class ClueSampler(
         {
             var drawn = await knowledgeIndex
                 .SampleAsync(
-                    new KnowledgeSample(settings.RandomPicks * DrawnPerClue, KnowledgeChunkKind.Image, MainGuideOverlap.MainGuide),
+                    new KnowledgeSample(count * DrawnPerClue, KnowledgeChunkKind.Image, MainGuideOverlap.MainGuide),
                     cancellationToken)
                 .ConfigureAwait(false) ?? [];
 
@@ -63,7 +75,7 @@ public sealed partial class ClueSampler(
                 .ToList();
 
             var marked = await mainGuide.MarkAsync(clues, cancellationToken).ConfigureAwait(false);
-            IReadOnlyList<KnowledgeHit> picks = [.. marked.Where(hit => !hit.AlsoInMainGuide).Take(settings.RandomPicks)];
+            IReadOnlyList<KnowledgeHit> picks = [.. marked.Where(hit => !excludeMainGuideClues || !hit.AlsoInMainGuide).Take(count)];
 
             LogDrawn(logger, picks.Count, drawn.Count, clues.Count, marked.Count(hit => hit.AlsoInMainGuide));
             return picks;

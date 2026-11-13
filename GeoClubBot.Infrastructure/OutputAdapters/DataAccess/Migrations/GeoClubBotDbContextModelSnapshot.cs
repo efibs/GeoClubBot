@@ -79,6 +79,40 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("AiAnswerFeedbacks");
                 });
 
+            modelBuilder.Entity("Entities.AiCluePost", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<Guid>("ChunkId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("MessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<DateTimeOffset>("PostedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChunkId");
+
+                    b.HasIndex("PostedAtUtc");
+
+                    b.ToTable("AiCluePosts");
+                });
+
             modelBuilder.Entity("Entities.AiConversationTurn", b =>
                 {
                     b.Property<Guid>("TurnId")

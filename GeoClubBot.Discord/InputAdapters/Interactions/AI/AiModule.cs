@@ -8,6 +8,7 @@ using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts.AI;
+using UseCases.UseCases.AI.ClueOfTheDay;
 using UseCases.UseCases.AI.Feedback;
 using UseCases.UseCases.AI.Ingestion;
 
@@ -254,6 +255,23 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
 
             await FollowupAsync(AiSourcesFormatter.DescribeCaptionRun(result.Value), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to describe guide pictures.");
+
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("clue-now", "Post a clue of the day now, here or in the configured channel")]
+    public Task ClueNowAsync(
+        [Summary(description: "Post it in this channel instead of the configured one")] bool here = false) =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new PostClueOfTheDayCommand(here ? Context.Channel.Id : null), ct).ConfigureAwait(false);
+
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            await FollowupAsync($"Posted a clue from <{result.Value.SourceUrl}>.", ephemeral: true).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to post a clue of the day.");
 
     [DefaultMemberPermissions(GuildPermission.Administrator)]
     [SlashCommand("sources", "List guide sources that failed, were skipped or are unavailable, and why")]

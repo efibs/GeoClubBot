@@ -308,7 +308,11 @@ API + Discord (controllers, slash command modules)
   40 MB GeoJSON downloaded once into `AI:Tools:RegionMap:DataDirectory`, warmed at start-up) and
   `RegionMapDrawer` attaches a map of the country with them coloured in (GBIF tiles, framed by
   `SpeciesMapPlan.ForCountry`), numbered after the last source; the model's own `region_map` tool
-  shades regions by a share per region.
+  shades regions by a share per region. The **clue of the day** (`AI:ClueOfTheDay`, off until a channel
+  is set; `AiClueOfTheDayJob` on `AI:ClueOfTheDaySchedule`/`TimeZone`, `/ai clue-now`) posts one
+  `ClueSampler` draw not posted within `NoRepeatDays` (`AiCluePosts`) as an `AiAnswer`
+  (`ClueOfTheDayPost`, pure) through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses
+  `AiConversationGateway.PostAsync` without a message to reply to.
   A question asking for something new (`LesserKnownQuestion`: "not on PlonkIt", "a clue I don't know
   yet", and follow-ups on such a branch) is searched without PlonkIt (`KnowledgeQuery.ExcludedSourceType`),
   and `MainGuideOverlap` marks every excerpt PlonkIt has a tip like, by the index's stored vectors
