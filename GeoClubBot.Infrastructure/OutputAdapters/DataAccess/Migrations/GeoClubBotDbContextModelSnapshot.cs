@@ -281,6 +281,40 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("AiFeedbackTurns");
                 });
 
+            modelBuilder.Entity("Entities.AiRetrievalGap", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("AskedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Topic")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AskedAtUtc");
+
+                    b.ToTable("AiRetrievalGaps");
+                });
+
             modelBuilder.Entity("Entities.Club", b =>
                 {
                     b.Property<Guid>("ClubId")

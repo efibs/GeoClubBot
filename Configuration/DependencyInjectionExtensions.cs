@@ -149,6 +149,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<AiKnowledgeGapsConfiguration>()
+            .Bind(config.GetSection(AiKnowledgeGapsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<AiRoundReviewConfiguration>()
             .Bind(config.GetSection(AiRoundReviewConfiguration.SectionName))
             .ValidateDataAnnotations()

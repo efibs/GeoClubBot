@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using Configuration;
+using Entities;
 using Infrastructure.OutputAdapters.AI.Gbif;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Infrastructure.OutputAdapters.AI.PlantNet;
@@ -8,6 +9,7 @@ using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
@@ -357,7 +359,9 @@ public sealed class AnsweringStack : IDisposable
         return new AskAiHandler(
             conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _plantIdentification, _regionLocator, _mainGuide, _clueSampler, _countries,
             _plannerPause,
-            _ai, _conversation, _retrieval, _captions, clock, _logging.CreateLogger<AskAiHandler>());
+            _ai, _conversation, _retrieval, _captions,
+            Options.Create(new AiKnowledgeGapsConfiguration { RecordWeakRetrievals = false }), new NoRetrievalGaps(),
+            clock, _logging.CreateLogger<AskAiHandler>());
     }
 
     public void Dispose()
@@ -365,6 +369,19 @@ public sealed class AnsweringStack : IDisposable
         _openRouter.Dispose();
         _gbif.Dispose();
         _logging.Dispose();
+    }
+
+    /// <summary>The probe records nothing: it replays questions, it does not ask them.</summary>
+    private sealed class NoRetrievalGaps : IAiRetrievalGapRepository
+    {
+        public void Add(AiRetrievalGap gap)
+        {
+        }
+
+        public Task<IReadOnlyList<AiRetrievalGap>> ReadSinceAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AiRetrievalGap>>([]);
+
+        public Task<int> DeleteOlderThanAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private sealed class NoRegionBoundaries : IRegionBoundaries

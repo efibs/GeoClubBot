@@ -317,7 +317,10 @@ API + Discord (controllers, slash command modules)
   is set; `AiClueOfTheDayJob` on `AI:ClueOfTheDaySchedule`/`TimeZone`, `/ai clue-now`) posts one
   `ClueSampler` draw not posted within `NoRepeatDays` (`AiCluePosts`) as an `AiAnswer`
   (`ClueOfTheDayPost`, pure) through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses
-  `AiConversationGateway.PostAsync` without a message to reply to.
+  `AiConversationGateway.PostAsync` without a message to reply to. Weak retrievals (`WeakRetrieval`, pure:
+  nothing found, nothing from the one country the question names, nothing cited) are recorded as asked in
+  `AiRetrievalGaps`; `/ai gaps` (`ReadKnowledgeGapReportQuery`, `AI:KnowledgeGaps`) groups them with 👎
+  answers by country and topic, and `AiKnowledgeGapReportJob` prunes them and optionally posts the report.
   `/ai quiz [country] [lesser-known]` (`DrawQuizQuestionQuery`,
   `AI:Quiz`) posts a random captioned picture (`SampleAsync` with `KnowledgeSample.Country`,
   `ClueSampler.IsAClue`) with the answer behind one spoiler (`AiQuizFormatter`, pure) and buttons that

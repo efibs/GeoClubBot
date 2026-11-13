@@ -15,6 +15,7 @@ using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.AI.ClueOfTheDay;
 using UseCases.UseCases.AI.Feedback;
 using UseCases.UseCases.AI.Ingestion;
+using UseCases.UseCases.AI.KnowledgeGaps;
 using UseCases.UseCases.AI.Quiz;
 using UseCases.UseCases.AI.Review;
 
@@ -198,6 +199,24 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                     : $"Reviewed {review.Rounds.Count} round(s) of challenge `{review.ChallengeToken}` — {review.Missed} with the wrong country.",
                 ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "The review could not be written just now.");
+
+    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [SlashCommand("gaps", "Show which questions the guides answer badly, by country and topic")]
+    public Task GapsAsync(
+        [Summary(description: "Days to cover; leave empty for the configured period")] int? days = null) =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new ReadKnowledgeGapReportQuery(days), ct).ConfigureAwait(false);
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            var text = KnowledgeGapReportText.Render(result.Value);
+            await FollowupAsync(text.Length <= 2000 ? text : $"{text[..1990]}\n…", ephemeral: true, allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Failed to build the knowledge-gap report.");
 
     [SlashCommand("feedback", "Show how people have rated my answers")]
     public Task FeedbackAsync(

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.AI.KnowledgeGaps;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
 using Utilities;
@@ -112,6 +113,8 @@ public sealed partial class AskAiHandler(
     IOptions<AiConversationConfiguration> conversationConfiguration,
     IOptions<AiRetrievalConfiguration> retrievalConfiguration,
     IOptions<AiCaptionsConfiguration> captionsConfiguration,
+    IOptions<AiKnowledgeGapsConfiguration> gapsConfiguration,
+    IAiRetrievalGapRepository retrievalGaps,
     TimeProvider timeProvider,
     ILogger<AskAiHandler> logger)
     : IRequestHandler<AskAiCommand, Result<AiAnswer>>
@@ -254,6 +257,10 @@ public sealed partial class AskAiHandler(
         // Tool excerpts included: a number the answer cites from a search it made resolves, lists and
         // attaches exactly like one it was given with the question.
         var citations = CitationResolver.Resolve(outcome.Response.Text, outcome.Excerpts, config.MaxImagesInReply);
+
+        // A weak retrieval is counted now, while the question is at hand: the conversation itself is
+        // swept by retention, and the knowledge-gap report is what tells admins which guides to add.
+        await RecordRetrievalGapAsync(request.Content, offered.Hits, citations.CitedExcerpts.Count, now, cancellationToken).ConfigureAwait(false);
 
         // The regions the answer names, on a map of their country, after everything the model cited:
         // "Lạng Sơn and Quảng Ninh" means little to a player who does not know where they are. Costs
@@ -674,6 +681,27 @@ public sealed partial class AskAiHandler(
         captionsConfiguration.Value.ShowToMembers && !string.IsNullOrWhiteSpace(excerpt.GeneratedCaption)
             ? GeneratedCaptionMark + excerpt.GeneratedCaption
             : null;
+
+    /// <summary>Records the question when its retrieval was weak (<see cref="WeakRetrieval"/>). Never fails the answer.</summary>
+    private async Task RecordRetrievalGapAsync(
+        string question,
+        IReadOnlyList<KnowledgeHit> offered,
+        int cited,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (!gapsConfiguration.Value.RecordWeakRetrievals || string.IsNullOrWhiteSpace(question))
+        {
+            return;
+        }
+
+        var gazetteer = await countryDirectory.ReadAsync(cancellationToken).ConfigureAwait(false);
+        var subject = WeakRetrieval.Subject(question, gazetteer);
+        if (WeakRetrieval.Judge(subject, offered, cited) is { } reason)
+        {
+            retrievalGaps.Add(AiRetrievalGap.Create(now, question.Trim(), subject.IndexNames.FirstOrDefault() ?? subject.Country, subject.Topic, reason));
+        }
+    }
 
     private static ulong ResolveConversationId(ConversationContext context, AskAiCommand request) =>
         context.ConversationId ?? request.DiscordMessageId;
