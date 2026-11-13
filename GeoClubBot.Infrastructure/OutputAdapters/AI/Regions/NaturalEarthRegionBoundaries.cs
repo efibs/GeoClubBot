@@ -39,6 +39,42 @@ internal sealed record RegionShape(string Id, string Name, IReadOnlyList<string>
         return inside;
     }
 
+    /// <summary>
+    /// How far the point lies from the region's edge, in degrees of latitude (longitude scaled to match
+    /// at the point's latitude); <see cref="double.PositiveInfinity"/> when it is further than
+    /// <paramref name="reach"/> from the region's rectangle.
+    /// </summary>
+    public double DistanceTo(double longitude, double latitude, double reach)
+    {
+        var scale = Math.Max(0.01, Math.Cos(latitude * Math.PI / 180));
+        if (longitude < Bounds.West - reach / scale || longitude > Bounds.East + reach / scale
+            || latitude < Bounds.South - reach || latitude > Bounds.North + reach)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var nearest = double.PositiveInfinity;
+        foreach (var ring in Rings)
+        {
+            for (int i = 0, j = ring.Count - 1; i < ring.Count; j = i++)
+            {
+                var ax = (ring[j].Longitude - longitude) * scale;
+                var ay = ring[j].Latitude - latitude;
+                var bx = (ring[i].Longitude - longitude) * scale;
+                var by = ring[i].Latitude - latitude;
+                var dx = bx - ax;
+                var dy = by - ay;
+                var length = (dx * dx) + (dy * dy);
+                var t = length == 0 ? 0 : Math.Clamp(-((ax * dx) + (ay * dy)) / length, 0, 1);
+                var px = ax + (t * dx);
+                var py = ay + (t * dy);
+                nearest = Math.Min(nearest, Math.Sqrt((px * px) + (py * py)));
+            }
+        }
+
+        return nearest;
+    }
+
     private static (double, double, double, double) BoundsOf(IReadOnlyList<IReadOnlyList<(double Longitude, double Latitude)>> rings)
     {
         double west = double.MaxValue, south = double.MaxValue, east = double.MinValue, north = double.MinValue;
@@ -70,6 +106,12 @@ public sealed partial class NaturalEarthRegionBoundaries(
     public const string HttpClientName = "NaturalEarth";
 
     public const string FileName = "ne_10m_admin_1_states_provinces.geojson";
+
+    /// <summary>
+    /// How far off every outline a point may lie and still be placed in the nearest region, in degrees
+    /// (about 11 km): the coast the outlines miss, not the open sea a guess may land in.
+    /// </summary>
+    internal const double CoastReachDegrees = 0.1;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -106,7 +148,24 @@ public sealed partial class NaturalEarthRegionBoundaries(
                 }
             }
 
-            return null;
+            // Street View stands on the shore, and the outlines are drawn coarser than that: a round on
+            // Sri Lanka's Mannar Island lay 2 km off them (2026-11-13). Within reach, the nearest region.
+            RegionPlace? nearest = null;
+            var nearestDistance = CoastReachDegrees;
+            foreach (var (code, shapes) in byCountry)
+            {
+                foreach (var shape in shapes)
+                {
+                    var distance = shape.DistanceTo(longitude, latitude, CoastReachDegrees);
+                    if (distance <= nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearest = new RegionPlace(code, shape.Name);
+                    }
+                }
+            }
+
+            return nearest;
         }
         catch (OperationCanceledException)
         {

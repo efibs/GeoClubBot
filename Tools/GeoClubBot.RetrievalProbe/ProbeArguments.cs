@@ -124,6 +124,7 @@ public sealed record ProbeArguments(
                 case "--collection":
                 case "--targets":
                 case "--question":
+                case "--player":
                 case "--source":
                 case "--variant":
                 case "--variants":
@@ -143,6 +144,7 @@ public sealed record ProbeArguments(
                         case "--collection": collection = value; break;
                         case "--targets": targets = value; break;
                         case "--question": question = value; break;
+                        case "--player": question = value; break;
                         case "--source": source = value; break;
                         case "--country": country = value; break;
                         case "--variant": variants.Add(value!); break;
@@ -239,6 +241,11 @@ public sealed record ProbeArguments(
                                       indexing anything or downloading its pictures.
               overlap                 How much of a guide (--source) PlonkIt has too: each chunk's
                                       nearest PlonkIt tip of the same country, and how near.
+              review <highscores>     /ai review run for real for any player of a challenge: the results
+                                      as the ApiProbe saved them (raw /v3/results/highscores/<token>),
+                                      placed by Natural Earth's outlines, searched in the index and
+                                      answered by the bot's models. Needs --allow-chat; --player picks
+                                      whom to review (nick or id, default the leader).
               map <plant name>        The map the bot would attach for a plant, drawn by its own GBIF
                                       reader and renderer; --country frames one country. Needs no index.
 
@@ -268,6 +275,7 @@ public sealed record ProbeArguments(
               --variants <file>       compare: JSON of { "name": { retrieval settings } } to compare
                                       instead of the built-in steps; see README.md
               --question <text>       similarity: the question
+              --player <nick|id>      review: the player whose game is reviewed
               --source <url>          similarity: the chunk's source URL, as listed under an answer;
                                       chunks: a guide's link, or its type and key (plonkit:india)
               --variant <text>        similarity: re-worded chunk text to try (repeatable)

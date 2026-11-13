@@ -52,6 +52,7 @@ public sealed partial class ReviewRoundsHandler(
     IClubChallengeRepository challenges,
     IGeoGuessrClientFactory geoGuessrClientFactory,
     IRegionBoundaries boundaries,
+    IStreetViewGuesser streetViewGuesser,
     IEmbedder embedder,
     IKnowledgeIndex knowledgeIndex,
     KnowledgeCountryDirectory countryDirectory,
@@ -110,7 +111,10 @@ public sealed partial class ReviewRoundsHandler(
             return AiAnswerErrors.BudgetExhausted;
         }
 
+        // GeoNN looks at the panoramas while the guides are searched; it costs no AI request.
+        var reading = ReadPanoramasAsync(played, rounds, settings.StreetViewGuesser, cancellationToken);
         var hits = await RetrieveAsync(rounds, settings, cancellationToken).ConfigureAwait(false);
+        rounds = await reading.ConfigureAwait(false);
         var question = RoundReviewPrompt.Build(rounds, token);
 
         var completion = await answerLoop.AnswerAsync(
@@ -138,7 +142,12 @@ public sealed partial class ReviewRoundsHandler(
             IsLongThread: false,
             RetrievedSourceUrls: [.. outcome.Excerpts.Select(excerpt => excerpt.SourceUrl).Distinct(StringComparer.Ordinal)],
             CitedSourceUrls: [.. citations.Sources.Select(citation => citation.Excerpt.SourceUrl).Distinct(StringComparer.Ordinal)],
-            outcome.ToolCalls);
+            outcome.ToolCalls)
+        {
+            Notices = rounds.FirstOrDefault(round => round.Reading is not null)?.Reading is { } read
+                ? [$"Each round's panorama was also looked at by GeoNN ({read.Model}), a Street View model; what it saw is not from the guides."]
+                : []
+        };
 
         LogReviewed(logger, token, rounds.Count, rounds.Count(round => round.MissedCountry), hits.Count, outcome.Response.ModelUsed);
         return new RoundReview(answer, token, rounds);
@@ -252,6 +261,50 @@ public sealed partial class ReviewRoundsHandler(
     }
 
     /// <summary>
+    /// Each round with what GeoNN made of its panorama, shown the way the game showed it: one view at the
+    /// round's heading, pitch and zoom when rotating was forbidden, else the whole panorama. Rounds it could
+    /// not read, or every round when it is not set up, are left as they were.
+    /// </summary>
+    private async Task<IReadOnlyList<ReviewedRound>> ReadPanoramasAsync(
+        ChallengeResultGameDto game,
+        IReadOnlyList<ReviewedRound> reviewed,
+        AiStreetViewGuesserConfiguration settings,
+        CancellationToken cancellationToken)
+    {
+        if (!streetViewGuesser.IsAvailable || game.Rounds is not { Count: > 0 } rounds)
+        {
+            return reviewed;
+        }
+
+        var mode = game.ForbidRotating == true ? PanoramaViewMode.FixedView : PanoramaViewMode.FullPanorama;
+        var readings = await Task.WhenAll(reviewed.Select(async round =>
+        {
+            var played = rounds[round.Number - 1];
+            if (GeoGuessrPanoId.Decode(played.PanoId) is not { } panoId || played is not { Lat: { } lat, Lng: { } lng })
+            {
+                return round;
+            }
+
+            var guess = await streetViewGuesser
+                .GuessAsync(new PanoramaView(panoId, mode, played.Heading, played.Pitch, played.Zoom), cancellationToken)
+                .ConfigureAwait(false);
+            return guess is null
+                ? round
+                : round with
+                {
+                    Reading = new PanoramaReading(
+                        [.. guess.Countries.Take(Math.Max(1, settings.CountriesShown))],
+                        Haversine.Kilometres(lat, lng, guess.Latitude, guess.Longitude),
+                        guess.Model)
+                };
+        })).ConfigureAwait(false);
+
+        LogPanoramasRead(logger, readings.Count(round => round.Reading is not null), readings.Length,
+            readings.Count(round => round.Reading?.TopCountryCode is { } top && string.Equals(top, round.CountryCode, StringComparison.OrdinalIgnoreCase)));
+        return readings;
+    }
+
+    /// <summary>
     /// The guides' excerpts for each round's place: every round's wording embedded in one request, each
     /// searched within its country (under every spelling the index files it under), the rounds taking
     /// turns until <see cref="AiRoundReviewConfiguration.MaxExcerpts"/>. A failed embedding leaves the
@@ -333,6 +386,9 @@ public sealed partial class ReviewRoundsHandler(
 
     [LoggerMessage(LogLevel.Warning, "The rounds' searches could not be embedded ({Reason}); the review goes to the model without excerpts.")]
     static partial void LogRetrievalFailed(ILogger logger, string reason);
+
+    [LoggerMessage(LogLevel.Information, "GeoNN read {Read} of {Rounds} round panorama(s); its likeliest country was right in {Right}.")]
+    static partial void LogPanoramasRead(ILogger logger, int read, int rounds, int right);
 }
 
 /// <summary>Great-circle distance, for a guess GeoGuessr gave no distance for.</summary>

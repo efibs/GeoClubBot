@@ -147,6 +147,8 @@ worth knowing:
 | `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's rounds with the clues that point to each |
 | `AI:RoundReview:MaxRounds` / `ExcerptsPerRound` / `MaxExcerpts` | 10 / 3 / 12 | Rounds reviewed; excerpts searched per round and offered in all |
 | `AI:RoundReview:HighscoresLimit` | 100 | Places of the highscores read to find the player |
+| `AI:RoundReview:StreetViewGuesser:BaseUrl` | "" | GeoNN's `play.py` (`http://host:8765`); empty, reviews do without it |
+| `AI:RoundReview:StreetViewGuesser:Model` / `TimeoutSeconds` / `CountriesShown` | "" / 30 / 3 | GeoNN's model folder (empty: its newest), one round's deadline, countries shown per round |
 | `AI:KnowledgeGapsSchedule` | `0 0 8 ? * MON` | When old weak retrievals are forgotten and, with `PostReport`, the knowledge-gap report is posted |
 | `AI:KnowledgeGaps:RecordWeakRetrievals` | true | Record questions with a weak retrieval as they are asked |
 | `AI:KnowledgeGaps:RetentionDays` / `ReportDays` | 90 / 30 | How long a weak retrieval is kept; the period the report covers |
@@ -932,13 +934,31 @@ club's latest daily challenges — reads its highscores with the main club's acc
 challenges are evaluated), finds the member's own game by their linked GeoGuessr account (`/link`), and
 reviews it:
 
-- Each round and guess is placed in a country and region: GeoGuessr's own `streakLocationCode` where
-  the results carry it, else the Natural Earth boundaries (`IRegionBoundaries.LocateAsync`, point in
-  polygon over the admin-1 outlines the region maps use), so the review can say "Lạng Sơn, Vietnam" and
-  "you guessed Guangxi, China, 410 km away". The round and guess fields of the highscores
-  (`ChallengeResultRoundDto`, `ChallengeResultGuessDto`) are optional: the list was only ever read for its
-  players before, and **their shape has not been verified against the live API** — a game that comes
-  without them is reported as having no rounds rather than reviewed wrong.
+- Each round and guess is placed in a country and region. A round carries GeoGuessr's own
+  `streakLocationCode`; a guess never does (its field is always `null`), so the guess — and the round's
+  region — come from the Natural Earth boundaries (`IRegionBoundaries.LocateAsync`, point in polygon over
+  the admin-1 outlines the region maps use). Street View stands on the shore and the 10m outlines are
+  coarser than that (a round on Sri Lanka's Mannar Island lay 2 km off them), so a point inside no outline
+  goes to the nearest region within 0.1° (about 11 km); further out is the sea. The review can then say
+  "Lạng Sơn, Vietnam" and "you guessed Guangxi, China, 410 km away".
+- The highscores' shape was read live on 2026-11-13 (two challenges, 15 players; an anonymised copy is
+  `GeoClubBot.Tests/Fixtures/AI/geoguessr-challenge-highscores-20261113.json`): `game.rounds[]` has
+  `lat`, `lng`, `panoId` (hex-encoded: `GeoGuessrPanoId.Decode`), `heading`, `pitch`, `zoom`,
+  `streakLocationCode`, `startTime`; `game.player.guesses[]` has `lat`, `lng`, `timedOut`,
+  `timedOutWithGuess`, `skippedRound`, `roundScoreInPoints`, `distanceInMeters`, `time`; the game carries
+  `forbidMoving` / `forbidZooming` / `forbidRotating`. Every round field stays optional: a game without
+  them is reported as having no rounds rather than reviewed wrong.
+- **GeoNN** (optional, `AI:RoundReview:StreetViewGuesser`): the maintainer's own GeoGuessr model looks at
+  each round's panorama (`IStreetViewGuesser` → `GeoNnStreetViewGuesser`, `POST {BaseUrl}/api/predict` of
+  GeoNN's `scripts/play.py`, which fetches the panorama from Google itself), shown as the game showed it:
+  one view at the round's heading, pitch and zoom when rotating was forbidden (`nmpz`), else the whole
+  panorama (`nm`). Its likeliest countries go into the round's line ("GeoNN read the panorama as Kenya
+  94%, …"), and the model is told to use them only to say how plainly the round showed its country — sure
+  and right: the clues were there; unsure or wrong: a hard round — never as a source. A notice under the
+  review says GeoNN looked. All rounds are asked while the guides are searched; a round GeoNN cannot read
+  is reviewed without it. On 2026-11-13 (RTX A5000, model `v2`) a no-move challenge read 5 of 5 countries
+  right at 76–99 %, a pan-and-zoom NMPZ map 2 of 5 at under 40 % — that map aims the camera up or down and
+  zooms in, and its best player scored 9,973. About 0.7 s a round, 5 s for the first while the model loads.
 - The guides are searched once per round, within the round's country under every spelling the index
   files it under ("How to recognise Lạng Sơn, Vietnam: distinctive clues of the region"), every round's
   wording in **one** embedding request; the rounds take turns at the excerpts up to `MaxExcerpts` (12).
@@ -949,9 +969,8 @@ reviews it:
   out as for an answer; the review is posted into the channel through `IAiChannelPublisher`.
 
 Cost: two requests of the day's allowance (the embedding and the completion), claimed up front, plus the
-tool rounds the model takes — the same as a question. The panorama itself is not looked at: the review
-works from the round's place. A GeoNN-style guesser could be added behind a port later; it needs a GPU
-host, which is outside "free to run" today.
+tool rounds the model takes — the same as a question. GeoNN costs no request; it runs on the maintainer's
+own GPU, and without it the review works from the rounds' places alone.
 
 ### What goes into a vector
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using UseCases.OutputPorts.AI;
 using UseCases.UseCases.AI.Tools;
 
 namespace UseCases.UseCases.AI.Review;
@@ -11,6 +12,7 @@ namespace UseCases.UseCases.AI.Review;
 /// <param name="GuessRegion">The region of the guess, when known.</param>
 /// <param name="DistanceKm">How far the guess was off; null without a guess.</param>
 /// <param name="Points">The round's score.</param>
+/// <param name="Reading">What a Street View model made of the round's panorama; null without one.</param>
 public sealed record ReviewedRound(
     int Number,
     string? CountryCode,
@@ -18,7 +20,8 @@ public sealed record ReviewedRound(
     string? GuessCountryCode,
     string? GuessRegion,
     double? DistanceKm,
-    int? Points)
+    int? Points,
+    PanoramaReading? Reading = null)
 {
     /// <summary>The player guessed another country, or nothing.</summary>
     public bool MissedCountry =>
@@ -27,6 +30,13 @@ public sealed record ReviewedRound(
     public string CountryName => CountryCode is null ? "an unknown place" : IsoCountries.NameOf(CountryCode);
 
     public string? GuessCountryName => GuessCountryCode is null ? null : IsoCountries.NameOf(GuessCountryCode);
+}
+
+/// <summary>What GeoNN read a round's panorama as: the countries it weighed, likeliest first, and how far its guess was off.</summary>
+public sealed record PanoramaReading(IReadOnlyList<CountryProbability> Countries, double DistanceKm, string Model)
+{
+    /// <summary>The country it weighed most, ISO 3166 alpha-2; null when it named none.</summary>
+    public string? TopCountryCode => Countries.Count == 0 ? null : Countries[0].CountryCode;
 }
 
 /// <summary>
@@ -67,7 +77,7 @@ public static class RoundReviewPrompt
 
                 if (round.DistanceKm is { } km)
                 {
-                    text.Append(", ").Append(km < 10 ? km.ToString("0.0", CultureInfo.InvariantCulture) : Math.Round(km).ToString("N0", CultureInfo.InvariantCulture)).Append(" km away");
+                    text.Append(", ").Append(Kilometres(km)).Append(" km away");
                 }
 
                 if (round.Points is { } points)
@@ -76,6 +86,14 @@ public static class RoundReviewPrompt
                 }
 
                 text.Append(round.MissedCountry ? " — wrong country." : " — right country.");
+            }
+
+            if (round.Reading is { Countries.Count: > 0 } reading)
+            {
+                text.Append(" GeoNN read the panorama as ")
+                    .Append(string.Join(", ", reading.Countries.Select(country =>
+                        $"{IsoCountries.NameOf(country.CountryCode)} {Math.Round(country.Probability * 100).ToString("0", CultureInfo.InvariantCulture)}%")))
+                    .Append(" (its guess ").Append(Kilometres(reading.DistanceKm)).Append(" km off).");
             }
 
             text.AppendLine();
@@ -88,8 +106,20 @@ public static class RoundReviewPrompt
             + "right country apart from the one I guessed, and what to study. Keep each round to a few sentences, "
             + "and end with the two or three things to practise first.");
 
+        if (rounds.Any(round => round.Reading is { Countries.Count: > 0 }))
+        {
+            text.AppendLine(
+                "GeoNN is a model trained on Street View that looked at each round's panorama. Use it only to say how "
+                + "plainly a round showed its country: sure and right means the clues were there to see; unsure, or "
+                + "wrong, means the round was hard, so do not blame me for it. It is not one of the excerpts: never cite "
+                + "it, and never name a clue it did not come with.");
+        }
+
         return text.ToString().TrimEnd();
     }
+
+    private static string Kilometres(double km) =>
+        km < 10 ? km.ToString("0.0", CultureInfo.InvariantCulture) : Math.Round(km).ToString("N0", CultureInfo.InvariantCulture);
 
     /// <summary>What the guides are searched for, per round: the country's distinctive clues, and its region's.</summary>
     public static string SearchText(ReviewedRound round)

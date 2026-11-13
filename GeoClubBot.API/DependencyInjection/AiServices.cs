@@ -8,6 +8,7 @@ using GeoClubBot.Services;
 using Infrastructure.OutputAdapters.AI;
 using Infrastructure.OutputAdapters.AI.Extractors;
 using Infrastructure.OutputAdapters.AI.Gbif;
+using Infrastructure.OutputAdapters.AI.GeoNn;
 using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Infrastructure.OutputAdapters.AI.PlantNet;
@@ -188,6 +189,11 @@ public static class AiServices
         services.AddSingleton<IRegionMapDrawer, RegionMapDrawer>();
         services.AddSingleton<RegionLocator>();
         services.AddHostedService<RegionBoundariesWarmup>();
+
+        // GeoNN reads a reviewed round's panorama, on a GPU machine of the maintainer's; asked only once
+        // AI:RoundReview:StreetViewGuesser:BaseUrl names it. Each call carries its own deadline.
+        services.AddHttpClient(GeoNnStreetViewGuesser.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<IStreetViewGuesser, GeoNnStreetViewGuesser>();
 
         // The clue of the day posts into a channel of its own through the same rendering and uploads as an answer.
         services.AddSingleton<IAiChannelPublisher, DiscordAiChannelPublisher>();
