@@ -290,7 +290,8 @@ public sealed record IndexedSourceKey(string SourceType, string SourceKey);
 /// <param name="Limit">How many chunks to draw.</param>
 /// <param name="Kind">Draw only chunks of this kind; null draws any.</param>
 /// <param name="ExcludedSourceType">Draw nothing of this source type; null leaves none out.</param>
-public sealed record KnowledgeSample(int Limit, KnowledgeChunkKind? Kind = null, string? ExcludedSourceType = null);
+/// <param name="Country">Draw only chunks filed under this country, as the index spells it; null draws from every country.</param>
+public sealed record KnowledgeSample(int Limit, KnowledgeChunkKind? Kind = null, string? ExcludedSourceType = null, string? Country = null);
 
 /// <summary>
 /// The vector store holding all indexed guide content.

@@ -114,7 +114,7 @@ public sealed partial class ClueSampler(
     }
 
     /// <summary>Whether a drawn chunk is a clue the model can tell from its text: a picture with words of its own.</summary>
-    private static bool IsAClue(KnowledgeHit hit)
+    public static bool IsAClue(KnowledgeHit hit)
     {
         if (hit.Id == Guid.Empty || hit.ImageUrl is null || string.IsNullOrWhiteSpace(hit.SourceKey) || hit.IsUndescribedPicture)
         {

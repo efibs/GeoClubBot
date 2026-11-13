@@ -313,6 +313,10 @@ API + Discord (controllers, slash command modules)
   `ClueSampler` draw not posted within `NoRepeatDays` (`AiCluePosts`) as an `AiAnswer`
   (`ClueOfTheDayPost`, pure) through `IAiChannelPublisher` → `DiscordAiChannelPublisher`, which reuses
   `AiConversationGateway.PostAsync` without a message to reply to.
+  `/ai quiz [country] [lesser-known]` (`DrawQuizQuestionQuery`,
+  `AI:Quiz`) posts a random captioned picture (`SampleAsync` with `KnowledgeSample.Country`,
+  `ClueSampler.IsAClue`) with the answer behind one spoiler (`AiQuizFormatter`, pure) and buttons that
+  record an in-memory score (`QuizStreaks`) or draw again.
   A question asking for something new (`LesserKnownQuestion`: "not on PlonkIt", "a clue I don't know
   yet", and follow-ups on such a branch) is searched without PlonkIt (`KnowledgeQuery.ExcludedSourceType`),
   and `MainGuideOverlap` marks every excerpt PlonkIt has a tip like, by the index's stored vectors

@@ -19,6 +19,7 @@ using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
 using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.AI.Conversations;
+using UseCases.UseCases.AI.Quiz;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
 
@@ -190,6 +191,8 @@ public static class AiServices
 
         // The clue of the day posts into a channel of its own through the same rendering and uploads as an answer.
         services.AddSingleton<IAiChannelPublisher, DiscordAiChannelPublisher>();
+        // The quiz's scores, in memory for the bot's lifetime.
+        services.AddSingleton<QuizStreaks>();
 
         // Scoped, like the budget repository it claims requests through.
         services.AddScoped<AiAnswerLoop>();

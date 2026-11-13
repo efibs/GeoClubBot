@@ -151,6 +151,9 @@ worth knowing:
 | `AI:ClueOfTheDay:ExcludeMainGuideClues` | true | Leave out clues PlonkIt has a tip like |
 | `AI:ClueOfTheDay:Draws` | 8 | Clues drawn per post to choose from |
 | `AI:ClueOfTheDay:Heading` | `🧭 **Clue of the day** — from *{{guide}}*` | What the post opens with |
+| `AI:Quiz:Enabled` | true | `/ai quiz`: a random captioned guide picture with the answer behind a spoiler |
+| `AI:Quiz:Draws` | 24 | Pictures drawn per question to find one with words of its own |
+| `AI:Quiz:OnlyInAllowedChannels` | true | Keep the quiz to `AI:AllowedChannelIds` when that list is set |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
@@ -879,6 +882,20 @@ out, so a failed post does not make the same clue the next day's. Costs no AI re
 
 Off by default: a channel has to be chosen first (`Enabled` with no `TextChannelId` fails start-up
 validation). The schedule key must be present even while the feature is off, as every job's must.
+### `/ai quiz`
+
+A way to practise with the pictures the club has chosen to index. `/ai quiz [country] [lesser-known]`
+draws one captioned guide picture at random (`DrawQuizQuestionQuery`: `IKnowledgeIndex.SampleAsync`
+within the country when one is named — resolved through the guides' gazetteer, every spelling the index
+files it under tried — keeping only pictures with words of their own, `ClueSampler.IsAClue`; with
+`lesser-known`, PlonkIt's pictures and the clues PlonkIt has a tip like are left out) and posts it with
+the picture uploaded from the relay. The answer — the country the guide files it under, the guide and
+section, what the guide says of the picture, and the source link — sits behind **one spoiler**
+(`AiQuizFormatter`, pure). Three buttons follow: *I got it* and *I missed* record a score the member
+judges for themselves (`QuizStreaks`: streak, best streak and tally, in memory since the last restart —
+a quiz is practice, not a league), answered ephemerally; *Another* draws again with the same filters.
+Costs no AI request. `AI:Quiz:OnlyInAllowedChannels` keeps it to `AI:AllowedChannelIds` when that list
+is set.
 
 ### What goes into a vector
 
