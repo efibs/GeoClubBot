@@ -144,6 +144,9 @@ worth knowing:
 | `AI:Tools:RegionMap:MaxRegions` | 15 | Most regions on one map |
 | `AI:Tools:RegionMap:TimeoutSeconds` | 8 | Seconds the map after an answer may take |
 | `AI:Tools:RegionMap:CacheHours` | 24 | How long a drawn map is kept |
+| `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's rounds with the clues that point to each |
+| `AI:RoundReview:MaxRounds` / `ExcerptsPerRound` / `MaxExcerpts` | 10 / 3 / 12 | Rounds reviewed; excerpts searched per round and offered in all |
+| `AI:RoundReview:HighscoresLimit` | 100 | Places of the highscores read to find the player |
 | `AI:ClueOfTheDaySchedule` | `0 0 17 * * ?` | When the clue of the day is posted, in `AI:ClueOfTheDayTimeZone` (`Europe/Berlin`; empty is UTC) |
 | `AI:ClueOfTheDay:Enabled` | false | Post a lesser-known clue with its picture on the schedule. Needs `TextChannelId` |
 | `AI:ClueOfTheDay:TextChannelId` | empty | The channel it is posted to |
@@ -896,6 +899,35 @@ judges for themselves (`QuizStreaks`: streak, best streak and tally, in memory s
 a quiz is practice, not a league), answered ephemerally; *Another* draws again with the same filters.
 Costs no AI request. `AI:Quiz:OnlyInAllowedChannels` keeps it to `AI:AllowedChannelIds` when that list
 is set.
+
+### `/ai review`: a played challenge, round by round
+
+After a game a player sees where they were wrong, but not which clues would have told them.
+`/ai review [challenge]` (`ReviewRoundsCommand`) takes a challenge link or token — or, with none, the
+club's latest daily challenges — reads its highscores with the main club's account (as the country
+challenges are evaluated), finds the member's own game by their linked GeoGuessr account (`/link`), and
+reviews it:
+
+- Each round and guess is placed in a country and region: GeoGuessr's own `streakLocationCode` where
+  the results carry it, else the Natural Earth boundaries (`IRegionBoundaries.LocateAsync`, point in
+  polygon over the admin-1 outlines the region maps use), so the review can say "Lạng Sơn, Vietnam" and
+  "you guessed Guangxi, China, 410 km away". The round and guess fields of the highscores
+  (`ChallengeResultRoundDto`, `ChallengeResultGuessDto`) are optional: the list was only ever read for its
+  players before, and **their shape has not been verified against the live API** — a game that comes
+  without them is reported as having no rounds rather than reviewed wrong.
+- The guides are searched once per round, within the round's country under every spelling the index
+  files it under ("How to recognise Lạng Sơn, Vietnam: distinctive clues of the region"), every round's
+  wording in **one** embedding request; the rounds take turns at the excerpts up to `MaxExcerpts` (12).
+- The model is asked once through the same answer loop a question goes through (`AiAnswerLoop`: tools,
+  screening, retries), with the rounds written out (`RoundReviewPrompt`, pure) and told to name, per
+  round, the clues that would have given the country and region and what sets the right country apart
+  from the guessed one, ending with what to practise first. Citations, pictures and the source list come
+  out as for an answer; the review is posted into the channel through `IAiChannelPublisher`.
+
+Cost: two requests of the day's allowance (the embedding and the completion), claimed up front, plus the
+tool rounds the model takes — the same as a question. The panorama itself is not looked at: the review
+works from the round's place. A GeoNN-style guesser could be added behind a port later; it needs a GPU
+host, which is outside "free to run" today.
 
 ### What goes into a vector
 

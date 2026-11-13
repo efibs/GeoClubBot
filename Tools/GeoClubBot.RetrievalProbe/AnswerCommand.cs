@@ -371,6 +371,9 @@ public sealed class AnsweringStack : IDisposable
     {
         public Task<IReadOnlyList<RegionName>> ReadNamesAsync(string countryCode, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RegionName>>([]);
+
+        public Task<RegionPlace?> LocateAsync(double latitude, double longitude, CancellationToken cancellationToken = default) =>
+            Task.FromResult<RegionPlace?>(null);
     }
 
     private sealed class NoRegionMapDrawer : IRegionMapDrawer
