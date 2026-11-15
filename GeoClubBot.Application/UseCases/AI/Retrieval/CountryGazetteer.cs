@@ -352,6 +352,40 @@ public sealed partial class CountryGazetteer
     }
 
     /// <summary>
+    /// The countries named by the words from <paramref name="start"/> on — the longest name first, then a
+    /// word one typo off — with how many words the name took; empty, and none taken, when no name starts
+    /// there. The words must be normalised as <see cref="Normalise"/> does; what <see cref="FindMentions"/>
+    /// reads a whole text with, for a caller that needs to know where each mention lies.
+    /// </summary>
+    public IReadOnlyList<CountryMention> MatchAt(IReadOnlyList<string> words, int start, out int length)
+    {
+        ArgumentNullException.ThrowIfNull(words);
+
+        length = 0;
+        if (start < 0 || start >= words.Count || _byName.Count == 0)
+        {
+            return [];
+        }
+
+        for (var count = Math.Min(_longestName, words.Count - start); count > 0; count--)
+        {
+            if (_byName.TryGetValue(string.Join(' ', words.Skip(start).Take(count)), out var countries))
+            {
+                length = count;
+                return countries;
+            }
+        }
+
+        if (FindByTypo(words[start]) is { } misspelt)
+        {
+            length = 1;
+            return misspelt;
+        }
+
+        return [];
+    }
+
+    /// <summary>
     /// The countries a name stands for — "USA", "Czech Republic", "Sabah" — or none. Matched as a whole
     /// name first, then as text, so "Malaysia (Sabah)" still resolves.
     /// </summary>

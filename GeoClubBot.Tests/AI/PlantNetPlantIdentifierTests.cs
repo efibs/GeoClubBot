@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
+using SkiaSharp;
 using UseCases.OutputPorts.AI;
 using Utilities;
 using Xunit;
@@ -41,7 +42,7 @@ public sealed class PlantNetPlantIdentifierTests
             .OnImage(Screenshot, "image/png", [1, 2, 3, 4])
             .On("/v2/identify/all", KesiyaAnswer);
 
-        var result = await CreateIdentifier(handler).IdentifyAsync(Screenshot);
+        var result = await CreateIdentifier(handler).IdentifyAsync([Screenshot]);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.RemainingRequests.Should().Be(487);
@@ -51,7 +52,7 @@ public sealed class PlantNetPlantIdentifierTests
         result.Value.Candidates[1].GbifTaxonKey.Should().Be(5285750);
 
         var post = handler.Posts.Should().ContainSingle().Subject;
-        post.Url.Should().StartWith("https://plantnet.test/v2/identify/all?api-key=secret-key&lang=en&nb-results=3");
+        post.Url.Should().Be("https://plantnet.test/v2/identify/all?api-key=secret-key&lang=en&nb-results=30&include-related-images=false&detailed=true");
         post.ContentType.Should().StartWith("multipart/form-data");
         post.Body.Should().Contain("name=\"images\"; filename=\"screenshot.png\"").And.Contain("name=\"organs\"").And.Contain("auto");
         post.Body.Should().Contain("Content-Type: image/png");
@@ -64,7 +65,7 @@ public sealed class PlantNetPlantIdentifierTests
             .OnImage(Screenshot, "image/jpeg", [1])
             .On("/v2/identify/all", """{"statusCode":404,"error":"Not Found","message":"Species not found"}""", HttpStatusCode.NotFound);
 
-        var result = await CreateIdentifier(handler).IdentifyAsync(Screenshot);
+        var result = await CreateIdentifier(handler).IdentifyAsync([Screenshot]);
 
         result.IsFailure.Should().BeTrue();
         result.Error.Type.Should().Be(ErrorType.NotFound);
@@ -79,8 +80,8 @@ public sealed class PlantNetPlantIdentifierTests
             .On("/v2/identify/all", """{"statusCode":429,"error":"Too Many Requests"}""", HttpStatusCode.TooManyRequests);
         var identifier = CreateIdentifier(handler);
 
-        var first = await identifier.IdentifyAsync(Screenshot);
-        var second = await identifier.IdentifyAsync("https://cdn.discordapp.com/attachments/1/3/other.png");
+        var first = await identifier.IdentifyAsync([Screenshot]);
+        var second = await identifier.IdentifyAsync(["https://cdn.discordapp.com/attachments/1/3/other.png"]);
 
         first.Error.Code.Should().Be(PlantIdentificationErrorCodes.QuotaExceeded);
         second.Error.Code.Should().Be(PlantIdentificationErrorCodes.QuotaExceeded);
@@ -99,15 +100,15 @@ public sealed class PlantNetPlantIdentifierTests
             handler.OnImage($"https://cdn.discordapp.com/attachments/1/{i}/shot.png", "image/png", [1]);
         }
 
-        (await identifier.IdentifyAsync("https://cdn.discordapp.com/attachments/1/0/shot.png")).IsSuccess.Should().BeTrue();
-        (await identifier.IdentifyAsync("https://cdn.discordapp.com/attachments/1/1/shot.png")).IsSuccess.Should().BeTrue();
-        var third = await identifier.IdentifyAsync("https://cdn.discordapp.com/attachments/1/2/shot.png");
+        (await identifier.IdentifyAsync(["https://cdn.discordapp.com/attachments/1/0/shot.png"])).IsSuccess.Should().BeTrue();
+        (await identifier.IdentifyAsync(["https://cdn.discordapp.com/attachments/1/1/shot.png"])).IsSuccess.Should().BeTrue();
+        var third = await identifier.IdentifyAsync(["https://cdn.discordapp.com/attachments/1/2/shot.png"]);
 
         third.Error.Code.Should().Be(PlantIdentificationErrorCodes.QuotaExceeded);
         handler.Posts.Should().HaveCount(2);
 
         clock.Advance(TimeSpan.FromMinutes(20));
-        (await identifier.IdentifyAsync("https://cdn.discordapp.com/attachments/1/2/shot.png")).IsSuccess.Should().BeTrue();
+        (await identifier.IdentifyAsync(["https://cdn.discordapp.com/attachments/1/2/shot.png"])).IsSuccess.Should().BeTrue();
     }
 
     [Fact]
@@ -118,19 +119,21 @@ public sealed class PlantNetPlantIdentifierTests
             .On("/v2/identify/all", KesiyaAnswer);
         var identifier = CreateIdentifier(handler);
 
-        await identifier.IdentifyAsync(Screenshot);
-        var again = await identifier.IdentifyAsync("https://cdn.discordapp.com/attachments/1/2/shot.png?ex=9&is=9&hm=9");
+        await identifier.IdentifyAsync([Screenshot]);
+        var again = await identifier.IdentifyAsync(["https://cdn.discordapp.com/attachments/1/2/shot.png?ex=9&is=9&hm=9"]);
 
         again.IsSuccess.Should().BeTrue();
         handler.Posts.Should().ContainSingle("a follow-up on the same screenshot costs no identification");
     }
 
-    [Fact]
-    public async Task RefusesAPicture_InAFormatTheServiceDoesNotTake()
+    [Theory]
+    [InlineData("image/svg+xml")]
+    [InlineData("image/webp")]
+    public async Task RefusesAPicture_InAFormatItCannotSendOrRead(string contentType)
     {
-        var handler = new RoutingHandler().OnImage(Screenshot, "image/webp", [1]).On("/v2/identify/all", KesiyaAnswer);
+        var handler = new RoutingHandler().OnImage(Screenshot, contentType, [1]).On("/v2/identify/all", KesiyaAnswer);
 
-        var result = await CreateIdentifier(handler).IdentifyAsync(Screenshot);
+        var result = await CreateIdentifier(handler).IdentifyAsync([Screenshot]);
 
         result.Error.Code.Should().Be(PlantIdentificationErrorCodes.ImageUnusable);
         result.Error.Type.Should().Be(ErrorType.Validation);
@@ -138,11 +141,83 @@ public sealed class PlantNetPlantIdentifierTests
     }
 
     [Fact]
+    public async Task SendsAWebpAsAJpeg()
+    {
+        using var bitmap = new SKBitmap(8, 8);
+        bitmap.Erase(SKColors.ForestGreen);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var webp = image.Encode(SKEncodedImageFormat.Webp, 80);
+        var handler = new RoutingHandler().OnImage(Screenshot, "image/webp", webp.ToArray()).On("/v2/identify/all", KesiyaAnswer);
+
+        var result = await CreateIdentifier(handler).IdentifyAsync([Screenshot]);
+
+        result.IsSuccess.Should().BeTrue();
+        var body = handler.Posts.Should().ContainSingle().Subject.Body;
+        body.Should().Contain("Content-Type: image/jpeg").And.Contain("filename=\"screenshot.jpg\"");
+    }
+
+    [Fact]
+    public async Task SendsSeveralPictures_AsViewsOfOnePlant_EachWithItsOrgan()
+    {
+        const string second = "https://cdn.discordapp.com/attachments/1/3/bark.jpg?ex=1";
+        var handler = new RoutingHandler()
+            .OnImage(Screenshot, "image/png", [1, 2])
+            .OnImage(second, "image/jpeg", [3, 4])
+            .On("/v2/identify/all", KesiyaAnswer);
+        var identifier = CreateIdentifier(handler);
+
+        (await identifier.IdentifyAsync([Screenshot, second])).IsSuccess.Should().BeTrue();
+
+        var body = handler.Posts.Should().ContainSingle().Subject.Body;
+        body.Should().Contain("filename=\"screenshot.png\"").And.Contain("filename=\"screenshot2.jpg\"");
+        CountOf(body, "name=\"images\"").Should().Be(2);
+        CountOf(body, "name=\"organs\"").Should().Be(2);
+
+        // Another set of pictures is another identification; the same set, whatever its signatures, is not.
+        await identifier.IdentifyAsync([Screenshot]);
+        await identifier.IdentifyAsync([Screenshot + "&hm=other", second.Replace("ex=1", "ex=2", StringComparison.Ordinal)]);
+        handler.Posts.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task LeavesOutAPictureItCannotSend_AndSendsTheRest()
+    {
+        var handler = new RoutingHandler()
+            .OnImage(Screenshot, "image/png", [1, 2])
+            .On("/v2/identify/all", KesiyaAnswer);
+
+        var result = await CreateIdentifier(handler).IdentifyAsync([Screenshot, "https://cdn.discordapp.com/attachments/1/9/gone.png"]);
+
+        result.IsSuccess.Should().BeTrue();
+        CountOf(handler.Posts.Should().ContainSingle().Subject.Body, "name=\"images\"").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ReadsTheGenera_ScoredOnTheirOwn()
+    {
+        const string answer = """
+            {"results":[{"score":0.126,"species":{"scientificNameWithoutAuthor":"Pinus resinosa","commonNames":["Red pine"]},"gbif":{"id":"5285067"}}],
+             "otherResults":{"genus":[
+               {"score":0.8292,"genus":{"scientificName":"Pinus","family":{"scientificNameWithoutAuthor":"Pinaceae","scientificName":"Pinaceae"},"commonNames":["Pine"]}},
+               {"score":0.028,"genus":{"scientificName":"Larix","family":{"scientificNameWithoutAuthor":"Pinaceae"},"commonNames":[]}}],
+              "family":[{"score":0.91,"family":{"scientificName":"Pinaceae"}}]},
+             "remainingIdentificationRequests":490}
+            """;
+        var handler = new RoutingHandler().OnImage(Screenshot, "image/png", [1]).On("/v2/identify/all", answer);
+
+        var result = await CreateIdentifier(handler).IdentifyAsync([Screenshot]);
+
+        result.Value.Genera.Should().BeEquivalentTo(
+            [new PlantGenusCandidate("Pinus", "Pinaceae", ["Pine"], 0.8292), new PlantGenusCandidate("Larix", "Pinaceae", [], 0.028)],
+            options => options.WithStrictOrdering());
+    }
+
+    [Fact]
     public async Task RefusesAPicture_OverTheSizeLimit()
     {
         var handler = new RoutingHandler().OnImage(Screenshot, "image/png", new byte[200_001]).On("/v2/identify/all", KesiyaAnswer);
 
-        var result = await CreateIdentifier(handler, maxImageBytes: 200_000).IdentifyAsync(Screenshot);
+        var result = await CreateIdentifier(handler, maxImageBytes: 200_000).IdentifyAsync([Screenshot]);
 
         result.Error.Code.Should().Be(PlantIdentificationErrorCodes.ImageUnusable);
         handler.Posts.Should().BeEmpty();
@@ -154,14 +229,14 @@ public sealed class PlantNetPlantIdentifierTests
         var handler = new RoutingHandler { Failure = new HttpRequestException("down") };
         var identifier = CreateIdentifier(handler);
 
-        var result = await identifier.IdentifyAsync(Screenshot);
+        var result = await identifier.IdentifyAsync([Screenshot]);
 
         result.Error.Code.Should().Be(PlantIdentificationErrorCodes.ServiceFailed);
         result.Error.Type.Should().Be(ErrorType.Unexpected);
 
         handler.Failure = null;
         handler.OnImage(Screenshot, "image/png", [1]).On("/v2/identify/all", KesiyaAnswer);
-        (await identifier.IdentifyAsync(Screenshot)).IsSuccess.Should().BeTrue("a failure to reach the service is no answer about the picture");
+        (await identifier.IdentifyAsync([Screenshot])).IsSuccess.Should().BeTrue("a failure to reach the service is no answer about the picture");
     }
 
     [Fact]
@@ -171,10 +246,13 @@ public sealed class PlantNetPlantIdentifierTests
         var identifier = CreateIdentifier(handler, apiKey: "");
 
         identifier.IsAvailable.Should().BeFalse();
-        (await identifier.IdentifyAsync(Screenshot)).Error.Code.Should().Be(PlantIdentificationErrorCodes.Unavailable);
+        (await identifier.IdentifyAsync([Screenshot])).Error.Code.Should().Be(PlantIdentificationErrorCodes.Unavailable);
         handler.Posts.Should().BeEmpty();
         handler.Gets.Should().BeEmpty();
     }
+
+    private static int CountOf(string text, string part) =>
+        (text.Length - text.Replace(part, string.Empty, StringComparison.Ordinal).Length) / part.Length;
 
     private static PlantNetPlantIdentifier CreateIdentifier(
         RoutingHandler handler,

@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SkiaSharp;
 using UseCases.OutputPorts.AI;
 using Utilities;
 
@@ -19,10 +20,16 @@ namespace Infrastructure.OutputAdapters.AI.PlantNet;
 /// day per account, reset at 00:00 UTC; past that the service answers 429, and this adapter stops
 /// one step earlier at its own cap so the account keeps room.
 ///
-/// The picture is downloaded from its link (a Discord attachment) and forwarded, never linked: the
-/// API takes files only. Pl@ntNet keeps the picture in memory for the identification and stores only
-/// its request log (date, time), per its terms. Answers are cached by the picture's link, without its
-/// signature, so a follow-up on the same screenshot costs no identification.
+/// The pictures are downloaded from their links (Discord attachments) and forwarded, never linked: the
+/// API takes files only, up to five views of one plant per identification. JPEG and PNG go as they are;
+/// anything else SkiaSharp can read (WebP, GIF, BMP) is sent as a JPEG. Pl@ntNet keeps the pictures in
+/// memory for the identification and stores only its request log (date, time), per its terms. Answers
+/// are cached by the pictures' links, without their signatures, so a follow-up on the same screenshot
+/// costs no identification.
+///
+/// It asks for <see cref="AiPlantIdentificationConfiguration.CandidatesConsidered"/> candidates, not the
+/// few offered to the model, because where the screenshot was taken re-orders them; and for the genera
+/// (<c>detailed=true</c>), which on a Street View frame are often sure when the species is not.
 /// </summary>
 public sealed partial class PlantNetPlantIdentifier(
     IHttpClientFactory httpClientFactory,
@@ -41,6 +48,18 @@ public sealed partial class PlantNetPlantIdentifier(
         "image/jpeg", "image/jpg", "image/png"
     };
 
+    /// <summary>What is converted to JPEG before it is sent: what Discord serves besides JPEG and PNG.</summary>
+    private static readonly HashSet<string> ConvertedContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/webp", "image/gif", "image/bmp"
+    };
+
+    /// <summary>The quality a converted picture is sent at: what Pl@ntNet recommends.</summary>
+    private const int JpegQuality = 90;
+
+    /// <summary>Pictures Pl@ntNet takes per identification.</summary>
+    private const int MaxPictures = 5;
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly ConcurrentDictionary<string, CachedAnswer> _cache = new(StringComparer.Ordinal);
@@ -58,9 +77,15 @@ public sealed partial class PlantNetPlantIdentifier(
         }
     }
 
-    public async Task<Result<PlantIdentification>> IdentifyAsync(string imageUrl, CancellationToken cancellationToken = default)
+    public async Task<Result<PlantIdentification>> IdentifyAsync(IReadOnlyList<string> imageUrls, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(imageUrl);
+        ArgumentNullException.ThrowIfNull(imageUrls);
+
+        var pictures = imageUrls.Where(url => !string.IsNullOrWhiteSpace(url)).Distinct(StringComparer.Ordinal).Take(MaxPictures).ToList();
+        if (pictures.Count == 0)
+        {
+            throw new ArgumentException("At least one picture is needed.", nameof(imageUrls));
+        }
 
         var settings = configuration.Value.PlantIdentification;
         if (!IsAvailable)
@@ -69,7 +94,7 @@ public sealed partial class PlantNetPlantIdentifier(
         }
 
         var now = timeProvider.GetUtcNow();
-        var key = CacheKeyOf(imageUrl);
+        var key = string.Join('|', pictures.Select(CacheKeyOf));
 
         if (_cache.TryGetValue(key, out var cached) && cached.ExpiresAt > now)
         {
@@ -82,7 +107,7 @@ public sealed partial class PlantNetPlantIdentifier(
             return Error.Conflict(PlantIdentificationErrorCodes.QuotaExceeded, "Today's plant identifications are spent.");
         }
 
-        var answer = await IdentifyUncachedAsync(imageUrl, settings, cancellationToken).ConfigureAwait(false);
+        var answer = await IdentifyUncachedAsync(pictures, settings, cancellationToken).ConfigureAwait(false);
 
         // A failure to reach the service is not an answer about the picture, and is asked again next time.
         if ((answer.IsSuccess || answer.Error.Type == ErrorType.NotFound) && settings.CacheHours > 0)
@@ -99,7 +124,7 @@ public sealed partial class PlantNetPlantIdentifier(
     }
 
     private async Task<Result<PlantIdentification>> IdentifyUncachedAsync(
-        string imageUrl,
+        IReadOnlyList<string> imageUrls,
         AiPlantIdentificationConfiguration settings,
         CancellationToken cancellationToken)
     {
@@ -107,34 +132,57 @@ public sealed partial class PlantNetPlantIdentifier(
         {
             var client = httpClientFactory.CreateClient(HttpClientName);
 
-            var picture = await DownloadAsync(client, imageUrl, settings, cancellationToken).ConfigureAwait(false);
-            if (picture.IsFailure)
+            // A picture that cannot be sent is left out; the others still show the plant.
+            var pictures = new List<Picture>();
+            Error? unusable = null;
+            foreach (var imageUrl in imageUrls)
             {
-                return picture.Error;
+                var picture = await DownloadAsync(client, imageUrl, settings, cancellationToken).ConfigureAwait(false);
+                if (picture.IsSuccess)
+                {
+                    pictures.Add(picture.Value);
+                }
+                else
+                {
+                    unusable ??= picture.Error;
+                }
             }
 
+            if (pictures.Count == 0)
+            {
+                return unusable ?? Error.Validation(PlantIdentificationErrorCodes.ImageUnusable, "No picture could be sent.");
+            }
+
+            var candidates = Math.Max(settings.MaxCandidates, settings.CandidatesConsidered);
             var url = $"{settings.BaseUrl.TrimEnd('/')}/v2/identify/{Uri.EscapeDataString(settings.Project)}"
                       + $"?api-key={Uri.EscapeDataString(settings.ApiKey)}"
                       + $"&lang={Uri.EscapeDataString(settings.Language)}"
-                      + $"&nb-results={Math.Max(1, settings.MaxCandidates).ToString(CultureInfo.InvariantCulture)}"
-                      + "&include-related-images=false";
+                      + $"&nb-results={Math.Max(1, candidates).ToString(CultureInfo.InvariantCulture)}"
+                      + "&include-related-images=false"
+                      + "&detailed=true";
 
-            // Names quoted by hand: .NET writes `name=images; filename=x.png` bare, which the stricter
-            // multipart parsers read as no file at all.
-            var fileName = picture.Value.ContentType == "image/png" ? "screenshot.png" : "screenshot.jpg";
             using var form = new MultipartFormDataContent();
-            var file = new ByteArrayContent(picture.Value.Bytes);
-            file.Headers.ContentType = new MediaTypeHeaderValue(picture.Value.ContentType);
-            file.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+            for (var index = 0; index < pictures.Count; index++)
             {
-                Name = "\"images\"",
-                FileName = $"\"{fileName}\""
-            };
-            form.Add(file);
+                // Names quoted by hand: .NET writes `name=images; filename=x.png` bare, which the stricter
+                // multipart parsers read as no file at all.
+                var picture = pictures[index];
+                var fileName = $"screenshot{(index == 0 ? string.Empty : (index + 1).ToString(CultureInfo.InvariantCulture))}"
+                               + (picture.ContentType == "image/png" ? ".png" : ".jpg");
+                var file = new ByteArrayContent(picture.Bytes);
+                file.Headers.ContentType = new MediaTypeHeaderValue(picture.ContentType);
+                file.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+                {
+                    Name = "\"images\"",
+                    FileName = $"\"{fileName}\""
+                };
+                form.Add(file);
 
-            var organs = new StringContent("auto");
-            organs.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data") { Name = "\"organs\"" };
-            form.Add(organs);
+                // One organ per picture, in the same order; "auto" lets Pl@ntNet tell a leaf from a whole tree.
+                var organs = new StringContent("auto");
+                organs.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data") { Name = "\"organs\"" };
+                form.Add(organs);
+            }
 
             using var response = await client.PostAsync(url, form, cancellationToken).ConfigureAwait(false);
 
@@ -163,7 +211,7 @@ public sealed partial class PlantNetPlantIdentifier(
 
             var body = await response.Content.ReadFromJsonAsync<IdentifyResponseDto>(Json, cancellationToken).ConfigureAwait(false);
 
-            var candidates = body?.Results?
+            var species = body?.Results?
                 .Where(result => !string.IsNullOrWhiteSpace(result.Species?.ScientificNameWithoutAuthor))
                 .Select(result => new PlantCandidate(
                     result.Species!.ScientificNameWithoutAuthor!.Trim(),
@@ -176,14 +224,24 @@ public sealed partial class PlantNetPlantIdentifier(
                 .OrderByDescending(candidate => candidate.Score)
                 .ToList() ?? [];
 
-            if (candidates.Count == 0)
+            if (species.Count == 0)
             {
                 LogNotRecognised(logger);
                 return Error.NotFound(PlantIdentificationErrorCodes.NotRecognised, "Pl@ntNet recognises no plant in the picture.");
             }
 
-            LogIdentified(logger, candidates[0].ScientificName, candidates[0].Score, body?.RemainingIdentificationRequests);
-            return new PlantIdentification(candidates, body?.RemainingIdentificationRequests);
+            var genera = body?.OtherResults?.Genus?
+                .Where(result => !string.IsNullOrWhiteSpace(result.Genus?.ScientificName))
+                .Select(result => new PlantGenusCandidate(
+                    result.Genus!.ScientificName!.Trim(),
+                    NullIfEmpty(result.Genus.Family?.ScientificNameWithoutAuthor ?? result.Genus.Family?.ScientificName),
+                    result.Genus.CommonNames?.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Trim()).ToList() ?? [],
+                    Math.Clamp(result.Score, 0d, 1d)))
+                .OrderByDescending(genus => genus.Score)
+                .ToList() ?? [];
+
+            LogIdentified(logger, species[0].ScientificName, species[0].Score, pictures.Count, body?.RemainingIdentificationRequests);
+            return new PlantIdentification(species, body?.RemainingIdentificationRequests) { Genera = genera };
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException
                                               || (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
@@ -207,7 +265,7 @@ public sealed partial class PlantNetPlantIdentifier(
         }
 
         var contentType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
-        if (!AcceptedContentTypes.Contains(contentType))
+        if (!AcceptedContentTypes.Contains(contentType) && !ConvertedContentTypes.Contains(contentType))
         {
             return Error.Validation(PlantIdentificationErrorCodes.ImageUnusable, $"Pl@ntNet takes JPEG and PNG, not '{contentType}'.");
         }
@@ -231,7 +289,35 @@ public sealed partial class PlantNetPlantIdentifier(
             buffer.Write(chunk, 0, read);
         }
 
+        if (ConvertedContentTypes.Contains(contentType))
+        {
+            return ToJpeg(buffer.ToArray()) is { } jpeg
+                ? new Picture(jpeg, "image/jpeg")
+                : Error.Validation(PlantIdentificationErrorCodes.ImageUnusable, $"The '{contentType}' picture could not be read.");
+        }
+
         return new Picture(buffer.ToArray(), contentType == "image/jpg" ? "image/jpeg" : contentType.ToLowerInvariant());
+    }
+
+    /// <summary>The picture as a JPEG, or null when it cannot be read: a WebP, GIF (its first frame) or BMP Discord served.</summary>
+    internal static byte[]? ToJpeg(byte[] picture)
+    {
+        try
+        {
+            using var bitmap = SKBitmap.Decode(picture);
+            if (bitmap is null)
+            {
+                return null;
+            }
+
+            using var image = SKImage.FromBitmap(bitmap);
+            using var encoded = image.Encode(SKEncodedImageFormat.Jpeg, JpegQuality);
+            return encoded?.ToArray();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -285,6 +371,46 @@ public sealed partial class PlantNetPlantIdentifier(
 
         [JsonPropertyName("remainingIdentificationRequests")]
         public int? RemainingIdentificationRequests { get; set; }
+
+        [JsonPropertyName("otherResults")]
+        public OtherResultsDto? OtherResults { get; set; }
+    }
+
+    /// <summary>The genera (and families) scored on their own, given with <c>detailed=true</c>.</summary>
+    private sealed class OtherResultsDto
+    {
+        [JsonPropertyName("genus")]
+        public List<GenusResultDto>? Genus { get; set; }
+    }
+
+    private sealed class GenusResultDto
+    {
+        [JsonPropertyName("score")]
+        public double Score { get; set; }
+
+        [JsonPropertyName("genus")]
+        public GenusDto? Genus { get; set; }
+    }
+
+    private sealed class GenusDto
+    {
+        [JsonPropertyName("scientificName")]
+        public string? ScientificName { get; set; }
+
+        [JsonPropertyName("family")]
+        public FamilyDto? Family { get; set; }
+
+        [JsonPropertyName("commonNames")]
+        public List<string>? CommonNames { get; set; }
+    }
+
+    private sealed class FamilyDto
+    {
+        [JsonPropertyName("scientificNameWithoutAuthor")]
+        public string? ScientificNameWithoutAuthor { get; set; }
+
+        [JsonPropertyName("scientificName")]
+        public string? ScientificName { get; set; }
     }
 
     private sealed class ResultDto
@@ -329,8 +455,8 @@ public sealed partial class PlantNetPlantIdentifier(
         public string? Id { get; set; }
     }
 
-    [LoggerMessage(LogLevel.Information, "Pl@ntNet names the picture's plant {ScientificName} at {Score:F2}; {Remaining} identification(s) left today.")]
-    static partial void LogIdentified(ILogger logger, string scientificName, double score, int? remaining);
+    [LoggerMessage(LogLevel.Information, "Pl@ntNet names the plant of {Pictures} picture(s) {ScientificName} at {Score:F2}; {Remaining} identification(s) left today.")]
+    static partial void LogIdentified(ILogger logger, string scientificName, double score, int pictures, int? remaining);
 
     [LoggerMessage(LogLevel.Information, "Pl@ntNet recognises no plant in the picture.")]
     static partial void LogNotRecognised(ILogger logger);

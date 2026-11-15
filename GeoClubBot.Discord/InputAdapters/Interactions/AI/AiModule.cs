@@ -6,6 +6,7 @@ using Discord;
 using Discord.Interactions;
 using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.Services;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,7 @@ using UseCases.UseCases.AI.ClueOfTheDay;
 using UseCases.UseCases.AI.Feedback;
 using UseCases.UseCases.AI.Ingestion;
 using UseCases.UseCases.AI.KnowledgeGaps;
+using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Quiz;
 using UseCases.UseCases.AI.Review;
 
@@ -116,10 +118,15 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         [Summary(name: "lesser-known", description: "Only clues PlonkIt does not have")] bool lesserKnown = false) =>
         ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ct), failureMessage: "The quiz could not draw a picture just now.");
 
-    [ComponentInteraction($"{ComponentIds.AiQuizAgainButtonId}:*:*", ignoreGroupNames: true)]
-    public Task QuizAgainAsync(string lesserKnown, string country) =>
-        ExecuteAsync(ct => PostQuizAsync(string.IsNullOrWhiteSpace(country) ? null : country, lesserKnown == "1", ct),
+    // One wildcard for both filters: Discord.Net's wildcard needs at least one character, so a second
+    // one for the country never matched a quiz played without a country (#479).
+    [ComponentInteraction($"{ComponentIds.AiQuizAgainButtonId}:*", ignoreGroupNames: true)]
+    public Task QuizAgainAsync(string filters)
+    {
+        var (country, lesserKnown) = AiQuizFormatter.ReadAgainFilters(filters);
+        return ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ct),
             failureMessage: "The quiz could not draw a picture just now.");
+    }
 
     [ComponentInteraction(ComponentIds.AiQuizRightButtonId, ignoreGroupNames: true)]
     public Task QuizRightAsync() => ExecuteAsync(_ => JudgeQuizAsync(right: true), ephemeral: true);
@@ -182,16 +189,34 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         [Summary(description: "The challenge link or token; leave empty for the latest daily challenge")] string? challenge = null) =>
         ExecuteAsync(async ct =>
         {
+            // A review reads a challenge, every panorama and the guides before the model starts, so its
+            // steps are shown in the command's own ephemeral reply while it runs (#481).
+            var progress = new AiProgressLog();
+            using var tracking = AiProgress.Track(progress);
+            await using var reporter = AiProgressReporter.Start(
+                progress,
+                new InteractionProgressDisplay(Context.Interaction),
+                serviceProvider.GetRequiredService<IOptions<AiProgressConfiguration>>().Value,
+                serviceProvider.GetService<TimeProvider>() ?? TimeProvider.System,
+                logger);
+
             var result = await Mediator.Send(new ReviewRoundsCommand(Context.User.Id, challenge), ct).ConfigureAwait(false);
             if (result.IsFailure)
             {
+                await StopReportingAsync(reporter).ConfigureAwait(false);
                 await FollowupFailureAsync(result.Error).ConfigureAwait(false);
                 return;
             }
 
             var review = result.Value;
-            var posted = await serviceProvider.GetRequiredService<IAiChannelPublisher>()
-                .PostAsync(Context.Channel.Id, review.Answer, ct).ConfigureAwait(false);
+            ulong? posted;
+            using (AiProgress.Step(AiProgressKind.Posting))
+            {
+                posted = await serviceProvider.GetRequiredService<IAiChannelPublisher>()
+                    .PostAsync(Context.Channel.Id, review.Answer, ct).ConfigureAwait(false);
+            }
+
+            await StopReportingAsync(reporter).ConfigureAwait(false);
 
             await FollowupAsync(
                 posted is null
@@ -199,6 +224,9 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                     : $"Reviewed {review.Rounds.Count} round(s) of challenge `{review.ChallengeToken}` — {review.Missed} with the wrong country.",
                 ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "The review could not be written just now.");
+
+    private static ValueTask StopReportingAsync(AiProgressReporter? reporter) =>
+        reporter?.DisposeAsync() ?? ValueTask.CompletedTask;
 
     [DefaultMemberPermissions(GuildPermission.Administrator)]
     [SlashCommand("gaps", "Show which questions the guides answer badly, by country and topic")]

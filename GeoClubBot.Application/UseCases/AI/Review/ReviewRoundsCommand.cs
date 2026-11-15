@@ -7,6 +7,7 @@ using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
+using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
 using Utilities;
@@ -90,14 +91,23 @@ public sealed partial class ReviewRoundsHandler(
         }
 
         var client = geoGuessrClientFactory.CreateClient(geoGuessrConfiguration.Value.MainClub.ClubId);
-        var game = await FindGameAsync(client, tokens.Value, user.UserId, settings, cancellationToken).ConfigureAwait(false);
+        Result<(string Token, ChallengeResultGameDto Game)> game;
+        using (AiProgress.Step(AiProgressKind.ReadingChallenge))
+        {
+            game = await FindGameAsync(client, tokens.Value, user.UserId, settings, cancellationToken).ConfigureAwait(false);
+        }
+
         if (game.IsFailure)
         {
             return game.Error;
         }
 
         var (token, played) = game.Value;
-        var rounds = await ReadRoundsAsync(played, settings.MaxRounds, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<ReviewedRound> rounds;
+        using (AiProgress.Step(AiProgressKind.PlacingRounds))
+        {
+            rounds = await ReadRoundsAsync(played, settings.MaxRounds, cancellationToken).ConfigureAwait(false);
+        }
         if (rounds.Count == 0)
         {
             return Error.NotFound(RoundReviewErrorCodes.NoRounds,
@@ -113,7 +123,12 @@ public sealed partial class ReviewRoundsHandler(
 
         // GeoNN looks at the panoramas while the guides are searched; it costs no AI request.
         var reading = ReadPanoramasAsync(played, rounds, settings.StreetViewGuesser, cancellationToken);
-        var hits = await RetrieveAsync(rounds, settings, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<KnowledgeHit> hits;
+        using (AiProgress.Step(AiProgressKind.SearchingGuides))
+        {
+            hits = await RetrieveAsync(rounds, settings, cancellationToken).ConfigureAwait(false);
+        }
+
         rounds = await reading.ConfigureAwait(false);
         var question = RoundReviewPrompt.Build(rounds, token);
 
@@ -276,6 +291,7 @@ public sealed partial class ReviewRoundsHandler(
             return reviewed;
         }
 
+        using var step = AiProgress.Step(AiProgressKind.ReadingPanoramas);
         var mode = game.ForbidRotating == true ? PanoramaViewMode.FixedView : PanoramaViewMode.FullPanorama;
         var readings = await Task.WhenAll(reviewed.Select(async round =>
         {

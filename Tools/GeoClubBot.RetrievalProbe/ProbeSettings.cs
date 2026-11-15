@@ -102,6 +102,24 @@ public sealed class ProbeSettings
           daily allowance. Vectors are cached, so a rerun costs nothing.
           """;
 
+    /// <summary>
+    /// The Pl@ntNet key <c>plant</c> identifies with: the <c>PLANTNET_API_KEY</c> environment variable, or
+    /// <c>{ "PlantNet": { "ApiKey": "..." } }</c> in <c>appsettings.Local.json</c> beside the project. Null
+    /// when neither holds one. The key itself is never printed.
+    /// </summary>
+    public static (string? Key, string? Source) ResolvePlantNetKey()
+    {
+        if (Environment.GetEnvironmentVariable("PLANTNET_API_KEY") is { Length: > 0 } fromEnvironment)
+        {
+            return (fromEnvironment.Trim(), "the PLANTNET_API_KEY environment variable");
+        }
+
+        var local = ReadJson(Path.Combine(ProjectDirectory(), LocalSettingsFileName));
+        return ReadString(local, "PlantNet", "ApiKey") is { Length: > 0 } fromLocal
+            ? (fromLocal.Trim(), LocalSettingsFileName)
+            : (null, null);
+    }
+
     private static (string? Key, string? Source) ResolveApiKey(JsonDocument? local)
     {
         if (Environment.GetEnvironmentVariable(KeyEnvironmentVariable) is { Length: > 0 } fromEnvironment)

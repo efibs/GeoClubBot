@@ -41,7 +41,17 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
 
             if (clubMember.PrivateTextChannelArchivedAt is null)
             {
-                // Channel is already live — nothing to do.
+                // A live channel here means the leave before this join never archived it, so it may still
+                // sit in the old club's category (#483). The move does nothing if it is already right.
+                var moved = await mediator
+                    .Send(new MoveMemberPrivateChannelToClubCommand(clubMember), cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (moved.IsFailure)
+                {
+                    LogFailedToMovePrivateChannel(logger, notification.Nickname, moved.Error.Message);
+                }
+
                 return;
             }
 
@@ -64,6 +74,10 @@ public partial class HandlePlayerJoinedClubForPrivateChannelUseCase(
 
     [LoggerMessage(LogLevel.Warning, "Failed to restore member private channel for member '{clubMemberNickname}': {Error}")]
     static partial void LogFailedToRestorePrivateChannel(ILogger<HandlePlayerJoinedClubForPrivateChannelUseCase> logger,
+        string clubMemberNickname, string error);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to move member private channel for member '{clubMemberNickname}': {Error}")]
+    static partial void LogFailedToMovePrivateChannel(ILogger<HandlePlayerJoinedClubForPrivateChannelUseCase> logger,
         string clubMemberNickname, string error);
 
     [LoggerMessage(LogLevel.Information,

@@ -19,9 +19,17 @@ This document covers what it is, what it costs, how to turn it on, and what it d
   the answer, so they show even when the bot's public address does not.
 - A question about where a plant grows gets a map of where it is recorded (see
   [Tools](#tools-when-the-excerpts-are-not-enough)).
+- "What tree is this?" with a screenshot is answered by Pl@ntNet, an image-based plant identifier.
+  **Say where it was taken** — "just south of Boston", "this is Bulgaria", or paste a Google Maps link —
+  and the candidates are weighed by what grows there; a close crop of one plant helps most. Several
+  pictures of the same plant (leaves, bark, the whole tree) can go in one message. See
+  [Naming the plant in a screenshot](#naming-the-plant-in-a-screenshot).
 - When the guides it was given only answer part of a question, the model can search them again in
   other words, read more of a guide, or look up where a plant grows (see [Tools](#tools-when-the-excerpts-are-not-enough)).
 - Each answer's footer names the model that produced it.
+- **While it works**, a small reply under the question lists what it is doing — searching the guides,
+  looking up a plant, thinking — and is deleted once the answer is posted. See
+  [Progress while it answers](#progress-while-it-answers).
 - **Rate an answer** with the 👍 / 👎 the bot puts on it, or right-click it → Apps →
   **👍 Good AI answer** / **👎 Bad AI answer** to add a comment. See [Feedback](#feedback).
 
@@ -136,6 +144,14 @@ worth knowing:
 | `AI:Tools:PlantIdentification:RequestTimeoutSeconds` | 15 | Per request, the screenshot's download included |
 | `AI:Tools:PlantIdentification:MaxImageBytes` | 10 MB | Largest screenshot sent |
 | `AI:Tools:PlantIdentification:Project` / `Language` | `all` / `en` | Pl@ntNet's flora project and the language of the common names |
+| `AI:Tools:PlantIdentification:CandidatesConsidered` | 30 | Candidates asked of Pl@ntNet (no extra cost); where the screenshot was taken re-orders them |
+| `AI:Tools:PlantIdentification:MaxPictures` | 5 | Pictures of one message sent together as views of one plant, for one identification |
+| `AI:Tools:PlantIdentification:MinImageScore` | 0.05 | Image score a candidate needs to be named as the plant once the place re-ordered the candidates |
+| `AI:Tools:PlantIdentification:Location:Enabled` | true | Read where the member says the screenshot was taken and weigh the candidates by GBIF's records there |
+| `AI:Tools:PlantIdentification:Location:RadiusKm` | 50 | Kilometres around a town or coordinates in which records count as near |
+| `AI:Tools:PlantIdentification:Location:RecordsWeight` | 0.5 | Image score × (records near + 1) to this power |
+| `AI:Tools:PlantIdentification:Location:UnrecordedFactor` | 0.1 | Score multiplier for a candidate never recorded in the country |
+| `AI:Tools:PlantIdentification:Location:TownsUrl` | GeoNames `cities15000.zip` | The towns, downloaded once into `AI:Tools:RegionMap:DataDirectory` |
 | `AI:Tools:RegionMap:Enabled` | true | Attach a map of the regions an answer names. Needs the image relay |
 | `AI:Tools:RegionMap:ToolEnabled` | true | Let the model ask for a shaded map itself (`region_map`) |
 | `AI:Tools:RegionMap:BoundariesUrl` | Natural Earth 10m admin-1 GeoJSON | Downloaded once (about 40 MB) into `DataDirectory` |
@@ -816,9 +832,12 @@ what tree is that?" — and the question asks what plant it shows (`PlantIdentif
 word plus "what … is this", "identify", "is this a …"). A question about bollards is not sent because a
 tree stands in the frame; each identification is one of the day's 500.
 
-`PlantNetPlantIdentifier` downloads the screenshot (JPEG or PNG, up to `MaxImageBytes`), posts it as a
-file to `POST /v2/identify/{Project}` with the key in the query, and reads the candidates with their
-scores, common names and GBIF keys. What comes back is offered first among the excerpts
+`PlantNetPlantIdentifier` downloads the screenshots — the question's pictures, up to `MaxPictures` (5),
+sent together as views of one plant for one identification — as JPEG or PNG (a WebP, GIF or BMP is
+converted to JPEG with SkiaSharp), up to `MaxImageBytes` each, posts them as files to
+`POST /v2/identify/{Project}` with the key in the query, `nb-results=CandidatesConsidered` (30) and
+`detailed=true`, and reads the candidates with their scores, common names and GBIF keys, and the genera
+scored on their own. A picture it cannot send is left out and the rest go. What comes back is offered first among the excerpts
 (`PlantIdentificationExcerpt`): the best candidate as *the* identification with its confidence when its
 score clears `MinConfidence` (0.25 — a Street View frame is a poor photograph, so a clear match scores
 0.3–0.6), as a guess below it, and the runners-up either way, so a member can tell a sure identification
@@ -832,9 +851,70 @@ follow-up costs nothing. The adapter stops at its own `MaxRequestsPerDay` (450, 
 Pl@ntNet's 500, and once the service answers 429 it asks nothing more that day. In both cases the member
 is told beneath the answer (`AiAnswer.Notices`: "Plant identification (Pl@ntNet) has used today's
 allowance; the plant was judged from the picture alone."), as they are when the service cannot be
-reached; a guess must never pass for a lookup. A picture the service does not take (WebP, too large) is
-only logged. Pl@ntNet keeps the picture in memory for the identification and logs the request, not the
-image.
+reached; a guess must never pass for a lookup. A picture that cannot be sent at all (an SVG, too large)
+is only logged. Pl@ntNet keeps the picture in memory for the identification and logs the request, not
+the image.
+
+#### Where the screenshot was taken (#485)
+
+Pl@ntNet sees only the picture, and its world flora is learned mostly from European photographs: asked
+about a screenshot from "just south of Boston", it offered European trees, and a Bulgarian screenshot of
+black pines came back as red pine, a North American tree Bulgaria has never recorded (2026-11-15). So
+when the member says where the screenshot was taken, the candidates are weighed by what grows there.
+
+- **Reading the place** (`ScreenshotPlaceReader`, pure): coordinates or a Google Maps / Street View link
+  (`@42.25,-71.00`; a bare pair needs three decimals or N/S/E/W, so scores are never places), a town
+  (GeoNames' towns of 15,000 people or more — `GeoNamesPlaceDirectory`, `cities15000.zip`, CC BY 4.0,
+  downloaded once into the data directory — with other names such as Saigon or Bombay for towns of half
+  a million or more), a state or province (Natural Earth's admin-1, as the region maps read it), or a
+  country (`IsoCountries.Gazetteer`: every country, with the gazetteer's adjectives and short forms — not
+  the guide index's, so a country no guide covers is still a place). The question is read first, then
+  the member's earlier messages in the branch, latest first. A town counts only after a word that places
+  it ("in", "near", "south of", "outside", "it's") or before "area"; a region also when capitalised; a
+  name followed by a plant word is a plant ("Norway spruce", "Aleppo pine", "Mexican fan palm"); a few
+  dozen everyday words are never places ("taken in spring"), or only with a capital ("near Reading").
+  The most exact place the rest of the text agrees with wins: "Quincy, MA" over Quincy, Illinois;
+  "Georgia" the country, "Georgia, USA" the state; "in montana" the state, not the Bulgarian town, unless
+  the branch said Bulgaria. Two countries and nothing more exact ("Bulgaria or Romania?") is no place.
+- **Counting the records** (`GbifPlantRecordCounter`): one occurrence search per area for all candidates
+  at once, counted by a `taxonKey` facet (about 0.3 s for 30 species). The facet is over `taxonKey`, not
+  `speciesKey`, because about one key in thirty that Pl@ntNet gives is a GBIF synonym (Monterey cypress
+  as *Hesperocyparis macrocarpa*), whose records only that facet counts under its own key. Near a town or
+  coordinates means within `Location:RadiusKm` (50); a region counts its rectangle; a country the whole
+  country, which is also asked separately for a point or region, for the next rule.
+- **Weighing** (`PlantLocationWeighting`, pure): each image score times (records near + 1) to
+  `RecordsWeight` (0.5), times `UnrecordedFactor` (0.1) when the country has no record of the plant at
+  all. On the five screenshots of #485 this put eastern white pine first on a hazy frame near Boston where
+  every candidate scored about 1 % (7,267 records within 50 km against 209 for American elm, the
+  picture's favourite), native Scots and black pine over a planted white pine and the unrecorded red
+  pine in Bulgaria, and left a 52 % Norway spruce first near Boston — Norway spruce is planted all over
+  New England (385 records within 50 km), so that European answer was right. With a place, the best
+  candidate is named as *the* plant only when its share of the weighed scores clears `MinConfidence` and
+  its own image score clears `MinImageScore` (0.05): records can lift a candidate the picture barely
+  supports, and that is a likelihood, offered as "the likeliest there", not an identification.
+- **Why not Pl@ntNet's own regional floras**: `/v2/projects?lat&lon` names the region's flora
+  (`k-northeastern-u-s-a`, free and unlimited), but identifying against it only filters the same scores
+  (measured: Picea abies 0.523 in both), and its lists leave out what is only planted — no *Eucalyptus*
+  in `k-brazil`, no *Pinus radiata* in `k-new-zealand` or `k-southern-africa` — the clues a player most
+  needs. Its species lists are also too slow to read at answer time (about 60 s per 1,000 species).
+- **The excerpt** says where the member placed the screenshot, the records of each candidate there, the
+  genus when Pl@ntNet is sure of it (on a Street View frame it often is when the species is a toss-up:
+  *Pinus* 83 % against 13 % for the best pine), and names the picture's favourite as unlikely there when
+  the country has never recorded it. Beneath the answer the member reads what the candidates were weighed
+  by ("Plant candidates weighed by GBIF records within 50 km of Boston (Boston, Massachusetts, United
+  States).") — so a misread place shows — and, when no plant could be named, how to get a surer answer: a
+  close crop of one plant, and where it was taken if they did not say.
+- **A follow-up that only says where** ("it's near Boston though") under a plant question weighs the
+  branch's screenshot again for that place. It costs no identification: Pl@ntNet's answer never depends
+  on the place, and is cached by the pictures. A follow-up asking about something else ("what about the
+  bollards in Bulgaria?") is left alone (`PlantIdentificationQuestion.MayBeAboutThePlant`: a plant word,
+  or a statement rather than a question).
+
+The places are read at start-up (`RegionBoundariesWarmup`) when plant identification has a key; a
+question asked before they are read, or that waits on them for more than 3 s, goes without its place.
+To see every step for a screenshot — the place, Pl@ntNet's order and the weighed one with the records,
+the excerpt — run the probe's `plant` command (see [its README](../Tools/GeoClubBot.RetrievalProbe/README.md));
+its answers are cached, so trying other weights with `--set` costs no identification.
 
 ### A map of the regions an answer names
 
@@ -1095,6 +1175,33 @@ as 2"), so "can you show [2] bigger?" reaches the right picture. If a cited chun
 numbering cannot be trusted and nothing is said.
 
 Stored questions are personal data. Retention is bounded and swept nightly.
+
+### Progress while it answers
+
+An answer with tools, a plant lookup or a retry can take a minute, and the typing indicator alone says
+nothing about whether anything is happening (#481). So each step reports itself to an `AiProgressLog`
+(`Application/UseCases/AI/Progress/`): embedding the question or screenshot, the query planner, the
+search, Pl@ntNet, each GBIF lookup and range map, every model call (first, retry, after a tool round,
+the rescue), each tool call with its query, guide or country, the region map, and posting. The log is
+**ambient** (`AiProgress.Track`, an `AsyncLocal`), because most of those steps run in singletons that
+no request object reaches; without a tracked log a step is a no-op, so the clue of the day, the probes
+and tests report to nobody.
+
+`AiProgressReporter` (GeoClubBot.Discord/Services) shows the log through an `IAiProgressDisplay`,
+rendered by `AiProgressFormatter` as small `-#` lines (✓ done, ⏳ running, the oldest folded once there
+are more than ten):
+
+- A question asked by message gets a **reply under it** (no ping, no notification) that is edited as
+  the steps change and **deleted once the answer is posted**, or before the error is. Discord has no
+  ephemeral reply to a message, so this is visible to the channel while the answer is made.
+- `/ai review` shows the steps in its own deferred **ephemeral** reply, which is deleted once the
+  follow-up saying the review was posted is sent.
+
+Settings under `AI:Progress`: `Enabled` (true), `ShowAfterSeconds` (0: shown at once; raise it to skip
+quick answers) and `MinEditIntervalSeconds` (2: Discord limits edits per channel, and steps running at
+once would otherwise edit several times a second; changes in between are shown together). A Discord
+request is never cancelled half-way, since a reply cancelled after Discord stored it could not be
+deleted; a display that fails three times in a row is left alone and never costs the answer.
 
 ### Feedback
 

@@ -82,6 +82,15 @@ public static partial class RegionMention
         return [.. kept.OrderBy(entry => entry.Position).Select(entry => entry.Region)];
     }
 
+    /// <summary>
+    /// Whether a normalised name is one of the plain words some regions are called ("central",
+    /// "northern", "capital"), which a text uses in their ordinary sense far more often than as a name.
+    /// </summary>
+    public static bool IsGenericName(string normalisedName) => GenericNames.Contains(normalisedName);
+
+    /// <summary>Whether a normalised word says the name beside it is a region: "province", "county", "state".</summary>
+    public static bool IsRegionWord(string normalisedWord) => RegionWords.Contains(normalisedWord, StringComparer.Ordinal);
+
     /// <summary>A generic name counts only beside a word that says it is a region: "central region", "province of central".</summary>
     private static int FindGeneric(string haystack, string name)
     {

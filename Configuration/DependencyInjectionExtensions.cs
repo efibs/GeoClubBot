@@ -169,6 +169,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<AiProgressConfiguration>()
+            .Bind(config.GetSection(AiProgressConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         // Validated at start-up although the feature is optional: every value has a working default, so
         // one out of range is a typo worth failing on whether or not the feature is on.
         services.AddOptions<AiRetrievalConfiguration>()

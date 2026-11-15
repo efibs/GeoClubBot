@@ -27,8 +27,26 @@ public static partial class PlantIdentificationQuestion
         "hedge", "hedges", "foliage", "leaves", "species", "shrubbery", "cypress", "poplar", "poplars",
         "birch", "birches", "spruce", "fir", "firs", "willow", "willows", "maple", "maples", "olive",
         "olives", "cedar", "cedars", "juniper", "junipers", "sugarcane", "sugar cane", "rice", "maize",
-        "corn", "wheat", "tea", "coffee", "cocoa", "rubber", "teak", "mango", "coconut", "coconuts", "date palm"
+        "corn", "wheat", "tea", "coffee", "cocoa", "rubber", "teak", "mango", "coconut", "coconuts", "date palm",
+        "spruces", "elm", "elms", "larch", "larches", "hemlock", "hemlocks", "redwood", "redwoods",
+        "sequoia", "sequoias", "beech", "beeches", "alder", "alders", "aspen", "aspens", "linden", "lindens",
+        "sycamore", "sycamores", "chestnut", "chestnuts", "walnut", "walnuts", "hickory", "magnolia", "magnolias",
+        "laurel", "laurels", "yew", "yews", "hornbeam", "mesquite", "cottonwood", "cottonwoods", "dogwood",
+        "tamarack", "eucalypt", "eucalypts", "gum tree", "gum trees", "palmetto", "palmettos", "leaf", "bark",
+        "needles", "blossom", "blossoms", "petals", "shrubland", "evergreen", "evergreens", "deciduous", "thuja", "arborvitae"
     ];
+
+    /// <summary>
+    /// The plant words of one word each, for telling a plant's name from a place: "Norway spruce" and
+    /// "Aleppo pine" name trees, not where the screenshot was taken.
+    /// </summary>
+    private static readonly HashSet<string> SingleWords = new(
+        PlantWords.Where(word => !word.Contains(' ', StringComparison.Ordinal))
+            .Concat(["maple", "ash", "gum", "cherry", "plum", "holly", "lime", "fir", "palm", "pine"]),
+        StringComparer.Ordinal);
+
+    /// <summary>Whether a lower-case word names a kind of plant: "spruce", "pines", "maple".</summary>
+    public static bool IsPlantWord(string word) => SingleWords.Contains(word);
 
     /// <summary>Whether <paramref name="question"/>, asked with a picture, asks what plant the picture shows.</summary>
     public static bool Asks(string? question)
@@ -47,6 +65,21 @@ public static partial class PlantIdentificationQuestion
         return Identify().IsMatch(question) || WhatIsThis().IsMatch(question) || IsThisA().IsMatch(question);
     }
 
+    /// <summary>
+    /// Whether a follow-up that names where the screenshot was taken is still about its plant: it names
+    /// a plant, or it says something rather than asking about something else — "it's near Boston though",
+    /// "this is Bulgaria btw" are; "what about the bollards in Bulgaria?" is not.
+    /// </summary>
+    public static bool MayBeAboutThePlant(string? followUp)
+    {
+        if (string.IsNullOrWhiteSpace(followUp))
+        {
+            return false;
+        }
+
+        return HasPlantWord(followUp) || (!followUp.Contains('?', StringComparison.Ordinal) && !StartsAQuestion().IsMatch(followUp));
+    }
+
     private static bool HasPlantWord(string question)
     {
         var words = question.ToLowerInvariant();
@@ -62,6 +95,11 @@ public static partial class PlantIdentificationQuestion
     [GeneratedRegex(@"\b(what|which)\b[^?.!]{0,60}\b(is|are|am|was|were|could|might|would|do|does)\b[^?.!]{0,40}\b(this|that|these|those|here|it|the\s+(picture|screenshot|image|photo|pic|round|location|background|left|right))\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex WhatIsThis();
+
+    /// <summary>"what about…", "which…", "how…", "is…", "can you…": a message that asks rather than says.</summary>
+    [GeneratedRegex(@"^\s*(what|which|how|where|why|who|whose|when|is|are|can|could|would|should|do|does|did|any|tell|show|explain)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex StartsAQuestion();
 
     /// <summary>"is this a eucalyptus?", "are these palm trees?", "is that an acacia or a mesquite".</summary>
     [GeneratedRegex(@"^\s*(is|are|could|might|would)\s+(this|that|these|those|it)\b",
