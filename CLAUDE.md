@@ -305,6 +305,10 @@ API + Discord (controllers, slash command modules)
   plant is this" and a picture is at hand (the message's, or the branch's latest); the candidates lead
   the excerpts, a best match over `MinConfidence` goes on to the GBIF range and map, "no plant" becomes an
   excerpt saying so, and a spent allowance becomes an `AiAnswer.Notices` line under the answer.
+  While an answer is made, each step reports to the ambient `AiProgressLog` (`AiProgress.Step`, an
+  `AsyncLocal` set by `AiProgress.Track`, a no-op when nothing tracks), which `AiProgressReporter` shows
+  as a status reply under the question, deleted once the answer is posted (`/ai review`: its ephemeral
+  reply); `AI:Progress`, #481.
   After an answer, `RegionLocator` finds the first-level regions it names (`RegionMention`, pure; the
   country from the gazetteer) in Natural Earth's admin-1 boundaries (`NaturalEarthRegionBoundaries`,
   40 MB GeoJSON downloaded once into `AI:Tools:RegionMap:DataDirectory`, warmed at start-up) and

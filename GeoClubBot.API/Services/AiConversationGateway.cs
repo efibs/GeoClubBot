@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
 using UseCases.UseCases.AI;
 using UseCases.UseCases.AI.Conversations;
+using UseCases.UseCases.AI.Progress;
 using Utilities;
 
 namespace GeoClubBot.Services;
@@ -28,6 +29,8 @@ public sealed partial class AiConversationGateway(
     IOptions<AiFeedbackConfiguration> feedbackConfiguration,
     IImageRelay imageRelay,
     IOptions<AiImageRelayConfiguration> imageRelayConfiguration,
+    IOptions<AiProgressConfiguration> progressConfiguration,
+    TimeProvider timeProvider,
     ILogger<AiConversationGateway> logger) : IHostedService
 {
     /// <summary>
@@ -143,7 +146,14 @@ public sealed partial class AiConversationGateway(
             using var conversationLock = await _conversationLocks.AcquireAsync(lockKey).ConfigureAwait(false);
             using var typing = message.Channel.EnterTypingState();
 
-            await AnswerAsync(mediator, message, effectiveParentId, content, attachments).ConfigureAwait(false);
+            // Every step the answer takes, down to a GBIF lookup in a singleton, reports to this log,
+            // which a small reply under the question shows until the answer is posted (#481).
+            var progress = new AiProgressLog();
+            using var tracking = AiProgress.Track(progress);
+            await using var reporter = AiProgressReporter.Start(
+                progress, new ReplyProgressDisplay(message), progressConfiguration.Value, timeProvider, logger);
+
+            await AnswerAsync(mediator, message, effectiveParentId, content, attachments, reporter).ConfigureAwait(false);
         }
         finally
         {
@@ -156,7 +166,8 @@ public sealed partial class AiConversationGateway(
         SocketUserMessage message,
         ulong? parentMessageId,
         string content,
-        IReadOnlyList<string> attachments)
+        IReadOnlyList<string> attachments,
+        AiProgressReporter? reporter)
     {
         var guildId = (message.Channel as SocketGuildChannel)?.Guild.Id;
 
@@ -167,13 +178,21 @@ public sealed partial class AiConversationGateway(
         if (result.IsFailure)
         {
             LogAnswerFailed(logger, message.Id, result.Error.Code);
+            await StopReportingAsync(reporter).ConfigureAwait(false);
             await message.ReplyAsync(result.Error.Message, allowedMentions: AllowedMentions.None)
                 .ConfigureAwait(false);
             return;
         }
 
-        var posted = await PostAsync(message, result.Value, imageRelay, imageRelayConfiguration.Value, logger)
-            .ConfigureAwait(false);
+        PostedAnswer posted;
+        using (AiProgress.Step(AiProgressKind.Posting))
+        {
+            posted = await PostAsync(message, result.Value, imageRelay, imageRelayConfiguration.Value, logger)
+                .ConfigureAwait(false);
+        }
+
+        // Gone as soon as the answer is there: the steps were only ever a stand-in for it.
+        await StopReportingAsync(reporter).ConfigureAwait(false);
 
         await mediator.Send(new RecordAiTurnsCommand(
             message.Id, parentMessageId, posted.LastMessageId, result.Value.ConversationId,
@@ -188,6 +207,9 @@ public sealed partial class AiConversationGateway(
         // resolvable would let a fast reader rate a message the feedback handler cannot find yet.
         await OfferFeedbackReactionsAsync(posted.LastMessage).ConfigureAwait(false);
     }
+
+    private static ValueTask StopReportingAsync(AiProgressReporter? reporter) =>
+        reporter?.DisposeAsync() ?? ValueTask.CompletedTask;
 
     /// <summary>
     /// Puts 👍/👎 on the answer, because nobody rates what they do not know they can rate.
