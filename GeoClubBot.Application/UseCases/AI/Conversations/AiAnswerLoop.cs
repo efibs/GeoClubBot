@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.Repositories;
+using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Tools;
 using Utilities;
 
@@ -244,9 +245,14 @@ public sealed partial class AiAnswerLoop(
                 : conversation;
 
             var started = Stopwatch.GetTimestamp();
-            var next = await chatClient
-                .CompleteAsync(new AiChatRequest(chain, messages, Temperature, Tools: definitions, ToolChoice: choice), cancellationToken)
-                .ConfigureAwait(false);
+            Result<AiChatResponse> next;
+            using (AiProgress.Step(AiProgressKind.ThinkingAboutFindings))
+            {
+                next = await chatClient
+                    .CompleteAsync(new AiChatRequest(chain, messages, Temperature, Tools: definitions, ToolChoice: choice), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             var elapsed = Stopwatch.GetElapsedTime(started);
 
             if (next.IsFailure)
@@ -348,9 +354,13 @@ public sealed partial class AiAnswerLoop(
         var everything = AiPromptBuilder.Build(
             request.Context, request.Question, request.AttachmentImageUrls, ledger.Hits, request.CarriedCount,
             request.CarriedSourceNumbers, request.LesserKnown);
-        var completion = await chatClient
-            .CompleteAsync(new AiChatRequest(chain, everything.Messages, Temperature), cancellationToken)
-            .ConfigureAwait(false);
+        Result<AiChatResponse> completion;
+        using (AiProgress.Step(AiProgressKind.AnsweringWithWhatItHas))
+        {
+            completion = await chatClient
+                .CompleteAsync(new AiChatRequest(chain, everything.Messages, Temperature), cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         if (completion.IsFailure)
         {
@@ -400,9 +410,14 @@ public sealed partial class AiAnswerLoop(
         for (var attempt = 1; ; attempt++)
         {
             var started = Stopwatch.GetTimestamp();
-            var completion = await chatClient
-                .CompleteAsync(new AiChatRequest(chain, asking.Messages, Temperature, Tools: asking.Tools), cancellationToken)
-                .ConfigureAwait(false);
+            Result<AiChatResponse> completion;
+            using (AiProgress.Step(attempt == 1 ? AiProgressKind.Thinking : AiProgressKind.TryingAnotherModel))
+            {
+                completion = await chatClient
+                    .CompleteAsync(new AiChatRequest(chain, asking.Messages, Temperature, Tools: asking.Tools), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             var elapsed = Stopwatch.GetElapsedTime(started);
 
             Error failure;

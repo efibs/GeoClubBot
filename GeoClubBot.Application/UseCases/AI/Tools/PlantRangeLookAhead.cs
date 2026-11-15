@@ -2,6 +2,7 @@ using Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.UseCases.AI.Progress;
 using Utilities;
 
 namespace UseCases.UseCases.AI.Tools;
@@ -91,6 +92,7 @@ public sealed partial class PlantRangeLookAhead(
 
         using (var timeout = new CancellationTokenSource(Deadline, timeProvider))
         using (var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token))
+        using (AiProgress.Step(AiProgressKind.LookingUpPlant, names[0].Name))
         {
             try
             {
@@ -160,6 +162,7 @@ public sealed partial class PlantRangeLookAhead(
     {
         try
         {
+            using var step = AiProgress.Step(AiProgressKind.DrawingRangeMap, range.CanonicalName);
             return await speciesMap.DrawAsync(range, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)

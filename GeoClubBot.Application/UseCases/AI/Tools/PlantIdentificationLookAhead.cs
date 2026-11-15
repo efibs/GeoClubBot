@@ -2,6 +2,7 @@ using Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.UseCases.AI.Progress;
 using Utilities;
 
 namespace UseCases.UseCases.AI.Tools;
@@ -72,6 +73,7 @@ public sealed partial class PlantIdentificationLookAhead(
         Result<PlantIdentification> identified;
         try
         {
+            using var step = AiProgress.Step(AiProgressKind.IdentifyingPlant);
             identified = await identifier.IdentifyAsync(screenshotUrl, linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -131,7 +133,12 @@ public sealed partial class PlantIdentificationLookAhead(
 
         try
         {
-            var read = await speciesRange.ReadAsync(new SpeciesRangeQuery(best.ScientificName, null), deadline).ConfigureAwait(false);
+            Result<SpeciesRange> read;
+            using (AiProgress.Step(AiProgressKind.LookingUpPlant, best.ScientificName))
+            {
+                read = await speciesRange.ReadAsync(new SpeciesRangeQuery(best.ScientificName, null), deadline).ConfigureAwait(false);
+            }
+
             if (read.IsFailure)
             {
                 LogRangeUnavailable(logger, best.ScientificName, read.Error.Code);
@@ -148,6 +155,7 @@ public sealed partial class PlantIdentificationLookAhead(
             string? map = null;
             try
             {
+                using var step = AiProgress.Step(AiProgressKind.DrawingRangeMap, range.CanonicalName);
                 map = await speciesMap.DrawAsync(range, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)

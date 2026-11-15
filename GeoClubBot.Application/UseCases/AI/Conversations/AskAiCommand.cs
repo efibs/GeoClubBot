@@ -8,6 +8,7 @@ using UseCases.Abstractions;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.KnowledgeGaps;
+using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
 using Utilities;
@@ -472,7 +473,12 @@ public sealed partial class AskAiHandler(
             inputs.Add(new ImageEmbeddingInput(request.AttachmentImageUrls[0]));
         }
 
-        var embeddings = await embedder.EmbedAsync(inputs, cancellationToken).ConfigureAwait(false);
+        Result<IReadOnlyList<ReadOnlyMemory<float>>> embeddings;
+        using (AiProgress.Step(hasScreenshot ? AiProgressKind.EmbeddingScreenshot : AiProgressKind.Embedding))
+        {
+            embeddings = await embedder.EmbedAsync(inputs, cancellationToken).ConfigureAwait(false);
+        }
+
         if (embeddings.IsFailure)
         {
             return embeddings.Error;
@@ -503,6 +509,7 @@ public sealed partial class AskAiHandler(
 
         try
         {
+            using var step = AiProgress.Step(AiProgressKind.SearchingGuides);
             var found = await knowledgeIndex.SearchAsync(query, cancellationToken).ConfigureAwait(false);
 
             return Result<IReadOnlyList<KnowledgeHit>>.Success(
@@ -587,6 +594,7 @@ public sealed partial class AskAiHandler(
         Result<AiChatResponse> completion;
         try
         {
+            using var step = AiProgress.Step(AiProgressKind.PlanningSearch);
             completion = await chatClient
                 .CompleteAsync(new AiChatRequest(chain, messages, Temperature: RetrievalQueryPlanner.Temperature), timeout.Token)
                 .ConfigureAwait(false);

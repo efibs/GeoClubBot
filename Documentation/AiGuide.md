@@ -22,6 +22,9 @@ This document covers what it is, what it costs, how to turn it on, and what it d
 - When the guides it was given only answer part of a question, the model can search them again in
   other words, read more of a guide, or look up where a plant grows (see [Tools](#tools-when-the-excerpts-are-not-enough)).
 - Each answer's footer names the model that produced it.
+- **While it works**, a small reply under the question lists what it is doing — searching the guides,
+  looking up a plant, thinking — and is deleted once the answer is posted. See
+  [Progress while it answers](#progress-while-it-answers).
 - **Rate an answer** with the 👍 / 👎 the bot puts on it, or right-click it → Apps →
   **👍 Good AI answer** / **👎 Bad AI answer** to add a comment. See [Feedback](#feedback).
 
@@ -1095,6 +1098,33 @@ as 2"), so "can you show [2] bigger?" reaches the right picture. If a cited chun
 numbering cannot be trusted and nothing is said.
 
 Stored questions are personal data. Retention is bounded and swept nightly.
+
+### Progress while it answers
+
+An answer with tools, a plant lookup or a retry can take a minute, and the typing indicator alone says
+nothing about whether anything is happening (#481). So each step reports itself to an `AiProgressLog`
+(`Application/UseCases/AI/Progress/`): embedding the question or screenshot, the query planner, the
+search, Pl@ntNet, each GBIF lookup and range map, every model call (first, retry, after a tool round,
+the rescue), each tool call with its query, guide or country, the region map, and posting. The log is
+**ambient** (`AiProgress.Track`, an `AsyncLocal`), because most of those steps run in singletons that
+no request object reaches; without a tracked log a step is a no-op, so the clue of the day, the probes
+and tests report to nobody.
+
+`AiProgressReporter` (GeoClubBot.Discord/Services) shows the log through an `IAiProgressDisplay`,
+rendered by `AiProgressFormatter` as small `-#` lines (✓ done, ⏳ running, the oldest folded once there
+are more than ten):
+
+- A question asked by message gets a **reply under it** (no ping, no notification) that is edited as
+  the steps change and **deleted once the answer is posted**, or before the error is. Discord has no
+  ephemeral reply to a message, so this is visible to the channel while the answer is made.
+- `/ai review` shows the steps in its own deferred **ephemeral** reply, which is deleted once the
+  follow-up saying the review was posted is sent.
+
+Settings under `AI:Progress`: `Enabled` (true), `ShowAfterSeconds` (0: shown at once; raise it to skip
+quick answers) and `MinEditIntervalSeconds` (2: Discord limits edits per channel, and steps running at
+once would otherwise edit several times a second; changes in between are shown together). A Discord
+request is never cancelled half-way, since a reply cancelled after Discord stored it could not be
+deleted; a display that fails three times in a row is left alone and never costs the answer.
 
 ### Feedback
 
