@@ -15,14 +15,15 @@ public interface IPlantIdentifier
     bool IsAvailable { get; }
 
     /// <summary>
-    /// The candidates for the plant in the picture at <paramref name="imageUrl"/>, best first. Fails
-    /// with <see cref="ErrorType.NotFound"/> (<see cref="PlantIdentificationErrorCodes.NotRecognised"/>)
-    /// when the service sees no plant it knows, with <see cref="ErrorType.Conflict"/>
+    /// The candidates for the plant in the pictures at <paramref name="imageUrls"/> — up to five views of
+    /// one plant, judged together for one identification — best first. Fails with
+    /// <see cref="ErrorType.NotFound"/> (<see cref="PlantIdentificationErrorCodes.NotRecognised"/>) when
+    /// the service sees no plant it knows, with <see cref="ErrorType.Conflict"/>
     /// (<see cref="PlantIdentificationErrorCodes.QuotaExceeded"/>) when the day's allowance is spent,
-    /// with <see cref="ErrorType.Validation"/> when the picture cannot be sent, and with
+    /// with <see cref="ErrorType.Validation"/> when no picture can be sent, and with
     /// <see cref="ErrorType.Unexpected"/> when the service could not be reached. Never throws for any of them.
     /// </summary>
-    Task<Result<PlantIdentification>> IdentifyAsync(string imageUrl, CancellationToken cancellationToken = default);
+    Task<Result<PlantIdentification>> IdentifyAsync(IReadOnlyList<string> imageUrls, CancellationToken cancellationToken = default);
 }
 
 /// <param name="Candidates">What the plant may be, best first; never empty on success.</param>
@@ -30,7 +31,20 @@ public interface IPlantIdentifier
 public sealed record PlantIdentification(IReadOnlyList<PlantCandidate> Candidates, int? RemainingRequests)
 {
     public PlantCandidate Best => Candidates[0];
+
+    /// <summary>
+    /// The genera the plant may belong to, best first, scored by the service on their own; may be empty.
+    /// A Street View frame rarely shows a species, but often shows its genus plainly: 13 % for the best
+    /// pine of a Bulgarian screenshot, 83 % for the genus Pinus (2026-11-15).
+    /// </summary>
+    public IReadOnlyList<PlantGenusCandidate> Genera { get; init; } = [];
 }
+
+/// <param name="Name">"Pinus".</param>
+/// <param name="Family">"Pinaceae", when given.</param>
+/// <param name="CommonNames">In the configured language, as the service lists them; may be empty.</param>
+/// <param name="Score">The service's confidence, 0 to 1.</param>
+public sealed record PlantGenusCandidate(string Name, string? Family, IReadOnlyList<string> CommonNames, double Score);
 
 /// <param name="ScientificName">Without its author: "Pinus kesiya".</param>
 /// <param name="Author">The name's authorship, when given: "Royle ex Gordon".</param>

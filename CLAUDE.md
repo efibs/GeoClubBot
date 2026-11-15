@@ -97,7 +97,8 @@ and per payload index, and the default limit is exhausted part-way through a run
   guide's link; the guide-source schedule, whose next attempt shown is exactly when the queue takes the
   source; the club chat splitter, whose parts never pass GeoGuessr's limit and lose nothing; the
   country pool rotation, where every round must be a permutation of the
-  pool; the leaderboard ranking, where ties share a rank; the garbled-reply screen, which must never
+  pool; the plant weighing, which loses no candidate and never ranks one below another it matches in
+  both picture and records; the leaderboard ranking, where ties share a rank; the garbled-reply screen, which must never
   discard text whose words each keep to one alphabet) over thousands of
   random inputs and shrinks failures to a minimal counterexample. Generate timestamps at UTC (offset zero)
   and leave tick head-room below `DateTimeOffset.MaxValue` so adding intervals can't overflow.
@@ -148,7 +149,10 @@ the query planner's chat requests out); `grep` answers "is it in the index at al
 a re-worded chunk. `chunks <export>` prints the excerpts each rated answer was shown, in full (or, with
 `--source`, every chunk of one guide); `extract <link>` shows how a guide would be indexed now, without
 indexing it; `overlap --source` shows how much of a guide PlonkIt has too; `map <plant>` draws the
-species map the bot would attach (needs no index); `review <highscores> --player <nick> --allow-chat` runs
+species map the bot would attach (needs no index); `plant <screenshots> --question …` names a screenshot's
+plant exactly as the bot would before answering — the place read, Pl@ntNet's candidates weighed by GBIF's
+records there, the excerpt — with a Pl@ntNet key (`PLANTNET_API_KEY` or `appsettings.Local.json`) and its
+answers cached on disk; `review <highscores> --player <nick> --allow-chat` runs
 `/ai review` for real for any player, from a challenge's results saved by the ApiProbe (`raw
 /v3/results/highscores/<token>`), with GeoNN when `--set AI:RoundReview:StreetViewGuesser:BaseUrl=…` names it.
 
@@ -302,9 +306,18 @@ API + Discord (controllers, slash command modules)
   A screenshot's plant is named by **Pl@ntNet** (`IPlantIdentifier` → `PlantNetPlantIdentifier`, named
   HttpClient `PlantNet`, free 500/day, nothing sent without `AI:Tools:PlantIdentification:ApiKey`) through
   `PlantIdentificationLookAhead`, only when `PlantIdentificationQuestion` reads the question as "what
-  plant is this" and a picture is at hand (the message's, or the branch's latest); the candidates lead
-  the excerpts, a best match over `MinConfidence` goes on to the GBIF range and map, "no plant" becomes an
-  excerpt saying so, and a spent allowance becomes an `AiAnswer.Notices` line under the answer.
+  plant is this" and a picture is at hand (the message's — up to 5, as views of one plant — or the
+  branch's latest); the candidates lead the excerpts, a best match over `MinConfidence` goes on to the
+  GBIF range and map, "no plant" becomes an excerpt saying so, and a spent allowance becomes an
+  `AiAnswer.Notices` line under the answer. Where the member says the screenshot was taken (#485) weighs
+  the candidates: `ScreenshotPlaceReader` (pure) reads coordinates/Maps links, towns (GeoNames
+  `cities15000`, `GeoNamesPlaceDirectory`, downloaded once), regions (Natural Earth) and countries
+  (`IsoCountries.Gazetteer`, not the index's) from the question, then the branch; `GbifPlantRecordCounter`
+  counts all 30 candidates in one search by a `taxonKey` facet (synonym keys included — not `speciesKey`);
+  `PlantLocationWeighting` (pure) multiplies each image score by (records near + 1)^0.5, ×0.1 when the
+  country never recorded it. Pl@ntNet's own regional floras are deliberately not used: they only filter
+  the same scores and omit planted trees (no eucalyptus in Brazil). A follow-up that only says where
+  is weighed again (identification cached by picture). Probe: `plant <pictures> --question …`.
   While an answer is made, each step reports to the ambient `AiProgressLog` (`AiProgress.Step`, an
   `AsyncLocal` set by `AiProgress.Track`, a no-op when nothing tracks), which `AiProgressReporter` shows
   as a status reply under the question, deleted once the answer is posted (`/ai review`: its ephemeral

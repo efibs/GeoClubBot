@@ -12,6 +12,9 @@ public sealed class PlantIdentificationQuestionTests
 {
     [Theory]
     [InlineData("what tree is this?")]
+    [InlineData("is this a spruce?")]
+    [InlineData("what kind of elm is this")]
+    [InlineData("can you identify the leaf on the right")]
     [InlineData("What kind of cactus is this")]
     [InlineData("which plant is that in the background?")]
     [InlineData("can you identify this plant")]
@@ -29,6 +32,7 @@ public sealed class PlantIdentificationQuestionTests
 
     [Theory]
     [InlineData("what country is this?")]
+    [InlineData("what kind of cone is this?")]
     [InlineData("which region of Brazil has these bollards?")]
     [InlineData("where was this taken")]
     [InlineData("is this Kenya or Uganda?")]
@@ -40,4 +44,14 @@ public sealed class PlantIdentificationQuestionTests
     [InlineData("   ")]
     public void DoesNotAsk_ForAnythingElse(string? question) =>
         PlantIdentificationQuestion.Asks(question).Should().BeFalse();
+
+    [Theory]
+    [InlineData("it's near Boston though", true)]
+    [InlineData("this is Bulgaria btw", true)]
+    [InlineData("it's in Bulgaria, does that change the tree?", true)]
+    [InlineData("what about the bollards in Bulgaria?", false)]
+    [InlineData("which country has these bollards", false)]
+    [InlineData("", false)]
+    public void ReadsWhetherAFollowUpMayBeAboutThePlant(string followUp, bool expected) =>
+        PlantIdentificationQuestion.MayBeAboutThePlant(followUp).Should().Be(expected);
 }

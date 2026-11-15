@@ -176,6 +176,19 @@ public static class AiServices
         services.AddSingleton<IPlantIdentifier, PlantNetPlantIdentifier>();
         services.AddSingleton<PlantIdentificationLookAhead>();
 
+        // Where a screenshot was taken weighs its plant's candidates: GBIF's records there (the range
+        // reader's client), and the towns a member names (GeoNames, downloaded once, like the boundaries).
+        services.AddSingleton<IPlantRecordCounter, GbifPlantRecordCounter>();
+        services.AddHttpClient(GeoNamesPlaceDirectory.HttpClientName, client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "GeoClubBot/1.0 (+https://github.com/efibs/geo-club-bot)");
+            client.Timeout = TimeSpan.FromSeconds(tools.PlantIdentification.Location.DownloadTimeoutSeconds + 5);
+        });
+        services.AddSingleton<GeoNamesPlaceDirectory>();
+        services.AddSingleton<IPlaceDirectory>(provider => provider.GetRequiredService<GeoNamesPlaceDirectory>());
+        services.AddSingleton<KnownPlaceDirectory>();
+
         // Natural Earth's admin-1 boundaries, downloaded once (about 40 MB) and read on a background
         // task; the map's tiles come from GBIF on its client. One instance serves names and outlines.
         services.AddHttpClient(NaturalEarthRegionBoundaries.HttpClientName, client =>

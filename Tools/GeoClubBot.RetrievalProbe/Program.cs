@@ -17,7 +17,7 @@ if (arguments is null)
     return 1;
 }
 
-if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity" or "answer" or "chunks" or "extract" or "map" or "overlap" or "review"))
+if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity" or "answer" or "chunks" or "extract" or "map" or "overlap" or "review" or "plant"))
 {
     Console.Error.WriteLine($"Unknown command '{arguments.Command}'.");
     ProbeArguments.PrintUsage();
@@ -31,13 +31,20 @@ Console.CancelKeyPress += (_, e) =>
     cancellation.Cancel();
 };
 
-// Reads GBIF alone, so it runs without an index to connect to.
-if (arguments.Command == "map")
+// Read GBIF (and Pl@ntNet) alone, so they run without an index to connect to.
+if (arguments.Command is "map" or "plant")
 {
     var mapReport = new ProbeReport();
     try
     {
-        await MapCommand.RunAsync(arguments, mapReport, cancellation.Token).ConfigureAwait(false);
+        if (arguments.Command == "map")
+        {
+            await MapCommand.RunAsync(arguments, mapReport, cancellation.Token).ConfigureAwait(false);
+        }
+        else
+        {
+            await PlantCommand.RunAsync(arguments, mapReport, cancellation.Token).ConfigureAwait(false);
+        }
     }
     catch (ProbeException ex)
     {
