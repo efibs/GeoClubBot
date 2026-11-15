@@ -95,13 +95,27 @@ public sealed class PrivateChannelEventHandlersTests
     }
 
     [Fact]
-    public async Task Join_WithALiveChannel_LeavesItAlone()
+    public async Task Join_WithALiveChannel_MovesItToTheClub_InCaseTheLeaveNeverArchivedIt()
     {
-        StoredMember(ChannelId);
+        _mediator.Send(Arg.Any<MoveMemberPrivateChannelToClubCommand>(), Arg.Any<CancellationToken>()).Returns(Result<bool>.Success(true));
+        var member = StoredMember(ChannelId);
 
         await JoinAsync(_joined);
 
-        _mediator.ReceivedCalls().Should().BeEmpty();
+        await _mediator.Received(1).Send(
+            Arg.Is<MoveMemberPrivateChannelToClubCommand>(c => c.ClubMember == member), Arg.Any<CancellationToken>());
+        await _mediator.DidNotReceive().Send(Arg.Any<CreateMemberPrivateChannelCommand>(), Arg.Any<CancellationToken>());
+        await _mediator.DidNotReceive().Send(Arg.Any<RestoreMemberPrivateChannelCommand>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Join_CopesWithARefusedMove()
+    {
+        StoredMember(ChannelId);
+        _mediator.Send(Arg.Any<MoveMemberPrivateChannelToClubCommand>(), Arg.Any<CancellationToken>())
+            .Returns(Result<bool>.Failure(Refused));
+
+        await JoinAsync(_joined);
     }
 
     [Fact]
