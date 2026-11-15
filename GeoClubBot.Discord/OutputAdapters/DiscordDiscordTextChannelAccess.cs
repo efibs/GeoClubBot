@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Configuration;
 using Discord;
 using Discord.WebSocket;
@@ -61,7 +62,7 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
                 c.Id,
                 (c as INestedChannel)?.CategoryId,
                 c is ICategoryChannel,
-                c.PermissionOverwrites.Select(ToAccess).ToList()))
+                AccessOf(c.PermissionOverwrites)))
             .ToList();
 
         return new GuildChannelLayout(guild.EveryoneRole.Id, client.CurrentUser.Id, infos);
@@ -196,6 +197,14 @@ public class DiscordDiscordTextChannelAccess(DiscordSocketClient client, IOption
                 a.Target == ChannelAccessTarget.Role ? PermissionTarget.Role : PermissionTarget.User,
                 new OverwritePermissions(ToBits(a.Allow), ToBits(a.Deny))))
             .ToList();
+
+    /// <summary>
+    /// A channel's overwrites as <see cref="ChannelAccess"/>es. Discord.Net leaves the array default
+    /// (not empty) when Discord's payload has no <c>permission_overwrites</c>, which some channel of the
+    /// server's does: reading it whole threw, and no private channel could be archived or moved (#483).
+    /// </summary>
+    public static IReadOnlyList<ChannelAccess> AccessOf(IReadOnlyCollection<Overwrite>? overwrites) =>
+        overwrites is null or ImmutableArray<Overwrite> { IsDefault: true } ? [] : overwrites.Select(ToAccess).ToList();
 
     private static ChannelAccess ToAccess(Overwrite overwrite) =>
         new(overwrite.TargetId,
