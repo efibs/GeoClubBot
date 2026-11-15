@@ -7,6 +7,7 @@ using NSubstitute;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
+using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Tools;
 using Utilities;
@@ -83,6 +84,28 @@ public sealed class AiAnswerLoopTests
             Outcome = AiToolCallOutcome.Answered,
             NewExcerpts = 1
         });
+    }
+
+    [Fact]
+    public async Task ReportsEachStep_ToTheAnswersProgressLog()
+    {
+        var fixture = new Fixture();
+        fixture.Index.SearchAsync(Arg.Any<KnowledgeQuery>(), Arg.Any<CancellationToken>())
+            .Returns([Hit("Ceará poles have no supports.", "https://www.plonkit.net/brazil#u4vX", localKey: "u4vX")]);
+        fixture.Chat
+            .Then(ToolCalls(("call-1", AnswerTools.SearchGuides, """{"query": "pole supports", "country": "Brazil"}""")))
+            .Then(Answer("Ceará's poles have no supports [3]."));
+        var progress = new AiProgressLog();
+
+        using (AiProgress.Track(progress))
+        {
+            (await fixture.AskAsync()).IsSuccess.Should().BeTrue();
+        }
+
+        progress.Snapshot().Should().Equal(
+            new AiProgressStep(AiProgressKind.Thinking, null, Done: true),
+            new AiProgressStep(AiProgressKind.SearchingGuidesFor, "pole supports", Done: true),
+            new AiProgressStep(AiProgressKind.ThinkingAboutFindings, null, Done: true));
     }
 
     [Fact]

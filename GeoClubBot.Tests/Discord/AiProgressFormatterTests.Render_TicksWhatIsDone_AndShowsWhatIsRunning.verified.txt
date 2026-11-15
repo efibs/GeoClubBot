@@ -1,0 +1,6 @@
+﻿-# ✓ Looking at your screenshot
+-# ✓ Identifying the plant in the screenshot
+-# ✓ Searching the guides
+-# ✓ Looking up where *Pinus kesiya* grows
+-# ⏳ Drawing a range map of *Pinus kesiya*…
+-# ⏳ Thinking…

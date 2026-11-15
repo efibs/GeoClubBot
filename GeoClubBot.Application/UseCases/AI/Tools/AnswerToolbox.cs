@@ -6,6 +6,7 @@ using Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Retrieval;
 using Utilities;
 
@@ -218,26 +219,62 @@ public sealed partial class AnswerToolbox(
             ? await countryDirectory.ReadAsync(cancellationToken).ConfigureAwait(false)
             : CountryGazetteer.Empty;
 
-        var vectors = searchAllowed && plan.Searches
-            ? await EmbedSearchesAsync(plan, cancellationToken).ConfigureAwait(false)
-            : null;
+        // Begun before the round's one embedding, which is part of every search it holds.
+        List<IDisposable> searchSteps = [.. plan.Calls
+            .Where(call => call is { Problem: null, Search: not null })
+            .Select(call => AiProgress.Step(AiProgressKind.SearchingGuidesFor, call.Search!.Query))];
 
-        var searchIndex = 0;
-        var work = new List<Task<CallData>>();
-        foreach (var call in plan.Calls)
+        CallData[] data;
+        try
         {
-            work.Add(call switch
-            {
-                { Problem: { } problem } => Task.FromResult<CallData>(new CallData.Refused(problem, call.ProblemOutcome)),
-                { Search: { } search } => SearchAsync(search, vectors, searchIndex++, searchAllowed, gazetteer, ledger, cancellationToken),
-                { Read: { } read } => ReadGuideAsync(read, ledger, cancellationToken),
-                { Species: { } species } => ReadSpeciesAsync(species, gazetteer, cancellationToken),
-                { Region: { } region } => DrawRegionMapAsync(region, gazetteer, cancellationToken),
-                _ => Task.FromResult<CallData>(new CallData.Refused("Not run.", AiToolCallOutcome.NotRun))
-            });
-        }
+            var vectors = searchAllowed && plan.Searches
+                ? await EmbedSearchesAsync(plan, cancellationToken).ConfigureAwait(false)
+                : null;
 
-        var data = await Task.WhenAll(work).ConfigureAwait(false);
+            var searchIndex = 0;
+            var work = new List<Task<CallData>>();
+            foreach (var call in plan.Calls)
+            {
+                switch (call)
+                {
+                    case { Problem: { } problem }:
+                        work.Add(Task.FromResult<CallData>(new CallData.Refused(problem, call.ProblemOutcome)));
+                        break;
+                    case { Search: { } search }:
+                        work.Add(DoneAfter(
+                            SearchAsync(search, vectors, searchIndex, searchAllowed, gazetteer, ledger, cancellationToken),
+                            searchSteps[searchIndex]));
+                        searchIndex++;
+                        break;
+                    case { Read: { } read }:
+                        work.Add(DoneAfter(
+                            ReadGuideAsync(read, ledger, cancellationToken),
+                            AiProgress.Step(AiProgressKind.ReadingGuide, ledger.HitAt(read.Excerpt)?.Title)));
+                        break;
+                    case { Species: { } species }:
+                        work.Add(ReadSpeciesAsync(species, gazetteer, cancellationToken));
+                        break;
+                    case { Region: { } region }:
+                        work.Add(DoneAfter(
+                            DrawRegionMapAsync(region, gazetteer, cancellationToken),
+                            AiProgress.Step(AiProgressKind.DrawingRegionMap, region.Country)));
+                        break;
+                    default:
+                        work.Add(Task.FromResult<CallData>(new CallData.Refused("Not run.", AiToolCallOutcome.NotRun)));
+                        break;
+                }
+            }
+
+            data = await Task.WhenAll(work).ConfigureAwait(false);
+        }
+        finally
+        {
+            // A step is done twice harmlessly; this only covers a round that threw part-way.
+            foreach (var step in searchSteps)
+            {
+                step.Dispose();
+            }
+        }
 
         var results = new List<string>();
         var summaries = new List<AiToolCallSummary>();
@@ -261,6 +298,15 @@ public sealed partial class AnswerToolbox(
         }
 
         return new ToolRoundResult([.. plan.Calls.Select(call => call.Call)], results, summaries);
+    }
+
+    /// <summary>Marks <paramref name="step"/> done once <paramref name="work"/> has finished, however it finished.</summary>
+    private static async Task<CallData> DoneAfter(Task<CallData> work, IDisposable step)
+    {
+        using (step)
+        {
+            return await work.ConfigureAwait(false);
+        }
     }
 
     private static PlannedToolCall Refused(AiToolCall call, string problem, AiToolCallOutcome outcome) =>
@@ -431,14 +477,22 @@ public sealed partial class AnswerToolbox(
 
         try
         {
-            var range = await speciesRange
-                .ReadAsync(new SpeciesRangeQuery(species.Name, code), cancellationToken)
-                .ConfigureAwait(false);
+            Result<SpeciesRange> range;
+            using (AiProgress.Step(AiProgressKind.LookingUpPlant, species.Name))
+            {
+                range = await speciesRange
+                    .ReadAsync(new SpeciesRangeQuery(species.Name, code), cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             if (range.IsSuccess && range.Value is { } found)
             {
                 // Best effort, like the lookup before the answer: without a map the counts still stand.
-                var map = await speciesMap.DrawAsync(found, cancellationToken).ConfigureAwait(false);
+                string? map;
+                using (AiProgress.Step(AiProgressKind.DrawingRangeMap, found.CanonicalName))
+                {
+                    map = await speciesMap.DrawAsync(found, cancellationToken).ConfigureAwait(false);
+                }
 
                 return new CallData.Found(
                     [SpeciesRangeExcerpt.ToHit(found, species.Name, toolsConfiguration.Value.SpeciesRange.MaxAreas, map)], 1, null, null);

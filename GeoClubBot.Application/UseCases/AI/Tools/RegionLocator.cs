@@ -2,6 +2,7 @@ using Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.AI;
+using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Retrieval;
 
 namespace UseCases.UseCases.AI.Tools;
@@ -83,6 +84,7 @@ public sealed partial class RegionLocator(
             var countryName = IsoCountries.NameOf(bestCode);
             var title = RegionMapExcerpt.Title(countryName, [.. shown.Select(region => region.Name)]);
 
+            using var step = AiProgress.Step(AiProgressKind.DrawingRegionMap, countryName);
             var url = await drawer.DrawAsync(
                     new RegionMapRequest(bestCode, [.. shown.Select(region => new RegionHighlight(region.Id, region.Name, 1d))], title),
                     linked.Token)
