@@ -1,8 +1,10 @@
 using System.Text.RegularExpressions;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using FluentAssertions;
 using GeoClubBot.Discord.InputAdapters.Interactions;
+using GeoClubBot.Discord.InputAdapters.Interactions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -51,6 +53,38 @@ public sealed partial class InteractionModuleLoadingTests
         }
 
         problems.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The quiz buttons' ids must reach their handlers. A wildcard in Discord.Net needs at least one
+    /// character, so an id with an empty part silently matched nothing (#479).
+    /// </summary>
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData("Vietnam", false)]
+    [InlineData("South Africa", true)]
+    public async Task Every_quiz_button_reaches_its_handler(string? country, bool lesserKnownOnly)
+    {
+        using var client = new DiscordSocketClient();
+        using var service = new InteractionService(client);
+        await service.AddModulesAsync(typeof(INteractionsAssemblyMarker).Assembly, new SubstituteServiceProvider());
+
+        var buttonIds = AiQuizFormatter.Buttons(country, lesserKnownOnly).Components
+            .OfType<ActionRowComponent>()
+            .SelectMany(row => row.Components)
+            .OfType<ButtonComponent>()
+            .Select(button => button.CustomId)
+            .ToList();
+
+        buttonIds.Should().HaveCount(3);
+        foreach (var id in buttonIds)
+        {
+            var interaction = Substitute.For<IComponentInteraction>();
+            interaction.Data.CustomId.Returns(id);
+
+            service.SearchComponentCommand(interaction).IsSuccess.Should().BeTrue($"the button id '{id}' must reach a handler");
+        }
     }
 
     private static IEnumerable<string> GroupNames(ModuleInfo? module)

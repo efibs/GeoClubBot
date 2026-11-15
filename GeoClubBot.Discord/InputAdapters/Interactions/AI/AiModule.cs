@@ -116,10 +116,15 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         [Summary(name: "lesser-known", description: "Only clues PlonkIt does not have")] bool lesserKnown = false) =>
         ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ct), failureMessage: "The quiz could not draw a picture just now.");
 
-    [ComponentInteraction($"{ComponentIds.AiQuizAgainButtonId}:*:*", ignoreGroupNames: true)]
-    public Task QuizAgainAsync(string lesserKnown, string country) =>
-        ExecuteAsync(ct => PostQuizAsync(string.IsNullOrWhiteSpace(country) ? null : country, lesserKnown == "1", ct),
+    // One wildcard for both filters: Discord.Net's wildcard needs at least one character, so a second
+    // one for the country never matched a quiz played without a country (#479).
+    [ComponentInteraction($"{ComponentIds.AiQuizAgainButtonId}:*", ignoreGroupNames: true)]
+    public Task QuizAgainAsync(string filters)
+    {
+        var (country, lesserKnown) = AiQuizFormatter.ReadAgainFilters(filters);
+        return ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ct),
             failureMessage: "The quiz could not draw a picture just now.");
+    }
 
     [ComponentInteraction(ComponentIds.AiQuizRightButtonId, ignoreGroupNames: true)]
     public Task QuizRightAsync() => ExecuteAsync(_ => JudgeQuizAsync(right: true), ephemeral: true);
