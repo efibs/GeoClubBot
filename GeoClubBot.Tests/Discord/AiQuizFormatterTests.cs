@@ -60,6 +60,18 @@ public sealed class AiQuizFormatterTests
         AiQuizFormatter.AgainId("a:b", false).Should().Be("ai-quiz-again:0:a b", "a colon would split the id's parts");
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData("Vietnam", false)]
+    [InlineData("South Africa", true)]
+    public void ReadAgainFilters_ReadsBackWhatAgainIdWrote(string? country, bool lesserKnownOnly)
+    {
+        var filters = AiQuizFormatter.AgainId(country, lesserKnownOnly)["ai-quiz-again:".Length..];
+
+        AiQuizFormatter.ReadAgainFilters(filters).Should().Be((country, lesserKnownOnly));
+    }
+
     [Fact]
     public void Buttons_OfferJudgingAndAnother() =>
         AiQuizFormatter.Buttons("Vietnam", false).Components.Should().ContainSingle()
