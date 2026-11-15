@@ -93,6 +93,20 @@ public static class AiQuizFormatter
         return $"{ComponentIds.AiQuizAgainButtonId}:{(lesserKnownOnly ? "1" : "0")}:{country}";
     }
 
+    /// <summary>
+    /// Reads back what <see cref="AgainId"/> wrote after <c>ai-quiz-again:</c>: <c>{lesser}:{country}</c>,
+    /// the country empty when the quiz was played without one.
+    /// </summary>
+    public static (string? Country, bool LesserKnownOnly) ReadAgainFilters(string filters)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+
+        var separator = filters.IndexOf(':', StringComparison.Ordinal);
+        var lesser = separator < 0 ? filters : filters[..separator];
+        var country = separator < 0 ? string.Empty : filters[(separator + 1)..].Trim();
+        return (country.Length == 0 ? null : country, lesser == "1");
+    }
+
     private static string Truncate(string text, int maxLength)
     {
         var flat = text.Trim();
