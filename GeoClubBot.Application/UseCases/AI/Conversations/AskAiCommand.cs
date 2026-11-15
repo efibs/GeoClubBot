@@ -178,8 +178,10 @@ public sealed partial class AskAiHandler(
 
         // And the screenshot's plant, when the question asks what plant it shows: one identification
         // of Pl@ntNet's day, no AI request, never a failure of the question. A follow-up without a
-        // picture of its own ("and what tree is that?") asks about the branch's latest screenshot.
-        var plantIdRead = plantIdentification.ReadAsync(request.Content, LatestScreenshot(request, context), cancellationToken);
+        // picture of its own ("and what tree is that?") asks about the branch's latest screenshot, and
+        // where the member said it was taken, here or earlier in the branch, weighs the candidates.
+        var plantIdRead = plantIdentification.ReadAsync(
+            request.Content, LatestScreenshots(request, context), MembersEarlierMessages(context), cancellationToken);
 
         // "A clue I don't know yet", "one that is not on PlonkIt": PlonkIt is what a player knows, so
         // its tips stay out of the search, and what other guides say that PlonkIt says too is marked.
@@ -229,7 +231,7 @@ public sealed partial class AskAiHandler(
             retrieved = [.. identified.Hits, .. retrieved];
         }
 
-        IReadOnlyList<string> notices = identified?.Notice is { } notice ? [notice] : [];
+        IReadOnlyList<string> notices = identified?.Notices ?? [];
 
         // The clues the answer before gave are marked too: "give me another one" is no reason to
         // repeat one PlonkIt has.
@@ -343,21 +345,25 @@ public sealed partial class AskAiHandler(
     }
 
     /// <summary>
-    /// The picture a question is about: its own attachment, or else the latest one in the branch it
+    /// The pictures a question is about: its own attachments, or else the latest ones in the branch it
     /// continues — "and what tree is that?" under an answer about a screenshot means that screenshot.
     /// </summary>
-    private static string? LatestScreenshot(AskAiCommand request, ConversationContext context)
+    private static IReadOnlyList<string> LatestScreenshots(AskAiCommand request, ConversationContext context)
     {
         if (request.AttachmentImageUrls.Count > 0)
         {
-            return request.AttachmentImageUrls[0];
+            return request.AttachmentImageUrls;
         }
 
         return context.Turns
             .Where(turn => turn.Role == AiTurnRole.User && turn.ImageUrls.Count > 0)
-            .Select(turn => turn.ImageUrls[0])
-            .LastOrDefault();
+            .Select(turn => turn.ImageUrls)
+            .LastOrDefault() ?? [];
     }
+
+    /// <summary>What the member wrote earlier in the branch, oldest first: where they said the screenshot was taken.</summary>
+    private static IReadOnlyList<string> MembersEarlierMessages(ConversationContext context) =>
+        [.. context.Turns.Where(turn => turn.Role == AiTurnRole.User && !string.IsNullOrWhiteSpace(turn.Content)).Select(turn => turn.Content)];
 
     /// <summary>
     /// The excerpts the answer being replied to cited, read back from the index by id, in the order it

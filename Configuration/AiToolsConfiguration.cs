@@ -94,6 +94,23 @@ public class AiToolsConfiguration : IValidatableObject
                 $"{nameof(PlantIdentification)}:{nameof(AiPlantIdentificationConfiguration.BaseUrl)} must be an absolute URL.");
         }
 
+        var location = PlantIdentification.Location;
+        var locationResults = new List<ValidationResult>();
+        Validator.TryValidateObject(location, new ValidationContext(location), locationResults, validateAllProperties: true);
+
+        foreach (var result in locationResults)
+        {
+            yield return new ValidationResult(
+                $"{nameof(PlantIdentification)}:{nameof(AiPlantIdentificationConfiguration.Location)}: {result.ErrorMessage}",
+                [.. result.MemberNames.Select(member => $"{nameof(PlantIdentification)}:{nameof(AiPlantIdentificationConfiguration.Location)}:{member}")]);
+        }
+
+        if (!Uri.TryCreate(location.TownsUrl, UriKind.Absolute, out _))
+        {
+            yield return new ValidationResult(
+                $"{nameof(PlantIdentification)}:{nameof(AiPlantIdentificationConfiguration.Location)}:{nameof(AiPlantLocationConfiguration.TownsUrl)} must be an absolute URL.");
+        }
+
         // Nested sections are not validated by data annotations on their own.
         var results = new List<ValidationResult>();
         Validator.TryValidateObject(SpeciesRange, new ValidationContext(SpeciesRange), results, validateAllProperties: true);
@@ -281,6 +298,92 @@ public class AiPlantIdentificationConfiguration
     /// <summary>Largest screenshot sent, in bytes. Pl@ntNet takes up to 50 MB; a Discord screenshot is a few MB at most.</summary>
     [Range(100_000, 50_000_000)]
     public int MaxImageBytes { get; set; } = 10 * 1024 * 1024;
+
+    /// <summary>
+    /// Candidates asked of Pl@ntNet per identification, of which <see cref="MaxCandidates"/> are offered
+    /// to the model. The place a screenshot was taken re-orders them (see <see cref="Location"/>), so the
+    /// plant that grows there has to be among them: on a hazy frame near Boston, eastern white pine was
+    /// only 5th, at 1 % (2026-11-15). Pl@ntNet stops below 0.1 % on its own, whatever is asked; asking
+    /// more costs no more identifications, only a slightly longer answer.
+    /// </summary>
+    [Range(1, 100)]
+    public int CandidatesConsidered { get; set; } = 30;
+
+    /// <summary>
+    /// Pictures of one message sent together, as views of one plant: Pl@ntNet takes up to five per
+    /// identification (a close-up, the bark, the whole tree) and judges them as one, for one
+    /// identification of the day's allowance.
+    /// </summary>
+    [Range(1, 5)]
+    public int MaxPictures { get; set; } = 5;
+
+    /// <summary>
+    /// Fewest image score a candidate needs before it is named as the plant when the place re-ordered
+    /// the candidates. The place can lift a candidate the picture barely supports to the top; it is then
+    /// offered as the likeliest of an uncertain lot, not as an identification. Without a place,
+    /// <see cref="MinConfidence"/> alone decides.
+    /// </summary>
+    [Range(0.0, 1.0)]
+    public double MinImageScore { get; set; } = 0.05;
+
+    /// <summary>Weighing the candidates by where the screenshot was taken. See <see cref="AiPlantLocationConfiguration"/>.</summary>
+    public AiPlantLocationConfiguration Location { get; set; } = new();
+}
+
+/// <summary>
+/// Where a screenshot was taken, read from what the member wrote ("just south of Boston", "this is in
+/// Bulgaria", a Google Maps link), and what is recorded there. Pl@ntNet sees only the picture, and its
+/// world flora leans towards Europe, where most of its photographs come from: a red pine (North
+/// American, never recorded in Bulgaria) topped a Bulgarian screenshot of black pines (2026-11-15).
+/// Each candidate is weighed by how often GBIF records it near the place, so what grows there rises and
+/// what is never recorded there falls. Pl@ntNet's own regional floras were not taken instead: they
+/// filter the same scores, and they leave out what is only planted — no eucalyptus in Brazil, no
+/// Monterey pine in New Zealand, clues a player most needs (measured 2026-11-15).
+///
+/// Free: GBIF needs no key, and the place names come from GeoNames' cities (CC BY 4.0) and Natural
+/// Earth's states and provinces (public domain), each downloaded once.
+/// </summary>
+public class AiPlantLocationConfiguration
+{
+    /// <summary>Reads the place from the conversation and weighs the candidates by it. Off, Pl@ntNet's order stands.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Kilometres around a town or a pair of coordinates in which records count as "near". A member
+    /// says "just south of Boston", not where exactly; fifty takes in the town and the country around it.
+    /// A state or province counts its whole area, a country the whole country.
+    /// </summary>
+    [Range(1, 1000)]
+    public int RadiusKm { get; set; } = 50;
+
+    /// <summary>
+    /// How strongly the records near the place weigh against the picture: each candidate's image score
+    /// is multiplied by (records + 1) to this power. 0 ignores them; 1 trusts them as much as the
+    /// picture. 0.5 put eastern white pine first on a hazy frame near Boston (7,269 records within
+    /// 50 km against 209 for American elm, the picture's 1 % favourite), and native black and Scots pine
+    /// over a planted white pine in Bulgaria, while a 52 % Norway spruce stayed first (2026-11-15).
+    /// </summary>
+    [Range(0.0, 2.0)]
+    public double RecordsWeight { get; set; } = 0.5;
+
+    /// <summary>
+    /// What a candidate's score is multiplied by when GBIF has no record of it anywhere in the country:
+    /// it most likely does not grow there. Not zero, because a well-photographed plant the records miss
+    /// still has its picture to speak for it.
+    /// </summary>
+    [Range(0.0, 1.0)]
+    public double UnrecordedFactor { get; set; } = 0.1;
+
+    /// <summary>
+    /// GeoNames' towns of 15,000 people or more (CC BY 4.0, about 3 MB), which "near Quincy" and "south
+    /// of Boston" are matched against. Downloaded once into <see cref="AiRegionMapConfiguration.DataDirectory"/>;
+    /// delete the file to fetch it again.
+    /// </summary>
+    public string TownsUrl { get; set; } = "https://download.geonames.org/export/dump/cities15000.zip";
+
+    /// <summary>Seconds the one-off download of the towns may take.</summary>
+    [Range(10, 3600)]
+    public int DownloadTimeoutSeconds { get; set; } = 120;
 }
 
 /// <summary>

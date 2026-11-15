@@ -282,6 +282,15 @@ any guide images it relied on. When the guides it found first only answer part o
 may search them again or look up where a plant grows before answering, which can take up to a minute.
 Anything it adds from general knowledge rather than the guides starts with "Not from the guides:".
 
+Asking **what plant a screenshot shows** ("what tree is this?") sends it to Pl@ntNet, a plant
+identifier. Say where it was taken and the answer is weighed by what grows there:
+
+> @GeoClubBot what tree is this? It's from just south of Boston
+
+A town, a state or province, a country or a Google Maps link all work, in the question or in a reply
+("it's near Boston though"). A close crop of the plant helps most, and you can attach several pictures
+of the same plant (needles, bark, the whole tree) to one message.
+
 ### Asking a follow-up
 **Reply to the bot's answer** and ask your next question. You don't need to mention it again — it
 picks up where the conversation left off, including the guides and pictures its answer cited, so

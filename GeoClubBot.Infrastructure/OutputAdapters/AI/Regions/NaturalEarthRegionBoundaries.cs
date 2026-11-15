@@ -11,6 +11,12 @@ namespace Infrastructure.OutputAdapters.AI.Regions;
 /// <summary>One region's outline: its rings, each a run of longitude/latitude pairs, the first the outer edge.</summary>
 internal sealed record RegionShape(string Id, string Name, IReadOnlyList<string> Aliases, IReadOnlyList<IReadOnlyList<(double Longitude, double Latitude)>> Rings, double LabelLongitude, double LabelLatitude)
 {
+    /// <summary>The region's key in GeoNames ("US.MA"), which ties the towns of the place directory to it; null when Natural Earth gives none.</summary>
+    public string? GeoNamesKey { get; init; }
+
+    /// <summary>The short code a region is written as after a town ("MA"), when Natural Earth gives one.</summary>
+    public string? Postal { get; init; }
+
     /// <summary>The rectangle around every ring, so a point far from the region is turned away without walking its rings.</summary>
     public (double West, double South, double East, double North) Bounds { get; } = BoundsOf(Rings);
 
@@ -178,6 +184,24 @@ public sealed partial class NaturalEarthRegionBoundaries(
         }
     }
 
+    /// <summary>
+    /// Every region of every country, whether or not region maps are on: the place directory reads them
+    /// for "in Massachusetts" too. Waits for the file as long as <paramref name="cancellationToken"/>
+    /// allows; empty when it cannot be read. Never throws but for the caller's own cancellation.
+    /// </summary>
+    internal async Task<IReadOnlyDictionary<string, IReadOnlyList<RegionShape>>> ReadEveryRegionAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await LoadAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            LogUnavailable(logger, exception);
+            return new Dictionary<string, IReadOnlyList<RegionShape>>();
+        }
+    }
+
     /// <summary>A country's regions with their outlines; empty when unknown, or when the file is not read yet.</summary>
     internal async Task<IReadOnlyList<RegionShape>> ReadShapesAsync(string countryCode, CancellationToken cancellationToken)
     {
@@ -341,7 +365,11 @@ public sealed partial class NaturalEarthRegionBoundaries(
             ? (lon, lat)
             : Centroid(rings.MaxBy(ring => ring.Count)!);
 
-        return new RegionShape(id, name.Trim(), aliases, rings, labelLongitude, labelLatitude);
+        return new RegionShape(id, name.Trim(), aliases, rings, labelLongitude, labelLatitude)
+        {
+            GeoNamesKey = string.IsNullOrWhiteSpace(properties.GnA1Code) ? null : properties.GnA1Code.Trim(),
+            Postal = string.IsNullOrWhiteSpace(properties.Postal) ? null : properties.Postal.Trim()
+        };
     }
 
     /// <summary>Every ring of a polygon or multipolygon, holes included: a hole is drawn by the even-odd rule.</summary>
@@ -515,6 +543,12 @@ public sealed partial class NaturalEarthRegionBoundaries(
 
         [JsonPropertyName("woe_name")]
         public string? WoeName { get; set; }
+
+        [JsonPropertyName("gn_a1_code")]
+        public string? GnA1Code { get; set; }
+
+        [JsonPropertyName("postal")]
+        public string? Postal { get; set; }
 
         [JsonPropertyName("longitude")]
         public double? Longitude { get; set; }

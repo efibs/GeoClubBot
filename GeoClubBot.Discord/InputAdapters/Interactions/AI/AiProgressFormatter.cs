@@ -59,6 +59,7 @@ public static class AiProgressFormatter
             AiProgressKind.PlanningSearch => "Working out what to search for",
             AiProgressKind.SearchingGuides => "Searching the guides",
             AiProgressKind.IdentifyingPlant => "Identifying the plant in the screenshot",
+            AiProgressKind.CheckingWhatGrowsThere => detail is null ? "Checking which of them grow there" : $"Checking which of them grow near {detail}",
             AiProgressKind.LookingUpPlant => detail is null ? "Looking up where the plant grows" : $"Looking up where *{detail}* grows",
             AiProgressKind.DrawingRangeMap => detail is null ? "Drawing a range map" : $"Drawing a range map of *{detail}*",
             AiProgressKind.Thinking => "Thinking",

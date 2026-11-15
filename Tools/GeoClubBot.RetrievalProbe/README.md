@@ -119,6 +119,7 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `extract <guide link>` | What a guide would be indexed as, read now by the bot's own extractor and chunker — sections, chunks, picture captions — without indexing anything. A Google document's pictures are not downloaded: each picture chunk shows the link it would come from |
 | `overlap --source <guide>` | How much of a guide PlonkIt has too: for each of its chunks, the nearest PlonkIt tip of the same country and how near. Where `AI:Retrieval:LesserKnown:SameClueSimilarity` was read off |
 | `map <plant name>` | The species map the bot would attach, drawn by its own GBIF reader and renderer into `species-maps/` beside the binary; `--country` counts and frames one country. Needs neither the index nor a key |
+| `plant <screenshots>` | The plant in screenshots (files or links, comma-separated: views of one plant) as the bot names it before answering: the place read from `--question` (and `--source`, standing for an earlier message of the branch), Pl@ntNet's candidates in its own order and weighed by GBIF's records there, the excerpt and the notes under the answer. Needs a Pl@ntNet key (`PLANTNET_API_KEY`, or `{ "PlantNet": { "ApiKey": "…" } }` in `appsettings.Local.json`); each new set of pictures uses one identification of its 500 a day, and answers are kept in `plantnet-cache/` beside the binary, so `--set AI:Tools:PlantIdentification:Location:RecordsWeight=…` reruns are free. Needs no index |
 
 | Option | Meaning |
 |---|---|
@@ -132,12 +133,12 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `--player <nick\|id>` | `review`: whose game is reviewed (default: the leader) |
 | `--set <Key=Value>` | `answer`, `review`: overrides one of the bot's AI settings, e.g. `--set AI:Tools:Enabled=false`; repeatable |
 | `--country <name>` | `map`: the country to count and frame the plant in |
+| `--question <text>` | `similarity`: the question; `plant`: what the member asked with the screenshots, e.g. `"what tree is this? south of Boston"` |
 | `--only <list>` | `answer`, `chunks`: record numbers and ranges, feedback-id prefixes, `after:`/`before:` dates, comma-separated (`1-25,31`, `after:2026-09-27`) |
 | `--parallel <n>` | `answer`: rated answers asked at once (default 2, at most 8) |
 | `--judge` | `answer`: a model compares each new answer with the rated one — one request each, cached |
 | `--judge-model <ids>` | `answer`: comma-separated chain the judge asks (implies `--judge`; default: the best free text model of today's chain) |
 | `--variants <file>` | `compare`: retrieval settings to compare instead of the built-in steps (see below) |
-| `--question <text>` | `similarity`: the question |
 | `--source <url>` | `similarity`: a chunk's source URL, as listed under an answer or in a replay; `chunks`, `overlap`: a guide's link, or its type and key (`gdoc:<id>`) |
 | `--variant <text>` | `similarity`: re-worded chunk text to try; repeatable |
 | `--max <n>` | `grep`: matches to list (default 20); `chunks --source`, `extract`, `overlap`: rows to show |

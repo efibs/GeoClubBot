@@ -18,6 +18,9 @@ public enum AiProgressKind
     /// <summary>Pl@ntNet names the plant in the screenshot.</summary>
     IdentifyingPlant,
 
+    /// <summary>GBIF is asked which of the candidates grow where the screenshot was taken; the detail is the place.</summary>
+    CheckingWhatGrowsThere,
+
     /// <summary>GBIF is asked where a plant grows; the detail is the name looked up.</summary>
     LookingUpPlant,
 

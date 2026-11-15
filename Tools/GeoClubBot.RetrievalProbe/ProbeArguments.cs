@@ -248,6 +248,12 @@ public sealed record ProbeArguments(
                                       whom to review (nick or id, default the leader).
               map <plant name>        The map the bot would attach for a plant, drawn by its own GBIF
                                       reader and renderer; --country frames one country. Needs no index.
+              plant <pictures>        The plant in screenshots (files or links, comma-separated) as the
+                                      bot names it before answering: the place read from --question
+                                      (--source: an earlier message of the branch), Pl@ntNet's candidates
+                                      weighed by GBIF's records there, the excerpt and the notes. Needs a
+                                      Pl@ntNet key (PLANTNET_API_KEY or appsettings.Local.json); answers
+                                      are cached, so --set AI:Tools:PlantIdentification:... reruns are free.
 
             Options:
               --qdrant <url>          Qdrant's gRPC address (default: QDRANT_GRPC_URL, appsettings.Local.json,
@@ -274,7 +280,7 @@ public sealed record ProbeArguments(
                                       the bot's own, to measure another model; cached apart
               --variants <file>       compare: JSON of { "name": { retrieval settings } } to compare
                                       instead of the built-in steps; see README.md
-              --question <text>       similarity: the question
+              --question <text>       similarity: the question; plant: the question asked with the pictures
               --player <nick|id>      review: the player whose game is reviewed
               --source <url>          similarity: the chunk's source URL, as listed under an answer;
                                       chunks: a guide's link, or its type and key (plonkit:india)

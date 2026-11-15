@@ -94,6 +94,15 @@ public static class IsoCountries
 
     private static readonly Dictionary<string, string> CodeByName = BuildCodes();
 
+    /// <summary>
+    /// Every country of the table as a gazetteer — with the adjectives, short forms and regions the
+    /// gazetteer adds ("Bulgarian", "UK", "Sabah") — for reading where a member says something is. Built
+    /// from the table, not the guide index, so a country no guide covers is still a place.
+    /// </summary>
+    public static CountryGazetteer Gazetteer => LazyGazetteer.Value;
+
+    private static readonly Lazy<CountryGazetteer> LazyGazetteer = new(() => CountryGazetteer.Build(NameByCode.Values));
+
     /// <summary>The country's English name, or the code itself when it is none the table knows ("ZZ").</summary>
     public static string NameOf(string code) =>
         NameByCode.TryGetValue(code.ToUpperInvariant(), out var name) ? name : code;

@@ -318,14 +318,17 @@ public sealed class AnsweringStack : IDisposable
             [RefitChatModelClient.HttpClientName] = _openRouter,
             [RefitChatModelClient.HealthHttpClientName] = _openRouter,
             [GbifSpeciesRangeReader.HttpClientName] = _gbif,
-            [NaturalEarthRegionBoundaries.HttpClientName] = _naturalEarth
+            [NaturalEarthRegionBoundaries.HttpClientName] = _naturalEarth,
+            // GeoNames' towns are one more download of the same kind: GET-only, once, into the data directory.
+            [GeoNamesPlaceDirectory.HttpClientName] = _naturalEarth
         });
 
         _clients = clients;
         var clock = TimeProvider.System;
         // Kept next to the probe rather than wherever it is run from; read by nothing else.
         settings.Tools.RegionMap.DataDirectory = Path.Combine(AppContext.BaseDirectory, "ai-data");
-        Boundaries = new NaturalEarthRegionBoundaries(clients, _tools, _logging.CreateLogger<NaturalEarthRegionBoundaries>());
+        var boundaries = new NaturalEarthRegionBoundaries(clients, _tools, _logging.CreateLogger<NaturalEarthRegionBoundaries>());
+        Boundaries = boundaries;
         Judge = new RefitChatModelClient(clients, _logging.CreateLogger<RefitChatModelClient>());
         _chat = new RecordingChatModelClient(Judge);
         _embedder = new OpenRouterEmbedder(clients, _ai, _logging.CreateLogger<OpenRouterEmbedder>());
@@ -350,8 +353,10 @@ public sealed class AnsweringStack : IDisposable
         _plantRange = new PlantRangeLookAhead(speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantRangeLookAhead>());
         // Off unless the bot's settings carry a Pl@ntNet key; a rated screenshot's link has usually expired anyway.
         var plantIdentifier = new PlantNetPlantIdentifier(clients, _tools, clock, _logging.CreateLogger<PlantNetPlantIdentifier>());
+        var places = new KnownPlaceDirectory(new GeoNamesPlaceDirectory(clients, boundaries, _tools, _logging.CreateLogger<GeoNamesPlaceDirectory>()));
+        var records = new GbifPlantRecordCounter(clients, _tools, clock, _logging.CreateLogger<GbifPlantRecordCounter>());
         _plantIdentification = new PlantIdentificationLookAhead(
-            plantIdentifier, speciesReader, speciesMap, _tools, clock, _logging.CreateLogger<PlantIdentificationLookAhead>());
+            plantIdentifier, records, speciesReader, speciesMap, places, _tools, clock, _logging.CreateLogger<PlantIdentificationLookAhead>());
         // The probe reports answers as text; a region map would only be a link to a picture it cannot show.
         _regionLocator = new RegionLocator(new NoRegionBoundaries(), new NoRegionMapDrawer(), _countries, _tools, clock, _logging.CreateLogger<RegionLocator>());
     }
