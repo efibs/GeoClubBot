@@ -524,6 +524,33 @@ With tools offered, a short paragraph (`AnswerTools.SystemPrompt`) is added: see
 One Qdrant collection whose name encodes the embedding model and its dimensions, so changing either
 starts a fresh collection instead of mixing incomparable vectors into the existing one.
 
+#### When the embedding model is withdrawn
+
+Free embedding models disappear without notice. The first default,
+`nvidia/llama-nemotron-embed-vl-1b-v2:free`, answered 404 "No endpoints found" for every request from
+2026-11-16, and every question and ingestion run failed until the configuration changed (#503).
+`EmbeddingModelSelector` (Infrastructure, singleton) now picks the model and moves on when one goes:
+
+- **Order of preference:** `AI:OpenRouter:EmbeddingModelId`, then `FallbackEmbeddingModels` in order,
+  then, with `AutoSelectEmbeddingModel` (on), any free model in OpenRouter's embedding catalog
+  (`GET /api/v1/embeddings/models`) that takes text **and** images. A text-only model would leave every
+  picture without its vector. A width of 0 is learned with one embedding request.
+- **When it is chosen:** on first use, with one catalog read; a model the catalog leaves out is passed
+  over. An unreadable catalog leaves it out of the decision. When a request answers 404 the model is
+  marked gone until restart, the next one is chosen and the call is made again once with it. A whole
+  call is repeated, so no request mixes two models' vectors.
+- **What follows a switch:** `QdrantKnowledgeIndex` reads its collection from the selector on every
+  call, so it moves to the new model's collection, which starts empty. Each `KnowledgeSource` records the
+  model it was indexed with (`EmbeddingModel`, "model/width"). A source indexed with another model is due
+  at once, and its unchanged content is not skipped, so the library is indexed again over the following
+  runs, within the daily allowance. Until then answers have fewer excerpts. Pictures' generated
+  descriptions live in the old collection and are made again.
+- **Switching back** to a model whose collection still exists re-indexes the sources recorded under the
+  other model into it, because that collection was not kept up to date in the meantime.
+
+The probe reads the collection of the *configured* model. After a switch, point it at the model in use
+with `--set AI:OpenRouter:EmbeddingModelId=… --set AI:OpenRouter:EmbeddingDimensions=…`.
+
 Every chunk carries a **text** vector. Image chunks carry an **image** vector as well, and the two are
 searched separately and merged by reciprocal-rank fusion. That is not over-engineering — it follows
 from measurement. For a real question against a real infographic:

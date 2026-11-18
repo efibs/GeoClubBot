@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Configuration;
 
 /// <summary>
@@ -84,12 +86,34 @@ public class OpenRouterConfiguration
     public int HealthCheckModelCount { get; set; } = 10;
 
     /// <summary>
-    /// Embedding model. Must produce vectors matching <see cref="EmbeddingDimensions"/>; changing
-    /// either invalidates every stored vector, so the collection name carries them too.
+    /// Embedding model used while OpenRouter serves it. Must produce vectors matching
+    /// <see cref="EmbeddingDimensions"/>. Each model and width has a Qdrant collection of its own, so a
+    /// change starts a fresh one and the library is indexed again into it, source by source.
     /// </summary>
-    public string EmbeddingModelId { get; set; } = "nvidia/llama-nemotron-embed-vl-1b-v2:free";
+    public string EmbeddingModelId { get; set; } = "nvidia/nemotron-3.5-embed-1b:free";
 
+    /// <summary>
+    /// Width of <see cref="EmbeddingModelId"/>'s vectors. 0 learns it from the model with one embedding
+    /// request when the model is first chosen.
+    /// </summary>
+    [Range(0, 65536)]
     public int EmbeddingDimensions { get; set; } = 2048;
+
+    /// <summary>
+    /// Models to move to, in order, when OpenRouter no longer serves the one in use (it answers 404 "No
+    /// endpoints found", or its embedding catalog leaves the model out). Free models come and go: the
+    /// first default, nvidia/llama-nemotron-embed-vl-1b-v2:free, disappeared on 2026-11-16 (#503). A
+    /// switch lands on another collection, so every guide is indexed again over the following runs.
+    /// </summary>
+    public List<EmbeddingModelOption> FallbackEmbeddingModels { get; set; } =
+        [new() { ModelId = "nvidia/nemotron-3.5-embed-8b:free" }];
+
+    /// <summary>
+    /// When neither <see cref="EmbeddingModelId"/> nor any fallback is served, use a free model from
+    /// OpenRouter's embedding catalog that takes both text and images, its width learned with one
+    /// request. Off leaves the AI without embeddings until the configuration names a model that works.
+    /// </summary>
+    public bool AutoSelectEmbeddingModel { get; set; } = true;
 
     /// <summary>
     /// Inputs per embedding request. Batching is what makes indexing affordable: the provider limits
@@ -109,4 +133,15 @@ public class OpenRouterConfiguration
 
     /// <summary>Sent as X-Title.</summary>
     public string AppName { get; set; } = "GeoClubBot";
+}
+
+/// <summary>An embedding model to fall back on, see <see cref="OpenRouterConfiguration.FallbackEmbeddingModels"/>.</summary>
+public class EmbeddingModelOption
+{
+    [Required]
+    public string ModelId { get; set; } = string.Empty;
+
+    /// <summary>Width of the model's vectors; 0 learns it with one embedding request.</summary>
+    [Range(0, 65536)]
+    public int Dimensions { get; set; }
 }

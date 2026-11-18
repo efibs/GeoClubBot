@@ -1,6 +1,4 @@
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.RateLimiting;
 using Configuration;
 using Constants;
@@ -15,6 +13,7 @@ using Infrastructure.OutputAdapters.AI.PlantNet;
 using Infrastructure.OutputAdapters.AI.Regions;
 using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
@@ -130,7 +129,14 @@ public static class AiServices
         services.AddSingleton<IChatModelCatalog, ChatModelCatalog>();
 
         // Embeddings share the chat client's HTTP pipeline, so they inherit its auth and rate limiter.
-        services.AddSingleton<IEmbedder, OpenRouterEmbedder>();
+        // The model can change while the bot runs (#503), so the embedder and the knowledge index share
+        // one selector. Registered by factory: the embedder has a shorter constructor for the probe.
+        services.AddSingleton<EmbeddingModelSelector>();
+        services.AddSingleton<IEmbedder>(provider => new OpenRouterEmbedder(
+            provider.GetRequiredService<IHttpClientFactory>(),
+            provider.GetRequiredService<IOptions<AiConfiguration>>(),
+            provider.GetRequiredService<EmbeddingModelSelector>(),
+            provider.GetRequiredService<ILogger<OpenRouterEmbedder>>()));
     }
 
     /// <summary>
@@ -303,10 +309,10 @@ public static class AiServices
         var qdrantConnectionString =
             configuration.GetConnectionString(ConfigKeys.QDrantConnectionString) ?? "localhost";
 
-        services.AddSingleton<IKnowledgeIndex>(_ => new QdrantKnowledgeIndex(
+        // The collection follows the embedding model in use, which EmbeddingModelSelector may change.
+        services.AddSingleton<IKnowledgeIndex>(provider => new QdrantKnowledgeIndex(
             new QdrantClient(qdrantConnectionString),
-            BuildCollectionName(aiConfig),
-            aiConfig.OpenRouter.EmbeddingDimensions));
+            provider.GetRequiredService<EmbeddingModelSelector>()));
 
         // The index's country names, which every question is matched against: read once and kept. And
         // the query planner's pause after a timeout, which must outlive the question that timed out.
@@ -317,20 +323,5 @@ public static class AiServices
         // clues drawn at random for those that name nothing to look for.
         services.AddSingleton<MainGuideOverlap>();
         services.AddSingleton<ClueSampler>();
-    }
-
-    /// <summary>
-    /// Derives the collection name from the embedding model and its width, so changing either lands
-    /// on a new collection instead of appending incomparable vectors to the existing one. The old
-    /// collection is left in place, visible and deletable, rather than silently corrupted.
-    /// </summary>
-    private static string BuildCollectionName(AiConfiguration aiConfig)
-    {
-        var openRouter = aiConfig.OpenRouter;
-        var modelFingerprint = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(openRouter.EmbeddingModelId)))[..8]
-            .ToLowerInvariant();
-
-        return $"{aiConfig.KnowledgeCollectionPrefix}-{modelFingerprint}-{openRouter.EmbeddingDimensions}";
     }
 }

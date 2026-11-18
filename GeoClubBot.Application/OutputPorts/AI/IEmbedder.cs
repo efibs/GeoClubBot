@@ -62,3 +62,14 @@ public interface IEmbedder
         IReadOnlyList<EmbeddingInput> inputs,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// How a source records the model its content was embedded with: the model id and its width, which
+/// together name the collection the vectors are in.
+/// </summary>
+public static class EmbeddingModelKey
+{
+    /// <summary>The key for the embedder's model now, or null when it names none (a test double).</summary>
+    public static string? Of(IEmbedder embedder) =>
+        string.IsNullOrWhiteSpace(embedder.ModelId) ? null : $"{embedder.ModelId}/{embedder.Dimensions}";
+}

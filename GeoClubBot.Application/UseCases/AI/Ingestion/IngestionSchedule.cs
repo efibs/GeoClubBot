@@ -13,7 +13,12 @@ internal static class IngestionSchedule
     /// At least a day each: an interval of zero would make every source due on every run, which for an
     /// unavailable one means asking a host about a deleted document every night.
     /// </summary>
-    public static KnowledgeSourceSchedule From(AiIngestionConfiguration settings) =>
+    /// <param name="embeddingModel">
+    /// The model in use (<see cref="UseCases.OutputPorts.AI.EmbeddingModelKey"/>), so a source indexed with
+    /// another is due at once; null leaves the model out.
+    /// </param>
+    public static KnowledgeSourceSchedule From(AiIngestionConfiguration settings, string? embeddingModel = null) =>
         new(TimeSpan.FromDays(Math.Max(1, settings.ReingestAfterDays)),
-            TimeSpan.FromDays(Math.Max(1, settings.UnavailableRecheckDays)));
+            TimeSpan.FromDays(Math.Max(1, settings.UnavailableRecheckDays)),
+            embeddingModel);
 }

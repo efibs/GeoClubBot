@@ -110,6 +110,9 @@ public sealed class ClubSocketSupervisorTests : IAsyncLifetime
         await _clock.EventuallyAsync(() => first.Sent.Count == 1, TimeSpan.FromSeconds(5));
 
         first.Close(4100, "superseded");
+        // The yield only starts once the supervisor has noticed the close; advancing before then
+        // shifts its timer past the window below on a slow runner.
+        await _clock.EventuallyAsync(() => first.Disposed, TimeSpan.FromSeconds(5), TimeSpan.Zero);
         await _clock.AdvanceSlowlyAsync(TimeSpan.FromMinutes(14), TimeSpan.FromSeconds(10));
         _connector.Attempts.Should().Be(1);
 
