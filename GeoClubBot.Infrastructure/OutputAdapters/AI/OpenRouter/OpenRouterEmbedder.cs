@@ -15,15 +15,31 @@ namespace Infrastructure.OutputAdapters.AI.OpenRouter;
 /// Builds its Refit proxy per call from <see cref="IHttpClientFactory"/> for the same reason as
 /// <see cref="RefitChatModelClient"/>: this is a singleton, and holding one HttpClient forever would
 /// pin a single handler and defeat rotation.
+///
+/// The model comes from <see cref="EmbeddingModelSelector"/>. When OpenRouter answers that it no longer
+/// serves it (404), the selector moves to the next model and the whole call is made again with that one,
+/// so no request mixes vectors of two models.
 /// </summary>
 public partial class OpenRouterEmbedder(
     IHttpClientFactory httpClientFactory,
     IOptions<AiConfiguration> configuration,
+    EmbeddingModelSelector selector,
     ILogger<OpenRouterEmbedder> logger) : IEmbedder
 {
-    public string ModelId => configuration.Value.OpenRouter.EmbeddingModelId;
+    /// <summary>For the read-only probe and tests: the configured model only, never switched.</summary>
+    public OpenRouterEmbedder(
+        IHttpClientFactory httpClientFactory,
+        IOptions<AiConfiguration> configuration,
+        ILogger<OpenRouterEmbedder> logger)
+        : this(httpClientFactory, configuration,
+            EmbeddingModelSelector.Fixed(httpClientFactory, configuration),
+            logger)
+    {
+    }
 
-    public int Dimensions => configuration.Value.OpenRouter.EmbeddingDimensions;
+    public string ModelId => selector.Current.ModelId;
+
+    public int Dimensions => selector.Current.Dimensions;
 
     public async Task<Result<IReadOnlyList<ReadOnlyMemory<float>>>> EmbedAsync(
         IReadOnlyList<EmbeddingInput> inputs,
@@ -34,13 +50,38 @@ public partial class OpenRouterEmbedder(
             return Array.Empty<ReadOnlyMemory<float>>();
         }
 
+        var model = await selector.GetAsync(cancellationToken).ConfigureAwait(false);
+        var result = await EmbedAllAsync(inputs, model, cancellationToken).ConfigureAwait(false);
+
+        if (result.IsFailure && result.Error.Code == ModelGoneCode)
+        {
+            // Once, not until something works: each model passed over costs a request, and a
+            // provider-wide outage would otherwise spend the day's allowance on the whole catalog.
+            if (await selector.ReportGoneAsync(model.ModelId, cancellationToken).ConfigureAwait(false) is { } next
+                && !string.Equals(next.ModelId, model.ModelId, StringComparison.OrdinalIgnoreCase))
+            {
+                result = await EmbedAllAsync(inputs, next, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        // Callers act on the public codes only; a model gone with nothing to move to is a failure like any other.
+        return result.IsFailure && result.Error.Code == ModelGoneCode
+            ? Error.Unexpected(EmbeddingErrorCodes.Failed, result.Error.Message)
+            : result;
+    }
+
+    private async Task<Result<IReadOnlyList<ReadOnlyMemory<float>>>> EmbedAllAsync(
+        IReadOnlyList<EmbeddingInput> inputs,
+        EmbeddingModelChoice model,
+        CancellationToken cancellationToken)
+    {
         var openRouter = configuration.Value.OpenRouter;
         var batchSize = Math.Max(1, openRouter.EmbeddingBatchSize);
         var results = new List<ReadOnlyMemory<float>>(inputs.Count);
 
         foreach (var batch in inputs.Chunk(batchSize))
         {
-            var batchResult = await EmbedBatchAsync(batch, openRouter, cancellationToken).ConfigureAwait(false);
+            var batchResult = await EmbedBatchAsync(batch, model, cancellationToken).ConfigureAwait(false);
             if (batchResult.IsFailure)
             {
                 return batchResult.Error;
@@ -52,14 +93,20 @@ public partial class OpenRouterEmbedder(
         return results;
     }
 
+    /// <summary>
+    /// OpenRouter's answer for a model it does not serve (any longer): 404 "No endpoints found for …".
+    /// Internal to this class, which turns it into a switch of model or into <see cref="EmbeddingErrorCodes.Failed"/>.
+    /// </summary>
+    private const string ModelGoneCode = "ai.embedding_model_gone";
+
     private async Task<Result<IReadOnlyList<ReadOnlyMemory<float>>>> EmbedBatchAsync(
         EmbeddingInput[] batch,
-        OpenRouterConfiguration openRouter,
+        EmbeddingModelChoice model,
         CancellationToken cancellationToken)
     {
         var payload = new OpenRouterEmbeddingRequestDto
         {
-            Model = openRouter.EmbeddingModelId,
+            Model = model.ModelId,
             Input = [.. batch.Select(ToInputDto)]
         };
 
@@ -97,13 +144,13 @@ public partial class OpenRouterEmbedder(
                     return Error.Unexpected("ai.embedding_incomplete", "The embedding provider returned an empty vector.");
                 }
 
-                if (embedding.Length != openRouter.EmbeddingDimensions)
+                if (embedding.Length != model.Dimensions)
                 {
                     // Configured dimensions drive the vector collection's schema, so a mismatch would
                     // be rejected by the store or, worse, corrupt an existing index.
-                    LogDimensionMismatch(logger, openRouter.EmbeddingModelId, openRouter.EmbeddingDimensions, embedding.Length);
+                    LogDimensionMismatch(logger, model.ModelId, model.Dimensions, embedding.Length);
                     return Error.Unexpected("ai.embedding_dimension_mismatch",
-                        $"Embedding model returned {embedding.Length} dimensions but {openRouter.EmbeddingDimensions} are configured.");
+                        $"Embedding model returned {embedding.Length} dimensions but {model.Dimensions} are configured.");
                 }
 
                 vectors.Add(embedding);
@@ -144,6 +191,8 @@ public partial class OpenRouterEmbedder(
 
         return statusCode switch
         {
+            404 => Error.Unexpected(ModelGoneCode,
+                $"The embedding provider no longer serves the model (HTTP 404){detail}"),
             429 => Error.Conflict(EmbeddingErrorCodes.RateLimited,
                 "The embedding provider is rate-limiting us right now."),
             400 or 413 or 415 or 422 => Error.Validation(EmbeddingErrorCodes.Rejected,

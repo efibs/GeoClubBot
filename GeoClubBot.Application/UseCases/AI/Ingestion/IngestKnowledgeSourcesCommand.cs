@@ -77,9 +77,11 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         var settings = ingestionConfiguration.Value;
         var now = DateTimeOffset.UtcNow;
         var limit = Math.Max(1, request.MaxSources ?? settings.MaxSourcesPerRun);
-        var schedule = IngestionSchedule.From(settings);
-
         await knowledgeIndex.EnsureCollectionAsync(cancellationToken).ConfigureAwait(false);
+
+        // Read after the collection is ensured, which settles the embedding model: a source indexed with
+        // another model is due now, since its content is in that model's collection (#503).
+        var schedule = IngestionSchedule.From(settings, EmbeddingModelKey.Of(embedder));
 
         // Read as the run goes rather than as a fixed batch, so that the slots of sources passed over for a
         // refusing host go to the next sources of other hosts.
@@ -211,9 +213,15 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         var chunks = ContentChunker.Chunk(document.Chunks);
         var contentHash = ComputeHash(chunks);
 
+        // Read per source, as the model can change during a run. Recorded with what is written: when it
+        // changed while writing, the source no longer matches the model in use and comes due again.
+        var embeddingModel = EmbeddingModelKey.Of(embedder);
+
         if (!force
             && string.Equals(source.ContentHash, contentHash, StringComparison.Ordinal)
-            && !source.NeedsImageBackfill)
+            && !source.NeedsImageBackfill
+            // The same content embedded with another model is in that model's collection, not this one.
+            && source.IsIndexedWith(embeddingModel))
         {
             source.MarkUnchanged(now);
             return Outcome.Unchanged;
@@ -249,7 +257,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             .ConfigureAwait(false);
 
         source.MarkIngested(contentHash, document.SourceUpdatedAtUtc, written.Value.ChunkCount,
-            written.Value.ImageCount, now, written.Value.ImagesDeferred);
+            written.Value.ImageCount, now, written.Value.ImagesDeferred, embeddingModel);
         LogIngested(logger, source.SourceType, source.NaturalKey, written.Value.ChunkCount, written.Value.ImageCount);
 
         return Outcome.Ingested(written.Value.ChunkCount, written.Value.RateLimited);

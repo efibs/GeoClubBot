@@ -473,6 +473,12 @@ API + Discord (controllers, slash command modules)
   automatically from whatever is available that day. The only external AI dependency.
 - **GBIF** (optional, `AI:Tools:SpeciesRange`): the free public species/occurrence API, no key;
   read-only GETs for the `species_range` tool.
+- **Embedding model switch** (#503): OpenRouter withdraws free embedding models without notice.
+  `EmbeddingModelSelector` picks `EmbeddingModelId`, then `FallbackEmbeddingModels`, then (with
+  `AutoSelectEmbeddingModel`) any free text+image model from `/api/v1/embeddings/models`. It moves on when a
+  model answers 404 or is left out of that catalog, and learns a width of 0 with one request. The Qdrant
+  collection follows the model (`IKnowledgeCollectionSource`). `KnowledgeSource.EmbeddingModel` makes
+  every source indexed with another model due at once and not "unchanged". See the AI guide.
 - **Qdrant** (optional): vector store for indexed guide content, using named `text`/`image` vectors
   merged with reciprocal-rank fusion. Both are gated behind the `AI:Active` flag — see
   [`Documentation/AiGuide.md`](Documentation/AiGuide.md), which also explains the free-tier request

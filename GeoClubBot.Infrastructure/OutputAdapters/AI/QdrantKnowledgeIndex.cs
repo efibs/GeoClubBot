@@ -15,9 +15,19 @@ namespace Infrastructure.OutputAdapters.AI;
 /// text-to-image, so a single blended search would rank every paragraph above every image regardless
 /// of relevance.
 /// </summary>
-public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionName, int vectorSize)
+public sealed class QdrantKnowledgeIndex(QdrantClient client, IKnowledgeCollectionSource collection)
     : IKnowledgeIndex
 {
+    public QdrantKnowledgeIndex(QdrantClient client, string collectionName, int vectorSize)
+        : this(client, new FixedKnowledgeCollection(collectionName, vectorSize))
+    {
+    }
+
+    /// <summary>Read on every call: the embedding model, and with it the collection, can change while the bot runs.</summary>
+    private string ActiveCollection => collection.CollectionName;
+
+    private int ActiveVectorSize => collection.VectorSize;
+
     public const string TextVectorName = "text";
     public const string ImageVectorName = "image";
 
@@ -59,8 +69,11 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
 
     public async Task EnsureCollectionAsync(CancellationToken cancellationToken = default)
     {
+        // Settles the embedding model first, so a run starts on the collection it will write to.
+        await collection.ResolveAsync(cancellationToken).ConfigureAwait(false);
+
         var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (collections.Any(name => name == collectionName))
+        if (collections.Any(name => name == ActiveCollection))
         {
             // Added after the production collection was created, so they are ensured on an existing one
             // too. Creating an index that exists is a no-op to Qdrant.
@@ -69,13 +82,13 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         }
 
         await client.CreateCollectionAsync(
-            collectionName: collectionName,
+            collectionName: ActiveCollection,
             vectorsConfig: new VectorParamsMap
             {
                 Map =
                 {
-                    [TextVectorName] = new VectorParams { Size = (ulong)vectorSize, Distance = Distance.Cosine },
-                    [ImageVectorName] = new VectorParams { Size = (ulong)vectorSize, Distance = Distance.Cosine }
+                    [TextVectorName] = new VectorParams { Size = (ulong)ActiveVectorSize, Distance = Distance.Cosine },
+                    [ImageVectorName] = new VectorParams { Size = (ulong)ActiveVectorSize, Distance = Distance.Cosine }
                 }
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -85,7 +98,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         foreach (var field in (string[])["country", "sourceType", "sourceKey", "chunkKind", "ingestRun"])
         {
             await client.CreatePayloadIndexAsync(
-                collectionName: collectionName,
+                collectionName: ActiveCollection,
                 fieldName: field,
                 schemaType: PayloadSchemaType.Keyword,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -101,13 +114,13 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
     private async Task EnsureCaptionIndexesAsync(CancellationToken cancellationToken)
     {
         await client.CreatePayloadIndexAsync(
-            collectionName: collectionName,
+            collectionName: ActiveCollection,
             fieldName: CaptionWantedKey,
             schemaType: PayloadSchemaType.Bool,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         await client.CreatePayloadIndexAsync(
-            collectionName: collectionName,
+            collectionName: ActiveCollection,
             fieldName: CaptionVersionKey,
             schemaType: PayloadSchemaType.Integer,
             cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -128,7 +141,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         }
 
         var structs = points.Select(point => ToPointStruct(point, ingestRun)).ToList();
-        return client.UpsertAsync(collectionName, structs, cancellationToken: cancellationToken);
+        return client.UpsertAsync(ActiveCollection, structs, cancellationToken: cancellationToken);
     }
 
     public async Task<IReadOnlyList<KnowledgeHit>> SearchAsync(
@@ -237,7 +250,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         }
 
         var results = await client.QueryBatchAsync(
-            collectionName,
+            ActiveCollection,
             [.. searches.Select(search => search.Search)],
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -264,7 +277,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         do
         {
             var page = await client.ScrollAsync(
-                collectionName: collectionName,
+                collectionName: ActiveCollection,
                 filter: filter,
                 limit: (uint)Math.Min(ScrollPageSize, limit - chunks.Count),
                 payloadSelector: true,
@@ -291,7 +304,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         }
 
         var points = await client.RetrieveAsync(
-            collectionName,
+            ActiveCollection,
             [.. wanted.Select(id => new PointId { Uuid = id.ToString() })],
             withPayload: true,
             withVectors: false,
@@ -333,7 +346,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
 
         var searches = asked.Select(hit => new QueryPoints
         {
-            CollectionName = collectionName,
+            CollectionName = ActiveCollection,
             // The chunk's own stored text vector, so nothing is embedded.
             Query = hit.Id,
             Using = TextVectorName,
@@ -343,7 +356,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             Params = new SearchParams { Exact = true }
         }).ToList();
 
-        var results = await client.QueryBatchAsync(collectionName, searches, cancellationToken: cancellationToken)
+        var results = await client.QueryBatchAsync(ActiveCollection, searches, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         var nearest = new Dictionary<Guid, KnowledgeHit>();
@@ -377,7 +390,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
 
         // The store's own random draw (Qdrant 1.11 and later): no vector to search by, so nothing is embedded.
         var points = await client.QueryAsync(
-            collectionName,
+            ActiveCollection,
             query: new Query { Sample = Sample.Random },
             filter: filter,
             limit: (ulong)sample.Limit,
@@ -425,7 +438,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         };
 
         var doomed = await client.ScrollAsync(
-            collectionName: collectionName,
+            collectionName: ActiveCollection,
             filter: stale,
             limit: ScrollPageSize,
             payloadSelector: false,
@@ -437,14 +450,14 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         {
             removed += doomed.Result.Count;
             await client.DeleteAsync(
-                collectionName,
+                ActiveCollection,
                 [.. doomed.Result.Select(point => point.Id)],
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // Re-scroll from the start rather than paging: the deletes above have already shifted the
             // result set, so a saved offset would skip points.
             doomed = await client.ScrollAsync(
-                collectionName: collectionName,
+                collectionName: ActiveCollection,
                 filter: stale,
                 limit: ScrollPageSize,
                 payloadSelector: false,
@@ -457,13 +470,15 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
 
     public async Task<long> CountAsync(CancellationToken cancellationToken = default)
     {
+        await collection.ResolveAsync(cancellationToken).ConfigureAwait(false);
+
         // The collection is created on the first ingest, so before then it legitimately holds
         // nothing. Reporting that as an error made a bot with an empty index look broken.
         var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        return collections.Any(name => name == collectionName)
-            ? (long)await client.CountAsync(collectionName, cancellationToken: cancellationToken).ConfigureAwait(false)
+        return collections.Any(name => name == ActiveCollection)
+            ? (long)await client.CountAsync(ActiveCollection, cancellationToken: cancellationToken).ConfigureAwait(false)
             : 0;
     }
 
@@ -479,7 +494,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         do
         {
             var page = await client.ScrollAsync(
-                collectionName: collectionName,
+                collectionName: ActiveCollection,
                 limit: ScrollPageSize,
                 payloadSelector: payloadSelector,
                 vectorsSelector: false,
@@ -507,7 +522,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        if (!collections.Any(name => name == collectionName))
+        if (!collections.Any(name => name == ActiveCollection))
         {
             return [];
         }
@@ -530,7 +545,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         do
         {
             var page = await client.ScrollAsync(
-                collectionName: collectionName,
+                collectionName: ActiveCollection,
                 filter: missing,
                 limit: ScrollPageSize,
                 payloadSelector: payloadSelector,
@@ -572,7 +587,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         do
         {
             var page = await client.ScrollAsync(
-                collectionName: collectionName,
+                collectionName: ActiveCollection,
                 filter: WantingCaption(version),
                 limit: (uint)Math.Min(limit - hits.Count, ScrollPageSize),
                 payloadSelector: true,
@@ -598,7 +613,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
             return 0;
         }
 
-        return (long)await client.CountAsync(collectionName, WantingCaption(version), exact: true, cancellationToken: cancellationToken)
+        return (long)await client.CountAsync(ActiveCollection, WantingCaption(version), exact: true, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -612,7 +627,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         // Only points still there: a guide re-indexed between the read and this write may have swept
         // one, and Qdrant refuses a payload write to an id it does not hold rather than skipping it.
         var existing = (await client.RetrieveAsync(
-                collectionName,
+                ActiveCollection,
                 [.. descriptions.Select(description => new PointId { Uuid = description.Id.ToString() })],
                 withPayload: false,
                 withVectors: false,
@@ -631,7 +646,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         foreach (var description in descriptions)
         {
             await client.SetPayloadAsync(
-                collectionName,
+                ActiveCollection,
                 new Dictionary<string, Value>
                 {
                     [GeneratedCaptionKey] = description.Caption.Text,
@@ -652,7 +667,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
 
         if (vectors.Count > 0)
         {
-            await client.UpdateVectorsAsync(collectionName, vectors, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await client.UpdateVectorsAsync(ActiveCollection, vectors, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -682,7 +697,7 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
         do
         {
             var page = await client.ScrollAsync(
-                collectionName: collectionName,
+                collectionName: ActiveCollection,
                 filter: filter,
                 limit: ScrollPageSize,
                 payloadSelector: payloadSelector,
@@ -729,14 +744,14 @@ public sealed class QdrantKnowledgeIndex(QdrantClient client, string collectionN
     private async Task<bool> CollectionExistsAsync(CancellationToken cancellationToken)
     {
         var collections = await client.ListCollectionsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-        return collections.Any(name => name == collectionName);
+        return collections.Any(name => name == ActiveCollection);
     }
 
     private QueryPoints BuildSearch(ReadOnlyMemory<float> vector, string vectorName, Filter? filter, bool exact)
     {
         var search = new QueryPoints
         {
-            CollectionName = collectionName,
+            CollectionName = ActiveCollection,
             Query = vector.ToArray(),
             Using = vectorName,
             Limit = PrefetchLimit,

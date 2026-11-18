@@ -28,6 +28,13 @@ public interface IOpenRouterApi
         [Body] OpenRouterChatRequestDto request,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The embedding models OpenRouter serves. Separate from <see cref="ReadModelsAsync"/>, which lists
+    /// chat models only, and public like it.
+    /// </summary>
+    [Get("/api/v1/embeddings/models")]
+    Task<OpenRouterModelsResponseDto> ReadEmbeddingModelsAsync(CancellationToken cancellationToken = default);
+
     [Post("/api/v1/embeddings")]
     Task<OpenRouterEmbeddingResponseDto> CreateEmbeddingsAsync(
         [Body] OpenRouterEmbeddingRequestDto request,

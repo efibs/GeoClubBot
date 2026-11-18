@@ -829,6 +829,10 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("EmbeddingModel")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
 

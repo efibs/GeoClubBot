@@ -3,6 +3,7 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Options;
 using UseCases.Abstractions;
+using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.Repositories;
 using Utilities;
 
@@ -59,6 +60,7 @@ public sealed record KnowledgeSourceSummary(
 
 public sealed class ListKnowledgeSourcesHandler(
     IKnowledgeSourceRepository sources,
+    IEmbedder embedder,
     IOptions<AiIngestionConfiguration> ingestionConfiguration)
     : IRequestHandler<ListKnowledgeSourcesQuery, Result<KnowledgeSourceListing>>
 {
@@ -70,7 +72,8 @@ public sealed class ListKnowledgeSourcesHandler(
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var schedule = IngestionSchedule.From(ingestionConfiguration.Value);
+        // With the model in use, so a source waiting to be indexed into a new model's collection shows as due.
+        var schedule = IngestionSchedule.From(ingestionConfiguration.Value, EmbeddingModelKey.Of(embedder));
 
         var page = await sources.ListAsync(FilterFor(request), Math.Clamp(request.Limit, 1, MaxLimit), cancellationToken)
             .ConfigureAwait(false);

@@ -1,7 +1,6 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Configuration;
+using Infrastructure.OutputAdapters.AI.OpenRouter;
 
 namespace GeoClubBot.RetrievalProbe;
 
@@ -69,18 +68,17 @@ public sealed class ProbeSettings
     }
 
     /// <summary>
-    /// The collection the bot writes to — the same derivation as its <c>AiServices.BuildCollectionName</c>,
-    /// from the embedding model and its width, because vectors from different models are not comparable.
-    /// If the two ever disagree, the probe says so and lists the collections that do exist.
+    /// The collection the bot writes to with its configured embedding model — the same derivation as the
+    /// bot's (<see cref="EmbeddingModelChoice.CollectionNameFor"/>), because vectors from different models
+    /// are not comparable. When the bot has moved to a fallback model (#503), name that one with
+    /// <c>--set AI:OpenRouter:EmbeddingModelId=…</c> and its width. If the two ever disagree, the probe says
+    /// so and lists the collections that do exist.
     /// </summary>
-    public static string BotCollectionName(AiConfiguration configuration)
-    {
-        var openRouter = configuration.OpenRouter;
-        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(openRouter.EmbeddingModelId)))[..8]
-            .ToLowerInvariant();
-
-        return $"{configuration.KnowledgeCollectionPrefix}-{fingerprint}-{openRouter.EmbeddingDimensions}";
-    }
+    public static string BotCollectionName(AiConfiguration configuration) =>
+        EmbeddingModelChoice.CollectionNameFor(
+            configuration.KnowledgeCollectionPrefix,
+            configuration.OpenRouter.EmbeddingModelId,
+            configuration.OpenRouter.EmbeddingDimensions);
 
     /// <summary>The directions printed when a command needs the key and none was found.</summary>
     public static string MissingKeyHelp =>

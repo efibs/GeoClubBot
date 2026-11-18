@@ -146,6 +146,43 @@ public sealed class KnowledgeSourceTests
         source.IsDueForIngest(Now.AddDays(14), TimeSpan.FromDays(14)).Should().BeTrue();
     }
 
+    [Fact]
+    public void AnIndexedSource_IsDueAtOnce_WhenItWasEmbeddedWithAnotherModel()
+    {
+        // #503: a switch of embedding model starts an empty collection. A source left for its normal
+        // re-index interval would be missing from it for two weeks.
+        var source = NewSource();
+        source.MarkIngested("hash", null, 3, 0, Now, embeddingModel: "old-model/2048");
+
+        var withNewModel = Schedule with { EmbeddingModel = "new-model/2048" };
+        var withSameModel = Schedule with { EmbeddingModel = "old-model/2048" };
+
+        source.IsDueForIngest(Now, withNewModel).Should().BeTrue();
+        source.IsDueForIngest(Now.AddDays(1), withSameModel).Should().BeFalse();
+        source.IsDueForIngest(Now.AddDays(1), Schedule).Should().BeFalse("a schedule naming no model asks nothing of it");
+    }
+
+    [Fact]
+    public void ASourceIndexedBeforeModelsWereRecorded_CountsAsIndexedWithAnotherModel()
+    {
+        var source = NewSource();
+        source.MarkIngested("hash", null, 3, 0, Now);
+
+        source.IsIndexedWith("model/2048").Should().BeFalse();
+        source.IsIndexedWith(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public void RemovingTheIndexedContent_ForgetsItsModel()
+    {
+        var source = NewSource();
+        source.MarkIngested("hash", null, 3, 0, Now, embeddingModel: "model/2048");
+
+        source.MarkIndexedContentRemoved();
+
+        source.EmbeddingModel.Should().BeNull();
+    }
+
     private static KnowledgeSource InState(KnowledgeSourceStatus status)
     {
         var source = NewSource();

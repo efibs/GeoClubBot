@@ -4,6 +4,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.AI.Ingestion;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Ingestion;
@@ -183,7 +184,7 @@ public sealed class KnowledgeSourceHandlersTests
             });
 
         var configuration = new AiIngestionConfiguration { ReingestAfterDays = 30, UnavailableRecheckDays = 60 };
-        return new ListKnowledgeSourcesHandler(_sources, Options.Create(configuration))
+        return new ListKnowledgeSourcesHandler(_sources, Substitute.For<IEmbedder>(), Options.Create(configuration))
             .Handle(new ListKnowledgeSourcesQuery(kind, sourceType, limit), CancellationToken.None);
     }
 
