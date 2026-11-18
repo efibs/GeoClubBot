@@ -286,6 +286,41 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
+    public async Task Ingest_IndexesUnchangedContentAgainAtOnce_WhenTheEmbeddingModelChanged()
+    {
+        // #503: OpenRouter withdrew the embedding model, and a new one means a new, empty collection.
+        // Unchanged content must be written into it, and without waiting out the re-index interval.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var embedder = host.Mock<IEmbedder>();
+        embedder.ModelId.Returns("old-model");
+        embedder.Dimensions.Returns(2048);
+
+        ArrangeCatalog(host, Descriptor(NewKey()));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+        ArrangeExtraction(host, Chunk("a", "unchanged text"));
+
+        await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        var sameModel = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        sameModel.Value.Attempted.Should().Be(0, "a freshly indexed source is not due again with the same model");
+
+        embedder.ModelId.Returns("new-model");
+        embedder.ClearReceivedCalls();
+
+        var newModel = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        newModel.Value.Ingested.Should().Be(1);
+        newModel.Value.Unchanged.Should().Be(0);
+        await embedder.Received().EmbedAsync(
+            Arg.Any<IReadOnlyList<EmbeddingInput>>(), Arg.Any<CancellationToken>());
+
+        var afterwards = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+        afterwards.Value.Attempted.Should().Be(0, "the source now records the model in use");
+    }
+
+    [Fact]
     public async Task Ingest_MarksAnUningestiblePageSkipped_SoItIsNotRetriedNightly()
     {
         await ResetSourcesAsync();
@@ -585,7 +620,9 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
             stored.LastAttemptedAtUtc.Should().BeNull("an untouched source keeps its place at the front of the queue");
         }
 
-        host.Mock<IEmbedder>().ReceivedCalls().Should().ContainSingle("the run stops at the first refusal");
+        host.Mock<IEmbedder>().ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IEmbedder.EmbedAsync))
+            .Should().ContainSingle("the run stops at the first refusal");
     }
 
     [Fact]

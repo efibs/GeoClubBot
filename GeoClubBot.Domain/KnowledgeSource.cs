@@ -27,7 +27,15 @@ public enum KnowledgeSourceStatus
 /// </summary>
 /// <param name="ReingestInterval">How long an indexed source is left alone before it is checked for changes.</param>
 /// <param name="UnavailableRecheckInterval">How long an unavailable source is left alone before it is checked again.</param>
-public readonly record struct KnowledgeSourceSchedule(TimeSpan ReingestInterval, TimeSpan UnavailableRecheckInterval)
+/// <param name="EmbeddingModel">
+/// The embedding model in use (<see cref="KnowledgeSource.EmbeddingModel"/>'s form). An indexed source
+/// indexed with another is due at once, because its vectors are in another model's collection. Null
+/// leaves the model out of the schedule.
+/// </param>
+public readonly record struct KnowledgeSourceSchedule(
+    TimeSpan ReingestInterval,
+    TimeSpan UnavailableRecheckInterval,
+    string? EmbeddingModel = null)
 {
     /// <summary>The recheck interval used when the caller names none.</summary>
     public static readonly TimeSpan DefaultUnavailableRecheckInterval = TimeSpan.FromDays(30);
@@ -101,6 +109,14 @@ public class KnowledgeSource : BaseEntity
 
     /// <summary>Hash of the last successfully ingested content, so unchanged sources are skipped.</summary>
     public string? ContentHash { get; private set; }
+
+    /// <summary>
+    /// The embedding model and width the indexed content was embedded with ("model/2048"), or null when
+    /// nothing is indexed or it was indexed before models were recorded. A source whose model is not the
+    /// one in use is indexed again, and its unchanged content is not skipped: each model has a collection
+    /// of its own, so the content is not in the one in use (#503).
+    /// </summary>
+    public string? EmbeddingModel { get; private set; }
 
     /// <summary>Upstream's own change marker, when it publishes one — cheaper than hashing the body.</summary>
     public DateTimeOffset? SourceUpdatedAtUtc { get; private set; }
@@ -195,9 +211,11 @@ public class KnowledgeSource : BaseEntity
         int chunkCount,
         int imageCount,
         DateTimeOffset nowUtc,
-        bool imagesDeferred = false)
+        bool imagesDeferred = false,
+        string? embeddingModel = null)
     {
         Status = KnowledgeSourceStatus.Ingested;
+        EmbeddingModel = embeddingModel;
         StatusReason = null;
         ContentHash = contentHash;
         SourceUpdatedAtUtc = sourceUpdatedAtUtc;
@@ -285,6 +303,7 @@ public class KnowledgeSource : BaseEntity
     public void MarkIndexedContentRemoved()
     {
         ContentHash = null;
+        EmbeddingModel = null;
         ChunkCount = 0;
         ImageCount = 0;
         ImagesDeferred = false;
@@ -318,6 +337,13 @@ public class KnowledgeSource : BaseEntity
         ConsecutiveFailures = 0;
         return true;
     }
+
+    /// <summary>
+    /// Whether this source's indexed content was embedded with <paramref name="embeddingModel"/>, and so
+    /// is in that model's collection. Null asks nothing of the model.
+    /// </summary>
+    public bool IsIndexedWith(string? embeddingModel) =>
+        embeddingModel is null || string.Equals(EmbeddingModel, embeddingModel, StringComparison.Ordinal);
 
     /// <summary>Records an attempt that found nothing new, so re-ingest cadence still advances.</summary>
     public void MarkUnchanged(DateTimeOffset nowUtc)
@@ -375,8 +401,11 @@ public class KnowledgeSource : BaseEntity
         }
 
         // Postponed images make the source incomplete, so it goes back in the queue at once instead
-        // of waiting weeks for its pictures.
-        return ImagesDeferred ? lastAttempt : lastAttempt + schedule.ReingestInterval;
+        // of waiting weeks for its pictures. So does content embedded with another model than the one in
+        // use: it is in that model's collection, and the one searched has none of it.
+        return ImagesDeferred || !IsIndexedWith(schedule.EmbeddingModel)
+            ? lastAttempt
+            : lastAttempt + schedule.ReingestInterval;
     }
 
     private static string Truncate(string reason) =>

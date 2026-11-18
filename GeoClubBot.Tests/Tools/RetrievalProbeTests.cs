@@ -330,9 +330,9 @@ public sealed class RetrievalProbeTests
 
     [Fact]
     public void Settings_NameTheCollectionTheBotWritesTo() =>
-        // The name the production index has, measured on 2026-09-27: the probe reads the bot's own
-        // collection without being told which one it is.
-        ProbeSettings.BotCollectionName(new AiConfiguration()).Should().Be("geo-knowledge-852af1c5-2048");
+        // The probe reads the bot's own collection without being told which one it is. The name follows
+        // the default embedding model: geo-knowledge-852af1c5-2048 until that model was withdrawn (#503).
+        ProbeSettings.BotCollectionName(new AiConfiguration()).Should().Be("geo-knowledge-4eb62d20-2048");
 
     [Fact]
     public async Task EmbeddingsOnlyHandler_LetsOnlyEmbeddingsLeave_AndCountsThem()

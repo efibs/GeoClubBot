@@ -33,4 +33,6 @@ public static class StringLengthConstants
     public const int KnowledgeSourceTitleMaxLength = 256;
     /// <summary>Must match KnowledgeSource's own clamp; the Domain layer cannot reference this project.</summary>
     public const int KnowledgeSourceStatusReasonMaxLength = 512;
+    /// <summary>An OpenRouter model id with its vector width ("nvidia/nemotron-3.5-embed-1b:free/2048").</summary>
+    public const int KnowledgeSourceEmbeddingModelMaxLength = 256;
 }

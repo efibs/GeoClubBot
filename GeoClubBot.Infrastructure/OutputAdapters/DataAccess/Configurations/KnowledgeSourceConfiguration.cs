@@ -41,6 +41,7 @@ public class KnowledgeSourceConfiguration : IEntityTypeConfiguration<KnowledgeSo
             .HasMaxLength(StringLengthConstants.KnowledgeSourceStatusReasonMaxLength);
 
         builder.Property(x => x.ContentHash).HasMaxLength(64);
+        builder.Property(x => x.EmbeddingModel).HasMaxLength(StringLengthConstants.KnowledgeSourceEmbeddingModelMaxLength);
 
         // Stored as text so values stay readable and survive an enum reordering.
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
