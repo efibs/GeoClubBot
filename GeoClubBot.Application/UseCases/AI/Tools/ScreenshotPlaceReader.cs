@@ -36,57 +36,63 @@ public static partial class ScreenshotPlaceReader
 
     /// <summary>Words that place what follows: "in Bulgaria", "near Boston", "outside Sofia".</summary>
     // Stryker disable once all : lookup data
-    private static readonly HashSet<string> PlacingWords = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> PlacingWords =
+    [
+        with(StringComparer.Ordinal),
         "in", "near", "nearby", "around", "outside", "from", "at", "between", "towards", "toward", "within"
-    };
+    ];
 
     /// <summary>Words before "of" that make it place what follows: "south of Boston", "outskirts of Sofia".</summary>
     // Stryker disable once all : lookup data
-    private static readonly HashSet<string> OfWords = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> OfWords =
+    [
+        with(StringComparer.Ordinal),
         "north", "south", "east", "west", "northeast", "northwest", "southeast", "southwest", "northeastern",
         "northwestern", "southeastern", "southwestern", "northern", "southern", "eastern", "western", "central",
         "outskirts", "suburbs", "outside", "part", "parts", "area", "region", "province", "state", "county", "city",
         "town", "village", "middle", "heart", "edge", "coast", "north east", "north west", "south east", "south west"
-    };
+    ];
 
     /// <summary>Words of a question, which never stand between a place's name and a plant word that is its own.</summary>
     // Stryker disable once all : lookup data
-    private static readonly HashSet<string> QuestionWords = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> QuestionWords =
+    [
+        with(StringComparer.Ordinal),
         "what", "which", "whats", "is", "are", "this", "that", "these", "those", "the", "a", "an", "of", "kind",
         "type", "sort", "any", "some", "and", "or", "with", "for", "to", "it", "its", "s", "here", "there", "my", "your"
-    };
+    ];
 
     /// <summary>Words after a place that make it one: "Boston area", "Sofia region".</summary>
     // Stryker disable once all : lookup data
-    private static readonly HashSet<string> AreaWords = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> AreaWords =
+    [
+        with(StringComparer.Ordinal),
         "area", "region", "suburbs", "outskirts", "metro", "vicinity", "surroundings"
-    };
+    ];
 
     /// <summary>
     /// Words that are towns of 15,000 people or more somewhere, or regions, but in a question are the
     /// word, however written: "taken in Spring", "in March", "in the picture".
     /// </summary>
     // Stryker disable once all : lookup data
-    private static readonly HashSet<string> NeverPlaces = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> NeverPlaces =
+    [
+        with(StringComparer.Ordinal),
         "january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
         "november", "december", "spring", "summer", "autumn", "fall", "winter", "monday", "tuesday", "wednesday",
         "thursday", "friday", "saturday", "sunday", "the", "this", "that", "there", "here", "it", "its", "one",
         "street", "view", "front", "back", "game", "round", "picture", "photo", "screenshot", "image", "map",
         "coverage", "camera", "car", "time", "general", "home", "best", "town", "city", "village", "country"
-    };
+    ];
 
     /// <summary>
     /// Words that are towns somewhere but in lower case are almost always the word: "in reading", "nice
     /// trees", "in mobile". Written with a capital after "in" or "near" they are taken for the town.
     /// </summary>
     // Stryker disable once all : lookup data
-    private static readonly HashSet<string> LowerCaseWords = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> LowerCaseWords =
+    [
+        with(StringComparer.Ordinal),
         "mobile", "reading", "bath", "nice", "split", "orange", "normal", "independence", "paradise", "surprise",
         "temple", "commerce", "enterprise", "liberty", "hope", "union", "central", "center", "centre", "north",
         "south", "east", "west", "middle", "deal", "sale", "sun", "bay", "beach", "lake", "river", "valley",
@@ -95,7 +101,7 @@ public static partial class ScreenshotPlaceReader
         "victory", "industry", "progress", "ocean", "sea", "island", "islands", "coast", "desert", "plain",
         "plains", "field", "fields", "farm", "road", "highway", "bridge", "church", "market", "port", "harbor",
         "harbour", "station", "rose", "lily", "ivy", "holly", "hazel", "eagle", "mission", "pleasant"
-    };
+    ];
 
     /// <summary>
     /// The place <paramref name="text"/> says the screenshot is from, or else the latest of

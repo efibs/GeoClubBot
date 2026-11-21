@@ -92,24 +92,25 @@ public class EfAiFeedbackRepository(GeoClubBotDbContext dbContext) : IAiFeedback
             .CountAsync(feedback => feedback.Comment != null, cancellationToken)
             .ConfigureAwait(false);
 
-        // Grouped by model *and* verdict, then folded in memory. The obvious shape — one group per
-        // model with two conditional Counts — is not translatable, and pivoting a handful of rows
-        // here is cheaper than the round trip that discovering it costs.
+        // One group per model with two conditional Counts, which Npgsql translates to
+        // count(*) FILTER (WHERE ...): the pivot and the ordering happen in the database. Projected to
+        // an anonymous type first, because EF cannot order by the members of a record it constructs.
         var modelRows = await query
             .Where(feedback => feedback.ModelId != null)
-            .GroupBy(feedback => new { feedback.ModelId, feedback.Rating })
-            .Select(group => new { group.Key.ModelId, group.Key.Rating, Count = group.Count() })
+            .GroupBy(feedback => feedback.ModelId!)
+            .Select(group => new
+            {
+                ModelId = group.Key,
+                Positive = group.Count(feedback => feedback.Rating == AiFeedbackRating.Positive),
+                Negative = group.Count(feedback => feedback.Rating == AiFeedbackRating.Negative),
+            })
+            .OrderByDescending(row => row.Negative)
+            .ThenByDescending(row => row.Positive)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
         var byModel = modelRows
-            .GroupBy(row => row.ModelId!, StringComparer.Ordinal)
-            .Select(group => new AiFeedbackModelCount(
-                group.Key,
-                group.Where(row => row.Rating == AiFeedbackRating.Positive).Sum(row => row.Count),
-                group.Where(row => row.Rating == AiFeedbackRating.Negative).Sum(row => row.Count)))
-            .OrderByDescending(count => count.Negative)
-            .ThenByDescending(count => count.Positive)
+            .Select(row => new AiFeedbackModelCount(row.ModelId, row.Positive, row.Negative))
             .ToList();
 
         var recentComments = await query

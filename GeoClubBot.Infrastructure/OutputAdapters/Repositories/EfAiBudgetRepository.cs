@@ -28,7 +28,7 @@ public class EfAiBudgetRepository(GeoClubBotDbContext dbContext) : IAiBudgetRepo
 
         // One statement, so concurrent turns cannot interleave a read-modify-write and overshoot the
         // provider's daily allowance. Zero rows affected means the predicate rejected the claim.
-        var rowsAffected = await dbContext.Database.ExecuteSqlInterpolatedAsync(
+        var rowsAffected = await dbContext.Database.ExecuteSqlAsync(
             $"""
              INSERT INTO "AiDailyBudgets" ("DateUtc", "RequestCount", "PromptTokens", "CompletionTokens")
              VALUES ({dateUtc}, {amount}, 0, 0)
@@ -49,7 +49,7 @@ public class EfAiBudgetRepository(GeoClubBotDbContext dbContext) : IAiBudgetRepo
         }
 
         // GREATEST keeps the counter from going negative if a release is ever double-applied.
-        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+        await dbContext.Database.ExecuteSqlAsync(
             $"""
              UPDATE "AiDailyBudgets"
              SET "RequestCount" = GREATEST(0, "RequestCount" - {amount})
@@ -64,7 +64,7 @@ public class EfAiBudgetRepository(GeoClubBotDbContext dbContext) : IAiBudgetRepo
         int completionTokens,
         CancellationToken cancellationToken = default)
     {
-        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+        await dbContext.Database.ExecuteSqlAsync(
             $"""
              INSERT INTO "AiDailyBudgets" ("DateUtc", "RequestCount", "PromptTokens", "CompletionTokens")
              VALUES ({dateUtc}, 0, {(long)promptTokens}, {(long)completionTokens})

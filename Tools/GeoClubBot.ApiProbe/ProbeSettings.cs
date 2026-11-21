@@ -97,7 +97,7 @@ public sealed record ProbeSettings(string NcfaToken, Guid? ClubId)
 
     /// <summary>
     /// The project directory, so <c>dotnet run</c> from anywhere still finds the settings file
-    /// (AppContext.BaseDirectory points at bin/&lt;config&gt;/net10.0).
+    /// (AppContext.BaseDirectory points at bin/&lt;config&gt;/net11.0).
     /// </summary>
     private static string ProjectDirectory()
     {

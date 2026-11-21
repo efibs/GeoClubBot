@@ -10,7 +10,7 @@ public sealed record ClubEventPlanOptions(bool UsePayloads, bool MemberEvents, b
 }
 
 /// <summary>Where a member ends up after a batch's events.</summary>
-public abstract record MemberChange(string UserId);
+public closed record MemberChange(string UserId);
 
 /// <summary>The member is in <see cref="ClubId"/>, with the details the join carried.</summary>
 public sealed record MemberJoined(string UserId, Guid ClubId, string Nickname, int Xp, DateTimeOffset JoinedAt)

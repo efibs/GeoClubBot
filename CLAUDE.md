@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GeoClubBot is a .NET 10.0 ASP.NET Core Web API + Discord bot for managing GeoGuessr gaming clubs. It integrates with the GeoGuessr API and Discord to track member activity, manage strikes, run daily challenges, and handle account linking.
+GeoClubBot is a .NET 11.0 ASP.NET Core Web API + Discord bot for managing GeoGuessr gaming clubs. It integrates with the GeoGuessr API and Discord to track member activity, manage strikes, run daily challenges, and handle account linking.
 
 > **New to the codebase?** See [`Documentation/DeveloperGuide.md`](Documentation/DeveloperGuide.md) for a solution map, the namespace↔folder gotcha, and step-by-step recipes answering "where do I add a slash command / use case / repository / job?".
 
@@ -87,7 +87,9 @@ and per payload index, and the default limit is exhausted part-way through a run
   to drop the `ConfigureAwait(false)` flips. `Safe Mode! … remove all mutations in X` in the log means one
   mutant of `X` did not compile and the whole method went unmeasured, usually a local that is only
   definitely assigned thanks to a `continue` or `break`; give it an initial value or read it outside a
-  pattern. Static lookup tables opt out one by one with `// Stryker disable once String`; the comment
+  pattern. `language-version` is `Preview` because Stryker's bundled Roslyn still calls C# 15's `closed`
+  a preview feature (CS8652 on every closed record, and the run stops); it only affects Stryker's own
+  compile of mutants. Static lookup tables opt out one by one with `// Stryker disable once String`; the comment
   covers only the member it precedes, however long that is.
 - **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
   (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
@@ -515,7 +517,9 @@ API + Discord (controllers, slash command modules)
 
 ## C# Conventions
 
-- .NET 10.0, C# 14, nullable reference types enabled, implicit usings enabled
+- .NET 11.0, C# 15, nullable reference types enabled, implicit usings enabled
+- Closed sets of records (`ClubPushEvent`, `MemberChange`, `AiContentPart`, `EmbeddingInput`, `RecordArea`, `DecodedClubFrame`, `SocketSignal`, `AnswerToolbox.CallData`) are `closed`: a switch *expression* over one needs no `_ =>` arm, and a new case is a compile error (CS8509) wherever it is not handled. Switch *statements* are not checked, so prefer expressions. A closed type is implicitly abstract and only derivable in its own assembly.
+- .NET 11 ships the `Microsoft.Extensions.*.Abstractions`, `Options` and `Hosting.Abstractions` packages in the base framework: referencing them is NU1510, an error here. Reference only what is not pruned (`Configuration.Binder`, `Options.DataAnnotations`, …).
 - Conventions are enforced by `.editorconfig` (no `Directory.Build.props`): file-scoped namespaces, `using` directives **outside** the namespace, `_camelCase` private fields, 4-space indent (2 for JSON/YAML), Allman braces, `var` when the type is apparent.
 
 ## graphify

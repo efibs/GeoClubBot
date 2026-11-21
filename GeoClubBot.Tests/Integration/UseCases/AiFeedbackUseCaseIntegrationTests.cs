@@ -413,7 +413,7 @@ public sealed class AiFeedbackUseCaseIntegrationTests(PostgresFixture fixture)
     private async Task BackdateFeedbackAsync(ulong ratedMessageId, DateTimeOffset createdAt)
     {
         await using var db = fixture.CreateDbContext();
-        await db.Database.ExecuteSqlInterpolatedAsync(
+        await db.Database.ExecuteSqlAsync(
             $"""UPDATE "AiAnswerFeedbacks" SET "CreatedAtUtc" = {createdAt} WHERE "RatedDiscordMessageId" = {(decimal)ratedMessageId}""");
     }
 

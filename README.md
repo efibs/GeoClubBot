@@ -1,6 +1,6 @@
 # 🌍 GeoClubBot
 
-A .NET 10 **ASP.NET Core Web API + Discord bot** for running [GeoGuessr](https://www.geoguessr.com/) gaming clubs.
+A .NET 11 **ASP.NET Core Web API + Discord bot** for running [GeoGuessr](https://www.geoguessr.com/) gaming clubs.
 It talks to the GeoGuessr API and Discord to track member activity, manage strikes, run daily
 challenges, remind members of their streak and the club mission board, and link Discord accounts
 to GeoGuessr profiles.
@@ -12,7 +12,7 @@ to GeoGuessr profiles.
 [![Mutation testing](https://github.com/efibs/GeoClubBot/actions/workflows/mutation.yml/badge.svg)](https://github.com/efibs/GeoClubBot/actions/workflows/mutation.yml)
 
 <!-- Project -->
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![.NET 11](https://img.shields.io/badge/.NET-11.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Docker image](https://img.shields.io/badge/ghcr.io-geo--club--bot-2496ED?logo=docker&logoColor=white)](https://github.com/efibs/GeoClubBot/pkgs/container/geo-club-bot)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -103,7 +103,7 @@ flowchart TD
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/) (pinned in [`global.json`](global.json))
+- [.NET 11 SDK](https://dotnet.microsoft.com/) (pinned in [`global.json`](global.json))
 - [Docker](https://www.docker.com/) (for PostgreSQL, and for the integration tests)
 
 ### Run locally
