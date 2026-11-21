@@ -30,20 +30,20 @@ public sealed class AiTurnExcerptIdsMigrationIntegrationTests(PostgresFixture fi
 
         var turnId = Guid.NewGuid();
         var feedbackId = Guid.NewGuid();
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "AiConversationTurns"
                 ("TurnId", "ConversationId", "DiscordMessageId", "ChannelId", "AuthorDiscordUserId", "Role", "Content",
                  "ImageUrls", "RetrievedSourceUrls", "CitedSourceUrls", "ChunkMessageIds", "Depth", "CreatedAtUtc")
             VALUES ({turnId}, 1, 2, 3, 4, 'Assistant', 'An answer [1].', ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[],
                     ARRAY[]::numeric(20,0)[], 1, {DateTimeOffset.UtcNow})
             """);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "AiAnswerFeedbacks"
                 ("FeedbackId", "RatedDiscordMessageId", "ConversationId", "ChannelId", "ReviewerDiscordUserId", "Rating",
                  "AnswerDepth", "CreatedAtUtc", "UpdatedAtUtc")
             VALUES ({feedbackId}, 2, 1, 3, 5, 'Negative', 1, {DateTimeOffset.UtcNow}, {DateTimeOffset.UtcNow})
             """);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
+        await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "AiFeedbackTurns"
                 ("FeedbackTurnId", "FeedbackId", "Ordinal", "Role", "AuthorDiscordUserId", "DiscordMessageId", "Content",
                  "ImageUrls", "RetrievedSourceUrls", "CitedSourceUrls", "CreatedAtUtc")

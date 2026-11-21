@@ -1291,7 +1291,7 @@ public sealed class AiConversationUseCaseIntegrationTests(PostgresFixture fixtur
     private async Task ResetTodaysBudgetAsync()
     {
         await using var db = fixture.CreateDbContext();
-        await db.Database.ExecuteSqlInterpolatedAsync(
+        await db.Database.ExecuteSqlAsync(
             $"""DELETE FROM "AiDailyBudgets" WHERE "DateUtc" = {DateOnly.FromDateTime(DateTime.UtcNow)}""");
     }
 

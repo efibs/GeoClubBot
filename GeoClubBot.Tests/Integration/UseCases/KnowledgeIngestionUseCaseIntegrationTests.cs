@@ -1594,21 +1594,21 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     private async Task BackdateLastAttemptAsync(TimeSpan age)
     {
         await using var db = fixture.CreateDbContext();
-        await db.Database.ExecuteSqlInterpolatedAsync(
+        await db.Database.ExecuteSqlAsync(
             $"""UPDATE "KnowledgeSources" SET "LastAttemptedAtUtc" = {DateTimeOffset.UtcNow - age}""");
     }
 
     private async Task BackdateRemovalAsync(string naturalKey, TimeSpan age)
     {
         await using var db = fixture.CreateDbContext();
-        await db.Database.ExecuteSqlInterpolatedAsync(
+        await db.Database.ExecuteSqlAsync(
             $"""UPDATE "KnowledgeSources" SET "RemovedFromSyncAtUtc" = {DateTimeOffset.UtcNow - age} WHERE "NaturalKey" = {naturalKey}""");
     }
 
     private async Task ResetTodaysBudgetAsync()
     {
         await using var db = fixture.CreateDbContext();
-        await db.Database.ExecuteSqlInterpolatedAsync(
+        await db.Database.ExecuteSqlAsync(
             $"""DELETE FROM "AiDailyBudgets" WHERE "DateUtc" = {DateOnly.FromDateTime(DateTime.UtcNow)}""");
     }
 
