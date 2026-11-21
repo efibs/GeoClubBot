@@ -256,7 +256,6 @@ public partial class OpenRouterEmbedder(
                 }
             ]
         },
-        _ => throw new NotSupportedException($"Unsupported embedding input '{input.GetType().Name}'.")
     };
 
     [LoggerMessage(LogLevel.Debug, "Embedded {VectorCount} input(s) using {TokenCount} token(s).")]

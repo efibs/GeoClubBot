@@ -46,9 +46,10 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
 
     public async Task<List<LatestHistoryEntryProjection>> ReadLatestHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default)
     {
-        // GroupBy(UserId).Select(g => g.OrderByDescending(...).First()) doesn't translate on
-        // EF Core 10 / Npgsql; fall back to the correlated-subquery pattern (now correctly
-        // scoped by ClubId so a later entry in another club can't shadow the result).
+        // A correlated max() subquery, scoped by ClubId so a later entry in another club can't shadow
+        // the result. (Timestamp, UserId) is the key, so it yields one row per user. EF Core 11 does
+        // translate GroupBy(UserId) with OrderByDescending(...).First() or MaxBy, but into a
+        // ROW_NUMBER() window joined back to the groups, or one subquery per column: neither is simpler.
         return await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
             .Where(e => e.ClubId == clubId)

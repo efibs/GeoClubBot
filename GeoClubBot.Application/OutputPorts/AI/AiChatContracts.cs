@@ -11,7 +11,7 @@ public enum AiChatRole
 }
 
 /// <summary>One piece of a message. Messages are multimodal, so a single turn mixes text and images.</summary>
-public abstract record AiContentPart;
+public closed record AiContentPart;
 
 public sealed record AiTextPart(string Text) : AiContentPart;
 

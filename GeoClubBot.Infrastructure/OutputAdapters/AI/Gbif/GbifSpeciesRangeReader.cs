@@ -47,10 +47,11 @@ public sealed partial class GbifSpeciesRangeReader(
     private const string BackboneDatasetKey = "d7dddbf4-2cf0-4f39-9b2a-bb099caae36c";
 
     /// <summary>Ranks a distribution means something for. Above a genus, "where is it recorded" is everywhere.</summary>
-    private static readonly HashSet<string> AcceptedRanks = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> AcceptedRanks =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "GENUS", "SPECIES", "SUBSPECIES", "VARIETY", "FORM"
-    };
+    ];
 
     /// <summary>Cached answers at most; past it the cache starts again rather than grow without bound.</summary>
     private const int MaxCachedAnswers = 512;

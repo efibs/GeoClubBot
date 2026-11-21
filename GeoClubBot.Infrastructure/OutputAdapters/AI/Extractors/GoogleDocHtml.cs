@@ -651,8 +651,9 @@ internal static partial class GoogleDocHtml
     }
 
     /// <summary>Words two lines share without sharing a subject.</summary>
-    private static readonly HashSet<string> FillerWords = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> FillerWords =
+    [
+        with(StringComparer.Ordinal),
         "photo", "photos", "picture", "pictures", "image", "images", "example", "examples", "with", "from", "that", "this",
         "these", "those", "there", "their", "they", "them", "then", "than", "have", "been", "being", "were", "will", "would",
         "could", "should", "which", "what", "when", "where", "while", "also", "more", "most", "much", "many", "some", "such",
@@ -660,7 +661,7 @@ internal static partial class GoogleDocHtml
         "found", "find", "seen", "common", "commonly", "often", "usually", "sometimes", "rarely", "mostly", "mainly",
         "coverage", "google", "street", "view", "country", "region", "regions", "area", "areas", "meta", "metas", "guide",
         "north", "south", "east", "west", "northern", "southern", "eastern", "western", "central", "left", "right",
-    };
+    ];
 
     /// <summary>
     /// Adds a paragraph to a caption: whole, and out of the text chunks, when it is short enough; else

@@ -154,14 +154,32 @@ public sealed partial class GeoNamesPlaceDirectory(
             await DownloadAsync(url, path, settings.PlantIdentification.Location.DownloadTimeoutSeconds).ConfigureAwait(false);
         }
 
-        await using var file = File.OpenRead(path);
-        using var archive = new ZipArchive(file, ZipArchiveMode.Read);
-        var entry = archive.Entries.FirstOrDefault(candidate => candidate.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-                    ?? throw new InvalidDataException($"{path} holds no towns file.");
+        return await ReadTownsArchiveAsync(path).ConfigureAwait(false);
+    }
 
-        await using var stream = entry.Open();
-        using var reader = new StreamReader(stream);
-        return ParseTowns(reader);
+    /// <summary>
+    /// The towns of a downloaded archive. A damaged one is deleted, so the next try downloads it again
+    /// instead of failing on the same file for ever: a cut-off download, or since .NET 11 an entry whose
+    /// CRC-32 does not match what was read.
+    /// </summary>
+    internal static async Task<IReadOnlyList<TownRow>> ReadTownsArchiveAsync(string path)
+    {
+        try
+        {
+            await using var file = File.OpenRead(path);
+            using var archive = new ZipArchive(file, ZipArchiveMode.Read);
+            var entry = archive.Entries.FirstOrDefault(candidate => candidate.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                        ?? throw new InvalidDataException($"{path} holds no towns file.");
+
+            await using var stream = entry.Open();
+            using var reader = new StreamReader(stream);
+            return ParseTowns(reader);
+        }
+        catch (InvalidDataException)
+        {
+            File.Delete(path);
+            throw;
+        }
     }
 
     /// <summary>

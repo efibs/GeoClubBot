@@ -32,11 +32,12 @@ public static partial class PlantRangeQuestion
     /// Words that are not a name but a pointer to one ("where can I find this?") or the person asking
     /// ("where do they grow rice"). A question whose thing starts with one is not read.
     /// </summary>
-    private static readonly HashSet<string> NotANameWords = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> NotANameWords =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "this", "that", "these", "those", "it", "them", "they", "one", "ones", "something", "anything",
         "such", "which", "what", "he", "she", "i", "you", "we", "people", "players", "more", "other",
-    };
+    ];
 
     /// <summary>
     /// Words that only say what kind of plant it is, dropped as a last try: GBIF knows "khasi pine",
@@ -45,10 +46,11 @@ public static partial class PlantRangeQuestion
     /// common name: "dragon" is a common name of tarragon. So a lone word left this way is taken only by
     /// its scientific name (<see cref="PlantRangeName.ScientificOnly"/>).
     /// </summary>
-    private static readonly HashSet<string> KindWords = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> KindWords =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "tree", "trees", "plant", "plants", "bush", "bushes", "shrub", "shrubs", "flower", "flowers",
-    };
+    ];
 
     /// <summary>
     /// The names a question asks the whereabouts of across the world, best first; empty when it asks no

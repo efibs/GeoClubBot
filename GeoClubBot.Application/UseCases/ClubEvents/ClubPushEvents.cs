@@ -11,7 +11,7 @@ public readonly record struct PushOrder(DateTimeOffset? ServerTime, long Sequenc
 /// Something GeoGuessr's socket reported about a club, or a refresh the socket service asks for. The
 /// events of a batch are turned into work by <see cref="ClubEventPlanner"/>.
 /// </summary>
-public abstract record ClubPushEvent(Guid ClubId, PushOrder Order);
+public closed record ClubPushEvent(Guid ClubId, PushOrder Order);
 
 /// <summary><c>ClubMemberJoined</c> carrying every field the bot stores about a member.</summary>
 public sealed record ClubMemberJoinedPush(

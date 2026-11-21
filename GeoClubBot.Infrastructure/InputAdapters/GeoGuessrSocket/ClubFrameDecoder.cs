@@ -6,7 +6,7 @@ using UseCases.UseCases.ClubEvents;
 namespace Infrastructure.InputAdapters.GeoGuessrSocket;
 
 /// <summary>What a frame received on a club's socket means to the bot.</summary>
-public abstract record DecodedClubFrame
+public closed record DecodedClubFrame
 {
     /// <param name="FieldSet">The payload's property names (nested ones as <c>parent.child</c>), for the field-set log.</param>
     /// <param name="PayloadUnusable">A member event whose payload lacked what the bot needs; <paramref name="Event"/> is then a roster re-read.</param>

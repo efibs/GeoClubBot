@@ -43,16 +43,18 @@ public sealed partial class PlantNetPlantIdentifier(
     private const int MaxCachedAnswers = 256;
 
     /// <summary>What Pl@ntNet takes: JPEG and PNG.</summary>
-    private static readonly HashSet<string> AcceptedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> AcceptedContentTypes =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "image/jpeg", "image/jpg", "image/png"
-    };
+    ];
 
     /// <summary>What is converted to JPEG before it is sent: what Discord serves besides JPEG and PNG.</summary>
-    private static readonly HashSet<string> ConvertedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> ConvertedContentTypes =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "image/webp", "image/gif", "image/bmp"
-    };
+    ];
 
     /// <summary>The quality a converted picture is sent at: what Pl@ntNet recommends.</summary>
     private const int JpegQuality = 90;

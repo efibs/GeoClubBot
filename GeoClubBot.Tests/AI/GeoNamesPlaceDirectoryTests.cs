@@ -1,3 +1,5 @@
+using System.IO.Compression;
+using System.Text;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.AI.Regions;
 using Xunit;
@@ -38,5 +40,64 @@ public sealed class GeoNamesPlaceDirectoryTests
         towns[0].Aliases.Should().BeEquivalentTo(["Baston", "Bostonas", "Bostono", "Bostun"], "BOS is a code, Boston the name itself");
         towns[1].Aliases.Should().Contain(["Saigon", "Sai Gon", "HCM City"]).And.NotContain("胡志明市").And.NotContain("HCMC").And.NotContain("Thanh pho Ho Chi Minh", "five words");
         towns[2].Aliases.Should().BeEmpty("a town of 37,297 keeps its own name alone");
+    }
+
+    [Fact]
+    public async Task ReadsTheTownsArchive_AndKeepsIt()
+    {
+        var path = WriteArchive(Rows, damage: false);
+        try
+        {
+            var towns = await GeoNamesPlaceDirectory.ReadTownsArchiveAsync(path);
+
+            towns.Select(town => town.Name).Should().Equal("Boston", "Ho Chi Minh City", "Braintree");
+            File.Exists(path).Should().BeTrue();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task DeletesADamagedArchive_SoTheNextTryDownloadsItAgain()
+    {
+        // One byte of the stored towns changed: the zip's structure is intact, only the entry's CRC-32
+        // no longer matches, which .NET 11 checks as the entry is read.
+        var path = WriteArchive(Rows, damage: true);
+        try
+        {
+            var read = () => GeoNamesPlaceDirectory.ReadTownsArchiveAsync(path);
+
+            await read.Should().ThrowAsync<InvalidDataException>();
+            File.Exists(path).Should().BeFalse();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static string WriteArchive(string rows, bool damage)
+    {
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = archive.CreateEntry("cities15000.txt", CompressionLevel.NoCompression);
+            using var stream = entry.Open();
+            stream.Write(Encoding.UTF8.GetBytes(rows));
+        }
+
+        var bytes = buffer.ToArray();
+        if (damage)
+        {
+            var at = bytes.AsSpan().IndexOf("Braintree"u8);
+            at.Should().BePositive("the towns are stored uncompressed");
+            bytes[at] = (byte)'X';
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"towns-{Guid.NewGuid():N}.zip");
+        File.WriteAllBytes(path, bytes);
+        return path;
     }
 }

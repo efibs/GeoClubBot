@@ -165,7 +165,6 @@ public sealed partial class ApplyClubEventsHandler(
             {
                 MemberJoined joined => [joined.ClubId],
                 MemberLeft left => left.FromClubs,
-                _ => [],
             })
             .Concat(plan.LevelChecks)
             .Concat(plan.LevelUpdates.Keys)
