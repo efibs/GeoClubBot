@@ -33,7 +33,7 @@
         <PackageReference Include="Polly.Core" Version="8.9.1" />
         <PackageReference Include="Polly.RateLimiting" Version="8.9.0" />
         <PackageReference Include="Polly.Extensions" Version="8.9.1" />
-        <PackageReference Include="Refit" Version="15.2.0" />
+        <PackageReference Include="Refit" Version="17.0.0" />
         <PackageReference Include="Refit.HttpClientFactory" Version="15.2.0" />
         <PackageReference Include="Swashbuckle.AspNetCore" Version="11.0.1" />
     </ItemGroup>
