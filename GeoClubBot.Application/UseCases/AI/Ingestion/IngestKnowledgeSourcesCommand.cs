@@ -39,6 +39,14 @@ public sealed record IngestKnowledgeSourcesCommand(
 /// Sources whose chunks were removed from the index — still gone a recheck later, or unlisted by every
 /// catalogue past the grace period — so answers stop citing links that lead nowhere.
 /// </param>
+/// <param name="EmbeddingFailed">
+/// Sources left exactly as they were because the embedding provider failed on its side (unreachable,
+/// overloaded, timed out) — nothing about the source. Not counted as attempted; first in line next run.
+/// </param>
+/// <param name="EmbedderUnavailable">
+/// True when the run stopped after <c>AI:Ingestion:MaxConsecutiveEmbeddingFailures</c> such sources in a
+/// row. Carrying on would only spend the allowance on requests an open circuit refuses unsent.
+/// </param>
 public sealed record IngestionReport(
     int Attempted,
     int Ingested,
@@ -52,7 +60,9 @@ public sealed record IngestionReport(
     int NotPublic = 0,
     int TooLarge = 0,
     int HostRefused = 0,
-    int Removed = 0)
+    int Removed = 0,
+    int EmbeddingFailed = 0,
+    bool EmbedderUnavailable = false)
 {
     /// <summary>Sources that are deleted or no longer shared, together.</summary>
     public int Unavailable => Gone + NotPublic;
@@ -104,6 +114,11 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         // makes of the guide hosts, and a source passed over for its host makes none.
         var handedOver = 0;
 
+        // Sources in a row whose text could not be embedded for the provider's own reasons. A source
+        // written resets it; one that never reached the embedder (unchanged, refused by its host) says nothing.
+        var embeddingFailures = 0;
+        var maxEmbeddingFailures = Math.Max(1, settings.MaxConsecutiveEmbeddingFailures);
+
         await foreach (var source in due.ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -140,6 +155,23 @@ public sealed partial class IngestKnowledgeSourcesHandler(
                 // the same wall.
                 LogRateLimited(logger, report.Attempted);
                 break;
+            }
+
+            if (outcome.EmbedderFailed)
+            {
+                // An overloaded model and then the open circuit after it fail every source the same way,
+                // instantly, and each attempt still claims its requests from the day's allowance (#503
+                // follow-up: 590 sources marked failed in three nights).
+                if (++embeddingFailures >= maxEmbeddingFailures)
+                {
+                    LogEmbedderUnavailable(logger, embeddingFailures, report.Attempted);
+                    report.StopForEmbedder();
+                    break;
+                }
+            }
+            else if (outcome.Kind == OutcomeKind.Ingested)
+            {
+                embeddingFailures = 0;
             }
 
             if (handedOver >= limit)
@@ -244,6 +276,15 @@ public sealed partial class IngestKnowledgeSourcesHandler(
             if (written.Error.Code == EmbeddingErrorCodes.RateLimited)
             {
                 return Outcome.RateLimitedBeforeWriting;
+            }
+
+            // Only a rejection is about the request, so only a rejection is the source's failure. The
+            // rest — unreachable, overloaded, timed out, an open circuit — is the provider's moment, and
+            // recording it against the source backed off every source of a run one after another.
+            if (written.Error.Code != EmbeddingErrorCodes.Rejected)
+            {
+                LogEmbeddingFailed(logger, source.SourceType, source.NaturalKey, written.Error.Code, written.Error.Message);
+                return Outcome.EmbeddingFailedBeforeWriting;
             }
 
             source.MarkFailed(written.Error.Message, now);
@@ -882,19 +923,28 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         RateLimitedBeforeWriting,
 
         /// <summary>Its host refused the request; the source is left as it was.</summary>
-        HostRefused
+        HostRefused,
+
+        /// <summary>The embedding provider failed on its side before anything was written; the source is left as it was.</summary>
+        EmbeddingFailedBeforeWriting
     }
 
     /// <param name="Gone">For an unavailable source, whether it was deleted rather than unshared.</param>
     /// <param name="TooLarge">For a skipped source, whether every export of it was too large.</param>
     /// <param name="Removed">Whether the source's chunks were removed from the index.</param>
+    /// <param name="EmbedderFailed">
+    /// Whether the source's text could not be embedded for the provider's own reasons, so nothing was
+    /// written. A failed group of pictures does not count: the rest of the source was written, and the
+    /// pictures are owed (see <see cref="IngestKnowledgeSourcesHandler.EmbedImageGroupAsync"/>).
+    /// </param>
     private readonly record struct Outcome(
         OutcomeKind Kind,
         int ChunkCount = 0,
         bool RateLimited = false,
         bool Gone = false,
         bool TooLarge = false,
-        bool Removed = false)
+        bool Removed = false,
+        bool EmbedderFailed = false)
     {
         public static Outcome Ingested(int chunkCount, bool rateLimited) =>
             new(OutcomeKind.Ingested, chunkCount, rateLimited);
@@ -909,6 +959,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         public static readonly Outcome OutOfBudget = new(OutcomeKind.OutOfBudget);
         public static readonly Outcome RateLimitedBeforeWriting = new(OutcomeKind.RateLimitedBeforeWriting, RateLimited: true);
         public static readonly Outcome HostRefused = new(OutcomeKind.HostRefused);
+        public static readonly Outcome EmbeddingFailedBeforeWriting = new(OutcomeKind.EmbeddingFailedBeforeWriting, EmbedderFailed: true);
     }
 
     private sealed class Counters
@@ -927,6 +978,10 @@ public sealed partial class IngestKnowledgeSourcesHandler(
         private int Chunks { get; set; }
         private bool BudgetExhausted { get; set; }
         private bool RateLimited { get; set; }
+        private int EmbeddingFailed { get; set; }
+        private bool EmbedderUnavailable { get; set; }
+
+        public void StopForEmbedder() => EmbedderUnavailable = true;
 
         public void Apply(Outcome outcome)
         {
@@ -944,6 +999,10 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
                 case OutcomeKind.HostRefused:
                     HostRefused++;
+                    return;
+
+                case OutcomeKind.EmbeddingFailedBeforeWriting:
+                    EmbeddingFailed++;
                     return;
             }
 
@@ -984,7 +1043,7 @@ public sealed partial class IngestKnowledgeSourcesHandler(
 
         public IngestionReport ToReport() =>
             new(Attempted, Ingested, Unchanged, Failed, Skipped, Chunks, BudgetExhausted, RateLimited,
-                Gone, NotPublic, TooLarge, HostRefused, Removed);
+                Gone, NotPublic, TooLarge, HostRefused, Removed, EmbeddingFailed, EmbedderUnavailable);
     }
 
     [LoggerMessage(LogLevel.Information, "Indexed {SourceType}:{NaturalKey} - {ChunkCount} chunk(s), {ImageCount} image(s).")]
@@ -1040,6 +1099,14 @@ public sealed partial class IngestKnowledgeSourcesHandler(
     [LoggerMessage(LogLevel.Warning,
         "Stopping ingestion after {Attempted} source(s): the AI provider is still rate-limiting after its window was waited out.")]
     static partial void LogRateLimited(ILogger logger, int attempted);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Could not embed {SourceType}:{NaturalKey} ({Code}): {Reason} The provider's trouble, not the source's; left as it was for a later run.")]
+    static partial void LogEmbeddingFailed(ILogger logger, string sourceType, string naturalKey, string code, string reason);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Stopping ingestion after {Attempted} source(s): embedding failed on the provider's side for {Failures} source(s) in a row (AI:Ingestion:MaxConsecutiveEmbeddingFailures).")]
+    static partial void LogEmbedderUnavailable(ILogger logger, int failures, int attempted);
 
     [LoggerMessage(LogLevel.Information,
         "Stopping ingestion after {Attempted} source(s): indexing has used its share of today's AI allowance.")]

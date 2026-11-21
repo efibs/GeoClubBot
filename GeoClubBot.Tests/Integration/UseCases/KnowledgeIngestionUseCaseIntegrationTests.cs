@@ -626,6 +626,105 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
+    public async Task Ingest_LeavesASourceAsItWas_WhenTheEmbeddingProviderFailsOnItsSide()
+    {
+        // Production, 2026-11-19..21: an overloaded model, then the circuit it opened, marked 590 sources
+        // failed, and failed sources are retried only a few a run. None of it was the sources' doing.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        ArrangeExtraction(host, _ => Unavailable("The embedding provider could not be reached."), Chunk("a", "text"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Failed.Should().Be(0);
+        result.Value.Attempted.Should().Be(0);
+        result.Value.EmbeddingFailed.Should().Be(1);
+        result.Value.EmbedderUnavailable.Should().BeFalse("one failure is below the configured three");
+
+        var stored = await ReadSourceAsync(key);
+        stored!.Status.Should().Be(KnowledgeSourceStatus.Pending);
+        stored.ConsecutiveFailures.Should().Be(0);
+        stored.LastAttemptedAtUtc.Should().BeNull("an untouched source keeps its place at the front of the queue");
+    }
+
+    [Fact]
+    public async Task Ingest_StopsTheRun_AfterTheConfiguredEmbeddingFailuresInARow()
+    {
+        await ResetSourcesAsync();
+
+        using var host = CreateHost(maxEmbeddingFailures: 3);
+        var keys = Enumerable.Range(0, 5).Select(_ => NewKey()).ToArray();
+        ArrangeCatalog(host, [.. keys.Select(key => Descriptor(key))]);
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        ArrangeExtraction(host, _ => Unavailable("HTTP 503: Service is overloaded"), Chunk("a", "text"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.EmbedderUnavailable.Should().BeTrue();
+        result.Value.EmbeddingFailed.Should().Be(3);
+        result.Value.Failed.Should().Be(0);
+
+        host.Mock<IEmbedder>().ReceivedCalls()
+            .Count(call => call.GetMethodInfo().Name == nameof(IEmbedder.EmbedAsync))
+            .Should().Be(3, "the run stops at the third failure instead of trying the other two sources");
+
+        foreach (var key in keys)
+        {
+            (await ReadSourceAsync(key))!.Status.Should().Be(KnowledgeSourceStatus.Pending);
+        }
+    }
+
+    [Fact]
+    public async Task Ingest_CountsOnlyEmbeddingFailuresInARow_SoASourceWrittenInBetweenResetsTheCount()
+    {
+        await ResetSourcesAsync();
+
+        using var host = CreateHost(maxEmbeddingFailures: 2);
+        var keys = Enumerable.Range(0, 4).Select(_ => NewKey()).ToArray();
+        ArrangeCatalog(host, [.. keys.Select(key => Descriptor(key))]);
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        // One text chunk a source, so one request a source: fail, succeed, fail, succeed.
+        var calls = 0;
+        ArrangeExtraction(
+            host,
+            inputs => ++calls % 2 == 1 ? Unavailable("timed out") : EmbedEverything(inputs),
+            Chunk("a", "text"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.EmbedderUnavailable.Should().BeFalse();
+        result.Value.EmbeddingFailed.Should().Be(2);
+        result.Value.Ingested.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Ingest_StillFailsASource_WhoseTextTheProviderRejects()
+    {
+        // A rejection is about the request, so it stays the source's failure, retried with backoff.
+        await ResetSourcesAsync();
+
+        using var host = CreateHost();
+        var key = NewKey();
+        ArrangeCatalog(host, Descriptor(key));
+        await host.SendAsync(new SyncSourceCatalogsCommand());
+
+        ArrangeExtraction(host, _ => Rejected("The embedding provider rejected the request (HTTP 400)"), Chunk("a", "text"));
+
+        var result = await host.SendAsync(new IngestKnowledgeSourcesCommand(MaxSources: 10));
+
+        result.Value.Failed.Should().Be(1);
+        result.Value.EmbeddingFailed.Should().Be(0);
+        (await ReadSourceAsync(key))!.Status.Should().Be(KnowledgeSourceStatus.Failed);
+    }
+
+    [Fact]
     public async Task Ingest_KeepsTheText_AndStopsTheRun_WhenImagesAreStillRateLimited()
     {
         await ResetSourcesAsync();
@@ -1546,10 +1645,12 @@ public sealed class KnowledgeIngestionUseCaseIntegrationTests(PostgresFixture fi
         int batchSize = 32,
         int maxRequestBytes = 8 * 1024 * 1024,
         bool embedImages = true,
-        int maxFailingRetries = 5) =>
+        int maxFailingRetries = 5,
+        int maxEmbeddingFailures = 3) =>
         new(fixture.ConnectionString, configurationValues: new Dictionary<string, string?>
         {
             ["AI:Ingestion:MaxFailingRetriesPerRun"] = maxFailingRetries.ToString(),
+            ["AI:Ingestion:MaxConsecutiveEmbeddingFailures"] = maxEmbeddingFailures.ToString(),
             ["AI:Ingestion:UnavailableRecheckDays"] = "30",
             ["AI:Ingestion:RemovedSourceGraceDays"] = "30",
             ["AI:Active"] = "true",

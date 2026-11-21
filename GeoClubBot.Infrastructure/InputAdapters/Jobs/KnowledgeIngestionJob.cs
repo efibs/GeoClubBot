@@ -53,6 +53,11 @@ public partial class KnowledgeIngestionJob(
                 {
                     LogRateLimited(logger);
                 }
+
+                if (report.EmbeddingFailed > 0 || report.EmbedderUnavailable)
+                {
+                    LogEmbeddingFailed(logger, report.EmbeddingFailed, report.EmbedderUnavailable);
+                }
             }
         }
         catch (Exception ex)
@@ -75,6 +80,10 @@ public partial class KnowledgeIngestionJob(
     [LoggerMessage(LogLevel.Warning,
         "Ingestion stopped early: the AI provider kept rate-limiting after its window was waited out.")]
     static partial void LogRateLimited(ILogger<KnowledgeIngestionJob> logger);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Ingestion left {Sources} source(s) for a later run because the embedding provider failed on its side; stopped early: {Stopped}.")]
+    static partial void LogEmbeddingFailed(ILogger<KnowledgeIngestionJob> logger, int sources, bool stopped);
 
     [LoggerMessage(LogLevel.Error, "Failed to run AI knowledge ingestion.")]
     static partial void LogFailed(ILogger<KnowledgeIngestionJob> logger, Exception ex);

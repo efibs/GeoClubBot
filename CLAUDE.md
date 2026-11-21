@@ -431,7 +431,8 @@ API + Discord (controllers, slash command modules)
   Google's 401/403 become `KnowledgeSourceStatus.Unavailable`, rechecked after
   `AI:Ingestion:UnavailableRecheckDays` (a second "gone" sweeps the chunks); a guide site's 401/403, a
   429 or an open circuit (`HostRefusedRequestException`) leave the source untouched and skip that host
-  for the run. The schedule lives in one place, `KnowledgeSource.NextAttemptAtUtc`, read by the queue
+  for the run. An embedding failure that is not a rejection (unreachable, overloaded, open circuit) leaves the
+  source untouched too, and `AI:Ingestion:MaxConsecutiveEmbeddingFailures` (3) in a row end the run. The schedule lives in one place, `KnowledgeSource.NextAttemptAtUtc`, read by the queue
   and `/ai sources`; `/ai source-retry` re-queues. Answers
   can be rated (👍/👎 reaction, or a message context menu for a written comment); a rated conversation
   is **copied** into `AiAnswerFeedbacks`/`AiFeedbackTurns`, which the conversation retention sweep
