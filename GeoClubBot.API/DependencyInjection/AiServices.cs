@@ -11,6 +11,7 @@ using Infrastructure.OutputAdapters.AI.ImageRelay;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Infrastructure.OutputAdapters.AI.PlantNet;
 using Infrastructure.OutputAdapters.AI.Regions;
+using Infrastructure.OutputAdapters.AI.StreetView;
 using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -21,6 +22,8 @@ using UseCases.OutputPorts.Discord;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Quiz;
 using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.Review;
+using UseCases.UseCases.AI.StreetView;
 using UseCases.UseCases.AI.Tools;
 
 namespace GeoClubBot.DependencyInjection;
@@ -214,13 +217,35 @@ public static class AiServices
         services.AddHttpClient(GeoNnStreetViewGuesser.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
         services.AddSingleton<IStreetViewGuesser, GeoNnStreetViewGuesser>();
 
+        // A round's panorama, read as the game showed it from Google's free thumbnail endpoint, which
+        // answers 403 to anything that does not look like a browser; and Maps short links, followed one
+        // checked hop at a time (#480).
+        services.AddHttpClient(GoogleStreetViewImagery.HttpClientName, client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(GoogleStreetViewImagery.BrowserUserAgent);
+            client.Timeout = TimeSpan.FromSeconds(20);
+        });
+        services.AddSingleton<IStreetViewImagery, GoogleStreetViewImagery>();
+        services.AddHttpClient(GoogleMapsLinkResolver.HttpClientName, client =>
+            {
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(GoogleStreetViewImagery.BrowserUserAgent);
+                client.Timeout = TimeSpan.FromSeconds(10);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddSingleton<IMapsLinkResolver, GoogleMapsLinkResolver>();
+
         // The clue of the day posts into a channel of its own through the same rendering and uploads as an answer.
         services.AddSingleton<IAiChannelPublisher, DiscordAiChannelPublisher>();
-        // The quiz's scores, in memory for the bot's lifetime.
-        services.AddSingleton<QuizStreaks>();
+        // The quiz's vision rating, shared by the nightly run and a quiz that rates on the spot (#491);
+        // scoped, like the budget and quiz repositories it writes through.
+        services.AddScoped<QuizPictureRater>();
+        services.AddScoped<QuizPictureDraw>();
 
         // Scoped, like the budget repository it claims requests through.
         services.AddScoped<AiAnswerLoop>();
+        services.AddSingleton<RoundClueFinder>();
+        services.AddScoped<ClueSightCheck>();
+        services.AddScoped<StreetViewLinkLookAhead>();
     }
 
     /// <summary>

@@ -7,8 +7,9 @@ using Xunit;
 namespace GeoClubBot.Tests.PropertyBased;
 
 /// <summary>
-/// GeoGuessr silently drops whatever goes past its chat limit, so the splitter must never hand it a
-/// longer part, must lose nothing, and must number the parts 1..n, whatever the text.
+/// GeoGuessr silently drops whatever goes past its chat limit and turns line breaks past its own
+/// limit into spaces, so the splitter must never hand it a longer part or one with more line breaks,
+/// must lose nothing, and must number the parts 1..n, whatever the text.
 /// </summary>
 public sealed partial class ClubChatTextSplitterPropertyTests
 {
@@ -21,18 +22,19 @@ public sealed partial class ClubChatTextSplitterPropertyTests
             .List[0, 80]
             .Select(string.Concat);
 
-    private static readonly Gen<(string Text, int MaxLength, int MaxParts)> GenInput =
-        Gen.Select(GenText, Gen.Int[20, 400], Gen.Int[1, 20]);
+    private static readonly Gen<(string Text, int MaxLength, int MaxParts, int MaxLineBreaks)> GenInput =
+        Gen.Select(GenText, Gen.Int[20, 400], Gen.Int[1, 20], Gen.Int[0, 8]);
 
     [Fact]
-    public void No_part_is_longer_than_the_limit() =>
+    public void No_part_is_longer_or_has_more_line_breaks_than_the_limits() =>
         GenInput.Sample(input =>
         {
-            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, input.MaxParts);
+            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, input.MaxParts, input.MaxLineBreaks);
 
             if (result.IsSuccess)
             {
-                result.Value.Should().OnlyContain(p => p.Length <= input.MaxLength && p.Trim().Length > 0);
+                result.Value.Should().OnlyContain(p => p.Length <= input.MaxLength && p.Trim().Length > 0
+                                                       && p.Count(c => c == '\n') <= input.MaxLineBreaks);
             }
         });
 
@@ -40,7 +42,7 @@ public sealed partial class ClubChatTextSplitterPropertyTests
     public void Nothing_but_whitespace_at_the_cuts_is_lost() =>
         GenInput.Sample(input =>
         {
-            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, int.MaxValue / 2);
+            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, int.MaxValue / 2, input.MaxLineBreaks);
 
             if (result.IsSuccess)
             {
@@ -53,7 +55,7 @@ public sealed partial class ClubChatTextSplitterPropertyTests
     public void Parts_are_numbered_one_to_n_or_not_at_all() =>
         GenInput.Sample(input =>
         {
-            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, input.MaxParts);
+            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, input.MaxParts, input.MaxLineBreaks);
 
             if (result.IsSuccess && result.Value.Count > 1)
             {
@@ -70,8 +72,8 @@ public sealed partial class ClubChatTextSplitterPropertyTests
     public void Is_refused_only_for_an_empty_text_or_too_many_parts() =>
         GenInput.Sample(input =>
         {
-            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, input.MaxParts);
-            var unlimited = ClubChatTextSplitter.Split(input.Text, input.MaxLength, int.MaxValue / 2);
+            var result = ClubChatTextSplitter.Split(input.Text, input.MaxLength, input.MaxParts, input.MaxLineBreaks);
+            var unlimited = ClubChatTextSplitter.Split(input.Text, input.MaxLength, int.MaxValue / 2, input.MaxLineBreaks);
 
             if (string.IsNullOrWhiteSpace(input.Text))
             {

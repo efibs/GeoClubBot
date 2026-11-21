@@ -125,6 +125,7 @@ worth knowing:
 | `AI:Ingestion:DocumentPicturePixels` | 1600 | Longest side a Google document's pictures are downloaded at. Lower it to save disk (about 270 kB a picture at 1600) |
 | `AI:Ingestion:UnavailableRecheckDays` | 30 | How long a deleted or no-longer-shared source waits before it is checked again. The second check in a row that still finds it deleted removes its chunks |
 | `AI:Ingestion:MaxFailingRetriesPerRun` | 5 | How many sources whose last attempt failed one run retries. They are taken last, fewest failures first |
+| `AI:Ingestion:MaxConsecutiveEmbeddingFailures` | 3 | Sources in a row whose text the embedding provider failed to embed on its side (unreachable, overloaded, timed out, open circuit) before the run stops. Such sources are left as they were, never marked failed |
 | `AI:Ingestion:RemovedSourceGraceDays` | 30 | Days a source can go unlisted by every catalogue before its chunks leave the index; 0 keeps them |
 | `AI:CaptionSchedule` | `0 30 4 * * ?` | When a free vision model describes indexed pictures that have no words of their own. Before `IngestionSchedule`, so its share of the allowance is claimed first |
 | `AI:Captions:Enabled` | true | Turn describing off without touching what is stored |
@@ -160,8 +161,13 @@ worth knowing:
 | `AI:Tools:RegionMap:MaxRegions` | 15 | Most regions on one map |
 | `AI:Tools:RegionMap:TimeoutSeconds` | 8 | Seconds the map after an answer may take |
 | `AI:Tools:RegionMap:CacheHours` | 24 | How long a drawn map is kept |
-| `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's rounds with the clues that point to each |
-| `AI:RoundReview:MaxRounds` / `ExcerptsPerRound` / `MaxExcerpts` | 10 / 3 / 12 | Rounds reviewed; excerpts searched per round and offered in all |
+| `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's or game's rounds, or a Street View place, with the clues each showed |
+| `AI:RoundReview:MaxRounds` / `MaxExcerpts` | 10 / 30 | Rounds reviewed; excerpts offered in all (the rounds take turns) |
+| `AI:RoundReview:WellPlayedPoints` | 4500 | A right-country round with this many points gets one line |
+| `AI:RoundReview:ShowRoundViews` | true | Post each round's most telling view (needs the image relay's `PublicBaseUrl`) |
+| `AI:RoundReview:StreetViewLinksInQuestions` | true | A Street View link in a question is checked like a round (two requests) |
+| `AI:RoundReview:SightCheck:Enabled` / `CluesPerRound` / `ExcerptsPerSearch` | true / 14 / 5 | A free vision model checks each round's views against the guides' clues for it |
+| `AI:RoundReview:SightCheck:TimeoutSeconds` / `UnseenCluesForMissedRounds` | 90 / 2 | One round's deadline; clues to look for offered for a missed round that showed none |
 | `AI:RoundReview:HighscoresLimit` | 100 | Places of the highscores read to find the player |
 | `AI:RoundReview:StreetViewGuesser:BaseUrl` | "" | GeoNN's `play.py` (`http://host:8765`); empty, reviews do without it |
 | `AI:RoundReview:StreetViewGuesser:Model` / `TimeoutSeconds` / `CountriesShown` | "" / 30 / 3 | GeoNN's model folder (empty: its newest), one round's deadline, countries shown per round |
@@ -177,9 +183,21 @@ worth knowing:
 | `AI:ClueOfTheDay:ExcludeMainGuideClues` | true | Leave out clues PlonkIt has a tip like |
 | `AI:ClueOfTheDay:Draws` | 8 | Clues drawn per post to choose from |
 | `AI:ClueOfTheDay:Heading` | `🧭 **Clue of the day** — from *{{guide}}*` | What the post opens with |
-| `AI:Quiz:Enabled` | true | `/ai quiz`: a random captioned guide picture with the answer behind a spoiler |
-| `AI:Quiz:Draws` | 24 | Pictures drawn per question to find one with words of its own |
+| `AI:Quiz:Enabled` | true | `/ai quiz`: a rated guide picture with four answers; everyone guesses once and scores points |
+| `AI:Quiz:Draws` | 24 | Pictures drawn from the index when no rated one fits, to rate some on the spot |
 | `AI:Quiz:OnlyInAllowedChannels` | true | Keep the quiz to `AI:AllowedChannelIds` when that list is set |
+| `AI:Quiz:RevealAfterMinutes` | 10 | The answer is shown to everyone after this long, unless revealed sooner |
+| `AI:Quiz:OnTheSpotRatings` | 1 | Unrated pictures rated while a member waits (about 30 s each), from the day's whole allowance; 0 for none |
+| `AI:Quiz:LeaderboardSize` | 10 | Members per board of `/ai quiz-scores` |
+| `AI:Quiz:LeaderboardRecentDays` | 7 | The rolling window of the leaderboard's second board |
+| `AI:Quiz:Rating:Enabled` | true | The nightly rating run (`AI:QuizRatingSchedule`, 04:45 UTC) |
+| `AI:Quiz:Rating:MaxDailyBudgetPercent` | 20 | Ceiling on the day's shared counter while rating |
+| `AI:Quiz:Rating:MaxPicturesPerRun` | 60 | Pictures rated per run |
+| `AI:Quiz:Rating:Version` | 1 | Raise after a prompt change: every picture is rated again |
+| `AI:Quiz:Rating:TimeoutSeconds` | 90 | How long one picture may take the model |
+| `AI:Quiz:Rating:Reasoning` | `low` | How much a reasoning model thinks first: `off`, `low`, `medium`, `high`, `default` |
+| `AI:Quiz:Rating:MaxReplyTokens` | 8000 | Reply budget, thinking included |
+| `AI:Quiz:Rating:MaxConsecutiveFailures` | 3 | Unusable or failed replies in a row before a run stops |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
@@ -1001,18 +1019,52 @@ Off by default: a channel has to be chosen first (`Enabled` with no `TextChannel
 validation). The schedule key must be present even while the feature is off, as every job's must.
 ### `/ai quiz`
 
-A way to practise with the pictures the club has chosen to index. `/ai quiz [country] [lesser-known]`
-draws one captioned guide picture at random (`DrawQuizQuestionQuery`: `IKnowledgeIndex.SampleAsync`
-within the country when one is named — resolved through the guides' gazetteer, every spelling the index
-files it under tried — keeping only pictures with words of their own, `ClueSampler.IsAClue`; with
-`lesser-known`, PlonkIt's pictures and the clues PlonkIt has a tip like are left out) and posts it with
-the picture uploaded from the relay. The answer — the country the guide files it under, the guide and
-section, what the guide says of the picture, and the source link — sits behind **one spoiler**
-(`AiQuizFormatter`, pure). Three buttons follow: *I got it* and *I missed* record a score the member
-judges for themselves (`QuizStreaks`: streak, best streak and tally, in memory since the last restart —
-a quiz is practice, not a league), answered ephemerally; *Another* draws again with the same filters.
-Costs no AI request. `AI:Quiz:OnlyInAllowedChannels` keeps it to `AI:AllowedChannelIds` when that list
-is set.
+A way to practise with the pictures the club has chosen to index, as a game (#491).
+`/ai quiz [country] [difficulty] [lesser-known]` posts one guide picture with **four answers** as
+buttons. Without a country it asks *"Which country is this?"*. With one, asking which country would be no
+question, so it asks *"Where in X was this picture taken?"* for a regional clue, and otherwise *"What in
+this picture is typical of X?"*. `difficulty` is easy, medium or hard; left out, easy and medium are drawn.
+
+**Rating.** The first quiz drew any captioned picture. It showed a guide's header card (flag, outline,
+`.lv`), maps with the town names printed on them, and a car with nothing else in sight. Now a free vision
+model looks at each picture once (`QuizPictureRater`, prompt and checks in `QuizRatingPrompt`, pure). It
+is shown the picture and the guide's words (which the player never sees) and writes, for each kind of
+question, *no* or a difficulty plus the right answer and three plausible wrong ones. "Country shown" and
+"Region shown" lines come first and veto those questions. Wrong countries must resolve to three other real
+countries (`IsoCountries`), and every answer must be distinct and short enough for a button. A picture
+that makes no question is stored too, so it is never paid for twice. Ratings live in Postgres
+(`AiQuizItems`/`AiQuizItemQuestions`), keyed by chunk id with a hash of the picture and its words: a guide
+re-indexed with other words is rated again, and `AI:Quiz:Rating:Version` re-rates everything.
+`AiQuizRatingJob` (`AI:QuizRatingSchedule`, after the caption job) rates pictures within its own share,
+drawn a random country at a time (`QuizPictureDraw`), so a country with a large guide does not fill the
+quiz. When no rated picture fits a member's choice, `StartQuizRoundCommand` rates up to
+`OnTheSpotRatings` drawn pictures from the day's whole allowance while they wait. If those requests aren't
+available, it says the choice is not ready yet.
+
+Measured with the probe on 2026-11-21 (`quiz`, about 70 production pictures). The only free vision
+model that day, `nvidia/nemotron-3.5-super-vl:free`, reasons before answering. With no bound on that, it
+spent a 400-token budget thinking and wrote nothing, every time. With reasoning `off` it answered in about
+8 s but ignored the rules for wrong answers: they were often the guide's real clues, or printed road
+numbers. On `low` it follows them, thinking for 2,300–4,000+ tokens (about 30 s). With an 8,000-token
+budget about one reply in five is still lost to thinking and retried another night. The chat request
+carries this as `AiChatRequest.Reasoning`, sent as OpenRouter's `reasoning` object; every other caller
+leaves it null, which keeps the model's default. With the tightened rules, about half the pictures make
+a country question, and a few make none.
+
+**Playing.** A round (`AiQuizRounds`, options in the order shown) is recorded before the message is
+posted, and the message id after. Anyone may guess once (`AiQuizGuesses`, keyed by round and member).
+The guesser privately sees whether they were right, the guide's explanation and their score. The public
+message shows a running count ("5 guessed · 3 right"). The answer is shown to everyone when the asker or
+someone with Administrator or Manage Messages presses *Reveal*, or after `RevealAfterMinutes`
+(`AiQuizRevealJob` every minute → `IAiQuizMessages`, so a restart catches up). Then the right button
+turns green and the rest are disabled. Rated pictures never asked come first, then those asked longest
+ago. With `lesser-known`, PlonkIt's pictures and the clues PlonkIt has a tip like are left out.
+
+**Scores.** A right answer scores its difficulty: easy 1, medium 2, hard 3; a wrong one 0.
+`/ai quiz-scores` shows the best members over all time and over the last `LeaderboardRecentDays`, ties
+sharing a rank, with the member's own standing. Buttons of messages from before #491 still work:
+*Another* draws a new question, and the old self-judged buttons say the old quiz kept no score.
+`AI:Quiz:OnlyInAllowedChannels` keeps the quiz to `AI:AllowedChannelIds` when that list is set.
 
 ### Knowledge gaps: which guides to add
 
@@ -1033,28 +1085,55 @@ first, with a couple of example questions each (`KnowledgeGapReportText`, pure).
 (`AI:KnowledgeGapsSchedule`) forgets records past `RetentionDays` and, with `PostReport` and a
 `TextChannelId`, posts the same report weekly. Costs no AI request.
 
-### `/ai review`: a played challenge, round by round
+### `/ai review`: a played game, round by round — or one Street View place
 
 After a game a player sees where they were wrong, but not which clues would have told them.
-`/ai review [challenge]` (`ReviewRoundsCommand`) takes a challenge link or token — or, with none, the
-club's latest daily challenges — reads its highscores with the main club's account (as the country
-challenges are evaluated), finds the member's own game by their linked GeoGuessr account (`/link`), and
-reviews it:
+`/ai review [link]` (`ReviewRoundsCommand`) reviews one of (`ReviewLinks`, pure):
 
-- Each round and guess is placed in a country and region. A round carries GeoGuessr's own
-  `streakLocationCode`; a guess never does (its field is always `null`), so the guess — and the round's
-  region — come from the Natural Earth boundaries (`IRegionBoundaries.LocateAsync`, point in polygon over
-  the admin-1 outlines the region maps use). Street View stands on the shore and the 10m outlines are
-  coarser than that (a round on Sri Lanka's Mannar Island lay 2 km off them), so a point inside no outline
-  goes to the nearest region within 0.1° (about 11 km); further out is the sea. The review can then say
-  "Lạng Sơn, Vietnam" and "you guessed Guangxi, China, 410 km away".
-- The highscores' shape was read live on 2026-11-13 (two challenges, 15 players; an anonymised copy is
-  `GeoClubBot.Tests/Fixtures/AI/geoguessr-challenge-highscores-20261113.json`): `game.rounds[]` has
-  `lat`, `lng`, `panoId` (hex-encoded: `GeoGuessrPanoId.Decode`), `heading`, `pitch`, `zoom`,
-  `streakLocationCode`, `startTime`; `game.player.guesses[]` has `lat`, `lng`, `timedOut`,
-  `timedOutWithGuess`, `skippedRound`, `roundScoreInPoints`, `distanceInMeters`, `time`; the game carries
-  `forbidMoving` / `forbidZooming` / `forbidRotating`. Every round field stays optional: a game without
-  them is reported as having no rounds rather than reviewed wrong.
+- **a challenge** (`geoguessr.com/challenge/…`), or with no link the club's latest daily challenges: their
+  highscores are read with the main club's account (as the country challenges are evaluated), and the
+  member's own game is found by their linked GeoGuessr account (`/link`);
+- **any single game** (`geoguessr.com/game/…`): `GET /v3/games/{token}` (`IGeoGuessrClient.ReadGameAsync`)
+  answers for any account that has the token, so no linked account is needed, and someone else's game is
+  reviewed in the third person ("This is malta's game"). A `results/…` link or a bare token is either a
+  game or a challenge — GeoGuessr shows both under that path — so it is read as a game first (one call; a
+  challenge's token answers 404, which the Refit adapter turns into null), then as a challenge;
+- **a Street View place** (`google.com/maps/@…`, or a `maps.app.goo.gl/…` short link that
+  `GoogleMapsLinkResolver` follows one checked hop at a time, only ever to Google Maps):
+  `StreetViewLink` (pure) reads the place, the panorama (`!1s<pano>!2e0`; `!2e10` is a photo sphere, which
+  the thumbnail endpoint does not serve) and the view (`90y` field of view, `51.57h` heading, `92.16t`
+  tilt, where 90 is the horizon). The place is explained as one round nobody played.
+
+A game still being played is refused (`State` is not `finished`): its last round is the one on the
+player's screen, and the review would give it away.
+
+Then, per round:
+
+- **Placed** in a country and region. A round carries GeoGuessr's own `streakLocationCode`; a guess never
+  does (its field is always `null`), so the guess — and the round's region — come from the Natural Earth
+  boundaries (`IRegionBoundaries.LocateAsync`, point in polygon over the admin-1 outlines the region maps
+  use). Street View stands on the shore and the 10m outlines are coarser than that (a round on Sri Lanka's
+  Mannar Island lay 2 km off them), so a point inside no outline goes to the nearest region within 0.1°
+  (about 11 km); further out is the sea.
+- **The guides' clues for it are searched** (`RoundClueFinder`): the country's most reliable clues, its
+  road lines, bollards and guardrails, its poles and signs, what tells it from the country guessed (a
+  missed round), and its region's (`RoundReviewPrompt.Searches`), each within the round's country under
+  every spelling the index files it under, every search of the review in **one** embedding request (per
+  32). A round's lists are merged taking turns, up to `SightCheck:CluesPerRound` (14).
+- **Its panorama is looked at** (`ClueSightCheck`, #480). Told only a round's country, the model listed
+  the country's clues, most of which "weren't even in the round"; and GeoNN, the only thing that saw the
+  panorama, was not running in production. So the round's views are read free from the endpoint Google
+  Maps draws its Street View thumbnails from (`GoogleStreetViewImagery`: no key, a browser's User-Agent or
+  it answers 403, at most 1024 × 576, a panorama it does not know comes back as a 2.4 KB black picture):
+  the one view the player had for a no-rotating game, at the round's heading, pitch and zoom (zoom 0 is
+  126.87° across, GeoNN's measurement), else four quarter-turns from where the round started
+  (`StreetViewAngles`). One request to a free vision model (`ClueSightPrompt`) lists the round's clues one
+  numbered line each and asks which it can point at — "1: yes — picture 2, right roadside: …", "no",
+  "unclear" — plus "Seen:" lines for anything else telling and the best picture. A checklist a free model
+  answers reliably; describing a panorama freely, it names what the country is known for. The rounds are
+  looked at side by side, their requests claimed from the allowance together before any is made (the
+  allowance lives in the one database context, which takes one operation at a time), one spare per round
+  up to two for retries against untried models, and what was not spent is given back.
 - **GeoNN** (optional, `AI:RoundReview:StreetViewGuesser`): the maintainer's own GeoGuessr model looks at
   each round's panorama (`IStreetViewGuesser` → `GeoNnStreetViewGuesser`, `POST {BaseUrl}/api/predict` of
   GeoNN's `scripts/play.py`, which fetches the panorama from Google itself), shown as the game showed it:
@@ -1062,22 +1141,41 @@ reviews it:
   panorama (`nm`). Its likeliest countries go into the round's line ("GeoNN read the panorama as Kenya
   94%, …"), and the model is told to use them only to say how plainly the round showed its country — sure
   and right: the clues were there; unsure or wrong: a hard round — never as a source. A notice under the
-  review says GeoNN looked. All rounds are asked while the guides are searched; a round GeoNN cannot read
-  is reviewed without it. On 2026-11-13 (RTX A5000, model `v2`) a no-move challenge read 5 of 5 countries
-  right at 76–99 %, a pan-and-zoom NMPZ map 2 of 5 at under 40 % — that map aims the camera up or down and
-  zooms in, and its best player scored 9,973. About 0.7 s a round, 5 s for the first while the model loads.
-- The guides are searched once per round, within the round's country under every spelling the index
-  files it under ("How to recognise Lạng Sơn, Vietnam: distinctive clues of the region"), every round's
-  wording in **one** embedding request; the rounds take turns at the excerpts up to `MaxExcerpts` (12).
-- The model is asked once through the same answer loop a question goes through (`AiAnswerLoop`: tools,
-  screening, retries), with the rounds written out (`RoundReviewPrompt`, pure) and told to name, per
-  round, the clues that would have given the country and region and what sets the right country apart
-  from the guessed one, ending with what to practise first. Citations, pictures and the source list come
-  out as for an answer; the review is posted into the channel through `IAiChannelPublisher`.
+  review says GeoNN looked. On 2026-11-13 (RTX A5000, model `v2`) a no-move challenge read 5 of 5
+  countries right at 76–99 %, a pan-and-zoom NMPZ map 2 of 5 at under 40 %. About 0.7 s a round.
 
-Cost: two requests of the day's allowance (the embedding and the completion), claimed up front, plus the
-tool rounds the model takes — the same as a question. GeoNN costs no request; it runs on the maintainer's
-own GPU, and without it the review works from the rounds' places alone.
+The excerpts offered (`ReviewExcerpts`, pure) are what each round was seen to show — the country's clues
+before the region's, six at most — and only then what to look for next time: for a round with the wrong
+country that showed no country-wide clue, the country's best two (`UnseenCluesForMissedRounds`); for one
+in the right country that showed nothing of its region, the region's best; for a round no model could look
+at, the country's best, since nothing is known of it. The rounds take turns up to `MaxExcerpts` (30). Each
+round's line in the question (`RoundReviewPrompt`, pure) names them by number: "Seen in its panorama: [1]
+picture 2, right roadside: concrete poles with a white band; [4] (regional) …", "Not seen in it, but clues
+of Spain to look for: [6]", or "Its panorama could not be looked at". The model is told to say a round
+showed a clue only when it is listed as seen; for a round with the wrong country, the one or two easiest,
+most reliable country-wide clues first and how they tell it from the guess, then one regional at most
+(asked with the Spain/Portugal round of #480, where yellow guardrail reflectors were in plain view and the
+review gave "very regional and hard to remember clues"); one line for a right-country round of
+`WellPlayedPoints` (4,500) or more; the clues that narrow the region for any other. A vision model's own
+notes are used only after "Not from the guides:".
+
+The model is asked once through the answer loop, **without tools** (`AnswerRequest.AllowTools`): a search
+would bring back clues the round never showed. Citations, pictures and the source list come out as for an
+answer, and with `ShowRoundViews` each round's most telling view is stored in the image relay and posted
+after the guides' pictures ("Round 2: Spain (Valencian Community)"), its source line opening the round in
+Google Maps (the documented `map_action=pano` URL); the guides' pictures give way so the message stays at
+ten. Without a relay (`PublicBaseUrl`) no view is posted: Google's endpoint would refuse Discord as it
+refuses the bot without a browser's name.
+
+A question that carries a Street View link ("what gives this away? maps.app.goo.gl/…") is checked the same
+way when `StreetViewLinksInQuestions` is on (`StreetViewLinkLookAhead`): the place, the clues it was seen to
+show and those to look for lead the excerpts, the first an excerpt of its own whose picture is the view.
+It runs after the question's search, not beside it, for the same database context.
+
+Cost: the review's embedding request (one per 32 searches) and the chat request, claimed up front; one
+vision request per round (plus at most two retries); a question's Street View link two (its embedding and
+its vision request). At the 1000-a-day tier a five-round review is about eight requests. Street View's
+thumbnails and GeoNN cost no request.
 
 ### What goes into a vector
 
@@ -1553,6 +1651,17 @@ The rest are embedded in groups, and a group's failure is judged by its cause:
 | The provider failed, timed out, or the allowance ran out | Keeps what succeeded and comes back for the rest next run |
 | Still rate-limited after waiting | Keeps what succeeded, comes back for the rest, and ends the run |
 
+A source's **text** that cannot be embedded writes nothing, and is judged the same way. A rejection
+(400, 413, 415, 422) is the source's failure, retried with backoff. Anything else (unreachable,
+overloaded, timed out, refused by the open circuit) is the provider's, and the source is left exactly
+as it was, first in line next run; `MaxConsecutiveEmbeddingFailures` of those in a row end the run.
+Before this, an overloaded model (`nvidia/nemotron-3.5-embed-1b:free`, 503 for days from 2026-11-19)
+and the circuit it opened marked 590 sources failed in three nights. Each still claimed its requests
+from the day's share, and with failed sources retried only `MaxFailingRetriesPerRun` a run, the index
+would have taken months to fill. The model selector moves on only after a 404, by choice: a switch
+re-indexes everything into a new collection, so an outage is met by changing
+`AI:OpenRouter:EmbeddingModelId` (production moved to the 8B model, 4096 wide, on 2026-11-21).
+
 A source that is "coming back" is due again immediately instead of waiting out `ReingestAfterDays`.
 
 Sources indexed before this behaviour existed may have lost their images for good: a failed batch
@@ -1657,6 +1766,7 @@ runs re-embed them.
 | `/ai sources` shows a guide Unavailable, "no longer exists (HTTP 410)" | Its owner deleted it. Nothing to do: it is rechecked every `UnavailableRecheckDays` and its chunks are removed on the second check |
 | Unavailable, "not publicly readable (HTTP 403)" | Its owner stopped sharing it. It comes back by itself within `UnavailableRecheckDays` of being shared again, or at once with `/ai source-retry key:<type:key>` |
 | Every guide of one site is Skipped, "carries no guide content" | The site changed its markup. Once the extractor is fixed, run `/ai source-retry source-type:<type>` |
+| Run summary: "Stopped early — the embedding provider failed for N source(s) in a row" | The embedding model is down or overloaded. Check its provider at `https://openrouter.ai/api/v1/models/<model>/endpoints`; if it stays down, set `AI:OpenRouter:EmbeddingModelId` (and `EmbeddingDimensions`) to a served model and restart — that re-indexes into a new collection. Sources an older build marked failed for this ("The embedding provider …") come back with `/ai source-retry` |
 | Run summary: "left for a later run because their site refused requests" | The host rate-limited, refused us with 401/403, or the circuit breaker opened. The sources keep their place for the next run |
 | A slide deck is indexed but has no pictures | Google refused to export it (413), or it is larger than `MaxDeckExportBytes`. Its text is indexed |
 | Log: "AI model … or refused to serve this bot, and is excluded until restart", after a 403 | A free model reserved for agentic harnesses refused the bot. Add it to `AI:OpenRouter:BlockedModelIds` |

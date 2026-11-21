@@ -47,6 +47,14 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<AiCluePost> AiCluePosts { get; set; }
 
+    public DbSet<AiQuizItem> AiQuizItems { get; set; }
+
+    public DbSet<AiQuizItemQuestion> AiQuizItemQuestions { get; set; }
+
+    public DbSet<AiQuizRound> AiQuizRounds { get; set; }
+
+    public DbSet<AiQuizGuess> AiQuizGuesses { get; set; }
+
     public DbSet<AiRetrievalGap> AiRetrievalGaps { get; set; }
 
     public DbSet<ClubChatForward> ClubChatForwards { get; set; }

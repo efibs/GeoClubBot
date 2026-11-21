@@ -76,6 +76,18 @@ public sealed class AiSourcesFormatterTests
     }
 
     [Fact]
+    public void DescribeRun_SaysTheRunStopped_WhenTheEmbeddingProviderKeptFailing()
+    {
+        var stopped = new IngestionReport(0, 0, 0, 0, 0, 0, BudgetExhausted: false,
+            EmbeddingFailed: 3, EmbedderUnavailable: true);
+        var carriedOn = stopped with { EmbedderUnavailable = false, EmbeddingFailed = 1 };
+
+        AiSourcesFormatter.DescribeRun(stopped).Should().Contain("Stopped early").And.Contain("3 source(s) in a row");
+        AiSourcesFormatter.DescribeRun(carriedOn).Should().Contain("Left 1 source(s) for a later run")
+            .And.NotContain("Stopped early");
+    }
+
+    [Fact]
     public void DescribeCounts_MentionsUnlistedSourcesOnlyWhenThereAreAny()
     {
         AiSourcesFormatter.DescribeCounts(new KnowledgeSourceCounts(10, 1, 6, 1, 1, 1))

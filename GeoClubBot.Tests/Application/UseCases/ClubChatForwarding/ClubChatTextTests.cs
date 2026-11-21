@@ -10,7 +10,7 @@ public sealed class ClubChatTextSplitterTests
     [Fact]
     public void AShortText_IsOneUnnumberedMessage()
     {
-        var parts = ClubChatTextSplitter.Split("  Hello club!  ", 300, 5);
+        var parts = ClubChatTextSplitter.Split("  Hello club!  ", 300, 5, 4);
 
         parts.Value.Should().Equal("Hello club!");
     }
@@ -18,7 +18,7 @@ public sealed class ClubChatTextSplitterTests
     [Fact]
     public void AnEmptyText_IsRefused()
     {
-        ClubChatTextSplitter.Split(" \n ", 300, 5).Error.Code.Should().Be("club-chat.empty");
+        ClubChatTextSplitter.Split(" \n ", 300, 5, 4).Error.Code.Should().Be("club-chat.empty");
     }
 
     [Fact]
@@ -27,7 +27,7 @@ public sealed class ClubChatTextSplitterTests
         var first = new string('a', 200);
         var second = new string('b', 200);
 
-        var parts = ClubChatTextSplitter.Split($"{first}\n\n{second}", 300, 5).Value;
+        var parts = ClubChatTextSplitter.Split($"{first}\n\n{second}", 300, 5, 4).Value;
 
         parts.Should().Equal($"(1/2) {first}", $"(2/2) {second}");
     }
@@ -38,7 +38,7 @@ public sealed class ClubChatTextSplitterTests
         var sentence = string.Join(' ', Enumerable.Repeat("word", 20)) + ".";
         var text = string.Join(' ', Enumerable.Repeat(sentence, 4));
 
-        var parts = ClubChatTextSplitter.Split(text, 300, 5).Value;
+        var parts = ClubChatTextSplitter.Split(text, 300, 5, 4).Value;
 
         parts.Should().HaveCount(2);
         parts[0].Should().EndWith(".");
@@ -48,7 +48,7 @@ public sealed class ClubChatTextSplitterTests
     [Fact]
     public void AWordLongerThanAMessage_IsCut()
     {
-        var parts = ClubChatTextSplitter.Split(new string('x', 650), 300, 5).Value;
+        var parts = ClubChatTextSplitter.Split(new string('x', 650), 300, 5, 4).Value;
 
         parts.Should().HaveCount(3).And.OnlyContain(p => p.Length <= 300);
         string.Concat(parts.Select(p => p[6..])).Should().Be(new string('x', 650));
@@ -57,7 +57,7 @@ public sealed class ClubChatTextSplitterTests
     [Fact]
     public void ATextNeedingTooManyParts_IsRefused_SayingByHowMuch()
     {
-        var result = ClubChatTextSplitter.Split(string.Join(' ', Enumerable.Repeat("word", 400)), 300, 5);
+        var result = ClubChatTextSplitter.Split(string.Join(' ', Enumerable.Repeat("word", 400)), 300, 5, 4);
 
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be("club-chat.too_long");
@@ -65,11 +65,56 @@ public sealed class ClubChatTextSplitterTests
     }
 
     [Fact]
+    public void AShortTextWithMoreLineBreaksThanGeoGuessrKeeps_IsSplit_BeforeTheFirstBreakItWouldDrop()
+    {
+        var parts = ClubChatTextSplitter.Split("Hello club!\n\nFirst line\nSecond line\nThird line\nFourth line", 300, 5, 4).Value;
+
+        parts.Should().Equal("(1/2) Hello club!\n\nFirst line\nSecond line\nThird line", "(2/2) Fourth line");
+    }
+
+    [Fact]
+    public void LinesWithoutAParagraph_AreSplitAtTheLineBreakPastTheLimit()
+    {
+        var parts = ClubChatTextSplitter.Split("1\n2\n3\n4\n5\n6\n7", 300, 5, 4).Value;
+
+        parts.Should().Equal("(1/2) 1\n2\n3\n4\n5", "(2/2) 6\n7");
+    }
+
+    [Fact]
+    public void TheAnnouncementOfIssue502_GoesOutInPartsGeoGuessrKeepsAsTheyAre()
+    {
+        // The flattened announcement whose first part GeoGuessr stored with its fifth line break as a space.
+        const string text =
+            "@Dragon Member , sorry, this will sadly only be something for the members of our main club.\n\n"
+            + "Recently I have posted this idea for a club league if you remember.\n\n"
+            + "I have now opened the registration and already registered our main club!\nNow we just need to find a team.\n\n"
+            + "The Prices\n1st Place Every player of the winning team gets a code for 1 year GeoGuessr Unlimited\n"
+            + "2nd Place Every player of the second place team gets a code for 1 month GeoGuessr Unlimited\n\n"
+            + "The dates\nThe event will happen over two days:\n1. 2026-12-19 12:30 UTC to 17:00 UTC\n2. 2026-12-20 12:30 UTC to 19:30 UTC\n\n"
+            + "If you want to participate, please talk to @abjorn_36 , he'll organize our team. We still need more people.\n\n"
+            + "Forwarded by fibs from our Discord server's announcement channel";
+
+        var parts = ClubChatTextSplitter.Split(text, 300, 5, 4).Value;
+
+        parts.Should().OnlyContain(p => p.Length <= 300 && p.Count(c => c == '\n') <= 4);
+        parts[0].Should().EndWith("if you remember.");
+    }
+
+    [Fact]
+    public void ATextNeedingTooManyPartsOnlyForItsLineBreaks_IsRefused_AskingForFewerLineBreaks()
+    {
+        var result = ClubChatTextSplitter.Split(string.Join('\n', Enumerable.Range(1, 30)), 300, 5, 4);
+
+        result.Error.Code.Should().Be("club-chat.too_long");
+        result.Error.Message.Should().Contain("Remove some line breaks").And.NotContain("Shorten it by");
+    }
+
+    [Fact]
     public void AnEmojiIsNeverCutInHalf()
     {
         var text = new string('x', 293) + "😀😀😀😀😀😀😀😀";
 
-        var parts = ClubChatTextSplitter.Split(text, 300, 5).Value;
+        var parts = ClubChatTextSplitter.Split(text, 300, 5, 4).Value;
 
         parts.Should().OnlyContain(p => !char.IsHighSurrogate(p[p.Length - 1]) && !char.IsLowSurrogate(p[6]));
     }

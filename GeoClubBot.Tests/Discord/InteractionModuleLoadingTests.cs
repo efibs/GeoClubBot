@@ -1,10 +1,13 @@
 using System.Text.RegularExpressions;
+using Constants;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Entities;
 using FluentAssertions;
 using GeoClubBot.Discord.InputAdapters.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.AI;
+using GeoClubBot.Tests.TestBuilders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -60,24 +63,31 @@ public sealed partial class InteractionModuleLoadingTests
     /// character, so an id with an empty part silently matched nothing (#479).
     /// </summary>
     [Theory]
-    [InlineData(null, false)]
-    [InlineData(null, true)]
-    [InlineData("Vietnam", false)]
-    [InlineData("South Africa", true)]
-    public async Task Every_quiz_button_reaches_its_handler(string? country, bool lesserKnownOnly)
+    [InlineData(null, false, null, false)]
+    [InlineData(null, true, AiQuizDifficulty.Easy, false)]
+    [InlineData("Vietnam", false, AiQuizDifficulty.Hard, true)]
+    [InlineData("South Africa", true, null, true)]
+    public async Task Every_quiz_button_reaches_its_handler(string? country, bool lesserKnownOnly, AiQuizDifficulty? difficulty, bool revealed)
     {
         using var client = new DiscordSocketClient();
         using var service = new InteractionService(client);
         await service.AddModulesAsync(typeof(INteractionsAssemblyMarker).Assembly, new SubstituteServiceProvider());
 
-        var buttonIds = AiQuizFormatter.Buttons(country, lesserKnownOnly).Components
+        var round = QuizRounds.Round(askedCountry: country, askedDifficulty: difficulty, lesserKnownOnly: lesserKnownOnly);
+        if (revealed)
+        {
+            round.Reveal(QuizRounds.AskedAt);
+        }
+
+        var buttonIds = AiQuizFormatter.Buttons(round).Components
             .OfType<ActionRowComponent>()
             .SelectMany(row => row.Components)
             .OfType<ButtonComponent>()
             .Select(button => button.CustomId)
+            .Concat([ComponentIds.AiQuizRightButtonId, ComponentIds.AiQuizWrongButtonId, "ai-quiz-again:0:"])
             .ToList();
 
-        buttonIds.Should().HaveCount(3);
+        buttonIds.Should().HaveCount(revealed ? 8 : 9);
         foreach (var id in buttonIds)
         {
             var interaction = Substitute.For<IComponentInteraction>();

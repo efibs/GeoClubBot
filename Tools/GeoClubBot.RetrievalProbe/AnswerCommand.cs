@@ -7,6 +7,7 @@ using Infrastructure.OutputAdapters.AI.GeoNn;
 using Infrastructure.OutputAdapters.AI.OpenRouter;
 using Infrastructure.OutputAdapters.AI.PlantNet;
 using Infrastructure.OutputAdapters.AI.Regions;
+using Infrastructure.OutputAdapters.AI.StreetView;
 using Infrastructure.OutputAdapters.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,7 @@ using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Retrieval;
 using UseCases.UseCases.AI.Review;
+using UseCases.UseCases.AI.StreetView;
 using UseCases.UseCases.AI.Tools;
 
 namespace GeoClubBot.RetrievalProbe;
@@ -252,6 +254,8 @@ public sealed class AnsweringStack : IDisposable
     private readonly HttpClient _gbif;
     private readonly HttpClient _naturalEarth;
     private readonly HttpClient _geoNn;
+    private readonly HttpClient _streetView;
+    private readonly HttpClient _mapsLinks;
     private readonly IHttpClientFactory _clients;
     private readonly EmbeddingsOnlyHandler _guard;
     private readonly IOptions<AiConfiguration> _ai;
@@ -312,9 +316,18 @@ public sealed class AnsweringStack : IDisposable
         // GeoNN's prediction is a POST that changes nothing; it is the one request its client may send.
         _geoNn = new HttpClient(new GeoNnPredictOnlyHandler(new HttpClientHandler())) { Timeout = Timeout.InfiniteTimeSpan };
 
+        // Street View's thumbnails and Maps' short links, read as the bot reads them: GET-only, with a
+        // browser's name, and the links followed by hand, one checked hop at a time.
+        _streetView = new HttpClient(new ReadOnlyHttpHandler(new HttpClientHandler())) { Timeout = TimeSpan.FromSeconds(20) };
+        _streetView.DefaultRequestHeaders.UserAgent.ParseAdd(GoogleStreetViewImagery.BrowserUserAgent);
+        _mapsLinks = new HttpClient(new ReadOnlyHttpHandler(new HttpClientHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromSeconds(10) };
+        _mapsLinks.DefaultRequestHeaders.UserAgent.ParseAdd(GoogleStreetViewImagery.BrowserUserAgent);
+
         var clients = new NamedClientFactory(new Dictionary<string, HttpClient>(StringComparer.Ordinal)
         {
             [GeoNnStreetViewGuesser.HttpClientName] = _geoNn,
+            [GoogleStreetViewImagery.HttpClientName] = _streetView,
+            [GoogleMapsLinkResolver.HttpClientName] = _mapsLinks,
             [RefitChatModelClient.HttpClientName] = _openRouter,
             [RefitChatModelClient.HealthHttpClientName] = _openRouter,
             [GbifSpeciesRangeReader.HttpClientName] = _gbif,
@@ -359,7 +372,25 @@ public sealed class AnsweringStack : IDisposable
             plantIdentifier, records, speciesReader, speciesMap, places, _tools, clock, _logging.CreateLogger<PlantIdentificationLookAhead>());
         // The probe reports answers as text; a region map would only be a link to a picture it cannot show.
         _regionLocator = new RegionLocator(new NoRegionBoundaries(), new NoRegionMapDrawer(), _countries, _tools, clock, _logging.CreateLogger<RegionLocator>());
+
+        _roundReview = Options.Create(settings.RoundReview);
+        _imagery = new GoogleStreetViewImagery(clients, _logging.CreateLogger<GoogleStreetViewImagery>());
+        _links = new GoogleMapsLinkResolver(clients, _logging.CreateLogger<GoogleMapsLinkResolver>());
+        _clueFinder = new RoundClueFinder(_embedder, _index, _countries, _ai, _roundReview, _logging.CreateLogger<RoundClueFinder>());
+        // The views a review posts are kept beside the probe, so a report can say where to look at them.
+        RoundViews = new SpeciesMapFolder(Path.Combine(AppContext.BaseDirectory, "round-views"));
     }
+
+    private readonly IOptions<AiRoundReviewConfiguration> _roundReview;
+    private readonly GoogleStreetViewImagery _imagery;
+    private readonly GoogleMapsLinkResolver _links;
+    private readonly RoundClueFinder _clueFinder;
+
+    /// <summary>Where the round views and Street View links' pictures are kept: a folder, as the bot's relay keeps them.</summary>
+    public SpeciesMapFolder RoundViews { get; }
+
+    private ClueSightCheck CreateSightCheck(IAiBudgetRepository budget) =>
+        new(_imagery, _chat, Catalog, budget, _ai, _roundReview, _logging.CreateLogger<ClueSightCheck>());
 
     /// <summary>Shared by every answer, as the bot's singleton is: a model that fails for one is demoted for the next.</summary>
     public IChatModelCatalog Catalog { get; }
@@ -384,8 +415,11 @@ public sealed class AnsweringStack : IDisposable
         var clock = TimeProvider.System;
         var loop = new AiAnswerLoop(_chat, Catalog, budget, _toolbox, _ai, _tools, clock, _logging.CreateLogger<AiAnswerLoop>());
 
+        var streetView = new StreetViewLinkLookAhead(
+            _links, Boundaries, _clueFinder, CreateSightCheck(budget), RoundViews, budget, _ai, _roundReview, _logging.CreateLogger<StreetViewLinkLookAhead>());
+
         return new AskAiHandler(
-            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _plantIdentification, _regionLocator, _mainGuide, _clueSampler, _countries,
+            conversations, budget, _embedder, _index, Catalog, _chat, loop, _plantRange, _plantIdentification, streetView, _regionLocator, _mainGuide, _clueSampler, _countries,
             _plannerPause,
             _ai, _conversation, _retrieval, _captions,
             Options.Create(new AiKnowledgeGapsConfiguration { RecordWeakRetrievals = false }), new NoRetrievalGaps(),
@@ -415,7 +449,8 @@ public sealed class AnsweringStack : IDisposable
         var options = Options.Create(settings);
         var guesser = new GeoNnStreetViewGuesser(_clients, options, _logging.CreateLogger<GeoNnStreetViewGuesser>());
         return new ReviewRoundsHandler(
-            users, ProbeFakes.Refusing<IClubChallengeRepository>(), geoGuessr, Boundaries, guesser, _embedder, _index, _countries, loop, budget,
+            users, ProbeFakes.Refusing<IClubChallengeRepository>(), geoGuessr, Boundaries, guesser, _links, _clueFinder,
+            new ClueSightCheck(_imagery, _chat, Catalog, budget, _ai, options, _logging.CreateLogger<ClueSightCheck>()), RoundViews, loop, budget,
             mainClub, _ai, options, clock, _logging.CreateLogger<ReviewRoundsHandler>());
     }
 
@@ -425,6 +460,8 @@ public sealed class AnsweringStack : IDisposable
         _gbif.Dispose();
         _naturalEarth.Dispose();
         _geoNn.Dispose();
+        _streetView.Dispose();
+        _mapsLinks.Dispose();
         _logging.Dispose();
     }
 
