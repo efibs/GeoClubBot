@@ -17,6 +17,8 @@ using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Conversations;
 using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.Review;
+using UseCases.UseCases.AI.StreetView;
 using UseCases.UseCases.AI.Tools;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubChatForwarding;
@@ -173,6 +175,12 @@ public sealed class MediatorTestHost : IDisposable
         services.AddSingleton<PlantIdentificationLookAhead>();
         services.AddSingleton<KnownPlaceDirectory>();
         services.AddSingleton<RegionLocator>();
+
+        // Mirrors AiServices: a review's rounds and a question's Street View link are checked against
+        // the guides' clues by a vision model, through the substituted imagery and chat client.
+        services.AddSingleton<RoundClueFinder>();
+        services.AddScoped<ClueSightCheck>();
+        services.AddScoped<StreetViewLinkLookAhead>();
 
         // Mirrors ClubMembersModule: the private-channel handlers share the category placement logic.
         services.AddScoped<MemberPrivateChannelManager>();

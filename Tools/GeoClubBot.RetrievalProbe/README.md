@@ -44,7 +44,7 @@ stand in for "no references":
    — through handlers built for the planner and for `answer` alone. Nothing else does: no route that
    changes the account, no other method on these. The embedder's handler of `replay` and `compare` never
    lets a chat request through, flag or not. `answer`'s calls to GBIF, for the species-range tool, pass a
-   handler that lets only `GET` through. `review` reads the challenge's results from a file, never from
+   handler that lets only `GET` through. `review` reads the challenge's results or the game from a file, never from
    GeoGuessr; the database and GeoGuessr ports it hands the bot's handler are `ProbeFakes`, which throw on
    every method they were not told to answer; GeoNN's client lets only `POST /api/predict` through, and
    Natural Earth's only `GET`.
@@ -343,19 +343,31 @@ wrote the new answer, and not the member who rated the old one. Read the answers
 
 ### `review`
 
-`/ai review` for real, for any player of a challenge: the bot's `ReviewRoundsHandler`, with the
-production index, the bot's models, Natural Earth's outlines (downloaded once into `ai-data/` beside the
-binary) and, when named, GeoNN. Save the challenge's results with the ApiProbe first; its output (request
-line, JSON, census) is read as it is:
+`/ai review` for real, for any player: the bot's `ReviewRoundsHandler`, with the production index, the
+bot's models, Natural Earth's outlines (downloaded once into `ai-data/` beside the binary), Street View's
+free thumbnails and, when named, GeoNN. It reviews one of:
+
+- a challenge's results, saved with the ApiProbe first (its output — request line, JSON, census — is read
+  as it is), for the player `--player` names (default: the leader);
+- one game, saved the same way from `raw "/v3/games/<token>"`;
+- a Google Maps Street View link, long or short, followed live.
 
 ```bash
 dotnet run --project Tools/GeoClubBot.ApiProbe -- raw "/v3/results/highscores/<token>?friends=false&limit=26&minRounds=1" > ai_feedback/challenge.txt
 dotnet run --project Tools/GeoClubBot.RetrievalProbe -- review ai_feedback/challenge.txt --player <nick> --allow-chat \
     --set AI:RoundReview:StreetViewGuesser:BaseUrl=http://127.0.0.1:8765
+
+dotnet run --project Tools/GeoClubBot.ApiProbe -- raw "/v3/games/<token>" > ai_feedback/game.txt
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- review ai_feedback/game.txt --allow-chat
+
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- review "https://maps.app.goo.gl/dfn7LaomB9WMUtKu5" --allow-chat
 ```
 
-It prints the rounds as placed (location, guess, ✗ for a wrong country), the review as the model wrote
-it with its sources, and what it cost: one embedding and a chat request or more, as the command costs.
+It prints the rounds as placed (location, guess, ✗ for a wrong country), whether each panorama was
+checked and which excerpts it was seen to show (`r` for a region's) or should be looked for, where the
+vision model saw them, the review as the model wrote it with its sources, where the posted views were
+saved (`round-views/` beside the binary), and what it cost: the embedding, a vision request per round and
+a chat request or more, as the command costs.
 
 ## Adding a command
 

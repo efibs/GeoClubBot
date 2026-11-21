@@ -64,6 +64,13 @@ public class MockGeoGuessrClient(MockGeoGuessrDataStore dataStore, Guid? clubId 
         return Task.FromResult(new ChallengeResultHighscoresDto { Items = items });
     }
 
+    /// <summary>A game of the mock's challenges by its token, as the highscores hold it; null (GeoGuessr's 404) otherwise.</summary>
+    public Task<ChallengeResultGameDto?> ReadGameAsync(string gameToken, CancellationToken cancellationToken = default) =>
+        Task.FromResult(dataStore.ChallengeHighscores.Values
+            .SelectMany(scores => scores)
+            .Select(score => score.Game)
+            .FirstOrDefault(game => string.Equals(game.Token, gameToken, StringComparison.Ordinal)));
+
     public Task<ReadClubApplicationsResponseDto> ReadClubApplicationsAsync(Guid clubId, string? paginationToken = null, CancellationToken cancellationToken = default)
     {
         var items = dataStore.ClubApplications.TryGetValue(clubId, out var applications)

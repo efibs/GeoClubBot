@@ -10,6 +10,7 @@ using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.KnowledgeGaps;
 using UseCases.UseCases.AI.Progress;
 using UseCases.UseCases.AI.Retrieval;
+using UseCases.UseCases.AI.StreetView;
 using UseCases.UseCases.AI.Tools;
 using Utilities;
 
@@ -105,6 +106,7 @@ public sealed partial class AskAiHandler(
     AiAnswerLoop answerLoop,
     PlantRangeLookAhead plantRange,
     PlantIdentificationLookAhead plantIdentification,
+    StreetViewLinkLookAhead streetViewLink,
     RegionLocator regionLocator,
     MainGuideOverlap mainGuide,
     ClueSampler clueSampler,
@@ -232,6 +234,18 @@ public sealed partial class AskAiHandler(
         }
 
         IReadOnlyList<string> notices = identified?.Notices ?? [];
+
+        // A Street View link in the question is the place it asks about (#480): checked against its
+        // country's clues like a review's round, and led with. After the search, not beside it: the
+        // check claims its requests through the database context the search's planner uses.
+        var streetView = await streetViewLink.ReadAsync(
+                request.Content, request.AttachmentImageUrls.Count > 0, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken)
+            .ConfigureAwait(false);
+        if (streetView is not null)
+        {
+            retrieved = [.. streetView.Hits, .. retrieved];
+            notices = [.. notices, .. streetView.Notices];
+        }
 
         // The clues the answer before gave are marked too: "give me another one" is no reason to
         // repeat one PlonkIt has.

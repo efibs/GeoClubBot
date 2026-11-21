@@ -291,6 +291,14 @@ A town, a state or province, a country or a Google Maps link all work, in the qu
 ("it's near Boston though"). A close crop of the plant helps most, and you can attach several pictures
 of the same plant (needles, bark, the whole tree) to one message.
 
+Paste a **Google Maps Street View link** (the address bar's link, or a `maps.app.goo.gl` share link)
+and ask about that place:
+
+> @GeoClubBot what gives this away? https://maps.app.goo.gl/dfn7LaomB9WMUtKu5
+
+The bot looks at the place's panorama, checks which of the guides' clues for its country and region
+can be seen there, and explains those, with the view attached.
+
 ### Asking a follow-up
 **Reply to the bot's answer** and ask your next question. You don't need to mention it again — it
 picks up where the conversation left off, including the guides and pictures its answer cited, so
@@ -325,6 +333,23 @@ on a topic.
 **Parameters:**
 - `query` *(required)* — what to look for.
 - `country` *(optional)* — restrict results to one country.
+
+### `/ai review`
+Reviews a game round by round: for each round, the clues that were actually visible in it and that
+point to its country and region, and for the rounds you missed, the easiest reliable clue that tells
+the right country from the one you guessed. It ends with what to practise first. Each round's view is
+posted with the review, and its link opens the round in Google Maps. A vision model checks which
+clues a round showed. It can miss or mistake one, and the review says so.
+
+**Parameters:**
+- `link` *(optional)* — what to review:
+  - a **challenge** link (`geoguessr.com/challenge/…`) — your own game in it; needs your account
+    linked (`/link`). Leave `link` empty for the club's latest daily challenge you played;
+  - a **game** link (`geoguessr.com/game/…` or `geoguessr.com/results/…`) — anyone's game, no linking
+    needed;
+  - a **Google Maps Street View link** — explains what gives that place away.
+
+A game that is still being played is not reviewed until it is finished.
 
 ### `/ai status`
 Shows which AI models are currently available, how much of the guide library is indexed, and how much

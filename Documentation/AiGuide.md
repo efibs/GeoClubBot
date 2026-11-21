@@ -160,8 +160,13 @@ worth knowing:
 | `AI:Tools:RegionMap:MaxRegions` | 15 | Most regions on one map |
 | `AI:Tools:RegionMap:TimeoutSeconds` | 8 | Seconds the map after an answer may take |
 | `AI:Tools:RegionMap:CacheHours` | 24 | How long a drawn map is kept |
-| `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's rounds with the clues that point to each |
-| `AI:RoundReview:MaxRounds` / `ExcerptsPerRound` / `MaxExcerpts` | 10 / 3 / 12 | Rounds reviewed; excerpts searched per round and offered in all |
+| `AI:RoundReview:Enabled` | true | `/ai review`: a played challenge's or game's rounds, or a Street View place, with the clues each showed |
+| `AI:RoundReview:MaxRounds` / `MaxExcerpts` | 10 / 30 | Rounds reviewed; excerpts offered in all (the rounds take turns) |
+| `AI:RoundReview:WellPlayedPoints` | 4500 | A right-country round with this many points gets one line |
+| `AI:RoundReview:ShowRoundViews` | true | Post each round's most telling view (needs the image relay's `PublicBaseUrl`) |
+| `AI:RoundReview:StreetViewLinksInQuestions` | true | A Street View link in a question is checked like a round (two requests) |
+| `AI:RoundReview:SightCheck:Enabled` / `CluesPerRound` / `ExcerptsPerSearch` | true / 14 / 5 | A free vision model checks each round's views against the guides' clues for it |
+| `AI:RoundReview:SightCheck:TimeoutSeconds` / `UnseenCluesForMissedRounds` | 90 / 2 | One round's deadline; clues to look for offered for a missed round that showed none |
 | `AI:RoundReview:HighscoresLimit` | 100 | Places of the highscores read to find the player |
 | `AI:RoundReview:StreetViewGuesser:BaseUrl` | "" | GeoNN's `play.py` (`http://host:8765`); empty, reviews do without it |
 | `AI:RoundReview:StreetViewGuesser:Model` / `TimeoutSeconds` / `CountriesShown` | "" / 30 / 3 | GeoNN's model folder (empty: its newest), one round's deadline, countries shown per round |
@@ -1033,28 +1038,55 @@ first, with a couple of example questions each (`KnowledgeGapReportText`, pure).
 (`AI:KnowledgeGapsSchedule`) forgets records past `RetentionDays` and, with `PostReport` and a
 `TextChannelId`, posts the same report weekly. Costs no AI request.
 
-### `/ai review`: a played challenge, round by round
+### `/ai review`: a played game, round by round — or one Street View place
 
 After a game a player sees where they were wrong, but not which clues would have told them.
-`/ai review [challenge]` (`ReviewRoundsCommand`) takes a challenge link or token — or, with none, the
-club's latest daily challenges — reads its highscores with the main club's account (as the country
-challenges are evaluated), finds the member's own game by their linked GeoGuessr account (`/link`), and
-reviews it:
+`/ai review [link]` (`ReviewRoundsCommand`) reviews one of (`ReviewLinks`, pure):
 
-- Each round and guess is placed in a country and region. A round carries GeoGuessr's own
-  `streakLocationCode`; a guess never does (its field is always `null`), so the guess — and the round's
-  region — come from the Natural Earth boundaries (`IRegionBoundaries.LocateAsync`, point in polygon over
-  the admin-1 outlines the region maps use). Street View stands on the shore and the 10m outlines are
-  coarser than that (a round on Sri Lanka's Mannar Island lay 2 km off them), so a point inside no outline
-  goes to the nearest region within 0.1° (about 11 km); further out is the sea. The review can then say
-  "Lạng Sơn, Vietnam" and "you guessed Guangxi, China, 410 km away".
-- The highscores' shape was read live on 2026-11-13 (two challenges, 15 players; an anonymised copy is
-  `GeoClubBot.Tests/Fixtures/AI/geoguessr-challenge-highscores-20261113.json`): `game.rounds[]` has
-  `lat`, `lng`, `panoId` (hex-encoded: `GeoGuessrPanoId.Decode`), `heading`, `pitch`, `zoom`,
-  `streakLocationCode`, `startTime`; `game.player.guesses[]` has `lat`, `lng`, `timedOut`,
-  `timedOutWithGuess`, `skippedRound`, `roundScoreInPoints`, `distanceInMeters`, `time`; the game carries
-  `forbidMoving` / `forbidZooming` / `forbidRotating`. Every round field stays optional: a game without
-  them is reported as having no rounds rather than reviewed wrong.
+- **a challenge** (`geoguessr.com/challenge/…`), or with no link the club's latest daily challenges: their
+  highscores are read with the main club's account (as the country challenges are evaluated), and the
+  member's own game is found by their linked GeoGuessr account (`/link`);
+- **any single game** (`geoguessr.com/game/…`): `GET /v3/games/{token}` (`IGeoGuessrClient.ReadGameAsync`)
+  answers for any account that has the token, so no linked account is needed, and someone else's game is
+  reviewed in the third person ("This is malta's game"). A `results/…` link or a bare token is either a
+  game or a challenge — GeoGuessr shows both under that path — so it is read as a game first (one call; a
+  challenge's token answers 404, which the Refit adapter turns into null), then as a challenge;
+- **a Street View place** (`google.com/maps/@…`, or a `maps.app.goo.gl/…` short link that
+  `GoogleMapsLinkResolver` follows one checked hop at a time, only ever to Google Maps):
+  `StreetViewLink` (pure) reads the place, the panorama (`!1s<pano>!2e0`; `!2e10` is a photo sphere, which
+  the thumbnail endpoint does not serve) and the view (`90y` field of view, `51.57h` heading, `92.16t`
+  tilt, where 90 is the horizon). The place is explained as one round nobody played.
+
+A game still being played is refused (`State` is not `finished`): its last round is the one on the
+player's screen, and the review would give it away.
+
+Then, per round:
+
+- **Placed** in a country and region. A round carries GeoGuessr's own `streakLocationCode`; a guess never
+  does (its field is always `null`), so the guess — and the round's region — come from the Natural Earth
+  boundaries (`IRegionBoundaries.LocateAsync`, point in polygon over the admin-1 outlines the region maps
+  use). Street View stands on the shore and the 10m outlines are coarser than that (a round on Sri Lanka's
+  Mannar Island lay 2 km off them), so a point inside no outline goes to the nearest region within 0.1°
+  (about 11 km); further out is the sea.
+- **The guides' clues for it are searched** (`RoundClueFinder`): the country's most reliable clues, its
+  road lines, bollards and guardrails, its poles and signs, what tells it from the country guessed (a
+  missed round), and its region's (`RoundReviewPrompt.Searches`), each within the round's country under
+  every spelling the index files it under, every search of the review in **one** embedding request (per
+  32). A round's lists are merged taking turns, up to `SightCheck:CluesPerRound` (14).
+- **Its panorama is looked at** (`ClueSightCheck`, #480). Told only a round's country, the model listed
+  the country's clues, most of which "weren't even in the round"; and GeoNN, the only thing that saw the
+  panorama, was not running in production. So the round's views are read free from the endpoint Google
+  Maps draws its Street View thumbnails from (`GoogleStreetViewImagery`: no key, a browser's User-Agent or
+  it answers 403, at most 1024 × 576, a panorama it does not know comes back as a 2.4 KB black picture):
+  the one view the player had for a no-rotating game, at the round's heading, pitch and zoom (zoom 0 is
+  126.87° across, GeoNN's measurement), else four quarter-turns from where the round started
+  (`StreetViewAngles`). One request to a free vision model (`ClueSightPrompt`) lists the round's clues one
+  numbered line each and asks which it can point at — "1: yes — picture 2, right roadside: …", "no",
+  "unclear" — plus "Seen:" lines for anything else telling and the best picture. A checklist a free model
+  answers reliably; describing a panorama freely, it names what the country is known for. The rounds are
+  looked at side by side, their requests claimed from the allowance together before any is made (the
+  allowance lives in the one database context, which takes one operation at a time), one spare per round
+  up to two for retries against untried models, and what was not spent is given back.
 - **GeoNN** (optional, `AI:RoundReview:StreetViewGuesser`): the maintainer's own GeoGuessr model looks at
   each round's panorama (`IStreetViewGuesser` → `GeoNnStreetViewGuesser`, `POST {BaseUrl}/api/predict` of
   GeoNN's `scripts/play.py`, which fetches the panorama from Google itself), shown as the game showed it:
@@ -1062,22 +1094,41 @@ reviews it:
   panorama (`nm`). Its likeliest countries go into the round's line ("GeoNN read the panorama as Kenya
   94%, …"), and the model is told to use them only to say how plainly the round showed its country — sure
   and right: the clues were there; unsure or wrong: a hard round — never as a source. A notice under the
-  review says GeoNN looked. All rounds are asked while the guides are searched; a round GeoNN cannot read
-  is reviewed without it. On 2026-11-13 (RTX A5000, model `v2`) a no-move challenge read 5 of 5 countries
-  right at 76–99 %, a pan-and-zoom NMPZ map 2 of 5 at under 40 % — that map aims the camera up or down and
-  zooms in, and its best player scored 9,973. About 0.7 s a round, 5 s for the first while the model loads.
-- The guides are searched once per round, within the round's country under every spelling the index
-  files it under ("How to recognise Lạng Sơn, Vietnam: distinctive clues of the region"), every round's
-  wording in **one** embedding request; the rounds take turns at the excerpts up to `MaxExcerpts` (12).
-- The model is asked once through the same answer loop a question goes through (`AiAnswerLoop`: tools,
-  screening, retries), with the rounds written out (`RoundReviewPrompt`, pure) and told to name, per
-  round, the clues that would have given the country and region and what sets the right country apart
-  from the guessed one, ending with what to practise first. Citations, pictures and the source list come
-  out as for an answer; the review is posted into the channel through `IAiChannelPublisher`.
+  review says GeoNN looked. On 2026-11-13 (RTX A5000, model `v2`) a no-move challenge read 5 of 5
+  countries right at 76–99 %, a pan-and-zoom NMPZ map 2 of 5 at under 40 %. About 0.7 s a round.
 
-Cost: two requests of the day's allowance (the embedding and the completion), claimed up front, plus the
-tool rounds the model takes — the same as a question. GeoNN costs no request; it runs on the maintainer's
-own GPU, and without it the review works from the rounds' places alone.
+The excerpts offered (`ReviewExcerpts`, pure) are what each round was seen to show — the country's clues
+before the region's, six at most — and only then what to look for next time: for a round with the wrong
+country that showed no country-wide clue, the country's best two (`UnseenCluesForMissedRounds`); for one
+in the right country that showed nothing of its region, the region's best; for a round no model could look
+at, the country's best, since nothing is known of it. The rounds take turns up to `MaxExcerpts` (30). Each
+round's line in the question (`RoundReviewPrompt`, pure) names them by number: "Seen in its panorama: [1]
+picture 2, right roadside: concrete poles with a white band; [4] (regional) …", "Not seen in it, but clues
+of Spain to look for: [6]", or "Its panorama could not be looked at". The model is told to say a round
+showed a clue only when it is listed as seen; for a round with the wrong country, the one or two easiest,
+most reliable country-wide clues first and how they tell it from the guess, then one regional at most
+(asked with the Spain/Portugal round of #480, where yellow guardrail reflectors were in plain view and the
+review gave "very regional and hard to remember clues"); one line for a right-country round of
+`WellPlayedPoints` (4,500) or more; the clues that narrow the region for any other. A vision model's own
+notes are used only after "Not from the guides:".
+
+The model is asked once through the answer loop, **without tools** (`AnswerRequest.AllowTools`): a search
+would bring back clues the round never showed. Citations, pictures and the source list come out as for an
+answer, and with `ShowRoundViews` each round's most telling view is stored in the image relay and posted
+after the guides' pictures ("Round 2: Spain (Valencian Community)"), its source line opening the round in
+Google Maps (the documented `map_action=pano` URL); the guides' pictures give way so the message stays at
+ten. Without a relay (`PublicBaseUrl`) no view is posted: Google's endpoint would refuse Discord as it
+refuses the bot without a browser's name.
+
+A question that carries a Street View link ("what gives this away? maps.app.goo.gl/…") is checked the same
+way when `StreetViewLinksInQuestions` is on (`StreetViewLinkLookAhead`): the place, the clues it was seen to
+show and those to look for lead the excerpts, the first an excerpt of its own whose picture is the view.
+It runs after the question's search, not beside it, for the same database context.
+
+Cost: the review's embedding request (one per 32 searches) and the chat request, claimed up front; one
+vision request per round (plus at most two retries); a question's Street View link two (its embedding and
+its vision request). At the 1000-a-day tier a five-round review is about eight requests. Street View's
+thumbnails and GeoNN cost no request.
 
 ### What goes into a vector
 

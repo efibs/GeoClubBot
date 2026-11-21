@@ -69,9 +69,11 @@ public static class AiProgressFormatter
             AiProgressKind.SearchingGuidesFor => detail is null ? "Searching the guides" : $"Searching the guides for “{detail}”",
             AiProgressKind.ReadingGuide => detail is null ? "Reading a guide" : $"Reading *{detail}*",
             AiProgressKind.DrawingRegionMap => detail is null ? "Drawing a map of the regions" : $"Drawing a map of {detail}",
-            AiProgressKind.ReadingChallenge => "Reading the challenge's results",
+            AiProgressKind.ReadingChallenge => "Reading the game from GeoGuessr",
             AiProgressKind.PlacingRounds => "Placing the rounds and guesses",
             AiProgressKind.ReadingPanoramas => "Looking at the panoramas with GeoNN",
+            AiProgressKind.OpeningMapsLink => "Opening the Street View link",
+            AiProgressKind.LookingAtRounds => detail is null ? "Checking the panorama against the guides" : $"Checking {detail} against the guides",
             AiProgressKind.Posting => "Posting the answer",
             _ => "Working"
         };

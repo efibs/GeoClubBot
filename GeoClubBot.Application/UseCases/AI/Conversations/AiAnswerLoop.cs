@@ -19,6 +19,10 @@ namespace UseCases.UseCases.AI.Conversations;
 /// <param name="CarriedCount">How many of <paramref name="Hits"/>, from the first, the previous answer cited (<see cref="CarriedExcerpts"/>).</param>
 /// <param name="CarriedSourceNumbers">The numbers the reader saw those under, when not their own (<see cref="FollowUpExcerpts.CarriedSourceNumbers"/>).</param>
 /// <param name="LesserKnown">The question asks for something the user does not know yet: PlonkIt's tips stay out of its excerpts and its searches.</param>
+/// <param name="AllowTools">
+/// Whether the model may search for more. A round review says no: its excerpts are the clues each round
+/// was seen to show, and a search would bring back clues it never showed (#480).
+/// </param>
 public sealed record AnswerRequest(
     ConversationContext Context,
     string Question,
@@ -28,7 +32,8 @@ public sealed record AnswerRequest(
     DateTimeOffset StartedAt,
     int CarriedCount = 0,
     IReadOnlyList<int>? CarriedSourceNumbers = null,
-    bool LesserKnown = false);
+    bool LesserKnown = false,
+    bool AllowTools = true);
 
 /// <param name="Response">The completion that answered.</param>
 /// <param name="Excerpts">Every excerpt offered, the retrieved ones first: citations resolve against these.</param>
@@ -119,14 +124,14 @@ public sealed partial class AiAnswerLoop(
             MinContextLength: config.OpenRouter.MinContextLength);
         var singleShot = new Asking(prompt.Messages, requirements, Tools: null);
 
-        var toolChain = tools.Enabled
+        var toolChain = tools.Enabled && request.AllowTools
             ? await ReadToolChainAsync(requirements with { NeedsTools = true }, excluded: null, config, cancellationToken).ConfigureAwait(false)
             : [];
 
         if (toolChain.Count == 0
             || !await CanAffordToolRoundAsync(request.BudgetDay, config, cancellationToken).ConfigureAwait(false))
         {
-            if (tools.Enabled)
+            if (tools.Enabled && request.AllowTools)
             {
                 LogAnsweringWithoutTools(logger, toolChain.Count == 0 ? "no model in the chain can call tools" : "the day's allowance is short");
             }
