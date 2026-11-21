@@ -71,7 +71,8 @@ public sealed class MockClubSocketHub(MockGeoGuessrDataStore store)
     }
 
     /// <summary>
-    /// A message written into a club's chat: stored as GeoGuessr would (cut at 300 characters) and,
+    /// A message written into a club's chat: stored as GeoGuessr would (cut at 300 characters, line
+    /// breaks past the fourth turned into spaces) and,
     /// unless the club's echoes are dropped, sent back to every socket on the chat's topic.
     /// </summary>
     internal void ReceiveChat(string? topic, string? text)
@@ -81,7 +82,7 @@ public sealed class MockClubSocketHub(MockGeoGuessrDataStore store)
             return;
         }
 
-        var stored = text.Length > MaxChatLength ? text[..MaxChatLength] : text;
+        var stored = KeepLineBreaks(text.Length > MaxChatLength ? text[..MaxChatLength] : text);
         var echoed = !store.ChatEchoesDropped.GetValueOrDefault(clubId);
         var message = new MockChatMessage(Guid.NewGuid().ToString("N")[..10], stored, DateTimeOffset.UtcNow, echoed);
         store.ClubChats.GetOrAdd(clubId, _ => new ConcurrentQueue<MockChatMessage>()).Enqueue(message);
@@ -113,6 +114,21 @@ public sealed class MockClubSocketHub(MockGeoGuessrDataStore store)
 
     /// <summary>GeoGuessr silently cuts a chat message here.</summary>
     private const int MaxChatLength = 300;
+
+    /// <summary>GeoGuessr keeps this many line breaks in a chat message and turns the rest into spaces.</summary>
+    private const int MaxChatLineBreaks = 4;
+
+    private static string KeepLineBreaks(string text)
+    {
+        var breaks = 0;
+        return string.Create(text.Length, text, (span, source) =>
+        {
+            for (var i = 0; i < source.Length; i++)
+            {
+                span[i] = source[i] == '\n' && ++breaks > MaxChatLineBreaks ? ' ' : source[i];
+            }
+        });
+    }
 
     private static Guid? ClubOf(string? topic, string prefix) =>
         topic is not null && topic.StartsWith(prefix, StringComparison.Ordinal) && Guid.TryParse(topic[prefix.Length..], out var clubId)

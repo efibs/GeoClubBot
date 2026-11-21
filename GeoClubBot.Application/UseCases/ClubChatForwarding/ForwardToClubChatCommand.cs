@@ -41,7 +41,7 @@ public sealed partial class ForwardToClubChatHandler(
         }
 
         var options = config.Value;
-        var split = ClubChatTextSplitter.Split(request.Text, options.MaxMessageLength, options.MaxParts);
+        var split = ClubChatTextSplitter.Split(request.Text, options.MaxMessageLength, options.MaxParts, options.MaxLineBreaks);
         if (split.IsFailure)
         {
             return split.Error;
