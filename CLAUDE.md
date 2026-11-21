@@ -87,7 +87,9 @@ and per payload index, and the default limit is exhausted part-way through a run
   to drop the `ConfigureAwait(false)` flips. `Safe Mode! … remove all mutations in X` in the log means one
   mutant of `X` did not compile and the whole method went unmeasured, usually a local that is only
   definitely assigned thanks to a `continue` or `break`; give it an initial value or read it outside a
-  pattern. Static lookup tables opt out one by one with `// Stryker disable once String`; the comment
+  pattern. `language-version` is `Preview` because Stryker's bundled Roslyn still calls C# 15's `closed`
+  a preview feature (CS8652 on every closed record, and the run stops); it only affects Stryker's own
+  compile of mutants. Static lookup tables opt out one by one with `// Stryker disable once String`; the comment
   covers only the member it precedes, however long that is.
 - **Property-based** (`PropertyBased/`, fast): `CsCheck` asserts invariants of the pure logic
   (`TimeRange` algebra; `DateTimeOffset` `Truncate`/`RoundUp` windowing; the AI content chunker, whose
