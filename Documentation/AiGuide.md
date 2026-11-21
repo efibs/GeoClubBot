@@ -125,6 +125,7 @@ worth knowing:
 | `AI:Ingestion:DocumentPicturePixels` | 1600 | Longest side a Google document's pictures are downloaded at. Lower it to save disk (about 270 kB a picture at 1600) |
 | `AI:Ingestion:UnavailableRecheckDays` | 30 | How long a deleted or no-longer-shared source waits before it is checked again. The second check in a row that still finds it deleted removes its chunks |
 | `AI:Ingestion:MaxFailingRetriesPerRun` | 5 | How many sources whose last attempt failed one run retries. They are taken last, fewest failures first |
+| `AI:Ingestion:MaxConsecutiveEmbeddingFailures` | 3 | Sources in a row whose text the embedding provider failed to embed on its side (unreachable, overloaded, timed out, open circuit) before the run stops. Such sources are left as they were, never marked failed |
 | `AI:Ingestion:RemovedSourceGraceDays` | 30 | Days a source can go unlisted by every catalogue before its chunks leave the index; 0 keeps them |
 | `AI:CaptionSchedule` | `0 30 4 * * ?` | When a free vision model describes indexed pictures that have no words of their own. Before `IngestionSchedule`, so its share of the allowance is claimed first |
 | `AI:Captions:Enabled` | true | Turn describing off without touching what is stored |
@@ -1650,6 +1651,17 @@ The rest are embedded in groups, and a group's failure is judged by its cause:
 | The provider failed, timed out, or the allowance ran out | Keeps what succeeded and comes back for the rest next run |
 | Still rate-limited after waiting | Keeps what succeeded, comes back for the rest, and ends the run |
 
+A source's **text** that cannot be embedded writes nothing, and is judged the same way. A rejection
+(400, 413, 415, 422) is the source's failure, retried with backoff. Anything else (unreachable,
+overloaded, timed out, refused by the open circuit) is the provider's, and the source is left exactly
+as it was, first in line next run; `MaxConsecutiveEmbeddingFailures` of those in a row end the run.
+Before this, an overloaded model (`nvidia/nemotron-3.5-embed-1b:free`, 503 for days from 2026-11-19)
+and the circuit it opened marked 590 sources failed in three nights. Each still claimed its requests
+from the day's share, and with failed sources retried only `MaxFailingRetriesPerRun` a run, the index
+would have taken months to fill. The model selector moves on only after a 404, by choice: a switch
+re-indexes everything into a new collection, so an outage is met by changing
+`AI:OpenRouter:EmbeddingModelId` (production moved to the 8B model, 4096 wide, on 2026-11-21).
+
 A source that is "coming back" is due again immediately instead of waiting out `ReingestAfterDays`.
 
 Sources indexed before this behaviour existed may have lost their images for good: a failed batch
@@ -1754,6 +1766,7 @@ runs re-embed them.
 | `/ai sources` shows a guide Unavailable, "no longer exists (HTTP 410)" | Its owner deleted it. Nothing to do: it is rechecked every `UnavailableRecheckDays` and its chunks are removed on the second check |
 | Unavailable, "not publicly readable (HTTP 403)" | Its owner stopped sharing it. It comes back by itself within `UnavailableRecheckDays` of being shared again, or at once with `/ai source-retry key:<type:key>` |
 | Every guide of one site is Skipped, "carries no guide content" | The site changed its markup. Once the extractor is fixed, run `/ai source-retry source-type:<type>` |
+| Run summary: "Stopped early — the embedding provider failed for N source(s) in a row" | The embedding model is down or overloaded. Check its provider at `https://openrouter.ai/api/v1/models/<model>/endpoints`; if it stays down, set `AI:OpenRouter:EmbeddingModelId` (and `EmbeddingDimensions`) to a served model and restart — that re-indexes into a new collection. Sources an older build marked failed for this ("The embedding provider …") come back with `/ai source-retry` |
 | Run summary: "left for a later run because their site refused requests" | The host rate-limited, refused us with 401/403, or the circuit breaker opened. The sources keep their place for the next run |
 | A slide deck is indexed but has no pictures | Google refused to export it (413), or it is larger than `MaxDeckExportBytes`. Its text is indexed |
 | Log: "AI model … or refused to serve this bot, and is excluded until restart", after a 403 | A free model reserved for agentic harnesses refused the bot. Add it to `AI:OpenRouter:BlockedModelIds` |

@@ -80,6 +80,16 @@ public static class AiSourcesFormatter
                                + "picked up on the next run.");
         }
 
+        if (report.EmbedderUnavailable)
+        {
+            message.AppendLine($"\n⚠️ Stopped early — the embedding provider failed for {report.EmbeddingFailed} source(s) in a row "
+                               + "(unreachable, overloaded or timed out). They were left as they were and come first on the next run.");
+        }
+        else if (report.EmbeddingFailed > 0)
+        {
+            message.AppendLine($"\n⚠️ Left {report.EmbeddingFailed} source(s) for a later run: the embedding provider failed on its side.");
+        }
+
         if (report.Failed + report.Skipped + report.Unavailable > 0)
         {
             message.AppendLine("\nWhich ones, and why: `/ai sources`.");

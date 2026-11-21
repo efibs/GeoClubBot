@@ -60,6 +60,14 @@ public class AiIngestionConfiguration
     public int MaxFailingRetriesPerRun { get; set; } = 5;
 
     /// <summary>
+    /// Sources in a row whose embedding failed on the provider's side (unreachable, overloaded, timed out)
+    /// before a run stops. Such a source is left as it was, not marked failed: in November 2026 an
+    /// overloaded model and the open circuit after it marked 590 sources failed in three nights, and
+    /// failed sources are retried only <see cref="MaxFailingRetriesPerRun"/> a run.
+    /// </summary>
+    public int MaxConsecutiveEmbeddingFailures { get; set; } = 3;
+
+    /// <summary>
     /// Days a source may go unlisted by every catalogue before its chunks are removed from the index; 0
     /// keeps them for ever. A grace period rather than at once, because a library edit can drop a guide
     /// for a week and put it back, and the catalogue sync that would notice runs only weekly.
