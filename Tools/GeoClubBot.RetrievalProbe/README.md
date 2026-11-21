@@ -118,6 +118,7 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `chunks <export.jsonl>` | The excerpts each rated answer was shown, in full, read back by the chunk ids the export kept and numbered as the model saw them, the cited ones marked. With `--source <link or type:key>` instead: every chunk the index holds of one guide, in reading order |
 | `extract <guide link>` | What a guide would be indexed as, read now by the bot's own extractor and chunker — sections, chunks, picture captions — without indexing anything. A Google document's pictures are not downloaded: each picture chunk shows the link it would come from |
 | `overlap --source <guide>` | How much of a guide PlonkIt has too: for each of its chunks, the nearest PlonkIt tip of the same country and how near. Where `AI:Retrieval:LesserKnown:SameClueSimilarity` was read off |
+| `quiz` | `/ai quiz`'s picture rating for real: `--max` pictures (default 20) drawn at random from the index, as the nightly run draws them (`--country`: of one country), each rated by the bot's own `QuizPictureRater` and prompt. Shows what the guide says, the questions the model judged fair with their wrong answers and difficulty, and its raw reply; saves each picture into `quiz-pictures/` beside the binary. Stores nothing. One chat request a picture; needs `--allow-chat` |
 | `map <plant name>` | The species map the bot would attach, drawn by its own GBIF reader and renderer into `species-maps/` beside the binary; `--country` counts and frames one country. Needs neither the index nor a key |
 | `plant <screenshots>` | The plant in screenshots (files or links, comma-separated: views of one plant) as the bot names it before answering: the place read from `--question` (and `--source`, standing for an earlier message of the branch), Pl@ntNet's candidates in its own order and weighed by GBIF's records there, the excerpt and the notes under the answer. Needs a Pl@ntNet key (`PLANTNET_API_KEY`, or `{ "PlantNet": { "ApiKey": "…" } }` in `appsettings.Local.json`); each new set of pictures uses one identification of its 500 a day, and answers are kept in `plantnet-cache/` beside the binary, so `--set AI:Tools:PlantIdentification:Location:RecordsWeight=…` reruns are free. Needs no index |
 
@@ -131,8 +132,8 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `--allow-chat` | `replay`/`compare`: let the query planner's chat requests leave the probe — one per question, cached. `replay` then searches with the planner on (it ships off); without it, `compare`'s variants that plan search as the bot does when the planner fails. `answer`: required, since it asks the bot's models |
 | `--planner-models <ids>` | `replay`/`compare`: comma-separated chain the planner asks instead of the bot's own, to measure another model; cached apart |
 | `--player <nick\|id>` | `review`: whose game is reviewed (default: the leader) |
-| `--set <Key=Value>` | `answer`, `review`: overrides one of the bot's AI settings, e.g. `--set AI:Tools:Enabled=false`; repeatable |
-| `--country <name>` | `map`: the country to count and frame the plant in |
+| `--set <Key=Value>` | `answer`, `review`, `quiz`: overrides one of the bot's AI settings, e.g. `--set AI:Tools:Enabled=false`; repeatable |
+| `--country <name>` | `map`: the country to count and frame the plant in; `quiz`: only pictures of this country |
 | `--question <text>` | `similarity`: the question; `plant`: what the member asked with the screenshots, e.g. `"what tree is this? south of Boston"` |
 | `--only <list>` | `answer`, `chunks`: record numbers and ranges, feedback-id prefixes, `after:`/`before:` dates, comma-separated (`1-25,31`, `after:2026-09-27`) |
 | `--parallel <n>` | `answer`: rated answers asked at once (default 2, at most 8) |
@@ -141,7 +142,7 @@ dotnet run --project Tools/GeoClubBot.RetrievalProbe -- <command> [options]
 | `--variants <file>` | `compare`: retrieval settings to compare instead of the built-in steps (see below) |
 | `--source <url>` | `similarity`: a chunk's source URL, as listed under an answer or in a replay; `chunks`, `overlap`: a guide's link, or its type and key (`gdoc:<id>`) |
 | `--variant <text>` | `similarity`: re-worded chunk text to try; repeatable |
-| `--max <n>` | `grep`: matches to list (default 20); `chunks --source`, `extract`, `overlap`: rows to show |
+| `--max <n>` | `grep`: matches to list (default 20); `chunks --source`, `extract`, `overlap`: rows to show; `quiz`: pictures to rate |
 | `--out <file>` | Also write the report, which is Markdown, to a file |
 
 Keep exports and reports in `ai_feedback/`, which is git-ignored. Exports carry Discord user ids and
@@ -368,6 +369,25 @@ checked and which excerpts it was seen to show (`r` for a region's) or should be
 vision model saw them, the review as the model wrote it with its sources, where the posted views were
 saved (`round-views/` beside the binary), and what it cost: the embedding, a vision request per round and
 a chat request or more, as the command costs.
+
+### `quiz`
+
+How the quiz's vision rating (#491) judges real pictures, before members see what it makes. Pictures
+are drawn from the production index as the nightly `AiQuizRatingJob` draws them and rated by the bot's
+own code, but nothing is stored:
+
+```bash
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- quiz --allow-chat --max 15 --out ai_feedback/quiz.md
+dotnet run --project Tools/GeoClubBot.RetrievalProbe -- quiz --allow-chat --country Mongolia --max 10
+```
+
+For each picture it prints where it is saved (`quiz-pictures/`, numbered in report order), what the
+guide says of it, the questions the model judged fair (Country, Region, Clue) with their difficulty,
+right answer and wrong answers, or that it made none, and the raw reply. Look for a giveaway the model
+let through, a fair picture it refused, and wrong answers that are implausible or that the picture rules
+out. The summary counts outcomes and questions by kind and difficulty. Pictures are read from their
+relayed links; when the index's links name an old host, `--set AI:ImageRelay:PublicBaseUrl=…` moves them.
+After a prompt change, raise `AI:Quiz:Rating:Version` so the bot rates every picture again.
 
 ## Adding a command
 

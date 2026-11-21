@@ -281,6 +281,190 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                     b.ToTable("AiFeedbackTurns");
                 });
 
+            modelBuilder.Entity("Entities.AiQuizGuess", b =>
+                {
+                    b.Property<Guid>("RoundId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<DateTimeOffset>("AnsweredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Correct")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("OptionIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer");
+
+                    b.HasKey("RoundId", "UserId");
+
+                    b.HasIndex("AnsweredAtUtc", "UserId");
+
+                    b.ToTable("AiQuizGuesses");
+                });
+
+            modelBuilder.Entity("Entities.AiQuizItem", b =>
+                {
+                    b.Property<Guid>("ChunkId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Country")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("RatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceType")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ChunkId");
+
+                    b.HasIndex("Version", "Country");
+
+                    b.ToTable("AiQuizItems");
+                });
+
+            modelBuilder.Entity("Entities.AiQuizItemQuestion", b =>
+                {
+                    b.Property<Guid>("ChunkId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Answer")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.PrimitiveCollection<List<string>>("Decoys")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Difficulty")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("ChunkId", "Kind");
+
+                    b.HasIndex("Kind", "Difficulty");
+
+                    b.ToTable("AiQuizItemQuestions");
+                });
+
+            modelBuilder.Entity("Entities.AiQuizRound", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AskedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("AskedByUserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<string>("AskedCountry")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AskedDifficulty")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<Guid>("ChunkId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CorrectIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CountryName")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Difficulty")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("Guide")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<bool>("LesserKnownOnly")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal?>("MessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.PrimitiveCollection<List<string>>("Options")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<DateTimeOffset>("RevealAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RevealedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChunkId");
+
+                    b.HasIndex("RevealedAtUtc", "RevealAtUtc");
+
+                    b.ToTable("AiQuizRounds");
+                });
+
             modelBuilder.Entity("Entities.AiRetrievalGap", b =>
                 {
                     b.Property<int>("Id")
@@ -1003,6 +1187,24 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Entities.AiQuizGuess", b =>
+                {
+                    b.HasOne("Entities.AiQuizRound", null)
+                        .WithMany("Guesses")
+                        .HasForeignKey("RoundId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Entities.AiQuizItemQuestion", b =>
+                {
+                    b.HasOne("Entities.AiQuizItem", null)
+                        .WithMany("Questions")
+                        .HasForeignKey("ChunkId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Entities.ClubMember", b =>
                 {
                     b.HasOne("Entities.Club", null)
@@ -1080,6 +1282,16 @@ namespace Infrastructure.OutputAdapters.DataAccess.Migrations
             modelBuilder.Entity("Entities.AiAnswerFeedback", b =>
                 {
                     b.Navigation("Turns");
+                });
+
+            modelBuilder.Entity("Entities.AiQuizItem", b =>
+                {
+                    b.Navigation("Questions");
+                });
+
+            modelBuilder.Entity("Entities.AiQuizRound", b =>
+                {
+                    b.Navigation("Guesses");
                 });
 
             modelBuilder.Entity("Entities.ClubMember", b =>

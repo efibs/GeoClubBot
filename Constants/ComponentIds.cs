@@ -37,11 +37,19 @@ public class ComponentIds
     public const string CountryChallengeImportStandingsTextInputId =
         "country-challenge-import-input";
 
+    /// <summary>The self-judged buttons of the quiz before #491, still on old messages.</summary>
     public const string AiQuizRightButtonId = "ai-quiz-right";
 
+    /// <summary>The self-judged buttons of the quiz before #491, still on old messages.</summary>
     public const string AiQuizWrongButtonId = "ai-quiz-wrong";
 
     public const string AiQuizAgainButtonId = "ai-quiz-again";
+
+    /// <summary>An answer to a quiz question: <c>ai-quiz-pick:{roundId}:{option}</c>.</summary>
+    public const string AiQuizPickButtonId = "ai-quiz-pick";
+
+    /// <summary>Shows a quiz question's answer early: <c>ai-quiz-reveal:{roundId}</c>.</summary>
+    public const string AiQuizRevealButtonId = "ai-quiz-reveal";
 
     public const string SelfRolesSelectButtonId =
         "self-roles-select-btn";

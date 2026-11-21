@@ -25,7 +25,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
 
 [CommandContextType(InteractionContextType.Guild)]
 [Group("ai", "Commands for controlling the AI features")]
-public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogger<AiModule> logger)
+public partial class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogger<AiModule> logger)
     : ClubBotInteractionModule(mediator, logger)
 {
     /// <summary>Hits shown by /ai search; enough to judge retrieval without flooding the reply.</summary>
@@ -112,33 +112,134 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         }, ephemeral: true, failureMessage: "Failed to search the guide index.");
 
     [DefaultMemberPermissions(GuildPermission.Administrator)]
-    [SlashCommand("quiz", "A random guide picture: where is it, and what gives it away? The answer waits behind a spoiler")]
+    [SlashCommand("quiz", "A guide picture with four answers to pick from; everyone guesses once and scores points")]
     public Task QuizAsync(
-        [Summary(description: "Only pictures of one country, e.g. Vietnam")] string? country = null,
+        [Summary(description: "Only pictures of one country, e.g. Vietnam: then it asks where in it, or what is typical")] string? country = null,
+        [Summary(description: "How hard; left out, easy and medium questions")]
+        [Choice("easy (1 point)", "easy")]
+        [Choice("medium (2 points)", "medium")]
+        [Choice("hard (3 points)", "hard")]
+        string? difficulty = null,
         [Summary(name: "lesser-known", description: "Only clues PlonkIt does not have")] bool lesserKnown = false) =>
-        ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ct), failureMessage: "The quiz could not draw a picture just now.");
+        ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ParseDifficulty(difficulty), ct),
+            failureMessage: "The quiz could not draw a picture just now.");
 
-    // One wildcard for both filters: Discord.Net's wildcard needs at least one character, so a second
+    [SlashCommand("quiz-scores", "The quiz leaderboard: points over all time and over the last days")]
+    public Task QuizScoresAsync() =>
+        ExecuteAsync(async ct =>
+        {
+            var result = await Mediator.Send(new ReadQuizLeaderboardQuery(Context.User.Id), ct).ConfigureAwait(false);
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            await FollowupAsync(AiQuizFormatter.Leaderboard(result.Value), ephemeral: true, allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "The quiz leaderboard could not be read just now.");
+
+    // One wildcard for all filters: Discord.Net's wildcard needs at least one character, so a separate
     // one for the country never matched a quiz played without a country (#479).
     [ComponentInteraction($"{ComponentIds.AiQuizAgainButtonId}:*", ignoreGroupNames: true)]
     public Task QuizAgainAsync(string filters)
     {
-        var (country, lesserKnown) = AiQuizFormatter.ReadAgainFilters(filters);
-        return ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, ct),
+        var (country, lesserKnown, difficulty) = AiQuizFormatter.ReadAgainFilters(filters);
+        return ExecuteAsync(ct => PostQuizAsync(country, lesserKnown, difficulty, ct),
             failureMessage: "The quiz could not draw a picture just now.");
     }
 
+    [ComponentInteraction($"{ComponentIds.AiQuizPickButtonId}:*:*", ignoreGroupNames: true)]
+    public Task QuizPickAsync(string roundId, string option) =>
+        ExecuteAsync(async ct =>
+        {
+            if (AiQuizFormatter.ReadPick(roundId, option) is not { } pick)
+            {
+                await FollowupAsync("That button is no answer I know.", ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
+            var result = await Mediator.Send(new GuessQuizCommand(pick.RoundId, Context.User.Id, pick.Option), ct).ConfigureAwait(false);
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            await FollowupAsync(AiQuizFormatter.Verdict(result.Value), ephemeral: true, allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
+            await UpdateQuizMessageAsync(result.Value.Round).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "Your guess could not be recorded just now.");
+
+    [ComponentInteraction($"{ComponentIds.AiQuizRevealButtonId}:*", ignoreGroupNames: true)]
+    public Task QuizRevealAsync(string roundId) =>
+        ExecuteAsync(async ct =>
+        {
+            if (!Guid.TryParseExact(roundId, "N", out var id))
+            {
+                await FollowupAsync("That button is no question I know.", ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
+            var isAdmin = Context.User is IGuildUser member
+                          && (member.GuildPermissions.Administrator || member.GuildPermissions.ManageMessages);
+            var result = await Mediator.Send(new RevealQuizRoundCommand(id, Context.User.Id, isAdmin), ct).ConfigureAwait(false);
+            if (result.IsFailure)
+            {
+                await FollowupFailureAsync(result.Error).ConfigureAwait(false);
+                return;
+            }
+
+            await UpdateQuizMessageAsync(result.Value).ConfigureAwait(false);
+        }, ephemeral: true, failureMessage: "The answer could not be revealed just now.");
+
+    // The self-judged buttons of the quiz before #491, still under old messages.
     [ComponentInteraction(ComponentIds.AiQuizRightButtonId, ignoreGroupNames: true)]
-    public Task QuizRightAsync() => ExecuteAsync(_ => JudgeQuizAsync(right: true), ephemeral: true);
+    public Task QuizRightAsync() => ExecuteAsync(_ => AnswerOldQuizAsync(), ephemeral: true);
 
     [ComponentInteraction(ComponentIds.AiQuizWrongButtonId, ignoreGroupNames: true)]
-    public Task QuizWrongAsync() => ExecuteAsync(_ => JudgeQuizAsync(right: false), ephemeral: true);
+    public Task QuizWrongAsync() => ExecuteAsync(_ => AnswerOldQuizAsync(), ephemeral: true);
+
+    private Task AnswerOldQuizAsync() =>
+        FollowupAsync("That question is from the old quiz, which kept no score. Press *Another*, or run `/ai quiz`, for one with points.",
+            ephemeral: true);
+
+    private static AiQuizDifficulty? ParseDifficulty(string? difficulty) =>
+        Enum.TryParse<AiQuizDifficulty>(difficulty, ignoreCase: true, out var parsed) ? parsed : null;
+
+    /// <summary>Shows a round's state in its message: the running count while open, the answer once revealed.</summary>
+    private async Task UpdateQuizMessageAsync(AiQuizRound round)
+    {
+        if (Context.Interaction is not IComponentInteraction { Message: { } message })
+        {
+            return;
+        }
+
+        try
+        {
+            await message.ModifyAsync(properties =>
+            {
+                properties.Content = round.IsRevealed ? AiQuizFormatter.Revealed(round) : AiQuizFormatter.Question(round);
+                properties.Components = AiQuizFormatter.Buttons(round);
+                properties.AllowedMentions = AllowedMentions.None;
+            }).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // The guess is recorded either way; a count that lags one guess behind is no reason to fail it.
+            LogQuizMessageNotUpdated(logger, exception, message.Id);
+        }
+    }
+
+    [LoggerMessage(LogLevel.Warning, "Could not update quiz message {MessageId}.")]
+    static partial void LogQuizMessageNotUpdated(ILogger logger, Exception exception, ulong messageId);
 
     /// <summary>
     /// Draws a question and posts it with its picture: uploaded from the relay when the picture is a
-    /// relayed one, so it shows whether or not Discord can reach this host; linked otherwise.
+    /// relayed one, so it shows whether or not Discord can reach this host; linked otherwise. The round is
+    /// recorded before posting, and the message it went out as after.
     /// </summary>
-    private async Task PostQuizAsync(string? country, bool lesserKnown, CancellationToken cancellationToken)
+    private async Task PostQuizAsync(string? country, bool lesserKnown, AiQuizDifficulty? difficulty, CancellationToken cancellationToken)
     {
         var quiz = serviceProvider.GetRequiredService<IOptions<AiQuizConfiguration>>().Value;
         var ai = serviceProvider.GetRequiredService<IOptions<AiConfiguration>>().Value;
@@ -148,40 +249,39 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
             return;
         }
 
-        var result = await Mediator.Send(new DrawQuizQuestionQuery(country, lesserKnown), cancellationToken).ConfigureAwait(false);
+        var result = await Mediator.Send(
+                new StartQuizRoundCommand(Context.Channel.Id, Context.User.Id, country, lesserKnown, difficulty),
+                cancellationToken)
+            .ConfigureAwait(false);
         if (result.IsFailure)
         {
             await FollowupFailureAsync(result.Error).ConfigureAwait(false);
             return;
         }
 
-        var question = result.Value;
-        var text = AiQuizFormatter.Question(question, country);
-        var buttons = AiQuizFormatter.Buttons(country, lesserKnown);
-        var imageUrl = question.Clue.ImageUrl!;
+        var round = result.Value;
+        var text = AiQuizFormatter.Question(round);
+        var buttons = AiQuizFormatter.Buttons(round);
 
+        IUserMessage posted;
         var imageRelay = serviceProvider.GetRequiredService<IImageRelay>();
-        if (RelayedImageUrl.TryReadName(imageUrl, out var storedName)
+        if (RelayedImageUrl.TryReadName(round.ImageUrl, out var storedName)
             && await imageRelay.ReadAsync(storedName, cancellationToken).ConfigureAwait(false) is { } stored)
         {
             await using (stored.Content.ConfigureAwait(false))
             {
                 var extension = RelayedImageUrl.TrySplitName(storedName, out _, out var ext) && !string.IsNullOrEmpty(ext) ? ext : ".jpg";
-                await FollowupWithFileAsync(stored.Content, $"quiz{extension}", text, components: buttons, allowedMentions: AllowedMentions.None)
+                posted = await FollowupWithFileAsync(stored.Content, $"quiz{extension}", text, components: buttons, allowedMentions: AllowedMentions.None)
                     .ConfigureAwait(false);
             }
-
-            return;
+        }
+        else
+        {
+            var embed = new EmbedBuilder().WithImageUrl(round.ImageUrl).Build();
+            posted = await FollowupAsync(text, embed: embed, components: buttons, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
 
-        var embed = new EmbedBuilder().WithImageUrl(imageUrl).Build();
-        await FollowupAsync(text, embed: embed, components: buttons, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-    }
-
-    private Task JudgeQuizAsync(bool right)
-    {
-        var score = serviceProvider.GetRequiredService<QuizStreaks>().Record(Context.User.Id, right);
-        return FollowupAsync(AiQuizFormatter.Score(score, right), ephemeral: true);
+        await Mediator.Send(new AttachQuizMessageCommand(round.Id, posted.Id), cancellationToken).ConfigureAwait(false);
     }
 
     [SlashCommand("review", "Review a game or a Street View place: the clues each round showed, and what to study")]

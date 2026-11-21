@@ -246,6 +246,11 @@ public sealed record ProbeArguments(
                                       placed by Natural Earth's outlines, searched in the index and
                                       answered by the bot's models. Needs --allow-chat; --player picks
                                       whom to review (nick or id, default the leader).
+              quiz                    /ai quiz's picture rating run for real: --max pictures (default 20)
+                                      drawn at random from the index (--country: of one country), each
+                                      rated by the bot's own prompt, with the questions it makes, their
+                                      wrong answers and the raw reply. Saves the pictures beside the
+                                      probe; stores nothing. One chat request a picture; needs --allow-chat.
               map <plant name>        The map the bot would attach for a plant, drawn by its own GBIF
                                       reader and renderer; --country frames one country. Needs no index.
               plant <pictures>        The plant in screenshots (files or links, comma-separated) as the
@@ -267,7 +272,7 @@ public sealed record ProbeArguments(
               --allow-chat            replay/compare: let the query planner's chat requests leave the
                                       probe (one per question, cached). Without it only embeddings do.
                                       answer: required - it asks the bot's models, a few requests each
-              --set <Key=Value>       answer: overrides a setting of the bot's appsettings.json, e.g.
+              --set <Key=Value>       answer, review, quiz: overrides a setting of the bot's appsettings.json, e.g.
                                       --set AI:Tools:Enabled=false (repeatable)
               --only <list>           answer/chunks: record numbers, ranges, feedback-id prefixes,
                                       after:/before: dates, comma-separated (e.g. 1-25,31 or
@@ -285,9 +290,10 @@ public sealed record ProbeArguments(
               --source <url>          similarity: the chunk's source URL, as listed under an answer;
                                       chunks: a guide's link, or its type and key (plonkit:india)
               --variant <text>        similarity: re-worded chunk text to try (repeatable)
-              --country <name>        map: the country to count and frame the plant in (default: its range)
+              --country <name>        map: the country to count and frame the plant in (default: its range);
+                                      quiz: only pictures of this country
               --max <n>               grep: matches to show (default 20); chunks --source and extract:
-                                      chunks to show
+                                      chunks to show; quiz: pictures to rate
               --out <file>            Also write the report to a file
 
             Questions are embedded with OpenRouter (key: OPENROUTER_API_KEY, appsettings.Local.json, or the

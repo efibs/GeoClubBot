@@ -236,8 +236,9 @@ public static class AiServices
 
         // The clue of the day posts into a channel of its own through the same rendering and uploads as an answer.
         services.AddSingleton<IAiChannelPublisher, DiscordAiChannelPublisher>();
-        // The quiz's scores, in memory for the bot's lifetime.
-        services.AddSingleton<QuizStreaks>();
+        // The quiz's vision rating, shared by the nightly run and a quiz that rates on the spot (#491);
+        // scoped, like the budget and quiz repositories it writes through.
+        services.AddScoped<QuizPictureRater>();
 
         // Scoped, like the budget repository it claims requests through.
         services.AddScoped<AiAnswerLoop>();

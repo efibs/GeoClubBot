@@ -152,7 +152,7 @@ indexing it; `overlap --source` shows how much of a guide PlonkIt has too; `map 
 species map the bot would attach (needs no index); `plant <screenshots> --question …` names a screenshot's
 plant exactly as the bot would before answering — the place read, Pl@ntNet's candidates weighed by GBIF's
 records there, the excerpt — with a Pl@ntNet key (`PLANTNET_API_KEY` or `appsettings.Local.json`) and its
-answers cached on disk; `review <highscores|game|maps link> --player <nick> --allow-chat`
+answers cached on disk; `quiz --allow-chat [--country X] [--max n]` rates random index pictures with the quiz's own vision prompt (#491) and shows each verdict, the wrong answers and the raw reply; `review <highscores|game|maps link> --player <nick> --allow-chat`
 runs `/ai review` for real for any player, from a challenge's results or a game saved by the ApiProbe
 (`raw /v3/results/highscores/<token>`, `raw /v3/games/<token>`) or a Maps link, printing what each round's
 panorama was seen to show, with GeoNN when `--set AI:RoundReview:StreetViewGuesser:BaseUrl=…` names it.
@@ -358,10 +358,14 @@ API + Discord (controllers, slash command modules)
   nothing found, nothing from the one country the question names, nothing cited) are recorded as asked in
   `AiRetrievalGaps`; `/ai gaps` (`ReadKnowledgeGapReportQuery`, `AI:KnowledgeGaps`) groups them with 👎
   answers by country and topic, and `AiKnowledgeGapReportJob` prunes them and optionally posts the report.
-  `/ai quiz [country] [lesser-known]` (`DrawQuizQuestionQuery`,
-  `AI:Quiz`) posts a random captioned picture (`SampleAsync` with `KnowledgeSample.Country`,
-  `ClueSampler.IsAClue`) with the answer behind one spoiler (`AiQuizFormatter`, pure) and buttons that
-  record an in-memory score (`QuizStreaks`) or draw again.
+  `/ai quiz [country] [difficulty] [lesser-known]` (`StartQuizRoundCommand`, `AI:Quiz`, #491) posts a
+  picture with four answer buttons. Each picture was rated once by a free vision model
+  (`QuizPictureRater`/`QuizRatingPrompt`, pure: giveaway or too vague → no question; difficulty; the model
+  writes the 3 wrong answers), stored in `AiQuizItems` by chunk id and content hash, by
+  `AiQuizRatingJob` (own budget share) or on the spot when nothing rated fits. A country chosen asks
+  "where in X" (regional clue) else "what here is typical of X". Everyone guesses once (`AiQuizRounds`,
+  `AiQuizGuesses`, points = difficulty 1–3); the asker/admins reveal, or `AiQuizRevealJob` after
+  `RevealAfterMinutes`; `/ai quiz-scores` is the leaderboard (all time + rolling days).
   A question asking for something new (`LesserKnownQuestion`: "not on PlonkIt", "a clue I don't know
   yet", and follow-ups on such a branch) is searched without PlonkIt (`KnowledgeQuery.ExcludedSourceType`),
   and `MainGuideOverlap` marks every excerpt PlonkIt has a tip like, by the index's stored vectors
