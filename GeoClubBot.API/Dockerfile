@@ -4,6 +4,11 @@
 FROM mcr.microsoft.com/dotnet/aspnet:11.0@sha256:bc0d6653979efba491ab3d6f589d691f96c309c3c3ef81325efa6978e7b7f242 AS base
 RUN apt-get update && apt-get install -y curl libfontconfig1 libfreetype6 libpng16-16 libjpeg-turbo8 libgif7 libglu1-mesa && rm -rf /var/lib/apt/lists/*
 USER 1654
+# .NET 11's in-process crash report: when the process dies (unhandled exception, FailFast, a native
+# crash in SkiaSharp), every thread's managed stack, the module list and the signal are written to
+# stderr, i.e. to `docker logs`, which is all production keeps. No file and no core dump; it holds no
+# environment variables or memory contents. Set it to 0 in the stack to turn it off.
+ENV DOTNET_EnableCrashReport=1
 WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
