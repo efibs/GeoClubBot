@@ -182,9 +182,21 @@ worth knowing:
 | `AI:ClueOfTheDay:ExcludeMainGuideClues` | true | Leave out clues PlonkIt has a tip like |
 | `AI:ClueOfTheDay:Draws` | 8 | Clues drawn per post to choose from |
 | `AI:ClueOfTheDay:Heading` | `🧭 **Clue of the day** — from *{{guide}}*` | What the post opens with |
-| `AI:Quiz:Enabled` | true | `/ai quiz`: a random captioned guide picture with the answer behind a spoiler |
-| `AI:Quiz:Draws` | 24 | Pictures drawn per question to find one with words of its own |
+| `AI:Quiz:Enabled` | true | `/ai quiz`: a rated guide picture with four answers; everyone guesses once and scores points |
+| `AI:Quiz:Draws` | 24 | Pictures drawn from the index when no rated one fits, to rate some on the spot |
 | `AI:Quiz:OnlyInAllowedChannels` | true | Keep the quiz to `AI:AllowedChannelIds` when that list is set |
+| `AI:Quiz:RevealAfterMinutes` | 10 | The answer is shown to everyone after this long, unless revealed sooner |
+| `AI:Quiz:OnTheSpotRatings` | 1 | Unrated pictures rated while a member waits (about 30 s each), from the day's whole allowance; 0 for none |
+| `AI:Quiz:LeaderboardSize` | 10 | Members per board of `/ai quiz-scores` |
+| `AI:Quiz:LeaderboardRecentDays` | 7 | The rolling window of the leaderboard's second board |
+| `AI:Quiz:Rating:Enabled` | true | The nightly rating run (`AI:QuizRatingSchedule`, 04:45 UTC) |
+| `AI:Quiz:Rating:MaxDailyBudgetPercent` | 20 | Ceiling on the day's shared counter while rating |
+| `AI:Quiz:Rating:MaxPicturesPerRun` | 60 | Pictures rated per run |
+| `AI:Quiz:Rating:Version` | 1 | Raise after a prompt change: every picture is rated again |
+| `AI:Quiz:Rating:TimeoutSeconds` | 90 | How long one picture may take the model |
+| `AI:Quiz:Rating:Reasoning` | `low` | How much a reasoning model thinks first: `off`, `low`, `medium`, `high`, `default` |
+| `AI:Quiz:Rating:MaxReplyTokens` | 8000 | Reply budget, thinking included |
+| `AI:Quiz:Rating:MaxConsecutiveFailures` | 3 | Unusable or failed replies in a row before a run stops |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
 | `AI:Retrieval:MaxCarriedExcerpts` | 6 | Excerpts a follow-up carries over from the answer it replies to; 0 carries none |
@@ -1006,18 +1018,52 @@ Off by default: a channel has to be chosen first (`Enabled` with no `TextChannel
 validation). The schedule key must be present even while the feature is off, as every job's must.
 ### `/ai quiz`
 
-A way to practise with the pictures the club has chosen to index. `/ai quiz [country] [lesser-known]`
-draws one captioned guide picture at random (`DrawQuizQuestionQuery`: `IKnowledgeIndex.SampleAsync`
-within the country when one is named — resolved through the guides' gazetteer, every spelling the index
-files it under tried — keeping only pictures with words of their own, `ClueSampler.IsAClue`; with
-`lesser-known`, PlonkIt's pictures and the clues PlonkIt has a tip like are left out) and posts it with
-the picture uploaded from the relay. The answer — the country the guide files it under, the guide and
-section, what the guide says of the picture, and the source link — sits behind **one spoiler**
-(`AiQuizFormatter`, pure). Three buttons follow: *I got it* and *I missed* record a score the member
-judges for themselves (`QuizStreaks`: streak, best streak and tally, in memory since the last restart —
-a quiz is practice, not a league), answered ephemerally; *Another* draws again with the same filters.
-Costs no AI request. `AI:Quiz:OnlyInAllowedChannels` keeps it to `AI:AllowedChannelIds` when that list
-is set.
+A way to practise with the pictures the club has chosen to index, as a game (#491).
+`/ai quiz [country] [difficulty] [lesser-known]` posts one guide picture with **four answers** as
+buttons. Without a country it asks *"Which country is this?"*. With one, asking which country would be no
+question, so it asks *"Where in X was this picture taken?"* for a regional clue, and otherwise *"What in
+this picture is typical of X?"*. `difficulty` is easy, medium or hard; left out, easy and medium are drawn.
+
+**Rating.** The first quiz drew any captioned picture. It showed a guide's header card (flag, outline,
+`.lv`), maps with the town names printed on them, and a car with nothing else in sight. Now a free vision
+model looks at each picture once (`QuizPictureRater`, prompt and checks in `QuizRatingPrompt`, pure). It
+is shown the picture and the guide's words (which the player never sees) and writes, for each kind of
+question, *no* or a difficulty plus the right answer and three plausible wrong ones. "Country shown" and
+"Region shown" lines come first and veto those questions. Wrong countries must resolve to three other real
+countries (`IsoCountries`), and every answer must be distinct and short enough for a button. A picture
+that makes no question is stored too, so it is never paid for twice. Ratings live in Postgres
+(`AiQuizItems`/`AiQuizItemQuestions`), keyed by chunk id with a hash of the picture and its words: a guide
+re-indexed with other words is rated again, and `AI:Quiz:Rating:Version` re-rates everything.
+`AiQuizRatingJob` (`AI:QuizRatingSchedule`, after the caption job) rates pictures within its own share,
+drawn a random country at a time (`QuizPictureDraw`), so a country with a large guide does not fill the
+quiz. When no rated picture fits a member's choice, `StartQuizRoundCommand` rates up to
+`OnTheSpotRatings` drawn pictures from the day's whole allowance while they wait. If those requests aren't
+available, it says the choice is not ready yet.
+
+Measured with the probe on 2026-11-21 (`quiz`, about 70 production pictures). The only free vision
+model that day, `nvidia/nemotron-3.5-super-vl:free`, reasons before answering. With no bound on that, it
+spent a 400-token budget thinking and wrote nothing, every time. With reasoning `off` it answered in about
+8 s but ignored the rules for wrong answers: they were often the guide's real clues, or printed road
+numbers. On `low` it follows them, thinking for 2,300–4,000+ tokens (about 30 s). With an 8,000-token
+budget about one reply in five is still lost to thinking and retried another night. The chat request
+carries this as `AiChatRequest.Reasoning`, sent as OpenRouter's `reasoning` object; every other caller
+leaves it null, which keeps the model's default. With the tightened rules, about half the pictures make
+a country question, and a few make none.
+
+**Playing.** A round (`AiQuizRounds`, options in the order shown) is recorded before the message is
+posted, and the message id after. Anyone may guess once (`AiQuizGuesses`, keyed by round and member).
+The guesser privately sees whether they were right, the guide's explanation and their score. The public
+message shows a running count ("5 guessed · 3 right"). The answer is shown to everyone when the asker or
+someone with Administrator or Manage Messages presses *Reveal*, or after `RevealAfterMinutes`
+(`AiQuizRevealJob` every minute → `IAiQuizMessages`, so a restart catches up). Then the right button
+turns green and the rest are disabled. Rated pictures never asked come first, then those asked longest
+ago. With `lesser-known`, PlonkIt's pictures and the clues PlonkIt has a tip like are left out.
+
+**Scores.** A right answer scores its difficulty: easy 1, medium 2, hard 3; a wrong one 0.
+`/ai quiz-scores` shows the best members over all time and over the last `LeaderboardRecentDays`, ties
+sharing a rank, with the member's own standing. Buttons of messages from before #491 still work:
+*Another* draws a new question, and the old self-judged buttons say the old quiz kept no score.
+`AI:Quiz:OnlyInAllowedChannels` keeps the quiz to `AI:AllowedChannelIds` when that list is set.
 
 ### Knowledge gaps: which guides to add
 

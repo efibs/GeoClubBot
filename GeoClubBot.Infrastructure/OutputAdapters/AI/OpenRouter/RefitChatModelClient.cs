@@ -99,7 +99,13 @@ public partial class RefitChatModelClient(
             Temperature = request.Temperature,
             MaxTokens = request.MaxTokens,
             Tools = declaresTools ? [.. request.Tools!.Select(ToToolDto)] : null,
-            ToolChoice = declaresTools ? (request.ToolChoice == AiToolChoice.None ? "none" : "auto") : null
+            ToolChoice = declaresTools ? (request.ToolChoice == AiToolChoice.None ? "none" : "auto") : null,
+            Reasoning = request.Reasoning switch
+            {
+                null => null,
+                AiReasoning.Off => new OpenRouterReasoningDto { Enabled = false },
+                var effort => new OpenRouterReasoningDto { Effort = effort.ToString()!.ToLowerInvariant() }
+            }
         };
 
         try

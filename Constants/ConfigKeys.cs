@@ -48,6 +48,10 @@ public static class ConfigKeys
 
     public const string AiCaptionCronScheduleConfigurationKey = "AI:CaptionSchedule";
 
+    public const string AiQuizRatingCronScheduleConfigurationKey = "AI:QuizRatingSchedule";
+
+    public const string AiQuizRevealCronScheduleConfigurationKey = "AI:QuizRevealSchedule";
+
     public const string AiClueOfTheDayCronScheduleConfigurationKey = "AI:ClueOfTheDaySchedule";
 
     public const string AiClueOfTheDayTimeZoneConfigurationKey = "AI:ClueOfTheDayTimeZone";

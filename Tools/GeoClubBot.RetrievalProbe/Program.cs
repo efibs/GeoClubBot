@@ -17,7 +17,7 @@ if (arguments is null)
     return 1;
 }
 
-if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity" or "answer" or "chunks" or "extract" or "map" or "overlap" or "review" or "plant"))
+if (arguments.Command is not ("replay" or "compare" or "grep" or "similarity" or "answer" or "chunks" or "extract" or "map" or "overlap" or "review" or "plant" or "quiz"))
 {
     Console.Error.WriteLine($"Unknown command '{arguments.Command}'.");
     ProbeArguments.PrintUsage();
@@ -101,6 +101,7 @@ try
         "extract" => ExtractCommand.RunAsync(context),
         "overlap" => OverlapCommand.RunAsync(context),
         "review" => ReviewCommand.RunAsync(context),
+        "quiz" => QuizCommand.RunAsync(context),
         _ => SimilarityCommand.RunAsync(context)
     }).ConfigureAwait(false);
 }

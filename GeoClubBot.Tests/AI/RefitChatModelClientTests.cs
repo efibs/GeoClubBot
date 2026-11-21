@@ -460,6 +460,30 @@ public sealed class RefitChatModelClientTests
         body.RootElement.GetProperty("tools").GetArrayLength().Should().Be(1);
     }
 
+    [Theory]
+    [InlineData(AiReasoning.Off, """{"enabled":false}""")]
+    [InlineData(AiReasoning.Low, """{"effort":"low"}""")]
+    [InlineData(AiReasoning.High, """{"effort":"high"}""")]
+    public async Task Complete_BoundsReasoning_WhenAsked(AiReasoning reasoning, string expected)
+    {
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"ok"}}]}""");
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")], Reasoning: reasoning));
+
+        using var body = JsonDocument.Parse(handler.LastRequestBody);
+        body.RootElement.GetProperty("reasoning").GetRawText().Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Complete_LeavesReasoningToTheModel_ByDefault()
+    {
+        var handler = new CapturingHandler("""{"model":"m","choices":[{"message":{"content":"ok"}}]}""");
+
+        await CreateClient(handler).CompleteAsync(new AiChatRequest(["m"], [AiChatMessage.User("hi")]));
+
+        handler.LastRequestBody.Should().NotContain("reasoning", "every caller but the quiz keeps the model's default");
+    }
+
     [Fact]
     public async Task Complete_SendsNoToolFields_WhenNoToolIsDeclared()
     {
