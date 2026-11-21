@@ -48,7 +48,7 @@ public enum AiProgressKind
     /// <summary>A map of regions is drawn; the detail is the country.</summary>
     DrawingRegionMap,
 
-    /// <summary>The challenge's results are read from GeoGuessr.</summary>
+    /// <summary>The challenge's results, or the game, are read from GeoGuessr.</summary>
     ReadingChallenge,
 
     /// <summary>The rounds and guesses are placed in their regions.</summary>
@@ -56,6 +56,12 @@ public enum AiProgressKind
 
     /// <summary>GeoNN looks at the rounds' panoramas.</summary>
     ReadingPanoramas,
+
+    /// <summary>A Maps link is followed to the Street View place it names.</summary>
+    OpeningMapsLink,
+
+    /// <summary>A vision model checks the rounds' panoramas against the guides' clues; the detail is how many.</summary>
+    LookingAtRounds,
 
     /// <summary>The answer, and its pictures, are posted.</summary>
     Posting

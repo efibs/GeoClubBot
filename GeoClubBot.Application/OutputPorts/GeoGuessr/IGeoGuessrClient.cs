@@ -12,6 +12,14 @@ public interface IGeoGuessrClient
 
     Task<ChallengeResultHighscoresDto> ReadHighscoresAsync(string challengeId, ReadHighscoresQueryParams @params, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// One game by its token (<c>GET /v3/games/{token}</c>): a single game, or one player's game of a
+    /// challenge. Any account can read any game whose token it has (read 2026-11-21). A game still being
+    /// played lists the rounds played so far, the current one included. Null when GeoGuessr knows no game
+    /// by that token (404), which is also its answer for a challenge's token.
+    /// </summary>
+    Task<ChallengeResultGameDto?> ReadGameAsync(string gameToken, CancellationToken cancellationToken = default);
+
     Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default);
 
     /// <summary>

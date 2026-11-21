@@ -184,13 +184,13 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
         return FollowupAsync(AiQuizFormatter.Score(score, right), ephemeral: true);
     }
 
-    [SlashCommand("review", "Review a challenge you played: the clues that point to each round, and what to study")]
+    [SlashCommand("review", "Review a game or a Street View place: the clues each round showed, and what to study")]
     public Task ReviewAsync(
-        [Summary(description: "The challenge link or token; leave empty for the latest daily challenge")] string? challenge = null) =>
+        [Summary(description: "A challenge, game or Google Maps Street View link; empty for the latest daily challenge")] string? link = null) =>
         ExecuteAsync(async ct =>
         {
-            // A review reads a challenge, every panorama and the guides before the model starts, so its
-            // steps are shown in the command's own ephemeral reply while it runs (#481).
+            // A review reads a game, the guides and every panorama before the model starts, so its steps
+            // are shown in the command's own ephemeral reply while it runs (#481).
             var progress = new AiProgressLog();
             using var tracking = AiProgress.Track(progress);
             await using var reporter = AiProgressReporter.Start(
@@ -200,7 +200,7 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
                 serviceProvider.GetService<TimeProvider>() ?? TimeProvider.System,
                 logger);
 
-            var result = await Mediator.Send(new ReviewRoundsCommand(Context.User.Id, challenge), ct).ConfigureAwait(false);
+            var result = await Mediator.Send(new ReviewRoundsCommand(Context.User.Id, link), ct).ConfigureAwait(false);
             if (result.IsFailure)
             {
                 await StopReportingAsync(reporter).ConfigureAwait(false);
@@ -221,7 +221,9 @@ public class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogge
             await FollowupAsync(
                 posted is null
                     ? "The review could not be posted here."
-                    : $"Reviewed {review.Rounds.Count} round(s) of challenge `{review.ChallengeToken}` — {review.Missed} with the wrong country.",
+                    : review.Subject.Kind == ReviewSubjectKind.StreetView
+                        ? $"Explained the Street View place in {review.Rounds[0].PlaceName}."
+                        : $"Reviewed {review.Rounds.Count} round(s) of {review.Subject.Describe()} — {review.Missed} with the wrong country.",
                 ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "The review could not be written just now.");
 

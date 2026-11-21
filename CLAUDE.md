@@ -152,9 +152,10 @@ indexing it; `overlap --source` shows how much of a guide PlonkIt has too; `map 
 species map the bot would attach (needs no index); `plant <screenshots> --question …` names a screenshot's
 plant exactly as the bot would before answering — the place read, Pl@ntNet's candidates weighed by GBIF's
 records there, the excerpt — with a Pl@ntNet key (`PLANTNET_API_KEY` or `appsettings.Local.json`) and its
-answers cached on disk; `review <highscores> --player <nick> --allow-chat` runs
-`/ai review` for real for any player, from a challenge's results saved by the ApiProbe (`raw
-/v3/results/highscores/<token>`), with GeoNN when `--set AI:RoundReview:StreetViewGuesser:BaseUrl=…` names it.
+answers cached on disk; `review <highscores|game|maps link> --player <nick> --allow-chat`
+runs `/ai review` for real for any player, from a challenge's results or a game saved by the ApiProbe
+(`raw /v3/results/highscores/<token>`, `raw /v3/games/<token>`) or a Maps link, printing what each round's
+panorama was seen to show, with GeoNN when `--set AI:RoundReview:StreetViewGuesser:BaseUrl=…` names it.
 
 `answer` goes one step further and asks every rated question again through the bot's real answering
 code (`AskAiHandler`, the read-only index, the live roster, the tool loop, GBIF), with
@@ -327,13 +328,26 @@ API + Discord (controllers, slash command modules)
   40 MB GeoJSON downloaded once into `AI:Tools:RegionMap:DataDirectory`, warmed at start-up) and
   `RegionMapDrawer` attaches a map of the country with them coloured in (GBIF tiles, framed by
   `SpeciesMapPlan.ForCountry`), numbered after the last source; the model's own `region_map` tool
-  shades regions by a share per region. `/ai review [challenge]` (`ReviewRoundsCommand`, `AI:RoundReview`)
-  reads a challenge's highscores with the main club's account, finds the member's game by their linked
-  account, places rounds and guesses (`streakLocationCode`, else `IRegionBoundaries.LocateAsync` point in
+  shades regions by a share per region. `/ai review [link]` (`ReviewRoundsCommand`, `AI:RoundReview`)
+  reads what `ReviewLinks` (pure) finds: a challenge (highscores read with the main club's account, the
+  member's game by their linked account), any single game (`IGeoGuessrClient.ReadGameAsync`,
+  `/v3/games/{token}`, readable by any account; a `results/` link or bare token is tried as a game first),
+  or a Google Maps Street View place (`StreetViewLink`, pure; `maps.app.goo.gl` followed by
+  `GoogleMapsLinkResolver`, Google hosts only). A game not `finished` is refused (its last round is on
+  screen). It places rounds and guesses (`streakLocationCode`, else `IRegionBoundaries.LocateAsync` point in
   polygon, the nearest region within 0.1° for a point off the coarse coastline; a guess's own code is
-  always null), searches the guides per round in one embedding request and asks the model once through
-  `AiAnswerLoop` (`RoundReviewPrompt`, pure); the highscores' round/guess fields were read live on
-  2026-11-13 (`ChallengeResultRoundDto`, `panoId` hex-encoded → `GeoGuessrPanoId`). Optionally **GeoNN**
+  always null), searches the guides for each round's clues (`RoundClueFinder`: country, roads, poles, the
+  contrast with the guess, the region; one embedding request), and has a free vision model check each
+  round's views against them (#480, `ClueSightCheck` + `ClueSightPrompt`, pure: a numbered checklist, one
+  request per round, all claimed up front because the budget's DbContext takes no parallel writes; views
+  from Google's free thumbnail endpoint, `GoogleStreetViewImagery`, browser User-Agent, the fixed view for
+  NMPZ else four quarter-turns, `StreetViewAngles`). `ReviewExcerpts` (pure) offers only what each round was
+  seen to show plus a few clues to look for, and the model is asked once through `AiAnswerLoop` **without
+  tools** (`AnswerRequest.AllowTools`), told easy country-wide clues first for a missed round
+  (`RoundReviewPrompt`, pure); each round's best view is posted, linked to Google Maps. A Street View link
+  in a question goes through the same check (`StreetViewLinkLookAhead`, after the search, not beside it).
+  The highscores' round/guess fields were read live on 2026-11-13 (`ChallengeResultRoundDto`, `panoId`
+  hex-encoded → `GeoGuessrPanoId`), `/v3/games` on 2026-11-21 (same shape). Optionally **GeoNN**
   (`AI:RoundReview:StreetViewGuesser:BaseUrl`, empty = off; `IStreetViewGuesser` → `GeoNnStreetViewGuesser`,
   `POST /api/predict` of GeoNN's `play.py` on a GPU machine) reads each round's panorama as the game showed
   it, and its likeliest countries tell the model how plainly the round showed its country, never a source. The **clue of the day** (`AI:ClueOfTheDay`, off until a channel

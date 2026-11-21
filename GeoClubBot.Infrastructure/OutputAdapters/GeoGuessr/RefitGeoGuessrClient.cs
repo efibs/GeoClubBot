@@ -23,6 +23,18 @@ public class RefitGeoGuessrClient(IGeoGuessrApi api) : IGeoGuessrClient
     public Task<ChallengeResultHighscoresDto> ReadHighscoresAsync(string challengeId, ReadHighscoresQueryParams @params, CancellationToken cancellationToken = default) =>
         api.ReadHighscoresAsync(challengeId, @params, cancellationToken);
 
+    public async Task<ChallengeResultGameDto?> ReadGameAsync(string gameToken, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await api.ReadGameAsync(gameToken, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ApiException exception) when (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
     public Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default) =>
         api.ReadClubActivitiesAsync(clubId, @params, cancellationToken);
 

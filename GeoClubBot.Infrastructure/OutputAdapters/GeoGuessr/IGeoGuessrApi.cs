@@ -20,6 +20,9 @@ public interface IGeoGuessrApi
     [Get("/v3/results/highscores/{challengeId}")]
     Task<ChallengeResultHighscoresDto> ReadHighscoresAsync(string challengeId, [Query] ReadHighscoresQueryParams @params, CancellationToken cancellationToken = default);
 
+    [Get("/v3/games/{gameToken}")]
+    Task<ChallengeResultGameDto> ReadGameAsync(string gameToken, CancellationToken cancellationToken = default);
+
     [Get("/v4/clubs/{clubId}/activities")]
     Task<ReadClubActivitiesResponseDto> ReadClubActivitiesAsync(Guid clubId, [Query] ReadClubActivitiesQueryParams @params, CancellationToken cancellationToken = default);
 

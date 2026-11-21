@@ -1,0 +1,178 @@
+{
+  "token": "eOb5HPFMPcMjJ5oM",
+  "type": "standard",
+  "mode": "standard",
+  "state": "finished",
+  "roundCount": 5,
+  "timeLimit": 0,
+  "forbidMoving": true,
+  "forbidZooming": false,
+  "forbidRotating": false,
+  "guessMapType": "roadmap",
+  "streakType": "countrystreak",
+  "map": "62a44b22040f04bd36e8a914",
+  "mapName": "A Community World",
+  "panoramaProvider": 1,
+  "bounds": {
+    "min": {
+      "lat": -77.84528850589427,
+      "lng": -177.39212542035233
+    },
+    "max": {
+      "lat": 78.2237494667128,
+      "lng": 178.45815885438813
+    }
+  },
+  "round": 5,
+  "rounds": [
+    {
+      "lat": 33.625451012048806,
+      "lng": 10.281915767783127,
+      "panoId": "505965524C725A6C63647A5652625F73697677766277",
+      "heading": 171.0980224609375,
+      "pitch": 0.1797056645154953,
+      "zoom": 0,
+      "streakLocationCode": "tn",
+      "startTime": "2026-11-13T23:28:00.8990000Z"
+    },
+    {
+      "lat": 48.41729292229818,
+      "lng": 7.483916610122144,
+      "panoId": "5F793872324C5475462D433931445273583843465251",
+      "heading": 261.1711730957031,
+      "pitch": -0.28620395064353943,
+      "zoom": 0,
+      "streakLocationCode": "fr",
+      "startTime": "2026-11-13T23:28:07.2150000Z"
+    },
+    {
+      "lat": 19.904374106742537,
+      "lng": -98.79402150366663,
+      "panoId": "674157394D506C3144367153704141764C6261553477",
+      "heading": 110.67811584472656,
+      "pitch": 4.786417007446289,
+      "zoom": 0,
+      "streakLocationCode": "mx",
+      "startTime": "2026-11-13T23:28:55.6840000Z"
+    },
+    {
+      "lat": -35.73032489899064,
+      "lng": -72.38406088866829,
+      "panoId": "747972674A41784D3766795979544B6E4230687A3941",
+      "heading": 355.0332336425781,
+      "pitch": -7.373597621917725,
+      "zoom": 0,
+      "streakLocationCode": "cl",
+      "startTime": "2026-11-13T23:29:08.8550000Z"
+    },
+    {
+      "lat": -8.356929154258493,
+      "lng": 117.83937999283586,
+      "panoId": "314F72356C6D78633932684B5246434C742D79637741",
+      "heading": 140.51516723632812,
+      "pitch": -0.7042094469070435,
+      "zoom": 0,
+      "streakLocationCode": "id",
+      "startTime": "2026-11-13T23:29:23.0710000Z"
+    }
+  ],
+  "player": {
+    "totalScoreInPoints": 21563,
+    "totalDistance": {
+      "meters": {
+        "amount": "1439.6",
+        "unit": "km"
+      },
+      "miles": {
+        "amount": "894.5",
+        "unit": "miles"
+      }
+    },
+    "totalDistanceInMeters": 1439618.9099278247,
+    "totalStepsCount": 0,
+    "totalTime": 64,
+    "totalStreak": 0,
+    "guesses": [
+      {
+        "lat": 35.931373422344926,
+        "lng": 10.270502243240331,
+        "timedOut": false,
+        "timedOutWithGuess": false,
+        "skippedRound": false,
+        "roundScoreInPercentage": 87.08,
+        "roundScoreInPoints": 4354,
+        "distanceInMeters": 256408.9915054746,
+        "stepsCount": 0,
+        "streakLocationCode": null,
+        "time": 5
+      },
+      {
+        "lat": 49.55262094211281,
+        "lng": 16.435218936408358,
+        "timedOut": false,
+        "timedOutWithGuess": false,
+        "skippedRound": false,
+        "roundScoreInPercentage": 69.86,
+        "roundScoreInPoints": 3493,
+        "distanceInMeters": 664862.3726111503,
+        "stepsCount": 0,
+        "streakLocationCode": null,
+        "time": 18
+      },
+      {
+        "lat": 21.981321719565436,
+        "lng": -101.95628221077689,
+        "timedOut": false,
+        "timedOutWithGuess": false,
+        "skippedRound": false,
+        "roundScoreInPercentage": 80.52,
+        "roundScoreInPoints": 4026,
+        "distanceInMeters": 401448.3542928762,
+        "stepsCount": 0,
+        "streakLocationCode": null,
+        "time": 12
+      },
+      {
+        "lat": -35.36601011220293,
+        "lng": -71.68065402929712,
+        "timedOut": false,
+        "timedOutWithGuess": false,
+        "skippedRound": false,
+        "roundScoreInPercentage": 96.02,
+        "roundScoreInPoints": 4801,
+        "distanceInMeters": 75437.4427711163,
+        "stepsCount": 0,
+        "streakLocationCode": null,
+        "time": 11
+      },
+      {
+        "lat": -8.689998532428923,
+        "lng": 117.6698766062629,
+        "timedOut": false,
+        "timedOutWithGuess": false,
+        "skippedRound": false,
+        "roundScoreInPercentage": 97.78,
+        "roundScoreInPoints": 4889,
+        "distanceInMeters": 41461.7487472075,
+        "stepsCount": 0,
+        "streakLocationCode": null,
+        "time": 18
+      }
+    ],
+    "isLeader": false,
+    "currentPosition": 0,
+    "pin": {
+      "url": "pin/2b35cc15560ed0a7d680a96e66478d17.png",
+      "anchor": "center-center",
+      "isDefault": false
+    },
+    "newBadges": [],
+    "explorer": null,
+    "id": "5f0000000000000000000001",
+    "nick": "Player",
+    "isVerified": false,
+    "flair": 0,
+    "club": null,
+    "countryCode": null
+  }
+}
