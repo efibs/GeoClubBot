@@ -105,7 +105,8 @@ public sealed partial class QuizPictureRater(
         try
         {
             completion = await chatClient.CompleteAsync(
-                    new AiChatRequest(chain, messages, QuizRatingPrompt.Temperature, QuizRatingPrompt.MaxTokens),
+                    new AiChatRequest(chain, messages, QuizRatingPrompt.Temperature, Math.Max(100, quizConfiguration.Value.Rating.MaxReplyTokens),
+                        Reasoning: ReasoningOf(quizConfiguration.Value.Rating.Reasoning)),
                     timeout.Token)
                 .ConfigureAwait(false);
         }
@@ -160,6 +161,10 @@ public sealed partial class QuizPictureRater(
 
         return new QuizRatingOutcome(QuizRatingOutcomeKind.Rated, item);
     }
+
+    /// <summary>The setting as the chat request takes it; "default" (or anything unknown) leaves the model's own.</summary>
+    public static AiReasoning? ReasoningOf(string? setting) =>
+        Enum.TryParse<AiReasoning>(setting, ignoreCase: true, out var reasoning) ? reasoning : null;
 
     private DateOnly Today() => DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
 

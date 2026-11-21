@@ -33,10 +33,11 @@ public class AiQuizConfiguration
 
     /// <summary>
     /// Unrated pictures a member's quiz may have rated while they wait, when no rated one fits their
-    /// choice. Each is one request from the day's whole allowance; none left, the quiz says it is not ready.
+    /// choice. Each is one request from the day's whole allowance and about 30 s of waiting; none left,
+    /// the quiz says it is not ready.
     /// </summary>
     [Range(0, 10)]
-    public int OnTheSpotRatings { get; set; } = 3;
+    public int OnTheSpotRatings { get; set; } = 1;
 
     /// <summary>Members listed on each board of <c>/ai quiz-scores</c>.</summary>
     [Range(1, 25)]
@@ -77,6 +78,21 @@ public class AiQuizRatingConfiguration
     /// <summary>How long one picture may take the model before the next is asked.</summary>
     [Range(5, 600)]
     public int TimeoutSeconds { get; set; } = 90;
+
+    /// <summary>
+    /// How much a reasoning model may think before rating: <c>off</c>, <c>low</c>, <c>medium</c>, <c>high</c>, or
+    /// <c>default</c> for the model's own. Free vision models reason by default, and one with no bound
+    /// spent a whole reply budget thinking and wrote nothing (#491).
+    /// </summary>
+    [RegularExpression("^(?i)(off|low|medium|high|default)$")]
+    public string Reasoning { get; set; } = "low";
+
+    /// <summary>
+    /// The reply budget in tokens, thinking included. The rating itself is about 80; on <c>low</c> the free
+    /// vision model thought for 2,300–4,000+ tokens (about 30 s), so 4,000 lost some replies.
+    /// </summary>
+    [Range(100, 32_000)]
+    public int MaxReplyTokens { get; set; } = 8_000;
 
     /// <summary>Unusable or failed replies in a row before a run stops for the day.</summary>
     [Range(1, 100)]

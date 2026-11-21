@@ -10,6 +10,7 @@ using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.Discord;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Quiz;
+using UseCases.UseCases.AI.Retrieval;
 using Utilities;
 using Xunit;
 
@@ -136,12 +137,17 @@ public sealed class QuizRoundHandlersTests
 
         var rater = new QuizPictureRater(chat, catalog, Substitute.For<IImageRelay>(), budget, items, Options.Create(ai), Options.Create(_settings),
             _time, NullLogger<QuizPictureRater>.Instance);
-        var result = await new RateQuizPicturesHandler(index, items, rater, Options.Create(ai), Options.Create(_settings), NullLogger<RateQuizPicturesHandler>.Instance)
+        index.ListCountriesAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<string>>(["estonia"]));
+        var countries = new KnowledgeCountryDirectory(index, Options.Create(new AiRetrievalConfiguration()), TimeProvider.System,
+            NullLogger<KnowledgeCountryDirectory>.Instance);
+        var draw = new QuizPictureDraw(index, items, countries, rater);
+        var result = await new RateQuizPicturesHandler(draw, rater, Options.Create(ai), Options.Create(_settings), NullLogger<RateQuizPicturesHandler>.Instance)
             .Handle(new RateQuizPicturesCommand(), CancellationToken.None);
 
         result.Value.Should().Be(new QuizRatingReport(1, 1, 0, 0, 0, false, false));
         await items.Received(1).ReplaceAsync(Arg.Is<AiQuizItem>(item => item.ChunkId == unrated.Id && item.Questions.Count == 0), Arg.Any<CancellationToken>());
         await budget.Received(1).TryReserveRequestsAsync(Arg.Any<DateOnly>(), 1, ai.OpenRouter.DailyRequestBudget * 20 / 100, Arg.Any<CancellationToken>());
+        await index.Received().SampleAsync(Arg.Is<KnowledgeSample>(sample => sample.Country == "estonia"), Arg.Any<CancellationToken>());
     }
 
     private AiQuizRound Stored(AiQuizRound round)

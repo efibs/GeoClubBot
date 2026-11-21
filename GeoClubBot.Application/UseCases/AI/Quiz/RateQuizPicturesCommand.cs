@@ -30,12 +30,11 @@ public sealed record QuizRatingReport(
     bool NoModel);
 
 /// <summary>
-/// Draws pictures from the index at random and rates those that have no current rating. Random rather
-/// than in order, so every country gains questions from the first night on, not one guide at a time.
+/// Draws pictures without a current rating, a random country at a time (<see cref="QuizPictureDraw"/>), and
+/// rates them. Every country gains questions from the first night on, not one large guide at a time.
 /// </summary>
 public sealed partial class RateQuizPicturesHandler(
-    IKnowledgeIndex knowledgeIndex,
-    IAiQuizItemRepository items,
+    QuizPictureDraw draw,
     QuizPictureRater rater,
     IOptions<AiConfiguration> aiConfiguration,
     IOptions<AiQuizConfiguration> quizConfiguration,
@@ -44,11 +43,8 @@ public sealed partial class RateQuizPicturesHandler(
 {
     public const string DisabledCode = "ai.quiz_rating_disabled";
 
-    /// <summary>Pictures drawn per picture wanted: most of a draw is pictures under a bare heading, or rated already.</summary>
-    private const int DrawFactor = 4;
-
-    /// <summary>A draw comes back with every payload, so it is kept to a size that loads at once.</summary>
-    private const int MaxDrawSize = 400;
+    /// <summary>Countries tried per picture wanted, so an index of mostly rated countries ends the search.</summary>
+    private const int MaxCountriesPerPicture = 3;
 
     public async Task<Result<QuizRatingReport>> Handle(RateQuizPicturesCommand request, CancellationToken cancellationToken)
     {
@@ -59,17 +55,10 @@ public sealed partial class RateQuizPicturesHandler(
         }
 
         var limit = Math.Max(1, request.MaxPictures ?? quiz.Rating.MaxPicturesPerRun);
-        var drawn = await knowledgeIndex
-            .SampleAsync(new KnowledgeSample(Math.Min(MaxDrawSize, limit * DrawFactor), KnowledgeChunkKind.Image), cancellationToken)
-            .ConfigureAwait(false);
 
-        var candidates = drawn.Where(QuizPictureRater.IsRateable).DistinctBy(hit => hit.Id).ToList();
-        var hashes = await items.ReadContentHashesAsync([.. candidates.Select(hit => hit.Id)], rater.Version, cancellationToken)
+        // Spread evenly over countries, however many pictures each country's guides hold.
+        var unrated = await draw.DrawUnratedAsync(limit, countries: null, excludedSourceType: null, limit * MaxCountriesPerPicture, cancellationToken)
             .ConfigureAwait(false);
-        var unrated = candidates
-            .Where(hit => !hashes.TryGetValue(hit.Id, out var hash) || hash != QuizPictureRater.ContentHashOf(hit))
-            .Take(limit)
-            .ToList();
 
         int attempted = 0, rated = 0, withQuestions = 0, unusable = 0, failed = 0, misses = 0;
         bool budgetExhausted = false, noModel = false;

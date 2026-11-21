@@ -186,7 +186,7 @@ worth knowing:
 | `AI:Quiz:Draws` | 24 | Pictures drawn from the index when no rated one fits, to rate some on the spot |
 | `AI:Quiz:OnlyInAllowedChannels` | true | Keep the quiz to `AI:AllowedChannelIds` when that list is set |
 | `AI:Quiz:RevealAfterMinutes` | 10 | The answer is shown to everyone after this long, unless revealed sooner |
-| `AI:Quiz:OnTheSpotRatings` | 3 | Unrated pictures rated while a member waits, from the day's whole allowance; 0 for none |
+| `AI:Quiz:OnTheSpotRatings` | 1 | Unrated pictures rated while a member waits (about 30 s each), from the day's whole allowance; 0 for none |
 | `AI:Quiz:LeaderboardSize` | 10 | Members per board of `/ai quiz-scores` |
 | `AI:Quiz:LeaderboardRecentDays` | 7 | The rolling window of the leaderboard's second board |
 | `AI:Quiz:Rating:Enabled` | true | The nightly rating run (`AI:QuizRatingSchedule`, 04:45 UTC) |
@@ -194,6 +194,8 @@ worth knowing:
 | `AI:Quiz:Rating:MaxPicturesPerRun` | 60 | Pictures rated per run |
 | `AI:Quiz:Rating:Version` | 1 | Raise after a prompt change: every picture is rated again |
 | `AI:Quiz:Rating:TimeoutSeconds` | 90 | How long one picture may take the model |
+| `AI:Quiz:Rating:Reasoning` | `low` | How much a reasoning model thinks first: `off`, `low`, `medium`, `high`, `default` |
+| `AI:Quiz:Rating:MaxReplyTokens` | 8000 | Reply budget, thinking included |
 | `AI:Quiz:Rating:MaxConsecutiveFailures` | 3 | Unusable or failed replies in a row before a run stops |
 | `AI:AllowedChannelIds` | `[]` (all) | Restrict which channels the bot answers in |
 | `AI:Retrieval:ExcerptLimit` | 10 | Guide excerpts offered per question |
@@ -1032,10 +1034,21 @@ countries (`IsoCountries`), and every answer must be distinct and short enough f
 that makes no question is stored too, so it is never paid for twice. Ratings live in Postgres
 (`AiQuizItems`/`AiQuizItemQuestions`), keyed by chunk id with a hash of the picture and its words: a guide
 re-indexed with other words is rated again, and `AI:Quiz:Rating:Version` re-rates everything.
-`AiQuizRatingJob` (`AI:QuizRatingSchedule`, after the caption job) rates a random draw within its own
-share. When no rated picture fits a member's choice, `StartQuizRoundCommand` rates up to
+`AiQuizRatingJob` (`AI:QuizRatingSchedule`, after the caption job) rates pictures within its own share,
+drawn a random country at a time (`QuizPictureDraw`), so a country with a large guide does not fill the
+quiz. When no rated picture fits a member's choice, `StartQuizRoundCommand` rates up to
 `OnTheSpotRatings` drawn pictures from the day's whole allowance while they wait. If those requests aren't
 available, it says the choice is not ready yet.
+
+Measured with the probe on 2026-11-21 (`quiz`, about 70 production pictures). The only free vision
+model that day, `nvidia/nemotron-3.5-super-vl:free`, reasons before answering. With no bound on that, it
+spent a 400-token budget thinking and wrote nothing, every time. With reasoning `off` it answered in about
+8 s but ignored the rules for wrong answers: they were often the guide's real clues, or printed road
+numbers. On `low` it follows them, thinking for 2,300–4,000+ tokens (about 30 s). With an 8,000-token
+budget about one reply in five is still lost to thinking and retried another night. The chat request
+carries this as `AiChatRequest.Reasoning`, sent as OpenRouter's `reasoning` object; every other caller
+leaves it null, which keeps the model's default. With the tightened rules, about half the pictures make
+a country question, and a few make none.
 
 **Playing.** A round (`AiQuizRounds`, options in the order shown) is recorded before the message is
 posted, and the message id after. Anyone may guess once (`AiQuizGuesses`, keyed by round and member).

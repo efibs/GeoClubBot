@@ -387,7 +387,11 @@ right answer and wrong answers, or that it made none, and the raw reply. Look fo
 let through, a fair picture it refused, and wrong answers that are implausible or that the picture rules
 out. The summary counts outcomes and questions by kind and difficulty. Pictures are read from their
 relayed links; when the index's links name an old host, `--set AI:ImageRelay:PublicBaseUrl=…` moves them.
-After a prompt change, raise `AI:Quiz:Rating:Version` so the bot rates every picture again.
+After a prompt change, raise `AI:Quiz:Rating:Version` so the bot rates every picture again. Pictures
+are drawn a random country at a time, as the bot draws them. While production is re-indexing into a new
+embedding model's collection (#503), the bot's own collection holds only what has been re-indexed so far.
+Pass the full one with `--collection` (the probe lists them when given a wrong name). Rating needs no
+embedding, so either collection works.
 
 ## Adding a command
 

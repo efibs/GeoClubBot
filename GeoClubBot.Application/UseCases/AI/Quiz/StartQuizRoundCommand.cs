@@ -47,6 +47,7 @@ public sealed partial class StartQuizRoundHandler(
     IAiQuizItemRepository items,
     IAiQuizRoundRepository rounds,
     QuizPictureRater rater,
+    QuizPictureDraw pictureDraw,
     MainGuideOverlap mainGuide,
     KnowledgeCountryDirectory countryDirectory,
     IOptions<AiQuizConfiguration> configuration,
@@ -177,18 +178,8 @@ public sealed partial class StartQuizRoundHandler(
             return null;
         }
 
-        var drawn = new List<KnowledgeHit>();
-        foreach (var country in spellings ?? [null!])
-        {
-            drawn.AddRange(await knowledgeIndex
-                .SampleAsync(new KnowledgeSample(Math.Max(1, configuration.Value.Draws), KnowledgeChunkKind.Image, excluded, country), cancellationToken)
-                .ConfigureAwait(false));
-        }
-
-        var candidates = drawn.Where(QuizPictureRater.IsRateable).DistinctBy(hit => hit.Id).ToList();
-        var hashes = await items.ReadContentHashesAsync([.. candidates.Select(hit => hit.Id)], rater.Version, cancellationToken)
-            .ConfigureAwait(false);
-        candidates = [.. candidates.Where(hit => !hashes.TryGetValue(hit.Id, out var hash) || hash != QuizPictureRater.ContentHashOf(hit))];
+        // A few more than will be rated, each from another country, since a lesser-known quiz leaves some out.
+        var candidates = (await pictureDraw.DrawUnratedAsync(attempts * 3, spellings, excluded, attempts * 6, cancellationToken).ConfigureAwait(false)).ToList();
         candidates = await KeepLesserKnownAsync(candidates, lesserKnownOnly, cancellationToken).ConfigureAwait(false);
         if (candidates.Count == 0)
         {

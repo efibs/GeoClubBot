@@ -33,9 +33,6 @@ public static partial class QuizRatingPrompt
     /// <summary>Low, so one picture is rated much the same whichever run rates it.</summary>
     public const double Temperature = 0.2;
 
-    /// <summary>Eleven short lines.</summary>
-    public const int MaxTokens = 400;
-
     /// <summary>
     /// Longest answer kept. Discord cuts a button's label at 80 characters, and the option's letter goes
     /// in front.
@@ -60,14 +57,20 @@ public static partial class QuizRatingPrompt
            area).
         3. Clue: "What in this picture is typical of <country>?" Fair when the thing the guide points to
            can be seen in the picture. Answer "no" when it cannot be seen, or the picture writes it out.
+           The right answer is a thing to recognise, never text printed in the picture (a road number,
+           a place or shop name).
 
         Difficulty: easy = most regular players know it; medium = known to players who study; hard =
         obscure, or easy to confuse.
 
-        Wrong answers must be plausible: for a country, countries that look alike or border it; for a
-        region, other parts of the same country named in the same style; for a clue, other things that
-        can be seen in the picture or that a player might wrongly think tell the country. Never repeat the
-        right answer among them. Keep every answer under 60 characters.
+        Wrong answers must be plausible AND wrong: for a country, countries that look alike or border it;
+        for a region, other parts of the same country named in the same style; for a clue, things of the
+        same kind as the right answer (another tree for a tree, another pole or road marking for a pole)
+        that a player might think of, but that do NOT tell this country. Never the sky, clouds, the road
+        itself or anything else every picture shows, which no player would pick. A wrong
+        answer must never be anything the guide's words mention, nor anything else typical of the
+        country, since a player who picks it would be right. Never repeat the right answer among them.
+        Keep every answer under 60 characters.
         """;
 
     /// <summary>The messages for one picture: the task, then what the guide says of it and the picture itself.</summary>

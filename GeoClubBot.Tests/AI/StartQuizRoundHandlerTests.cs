@@ -227,7 +227,7 @@ public sealed class StartQuizRoundHandlerTests
         var rater = new QuizPictureRater(_chat, _catalog, _relay, _budget, _items, Options.Create(_ai), Options.Create(_settings),
             TimeProvider.System, NullLogger<QuizPictureRater>.Instance);
 
-        return new StartQuizRoundHandler(_index, _items, _rounds, rater, overlap, countries, Options.Create(_settings), Options.Create(_ai),
+        return new StartQuizRoundHandler(_index, _items, _rounds, rater, new QuizPictureDraw(_index, _items, countries, rater), overlap, countries, Options.Create(_settings), Options.Create(_ai),
             TimeProvider.System, NullLogger<StartQuizRoundHandler>.Instance);
     }
 }

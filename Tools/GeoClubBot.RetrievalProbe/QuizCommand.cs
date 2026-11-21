@@ -22,9 +22,6 @@ namespace GeoClubBot.RetrievalProbe;
 /// </summary>
 public static class QuizCommand
 {
-    /// <summary>Pictures drawn per picture wanted: most of a draw is pictures under a bare heading.</summary>
-    private const int DrawFactor = 4;
-
     public static async Task RunAsync(ProbeContext context)
     {
         var arguments = context.Arguments;
@@ -45,36 +42,23 @@ public static class QuizCommand
         var count = Math.Clamp(arguments.Max, 1, 100);
         var ct = context.CancellationToken;
 
+        using var stack = AnsweringStack.Create(context, settings);
+        var directory = new KnowledgeCountryDirectory(context.Index, Options.Create(settings.Retrieval), TimeProvider.System,
+            NullLogger<KnowledgeCountryDirectory>.Instance);
+
         // The country as a member would write it, filed under every spelling the index uses.
-        IReadOnlyList<string?> spellings = [null];
+        IReadOnlyList<string>? spellings = null;
         if (arguments.Country is { Length: > 0 } wanted)
         {
-            var countries = new KnowledgeCountryDirectory(context.Index, Options.Create(settings.Retrieval), TimeProvider.System,
-                NullLogger<KnowledgeCountryDirectory>.Instance);
-            var mentions = (await countries.ReadAsync(ct).ConfigureAwait(false)).Resolve(wanted);
+            var mentions = (await directory.ReadAsync(ct).ConfigureAwait(false)).Resolve(wanted);
             if (mentions.Count != 1)
             {
                 throw new ProbeException(mentions.Count == 0 ? $"No indexed guide covers '{wanted}'." : $"'{wanted}' is several countries; name one.");
             }
 
-            spellings = [.. mentions[0].IndexNames];
+            spellings = mentions[0].IndexNames;
         }
 
-        var drawn = new List<KnowledgeHit>();
-        foreach (var spelling in spellings)
-        {
-            drawn.AddRange(await context.Index
-                .SampleAsync(new KnowledgeSample(count * DrawFactor, KnowledgeChunkKind.Image, Country: spelling), ct)
-                .ConfigureAwait(false));
-        }
-
-        var pictures = drawn.Where(QuizPictureRater.IsRateable).DistinctBy(hit => hit.Id).Take(count).ToList();
-        if (pictures.Count == 0)
-        {
-            throw new ProbeException($"None of the {drawn.Count} pictures drawn is a clue the quiz could rate; draw again, or another country.");
-        }
-
-        using var stack = AnsweringStack.Create(context, settings);
         var refreshed = await stack.Catalog.RefreshAsync(ct).ConfigureAwait(false);
         if (refreshed.IsFailure)
         {
@@ -87,6 +71,15 @@ public static class QuizCommand
         var budget = new InMemoryBudgetRepository();
         var rater = new QuizPictureRater(chat, stack.Catalog, images, budget, items, Options.Create(settings.Ai), Options.Create(settings.Quiz),
             TimeProvider.System, NullLogger<QuizPictureRater>.Instance);
+
+        // As the nightly run draws: a random country at a time, so one large guide does not fill the report.
+        var pictures = await new QuizPictureDraw(context.Index, items, directory, rater)
+            .DrawUnratedAsync(count, spellings, excludedSourceType: null, count * 3, ct)
+            .ConfigureAwait(false);
+        if (pictures.Count == 0)
+        {
+            throw new ProbeException("No picture the quiz could rate was drawn; draw again, or another country.");
+        }
 
         var report = context.Report;
         report.Line($"# Quiz ratings of {pictures.Count} picture(s){(arguments.Country is { } c ? $" of {c}" : string.Empty)}");
