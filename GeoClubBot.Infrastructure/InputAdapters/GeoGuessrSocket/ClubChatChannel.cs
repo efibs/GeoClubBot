@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 
 namespace Infrastructure.InputAdapters.GeoGuessrSocket;
 
@@ -19,7 +20,7 @@ public enum ChatSubscription
 /// <see cref="Offer"/> by whoever reads it: the supervisor for a live socket, the sender for one it
 /// opened itself.
 /// </summary>
-public sealed class ClubChatChannel(Guid clubId, IGeoGuessrSocketSession session)
+public sealed partial class ClubChatChannel(Guid clubId, IGeoGuessrSocketSession session)
 {
     private readonly ConcurrentDictionary<PendingEcho, byte> _pending = new();
     private readonly TaskCompletionSource<ChatSubscription> _subscription = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -117,8 +118,15 @@ public sealed class ClubChatChannel(Guid clubId, IGeoGuessrSocketSession session
     public bool IsChatTopic(string? topic) =>
         string.Equals(topic, SocketTopics.ClubChat(ClubId), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>GeoGuessr stores text as sent; this only keeps line endings and outer whitespace from mattering.</summary>
-    private static string Normalise(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+    /// <summary>
+    /// The text with every run of whitespace as one space. GeoGuessr stores text as sent except for
+    /// whitespace: it turns line breaks past its limit into spaces (#502), and a part it changed that
+    /// way has still arrived.
+    /// </summary>
+    private static string Normalise(string text) => Whitespace().Replace(text, " ").Trim();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Whitespace();
 
     private sealed class PendingEcho(string text)
     {

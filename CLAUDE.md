@@ -264,7 +264,8 @@ API + Discord (controllers, slash command modules)
   form built per message with `ModalBuilder`: the text as plain text (`DiscordTextFlattener`, pure) put
   into `Template`, a checkbox per club (`ForwardChat: false` leaves a club out), how many messages it
   takes and earlier forwards of the message (`ClubChatForwards`). GeoGuessr cuts chat messages to 300
-  characters, so `ClubChatTextSplitter` numbers parts `(1/n)`. The send is a `ChatMessage` frame on
+  characters and keeps only 4 line breaks (later ones become spaces, #502), so `ClubChatTextSplitter`
+  numbers parts `(1/n)` within both limits, and echoes are matched with whitespace collapsed. The send is a `ChatMessage` frame on
   `chat:Club:TextMessages:<clubId>` with the club's own token, on its live socket (`ClubChatChannels`)
   or a connection of its own; each part waits for GeoGuessr's echo and nothing is ever resent. The club
   topic is unverified live. See [`Documentation/GeoGuessrSocket.md`](Documentation/GeoGuessrSocket.md).

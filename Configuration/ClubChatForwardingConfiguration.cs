@@ -35,6 +35,13 @@ public class ClubChatForwardingConfiguration : IValidatableObject
     [Range(20, 2000)]
     public int MaxMessageLength { get; set; } = 300;
 
+    /// <summary>
+    /// GeoGuessr keeps this many line breaks in a chat message (a blank line is two) and turns every
+    /// later one into a space, so a text with more is split into parts as well. Measured live (#502).
+    /// </summary>
+    [Range(0, 100)]
+    public int MaxLineBreaks { get; set; } = 4;
+
     /// <summary>How long to wait for GeoGuessr to echo a sent part back, which is what confirms it arrived.</summary>
     public TimeSpan EchoTimeout { get; set; } = TimeSpan.FromSeconds(5);
 

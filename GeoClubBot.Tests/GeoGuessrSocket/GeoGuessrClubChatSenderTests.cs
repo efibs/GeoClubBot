@@ -68,6 +68,29 @@ public sealed class GeoGuessrClubChatSenderTests
     }
 
     [Fact]
+    public async Task AnEchoWhoseLineBreaksGeoGuessrTurnedIntoSpaces_StillConfirmsThePart()
+    {
+        // #502: GeoGuessr keeps four line breaks and stores the fifth as a space; the part has arrived.
+        var session = _connector.Next();
+        session.EchoAs = text => text.Replace("club!\nNow", "club! Now", StringComparison.Ordinal);
+
+        var delivery = await Sender().SendAsync(ClubId, ["(1/2) a\n\nb\n\nclub!\nNow", "(2/2) c"], Timeout);
+
+        delivery.Should().Be(new ClubChatDelivery(ClubChatDeliveryStatus.Confirmed, 2, 2));
+    }
+
+    [Fact]
+    public async Task AnEchoOfOtherWords_DoesNotConfirmThePart()
+    {
+        var session = _connector.Next();
+        session.EchoAs = text => text + " (edited)";
+
+        var delivery = await Sender().SendAsync(ClubId, ["one"], TimeSpan.FromMilliseconds(300));
+
+        delivery.Status.Should().Be(ClubChatDeliveryStatus.Unconfirmed);
+    }
+
+    [Fact]
     public async Task AMissingEcho_StopsTheForward_AndIsReportedUnconfirmed()
     {
         var session = _connector.Next();
@@ -157,6 +180,9 @@ public sealed class GeoGuessrClubChatSenderTests
         /// <summary>How many messages are echoed before the echoes stop.</summary>
         public int EchoUpTo { get; set; } = int.MaxValue;
 
+        /// <summary>What GeoGuessr stores of a sent text, and so echoes back.</summary>
+        public Func<string, string> EchoAs { get; set; } = text => text;
+
         public SocketClosure? Closure => null;
 
         public Task SendAsync(string frame, CancellationToken cancellationToken)
@@ -177,7 +203,7 @@ public sealed class GeoGuessrClubChatSenderTests
                     Feed("ChatMessage", topic, JsonSerializer.Serialize(new
                     {
                         id = "abcdefghij",
-                        textPayload = root.GetProperty("payload").GetString(),
+                        textPayload = EchoAs(root.GetProperty("payload").GetString()!),
                         sourceId = "bot",
                     }));
                     break;

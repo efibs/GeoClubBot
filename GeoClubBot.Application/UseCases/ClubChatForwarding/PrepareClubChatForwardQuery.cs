@@ -48,7 +48,7 @@ public sealed class PrepareClubChatForwardHandler(
 
         var options = config.Value;
         var text = ClubChatTemplate.Render(options.Template, request.FlattenedText, request.Author, request.Channel);
-        var split = ClubChatTextSplitter.Split(text, options.MaxMessageLength, options.MaxParts);
+        var split = ClubChatTextSplitter.Split(text, options.MaxMessageLength, options.MaxParts, options.MaxLineBreaks);
 
         var clubs = await access.ReadTargetsAsync(cancellationToken).ConfigureAwait(false);
         var names = clubs.ToDictionary(c => c.ClubId, c => c.Name);

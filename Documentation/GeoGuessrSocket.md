@@ -60,8 +60,12 @@ README). `UsePayloads=false` turns every member event into a full sync.
 The payload is the bare text, not a JSON document. GeoGuessrAccountShadowBot observed this frame
 for direct messages (`chat:Friend:TextMessages:<peerId>`); **the club topic comes from GeoGuessr's
 client code and has not been seen live**. It also observed that GeoGuessr **silently cuts a message
-to 300 characters** and stores everything else unchanged, and that every connection subscribed to a
-chat gets its new messages back within about 40 ms, the sender's own included.
+to 300 characters**, and that every connection subscribed to a chat gets its new messages back
+within about 40 ms, the sender's own included. The club topic, frame and echo were confirmed live on
+2026-11-21 (#502), as was a second limit: GeoGuessr **keeps 4 line breaks** in a message (a blank
+line is two) and stores every later one as a space. Everything else (quotes, `&`, `<>`, emoji, links,
+300 UTF-16 units with emoji in them) comes back unchanged. GeoGuessr never acknowledges the
+`club:<id>` subscription, only the chat one.
 
 That echo is what confirms a forward:
 
@@ -75,7 +79,8 @@ That echo is what confirms a forward:
 - A `SubscribeDenied` for the chat topic only fails the forward; it never counts as the club's own
   topic being denied, so the club's socket stays up.
 - The text is split by `ClubChatTextSplitter` into numbered parts (`(1/3) …`, at paragraphs, lines,
-  sentences, then words) of at most `MaxMessageLength`, up to `MaxParts`. Each club's forward is
+  sentences, then words) of at most `MaxMessageLength` and `MaxLineBreaks`, up to `MaxParts`. An echo
+  is matched with whitespace runs collapsed, so a part GeoGuessr only re-spaced still counts as arrived. Each club's forward is
   stored in `ClubChatForwards`, which the form reads to warn before the same message goes out again.
 - Metric `geoclubbot.geoguessr_socket.chat_forwards` (by `status` and `socket` = `live`/`own`).
 
@@ -83,5 +88,6 @@ That echo is what confirms a forward:
 never acts in a club. The first real forward to one club is the live check of the topic: if GeoGuessr
 denies it or never echoes, the admin's report says so and the log has a warning.
 
-In the mock, the club view's *Chat* card lists what was written into the club chat (cut at 300) and can
+In the mock, the club view's *Chat* card lists what was written into the club chat (cut at 300, line
+breaks past the fourth as spaces) and can
 drop the echoes to show an unconfirmed forward.
