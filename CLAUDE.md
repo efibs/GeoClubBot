@@ -519,6 +519,12 @@ API + Discord (controllers, slash command modules)
 
 - .NET 11.0, C# 15, nullable reference types enabled, implicit usings enabled
 - Closed sets of records (`ClubPushEvent`, `MemberChange`, `AiContentPart`, `EmbeddingInput`, `RecordArea`, `DecodedClubFrame`, `SocketSignal`, `AnswerToolbox.CallData`) are `closed`: a switch *expression* over one needs no `_ =>` arm, and a new case is a compile error (CS8509) wherever it is not handled. Switch *statements* are not checked, so prefer expressions. A closed type is implicitly abstract and only derivable in its own assembly.
+- **Runtime async** (.NET 11, opt-in) is built only into the dev image: `dev-image.yml` passes
+  `RUNTIME_ASYNC=true`, which the Dockerfile turns into `-p:Features=runtime-async=on` (releases and local
+  builds stay classic; the image label `org.geoclubbot.runtime-async` says which). CI's
+  *All tests (runtime async)* job runs the whole suite in that mode. Locally:
+  `dotnet build -p:Features=runtime-async=on` (then `dotnet test --no-build`; `dotnet test` rejects
+  `--no-incremental`). `UseRuntimeAsync=true` does **not** turn it on.
 - .NET 11 ships the `Microsoft.Extensions.*.Abstractions`, `Options` and `Hosting.Abstractions` packages in the base framework: referencing them is NU1510, an error here. Reference only what is not pruned (`Configuration.Binder`, `Options.DataAnnotations`, …).
 - Conventions are enforced by `.editorconfig` (no `Directory.Build.props`): file-scoped namespaces, `using` directives **outside** the namespace, `_camelCase` private fields, 4-space indent (2 for JSON/YAML), Allman braces, `var` when the type is apparent.
 

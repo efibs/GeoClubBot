@@ -61,6 +61,8 @@ jobs:
           context: .
           file: ./GeoClubBot.API/Dockerfile
           push: true
+          # The dev image tries .NET 11's runtime async; releases stay on classic async (Dockerfile).
+          build-args: RUNTIME_ASYNC=true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -79,6 +81,8 @@ jobs:
           context: .
           file: ./GeoClubBot.API/Dockerfile
           push: true
+          # The dev image tries .NET 11's runtime async; releases stay on classic async (Dockerfile).
+          build-args: RUNTIME_ASYNC=true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

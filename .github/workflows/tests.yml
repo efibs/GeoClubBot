@@ -126,6 +126,48 @@ jobs:
           path: ./TestResults/integration
           retention-days: 7
 
+  # The whole .NET suite once more, compiled with .NET 11's runtime async, which the dev image ships
+  # (dev-image.yml passes RUNTIME_ASYNC=true to the Dockerfile). No coverage: the other two jobs
+  # measure that, and this one only has to show the same code still passes in the other mode.
+  runtime-async-tests:
+    name: All tests (runtime async)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore GeoClubBot.sln
+
+      - name: Build (runtime async)
+        run: dotnet build GeoClubBot.sln --no-restore --configuration Release -p:Features=runtime-async=on
+
+      - name: Test (all, runtime async)
+        run: >
+          dotnet test GeoClubBot.Tests/GeoClubBot.Tests.csproj
+          --no-build --configuration Release
+          --results-directory ./TestResults/runtime-async
+          --logger "trx;LogFileName=runtime-async.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: runtime-async-test-results
+          path: ./TestResults/runtime-async
+          retention-days: 7
+
   # Frontend suite for the Club Dashboard Activity: type-check, Vitest unit/component tests,
   # and Playwright E2E (the config bypasses the Discord SDK and mocks the API per-test).
   frontend-tests:

@@ -21,6 +21,10 @@ RUN npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:11.0@sha256:65f3c7c6a25a239ab3e6719f2896147e7b68242ff2d8818dd70498bde6ef8bea AS build
 ARG BUILD_CONFIGURATION=Release
+# Runtime async (.NET 11, opt-in): async methods are compiled for the runtime's own async support
+# instead of a state machine per method. Off unless the build passes RUNTIME_ASYNC=true; only the dev
+# image does (dev-image.yml), releases stay on classic async until it has proven itself there.
+ARG RUNTIME_ASYNC=false
 WORKDIR /src
 COPY ["GeoClubBot.API/GeoClubBot.API.csproj", "GeoClubBot.API/"]
 COPY ["Constants/Constants.csproj", "Constants/"]
@@ -35,15 +39,21 @@ COPY ["GeoClubBot.Application/GeoClubBot.Application.csproj", "GeoClubBot.Applic
 RUN dotnet restore "GeoClubBot.API/GeoClubBot.API.csproj"
 COPY . .
 WORKDIR "/src/GeoClubBot.API"
-RUN dotnet build "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/build \
+    $( [ "$RUNTIME_ASYNC" = "true" ] && echo "-p:Features=runtime-async=on" )
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+ARG RUNTIME_ASYNC=false
+RUN dotnet publish "./GeoClubBot.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false \
+    $( [ "$RUNTIME_ASYNC" = "true" ] && echo "-p:Features=runtime-async=on" )
 # Bundle the built activity frontend so the API can serve it from wwwroot.
 COPY --from=frontend /activity/dist /app/publish/wwwroot
 
 FROM base AS final
+# Which async the image was built with: docker inspect --format '{{ index .Config.Labels "org.geoclubbot.runtime-async" }}'
+ARG RUNTIME_ASYNC=false
+LABEL org.geoclubbot.runtime-async=$RUNTIME_ASYNC
 
 WORKDIR /app
 COPY --from=publish /app/publish .
