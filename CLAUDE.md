@@ -471,7 +471,8 @@ API + Discord (controllers, slash command modules)
   JSON schema (no extra keys, times ending in `Z`), so the DTOs pin every name and `updatedAt` is a UTC
   `DateTime`. There is no CORS middleware: the action sets `Access-Control-Allow-Origin: *` itself,
   because the middleware only answers requests carrying `Origin` and a CDN copy would lack it.
-- **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`.
+- **Observability**: OpenTelemetry traces + metrics (custom meters like `HandlerMetrics`). The OTLP exporter is opt-in via the `OpenTelemetry:Endpoint` config key; absent that, telemetry stays in-process. Wired in `Program.cs`. The image sets `DOTNET_EnableCrashReport=1`: a crash writes .NET 11's
+  crash report (every thread's managed stack, modules, signal) to stderr, so it shows in `docker logs`.
 
 ### DI Registration
 
