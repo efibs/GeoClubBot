@@ -36,6 +36,26 @@ public sealed class OpenRouterChatRequestDto
     [JsonPropertyName("tool_choice")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ToolChoice { get; set; }
+
+    /// <summary>How much a reasoning model may think first; left out, the model's own default.</summary>
+    [JsonPropertyName("reasoning")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OpenRouterReasoningDto? Reasoning { get; set; }
+}
+
+/// <summary>
+/// OpenRouter's unified reasoning control: <c>{"enabled": false}</c> turns thinking off, <c>{"effort": "low"}</c>
+/// bounds it. Ignored by models that do not reason.
+/// </summary>
+public sealed class OpenRouterReasoningDto
+{
+    [JsonPropertyName("enabled")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Enabled { get; set; }
+
+    [JsonPropertyName("effort")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Effort { get; set; }
 }
 
 public sealed class OpenRouterMessageDto

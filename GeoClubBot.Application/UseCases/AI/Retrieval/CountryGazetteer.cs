@@ -216,6 +216,13 @@ public sealed partial class CountryGazetteer
     /// <summary>Every name this gazetteer recognises, normalised. For tests and diagnostics.</summary>
     public IReadOnlyCollection<string> Names => _byName.Keys;
 
+    /// <summary>
+    /// Every country the gazetteer knows, once each with all its index spellings, in name order: what a
+    /// draw spread evenly over countries picks from (#491).
+    /// </summary>
+    public IReadOnlyList<CountryMention> Countries =>
+        [.. _byName.Values.SelectMany(mentions => mentions).DistinctBy(mention => mention.Name).OrderBy(mention => mention.Name, StringComparer.Ordinal)];
+
     /// <param name="indexCountries">The country values the index holds, as it spells them.</param>
     /// <param name="aliases">More names, each for one or more countries: configuration's additions.</param>
     public static CountryGazetteer Build(

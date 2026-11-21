@@ -124,7 +124,20 @@ public sealed record AiChatRequest(
     double? Temperature = null,
     int? MaxTokens = null,
     IReadOnlyList<AiToolDefinition>? Tools = null,
-    AiToolChoice ToolChoice = AiToolChoice.Auto);
+    AiToolChoice ToolChoice = AiToolChoice.Auto,
+    AiReasoning? Reasoning = null);
+
+/// <summary>
+/// How much a reasoning model may think before it answers; null leaves the model's default. A free
+/// reasoning model given a short reply budget can spend all of it thinking and answer nothing (#491).
+/// </summary>
+public enum AiReasoning
+{
+    Off,
+    Low,
+    Medium,
+    High
+}
 
 public sealed record AiTokenUsage(int PromptTokens, int CompletionTokens);
 
