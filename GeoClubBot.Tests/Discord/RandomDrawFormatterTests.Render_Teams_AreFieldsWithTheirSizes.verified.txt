@@ -1,0 +1,12 @@
+﻿Title: 🏁 Random teams
+Description:
+
+
+Field: Team 1 (2)
+<@1>
+<@2>
+
+Field: Team 2 (1)
+<@3>
+
+Footer: 3 into 2 teams · 🔊 General · drawn by Fibs

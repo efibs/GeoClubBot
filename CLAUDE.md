@@ -233,6 +233,13 @@ API + Discord (controllers, slash command modules)
   mentions are clickable from the guild's command ids, read once. A public `/help`'s menu answers each
   picker privately. Failed commands' replies point to their page (`HelpHint`). `BotManualTests` fails on a
   command without a feature or a parameter without a description.
+- **Random draws** (`/random`, `RandomDraws:Enabled`, #2; `Interactions/RandomDraws/`): country (all of
+  `IsoCountries`, or `coverage-only` from `DrawableCountries`' built-in list read from PlonkIt's sitemap,
+  overridable by `StreetViewCountryCodes`; each links to its PlonkIt guide), number, coin, dice, pick,
+  shuffle for everyone; member (one club or "All our clubs", `DrawClubAutocompleteHandler`), voice, role
+  (up to 5, any/all) and teams behind `RequireUserPermission(ManageMessages)`. The draws are the pure
+  `RandomDraw` (no repeats within a draw, teams at most one apart); bots and deafened voice users are
+  never drawn; results are public unless `private`, and are sent with `AllowedMentions.None`, never pinging.
 - **Club XP activity kinds**: GeoGuessr's club activity feed labels each entry with a numeric
   `type`: 4 = daily challenge / duel (the streak, 20 XP), 5 = board mission (20 XP, credited to the
   **claimer** only), 6 = board-clear bonus (100 XP, to whoever finished the board's last mission),

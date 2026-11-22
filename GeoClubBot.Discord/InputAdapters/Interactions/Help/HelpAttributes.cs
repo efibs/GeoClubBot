@@ -87,5 +87,6 @@ public enum HelpToggle
     CountryChallenges,
     ClubChatForwarding,
     SelfRoles,
-    MissionBoardNotifications
+    MissionBoardNotifications,
+    RandomDraws
 }

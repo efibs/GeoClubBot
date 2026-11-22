@@ -30,6 +30,7 @@ public sealed partial class BotManualService(
     IOptions<ClubChatForwardingConfiguration> clubChatForwarding,
     IOptions<SelfRolesConfiguration> selfRoles,
     IOptions<MissionBoardNotificationsConfiguration> missionBoardNotifications,
+    IOptions<RandomDrawsConfiguration> randomDraws,
     ILogger<BotManualService> logger) : IBotManual
 {
     public IReadOnlyList<ManualFeature> FeaturesFor(IGuildUser member) =>
@@ -71,6 +72,7 @@ public sealed partial class BotManualService(
         HelpToggle.ClubChatForwarding => clubChatForwarding.Value.Enabled,
         HelpToggle.SelfRoles => selfRoles.Value.Roles.Count > 0,
         HelpToggle.MissionBoardNotifications => missionBoardNotifications.Value.Enabled,
+        HelpToggle.RandomDraws => randomDraws.Value.Enabled,
         _ => throw new ArgumentOutOfRangeException(nameof(toggle), toggle, null)
     };
 
