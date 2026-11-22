@@ -3,6 +3,7 @@ using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.DailyMissionReminder;
@@ -11,16 +12,29 @@ using Utilities;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.DailyMissionReminder;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("daily-reminder", "Commands for managing your daily streak and club mission reminders")]
+[HelpFeature("reminders", Emoji = "⏰", Title = "Daily reminder", Order = 20,
+    Summary = "A DM at times you choose, naming what you still owe today: your streak, a club mission.")]
+[HelpSection(1, "What it reminds you of", """
+    - **Your streak:** play the daily challenge or a duel (UTC day).
+    - **A club mission:** claim one while the board has a free mission and you haven't used today's claim. If you still hold a mission from an earlier day, it reminds you to finish it (or ask for help) instead.
+    The DM names only what is left, and none is sent once nothing is. Claims reset at 12:00 UK time; the reminder says when. Without a linked account I can't see your activity, so you are reminded of both.
+    You can have several reminders, each with its own time and message. If I was offline at a reminder's time, I send one catch-up DM when I'm back.
+    """)]
+[Group("daily-reminder", "Your daily DMs to keep your streak and claim a club mission")]
 public class DailyMissionReminderModule(
     ISender mediator,
     ILogger<DailyMissionReminderModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("add", "Add a daily reminder to keep your streak and claim a club mission")]
+    [SlashCommand("add", "Add a daily reminder, or change the one at that time")]
+    [HelpDetail("""
+        Write `{{outstanding_text}}` in your message where what you still owe should go. It starts with a verb and ends the sentence, so `Time for GeoGuessr! Don't forget to {{outstanding_text}}` becomes
+        > Time for GeoGuessr! Don't forget to play the daily challenge (or a duel) and claim a club mission (5 still free on board 3, the daily claim resets in 4 hours)!
+        Without it, only your own text is sent.
+        """)]
     public Task AddReminderAsync(
-        [Summary(description: "Time in HH:mm format (e.g. 09:00)")] string time,
-        [Autocomplete(typeof(TimezoneAutocompleteHandler))][Summary(description: "IANA timezone ID (e.g. Europe/Berlin). Defaults to UTC")] string? timezone = null,
-        [Summary(description: "Custom reminder message. Use {{outstanding_text}} to insert what you still owe today.")] string? message = null) =>
+        [Summary(description: "When, in 24-hour HH:mm, e.g. 09:00 or 21:30")] string time,
+        [Autocomplete(typeof(TimezoneAutocompleteHandler))][Summary(description: "Your time zone, e.g. Europe/Berlin; UTC if left out")] string? timezone = null,
+        [Summary(description: "Your own text; {{outstanding_text}} marks where what you still owe goes")] string? message = null) =>
         ExecuteAsync(
             async ct =>
             {
@@ -91,7 +105,7 @@ public class DailyMissionReminderModule(
 
     [SlashCommand("remove", "Remove one of your daily reminders")]
     public Task RemoveReminderAsync(
-        [Autocomplete(typeof(ReminderAutocompleteHandler))][Summary(description: "The reminder to remove")] string reminder) =>
+        [Autocomplete(typeof(ReminderAutocompleteHandler))][Summary(description: "The reminder to remove, picked by its time")] string reminder) =>
         ExecuteAsync(
             async ct =>
             {
@@ -134,7 +148,7 @@ public class DailyMissionReminderModule(
             ephemeral: true,
             failureMessage: "Failed to clear the daily reminders. Please try again later.");
 
-    [SlashCommand("list", "List your daily reminders")]
+    [SlashCommand("list", "List your daily reminders: times, time zones, messages and when each was last sent")]
     public Task ListAsync() =>
         ExecuteAsync(
             async ct =>

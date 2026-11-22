@@ -112,6 +112,14 @@ A command is a thin Discord adapter that sends a MediatR request into the Applic
    add a `[SlashCommand(...)]` method that calls `Mediator.Send(...)` inside the
    `ExecuteAsync(...)` helper. *(Auto-discovered — no DI edit, no manual command
    registration.)*
+4. **Manual** — `/help` is read from the commands, so describe it there, not in a document:
+   a clear `[SlashCommand]` description and a `[Summary(description: …)]` on every parameter
+   (defaults and "optional" are shown automatically), `[HelpDetail("…")]` for what does not fit 100
+   characters, and `[HelpFeature("<key>")]` on a new module (one module per key also gives `Emoji`,
+   `Title`, `Summary`, `Order`, and `ShownWhen` if a setting switches the feature off). A subcommand
+   that only admins may run needs `[RequireUserPermission(GuildPermission.Administrator)]`: Discord
+   ignores a subcommand's own `[DefaultMemberPermissions]`. `BotManualTests` fails until all of this
+   holds; review the wording in its two `*.verified.txt` snapshots.
 
 Model it on `Interactions/Users/UserInfoModule.cs` or `Interactions/Club/ClubStatsModule.cs`.
 **Folder choice:** put the module in the subfolder matching the use-case slice. If you only

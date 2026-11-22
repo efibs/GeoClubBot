@@ -33,7 +33,7 @@ This document covers what it is, what it costs, how to turn it on, and what it d
 - **Rate an answer** with the 👍 / 👎 the bot puts on it, or right-click it → Apps →
   **👍 Good AI answer** / **👎 Bad AI answer** to add a comment. See [Feedback](#feedback).
 
-Admin and diagnostic commands are documented in [the command guide](../BotCommandsGuide.md#-feature-ai-assistant).
+Every command, the admin and diagnostic ones included, is described in the bot itself: `/help` → 🤖 AI assistant.
 
 ---
 

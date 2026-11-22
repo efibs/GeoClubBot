@@ -5,6 +5,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,14 +14,22 @@ using UseCases.UseCases.GeoGuessrAccountLinking;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.AccountLinking;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("gg-account", "Commands for linking Discord accounts to GeoGuessr accounts")]
+[HelpFeature("linking", Emoji = "🔗", Title = "Account linking", Order = 10,
+    Summary = "Link your Discord account to your GeoGuessr account; many features need it.")]
+[Group("gg-account", "Link your Discord account to your GeoGuessr account")]
 public class GeoGuessrAccountLinkPublicModule(
     ISender mediator,
     ILogger<GeoGuessrAccountLinkPublicModule> logger,
     IOptions<GeoGuessrAccountLinkingConfiguration> accountLinkingOptions) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("link", "Link your Discord account to a GeoGuessr account")]
-    public Task StartLinkingProcessAsync([Summary(description: "The link to your profile")] string shareProfileLink) =>
+    [SlashCommand("link", "Link your Discord account to your GeoGuessr account")]
+    [HelpDetail("""
+        To get the link: GeoGuessr → **Profile** → the share button left of *EDIT AVATAR* → copy.
+        I reply with a one-time password. Send it as a direct message to an admin **inside GeoGuessr** (not on Discord); once they confirm it, I let you know here.
+        """)]
+    public Task StartLinkingProcessAsync(
+        [Summary(description: "Your GeoGuessr profile's share link, like https://www.geoguessr.com/user/62c353a2…")]
+        string shareProfileLink) =>
         ExecuteAsync(
             async ct =>
             {

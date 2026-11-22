@@ -4,6 +4,7 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,10 +21,10 @@ public partial class ActivityModule
     {
         private readonly TimeSpan _strikeDecayTimeSpan = activityCheckerOptions.Value.StrikeDecayTimeSpan;
 
-        [SlashCommand("add", "Create a new strike for a player")]
+        [SlashCommand("add", "Give a member a strike by hand")]
         public async Task CreateStrikeAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
-            [Summary(description: "Strike date in format YYYY-MM-DD")]
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname,
+            [Summary(description: "The strike's date, as YYYY-MM-DD")]
             DateTime strikeDate)
         {
             strikeDate = DateTime.SpecifyKind(strikeDate, DateTimeKind.Utc);
@@ -46,9 +47,9 @@ public partial class ActivityModule
             }
         }
 
-        [SlashCommand("read", "Read the strikes a player currently has")]
+        [SlashCommand("read", "The strikes a member has now")]
         public async Task ReadStrikesAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname)
         {
             var result = await Mediator
                 .Send(new ReadMemberStrikesQuery(memberNickname))
@@ -78,7 +79,7 @@ public partial class ActivityModule
                 ephemeral: true).ConfigureAwait(false);
         }
 
-        [SlashCommand("read-all", "Read all strikes currently in the system")]
+        [SlashCommand("read-all", "Every strike, expired and revoked ones included")]
         public async Task ReadAllStrikesAsync()
         {
             var strikes = await Mediator.Send(new ReadAllStrikesQuery()).ConfigureAwait(false);
@@ -116,7 +117,7 @@ public partial class ActivityModule
             }
         }
 
-        [SlashCommand("read-relevant", "Read all strikes that are currently relevant")]
+        [SlashCommand("read-relevant", "The strikes that still count")]
         public Task ReadAllRelevantStrikesAsync() =>
             ExecuteAsync(
                 async ct =>
@@ -161,7 +162,7 @@ public partial class ActivityModule
 
         [SlashCommand("revoke", "Revoke a strike")]
         public async Task RevokeStrikeAsync(
-            [Autocomplete(typeof(StrikeIdAutocompleteHandler))] string strikeId)
+            [Autocomplete(typeof(StrikeIdAutocompleteHandler))][Summary(description: "The strike, as suggested")] string strikeId)
         {
             if (!Guid.TryParse(strikeId, out var strikeIdGuid))
             {
@@ -189,7 +190,8 @@ public partial class ActivityModule
         /// Opens the confirmation modal. Not routed through <see cref="ClubBotInteractionModule.ExecuteAsync"/>,
         /// which defers first — a modal has to be the interaction's immediate response.
         /// </summary>
-        [SlashCommand("revoke-all", "Revoke every strike that is currently not revoked")]
+        [SlashCommand("revoke-all", "Revoke every strike that is not revoked yet")]
+        [HelpDetail("Asks you to confirm first.")]
         public async Task RevokeAllStrikesAsync()
         {
             try
@@ -230,9 +232,9 @@ public partial class ActivityModule
                 .ConfigureAwait(false);
         }
 
-        [SlashCommand("unrevoke", "Remove a revocation of a strike")]
+        [SlashCommand("unrevoke", "Undo a strike's revocation")]
         public async Task UnrevokeStrikeAsync(
-            [Autocomplete(typeof(StrikeIdAutocompleteHandler))] string strikeId)
+            [Autocomplete(typeof(StrikeIdAutocompleteHandler))][Summary(description: "The strike, as suggested")] string strikeId)
         {
             if (!Guid.TryParse(strikeId, out var strikeIdGuid))
             {

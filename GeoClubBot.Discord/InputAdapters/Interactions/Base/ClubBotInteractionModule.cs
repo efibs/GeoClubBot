@@ -1,5 +1,6 @@
 using Discord.Interactions;
 using FluentValidation;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Utilities;
@@ -44,7 +45,7 @@ public abstract partial class ClubBotInteractionModule(ISender mediator, ILogger
                 string.Join("; ", validationEx.Errors.Select(e => e.ErrorMessage)));
 
             var message = string.Join("\n", validationEx.Errors.Select(e => $"• {e.ErrorMessage}"));
-            await TrySendFollowupAsync(message).ConfigureAwait(false);
+            await TrySendFollowupAsync(WithHelpHint(message)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -52,9 +53,13 @@ public abstract partial class ClubBotInteractionModule(ISender mediator, ILogger
 
             var message = failureMessage
                 ?? "Something went wrong. Please try again later. If the issue persists, contact an admin.";
-            await TrySendFollowupAsync(message).ConfigureAwait(false);
+            await TrySendFollowupAsync(WithHelpHint(message)).ConfigureAwait(false);
         }
     }
+
+    /// <summary>Points a failed command's reply to the command's page of <c>/help</c>.</summary>
+    private string WithHelpHint(string message) =>
+        HelpHint.For(GetType()) is { } hint ? $"{message}\n{hint}" : message;
 
     private async Task TrySendFollowupAsync(string message)
     {

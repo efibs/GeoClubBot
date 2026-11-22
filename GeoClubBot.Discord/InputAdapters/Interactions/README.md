@@ -10,6 +10,10 @@ A module:
 - declares a `[Group(...)]` and `[SlashCommand(...)]` methods,
 - calls `Mediator.Send(new XxxQuery/Command(...), ct)` inside the `ExecuteAsync(...)` helper.
 
+Every command also describes itself for `/help` (`Help/`): put `[HelpFeature(...)]` on a new
+module, a `[Summary]` on each parameter, and `[HelpDetail]` where the description is too short —
+see the recipe in the developer guide. `BotManualTests` names whatever is missing.
+
 Modules are **auto-discovered** (`InteractionService.AddModulesAsync` via
 `InteractionsAssemblyMarker`) — no manual registration. Model new ones on
 `Users/UserInfoModule.cs`. If you only need another subcommand on an existing group,

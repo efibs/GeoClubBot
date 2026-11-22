@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.MemberPrivateChannels;
@@ -9,6 +10,8 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.MemberPrivateChannels;
 
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
+[HelpFeature("private-channels", Emoji = "🔒", Title = "Private channels", Order = 110,
+    Summary = "Each linked member's own channel, sorted into a category per club.")]
 [Group("private-channels-admin", "Manage the members' private channels")]
 public class PrivateChannelsAdminModule(
     ISender mediator,
@@ -17,7 +20,7 @@ public class PrivateChannelsAdminModule(
     [SlashCommand("reconcile",
         "Move every private channel into its club's category, recreate missing ones and fix permissions")]
     public Task ReconcileAsync(
-        [Summary("dry-run", "Only report what would change (default: true)")]
+        [Summary("dry-run", "Only report what would change")]
         bool dryRun = true) =>
         ExecuteAsync(
             async ct =>

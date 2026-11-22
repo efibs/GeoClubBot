@@ -68,9 +68,12 @@ and per payload index, and the default limit is exhausted part-way through a run
 - **Discord module loading** (`Discord/InteractionModuleLoadingTests`, fast): loads every interaction
   module into an `InteractionService` and checks Discord's name/description limits. No other test does
   this (the E2E host strips the gateway), so a broken module would otherwise only show at bot start-up.
+  It also fails a subcommand whose own `[DefaultMemberPermissions]` asks for more than its top-level group:
+  Discord ignores it (every member could run the `/ai` admin commands until #81), so use
+  `[RequireUserPermission]`, which `InteractionHandler` answers when it stops a command.
   Tests that set the static `ConfiguredCronJobAttribute.Config` share the non-parallel
   `ConfiguredCronJobCollection`.
-- **Snapshot** (`Discord/*FormatterTests`, `Application/UseCases/CountryChallenges/CountryChallengeMessagesTests`,
+- **Snapshot** (`Discord/*FormatterTests`, `Discord/BotManualTests` (the whole `/help` manual, as an admin and as a member), `Application/UseCases/CountryChallenges/CountryChallengeMessagesTests`,
   `AI/SpeciesRangeExcerptTests`, `Application/UseCases/ClubChatForwarding/DiscordTextFlattenerTests`, fast): `Verify.Xunit` captures whole rendered messages
   into committed `*.verified.txt` files. To update after an intended change, run the test, inspect
   the new `*.received.txt`, and replace the `*.verified.txt` (or use a Verify diff tool). `*.received.*`
@@ -218,6 +221,18 @@ API + Discord (controllers, slash command modules)
 - **Refit HTTP Client**: `IGeoGuessrClient` is a declarative Refit interface for the GeoGuessr API, with Polly resilience (rate limiting, retry, circuit breaker) configured in `ResiliencePipelines.cs`.
 - **Quartz Jobs**: Jobs use `[ConfiguredCronJob("ConfigKey:Schedule")]` attribute for auto-discovery. Located in `Infrastructure/InputAdapters/Jobs/`.
 - **Discord Interactions**: Slash command modules in `Discord/InputAdapters/Interactions/<Feature>/` (feature subfolders mirroring `Application/UseCases/`), auto-discovered via `InteractionsAssemblyMarker` — no manual registration. Output adapters in `Discord/OutputAdapters/` implement interfaces from `Application/OutputPorts/Discord/`.
+- **Bot manual** (`/help`, `/manual`, #81; `Interactions/Help/`): there is no command reference document.
+  `BotManual.Build` reads the loaded modules — names, descriptions, `[Summary]` parameters (optional and
+  defaults shown automatically), permissions (Discord's registered ones plus `RequireUserPermission`) — and
+  the `Help*` attributes: `[HelpFeature(key)]` on each module (one per key also gives emoji, title, summary,
+  order and `ShownWhen`), `[HelpSection]` prose above the commands, `[HelpDetail]` for what a 100-character
+  description cannot hold, `[HelpShownWhen]` for commands behind a setting, `[HelpShortcutFor]` to pair a
+  right-click command with its slash twin. `BotManualService` (singleton) filters per member: features whose
+  setting is off and commands the member may not run are left out (`HelpToggle` is read from the options
+  classes). `HelpFormatter` (pure) renders the overview, the feature menu and pages split between entries;
+  mentions are clickable from the guild's command ids, read once. A public `/help`'s menu answers each
+  picker privately. Failed commands' replies point to their page (`HelpHint`). `BotManualTests` fails on a
+  command without a feature or a parameter without a description.
 - **Club XP activity kinds**: GeoGuessr's club activity feed labels each entry with a numeric
   `type`: 4 = daily challenge / duel (the streak, 20 XP), 5 = board mission (20 XP, credited to the
   **claimer** only), 6 = board-clear bonus (100 XP, to whoever finished the board's last mission),

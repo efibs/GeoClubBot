@@ -16,9 +16,9 @@ public partial class ActivityModule
         ISender mediator,
         ILogger<ActivityStatisticsModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
-        [SlashCommand("player", "Read the statistics of a player")]
+        [SlashCommand("player", "A member's activity statistics")]
         public async Task ReadPlayerStatisticsAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname)
         {
             var result = await Mediator.Send(new PlayerStatisticsQuery(memberNickname)).ConfigureAwait(false);
 
@@ -52,7 +52,7 @@ public partial class ActivityModule
             await RespondAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
         }
 
-        [SlashCommand("club", "Read the statistics of the club")]
+        [SlashCommand("club", "The club's activity statistics")]
         public async Task ReadClubStatisticsAsync()
         {
             var stats = await Mediator.Send(new ClubStatisticsQuery()).ConfigureAwait(false);
@@ -81,11 +81,11 @@ public partial class ActivityModule
             await RespondAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
         }
 
-        [SlashCommand("player-history", "Read the history of a player")]
+        [SlashCommand("player-history", "A chart of a member's XP over the weekly checks")]
         public Task ReadPlayerHistoryAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
-            [MinValue(1)][Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries,
-            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null) =>
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname,
+            [MinValue(1)][Summary(description: "How many checks to show at most")] int maxNumEntries,
+            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "The club; the main club if left out")] string? clubName = null) =>
             ExecuteAsync(
                 async ct =>
                 {
@@ -106,10 +106,10 @@ public partial class ActivityModule
                 ephemeral: true,
                 failureMessage: "Failed to generate history plot. Please try again later. If the problem persists, please contact an admin.");
 
-        [SlashCommand("average-leaderboard", "Read the leaderboard of members by average club xp")]
+        [SlashCommand("average-leaderboard", "Members ranked by their average rule XP over the last checks")]
         public Task ReadAverageLeaderboardAsync(
-            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null,
-            [MinValue(1)][Summary(description: "[optional] The number of intervals to include in the average")] int periods = 4) =>
+            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "The club; the main club if left out")] string? clubName = null,
+            [MinValue(1)][Summary(description: "How many checks the average covers")] int periods = 4) =>
             ExecuteAsync(
                 async ct =>
                 {

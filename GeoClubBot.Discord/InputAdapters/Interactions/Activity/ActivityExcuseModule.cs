@@ -1,6 +1,7 @@
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.ClubMemberActivity;
@@ -14,12 +15,13 @@ public partial class ActivityModule
         ISender mediator,
         ILogger<ActivityExcuseModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
-        [SlashCommand("add", "Add an excuse for a player")]
+        [SlashCommand("add", "Excuse a member from the weekly check between two dates")]
+        [HelpDetail("Both days count. An excused member's targets shrink by the days excused.")]
         public async Task AddExcuseAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
-            [Summary(description: "From date in format YYYY-MM-DD")]
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname,
+            [Summary(description: "The first day, as YYYY-MM-DD")]
             DateTime from,
-            [Summary(description: "To date in format YYYY-MM-DD")]
+            [Summary(description: "The last day, as YYYY-MM-DD")]
             DateTime to)
         {
             // Add one day to the to time and subtract a tick so that the day still counts.
@@ -52,12 +54,12 @@ public partial class ActivityModule
             }
         }
 
-        [SlashCommand("update", "Update an excuse for a player")]
+        [SlashCommand("update", "Change the dates of an excuse")]
         public async Task UpdateExcuseAsync(
-            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))] string excuseId,
-            [Summary(description: "The new from date in format YYYY-MM-DD")]
+            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))][Summary(description: "The excuse, as suggested")] string excuseId,
+            [Summary(description: "The new first day, as YYYY-MM-DD")]
             DateTime from,
-            [Summary(description: "The new to date in format YYYY-MM-DD")]
+            [Summary(description: "The new last day, as YYYY-MM-DD")]
             DateTime to)
         {
             if (!Guid.TryParse(excuseId, out var excuseIdGuid))
@@ -95,9 +97,9 @@ public partial class ActivityModule
                 .ConfigureAwait(false);
         }
 
-        [SlashCommand("remove", "Remove an excuse for a player given its id")]
+        [SlashCommand("remove", "Remove an excuse")]
         public async Task RemoveExcuseAsync(
-            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))] string excuseId)
+            [Autocomplete(typeof(ExcuseIdAutocompleteHandler))][Summary(description: "The excuse, as suggested")] string excuseId)
         {
             if (!Guid.TryParse(excuseId, out var excuseIdGuid))
             {
@@ -114,9 +116,9 @@ public partial class ActivityModule
                 ephemeral: result.IsFailure).ConfigureAwait(false);
         }
 
-        [SlashCommand("read", "Read the excuses for a player")]
+        [SlashCommand("read", "A member's excuses")]
         public async Task ReadExcusesAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
+            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname)
         {
             var excuses = await Mediator.Send(new ReadExcusesQuery(memberNickname)).ConfigureAwait(false);
 
@@ -133,7 +135,7 @@ public partial class ActivityModule
             }
         }
 
-        [SlashCommand("read-all", "Read all excuses in the system")]
+        [SlashCommand("read-all", "Every excuse, past ones included")]
         public async Task ReadExcusesAsync()
         {
             var excuses = await Mediator.Send(new ReadExcusesQuery()).ConfigureAwait(false);
@@ -151,8 +153,9 @@ public partial class ActivityModule
             }
         }
 
-        [SlashCommand("read-relevant", "Read the relevant excuses in the system")]
-        public async Task ReadRelevantExcusesAsync(int upcomingExcusesNumDays = 7)
+        [SlashCommand("read-relevant", "The excuses that count now or start soon")]
+        public async Task ReadRelevantExcusesAsync(
+            [Summary(description: "How many days ahead an excuse may start")] int upcomingExcusesNumDays = 7)
         {
             var lastActivityCheckTime = await Mediator.Send(new GetLastCheckTimeQuery()).ConfigureAwait(false);
             var result = await Mediator

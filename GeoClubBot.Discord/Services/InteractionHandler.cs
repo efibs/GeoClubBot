@@ -79,6 +79,16 @@ public partial class InteractionHandler
             {
                 activity?.SetStatus(ActivityStatusCode.Error, result.ErrorReason);
                 LogSlashCommandFailed(result.ErrorReason);
+
+                // A precondition (e.g. RequireUserPermission on an admin subcommand) stops the command
+                // before it can answer, which Discord would show as "The application did not respond".
+                if (result.Error == InteractionCommandError.UnmetPrecondition
+                    && interaction is not SocketAutocompleteInteraction
+                    && !interaction.HasResponded)
+                {
+                    await interaction.RespondAsync("You don't have permission to use this command.", ephemeral: true)
+                        .ConfigureAwait(false);
+                }
             }
         }
         catch (Exception ex)

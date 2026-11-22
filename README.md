@@ -178,8 +178,10 @@ for the feed's activity types and the board's shape.
 
 ## Bot commands
 
-A full, user-facing rundown of every slash command and user command (with parameters and examples)
-lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
+Type **`/help`** (or `/manual`) in the server: the bot lists every feature and, per feature, its
+commands with their parameters, showing each member only what is switched on and what they may run.
+The manual is read from the commands themselves (see *Bot manual* in [CLAUDE.md](CLAUDE.md)), so there
+is no separate command reference to keep up to date. Highlights:
 
 | Command | What it does |
 |---|---|
@@ -190,6 +192,7 @@ lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
 | `/country-challenges leaderboard` | See the country challenge leaderboard and your place on it |
 | `/user-info gg-nickname\|gg-profile\|discord-user` | Look up GeoGuessr ↔ Discord identities |
 | `/self-roles select` | Pick optional roles for yourself |
+| `/help` | Everything the bot can do, and how to use it |
 
 ## Testing
 
@@ -265,7 +268,6 @@ docker build -f ./GeoClubBot.API/Dockerfile -t ghcr.io/efibs/geo-club-bot:your-v
 | [Developer Guide](Documentation/DeveloperGuide.md) | Solution map and "where do I add X?" recipes |
 | [Result Conventions](Documentation/ResultConventions.md) | Error handling with `Result<T>` |
 | [AI Guide](Documentation/AiGuide.md) | How the AI assistant works, what it costs to run, how to turn it on |
-| [Bot Commands Guide](BotCommandsGuide.md) | User-facing command reference |
 | [Contributing](CONTRIBUTING.md) | Branching model, pre-commit hook, CI/CD |
 
 ## Contributing
