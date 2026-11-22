@@ -21,6 +21,10 @@ appsettings.*.json
 # Local Data Protection key ring (see DataProtection:KeyRingPath in appsettings.json)
 /GeoClubBot.API/dataprotection-keys/
 
+# Map data the AI downloads on first use (AI:Tools:RegionMap:DataDirectory, ~40 MB GeoJSON).
+# The setting is a relative path, so it lands wherever the bot was started from.
+ai-data/
+
 # Locally-built Club Dashboard Activity assets, copied here only for "serve from the API" testing.
 # In production the Docker build bundles these into the image's wwwroot instead.
 GeoClubBot.API/wwwroot/
