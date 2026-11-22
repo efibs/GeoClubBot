@@ -86,5 +86,6 @@ public enum HelpToggle
     AiFeedback,
     CountryChallenges,
     ClubChatForwarding,
-    SelfRoles
+    SelfRoles,
+    MissionBoardNotifications
 }

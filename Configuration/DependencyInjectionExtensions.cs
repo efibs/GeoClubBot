@@ -63,6 +63,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<MissionBoardNotificationsConfiguration>()
+            .Bind(config.GetSection(MissionBoardNotificationsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<MissionClaimTrackingConfiguration>()
             .Bind(config.GetSection(MissionClaimTrackingConfiguration.SectionName))
             .ValidateDataAnnotations()
