@@ -30,7 +30,6 @@
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0" />
         <PackageReference Include="Qdrant.Client" Version="1.20.0" />
         <PackageReference Include="Refit" Version="17.0.0" />
-        <PackageReference Include="Refit.Reflection" Version="17.0.0" />
         <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.157.0" />
         <PackageReference Include="SkiaSharp" Version="4.157.0" />
     </ItemGroup>

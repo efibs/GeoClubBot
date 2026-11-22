@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Entities;
-using Refit;
+using Infrastructure.OutputAdapters.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.AI.Review;
@@ -185,7 +185,7 @@ public static class ReviewCommand
     private static T? Deserialize<T>(string text)
     {
         var reader = new Utf8JsonReader(System.Text.Encoding.UTF8.GetBytes(Json(text)));
-        return JsonSerializer.Deserialize<T>(ref reader, SystemTextJsonContentSerializer.GetDefaultJsonSerializerOptions());
+        return JsonSerializer.Deserialize<T>(ref reader, GeoGuessrJsonContext.Default.Options);
     }
 
     /// <summary>The first JSON value in the text: the ApiProbe writes a request line before it and a census after.</summary>

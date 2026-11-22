@@ -3,10 +3,10 @@ using System.Text.Json;
 using Configuration;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.AI.StreetView;
+using Infrastructure.OutputAdapters.GeoGuessr;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
-using Refit;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
@@ -76,7 +76,7 @@ public sealed class StreetViewAdapterTests
         // the same shape as a game in a challenge's highscores, with its state and map besides.
         var json = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "AI", "geoguessr-game-20261121.json"));
 
-        var game = JsonSerializer.Deserialize<ChallengeResultGameDto>(json, SystemTextJsonContentSerializer.GetDefaultJsonSerializerOptions())!;
+        var game = JsonSerializer.Deserialize<ChallengeResultGameDto>(json, GeoGuessrJsonContext.Default.Options)!;
 
         game.Should().BeEquivalentTo(new { Token = "eOb5HPFMPcMjJ5oM", Type = "standard", State = "finished", MapName = "A Community World", ForbidMoving = true, IsFinished = true });
         game.Rounds.Should().HaveCount(5).And.OnlyContain(round => round.PanoId != null && round.StreakLocationCode != null && round.Heading != null);
