@@ -7,12 +7,13 @@ using UseCases.UseCases.Club;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 
 /// <summary>
-/// Suggests the tracked clubs by name. Unlike <c>ClubAutocompleteHandler</c> (whose value is
-/// the club id), the option value here is the club <b>name</b>, because the consuming commands
-/// resolve the club by name (<c>ReadClubByNameAsync</c>).
+/// The clubs of <see cref="ClubAutocompleteHandler"/>, led by "All our clubs" (value
+/// <see cref="AllClubsValue"/>), for <c>/random</c>.
 /// </summary>
-public class ClubNameAutocompleteHandler : AutocompleteHandler
+public class DrawClubAutocompleteHandler : AutocompleteHandler
 {
+    public const string AllClubsValue = "all";
+
     public override async Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context,
         IAutocompleteInteraction autocompleteInteraction,
@@ -27,9 +28,12 @@ public class ClubNameAutocompleteHandler : AutocompleteHandler
         return AutocompletionResult.FromSuccess(BuildSuggestions(clubs, input));
     }
 
-    internal static IEnumerable<AutocompleteResult> BuildSuggestions(IReadOnlyList<Entities.Club> clubs, string input) =>
-        clubs
-            .Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase))
-            .Select(c => new AutocompleteResult(c.Name, c.Name))
-            .Take(25);
+    internal static IEnumerable<AutocompleteResult> BuildSuggestions(IReadOnlyList<Entities.Club> clubs, string input)
+    {
+        IEnumerable<AutocompleteResult> all = "All our clubs".Contains(input, StringComparison.OrdinalIgnoreCase)
+            ? [new AutocompleteResult("All our clubs", AllClubsValue)]
+            : [];
+
+        return all.Concat(ClubAutocompleteHandler.BuildSuggestions(clubs, input)).Take(25);
+    }
 }

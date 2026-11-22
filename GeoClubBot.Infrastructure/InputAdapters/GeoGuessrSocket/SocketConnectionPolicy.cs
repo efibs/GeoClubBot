@@ -48,7 +48,7 @@ public sealed record SocketConnectionState(
 }
 
 /// <summary>Something that happened to a club's socket.</summary>
-public abstract record SocketSignal
+public closed record SocketSignal
 {
     public sealed record Opened : SocketSignal;
 
@@ -104,7 +104,6 @@ public sealed class SocketConnectionPolicy(GeoGuessrSocketConfiguration options)
             Attempt = 0,
             Delay = TimeSpan.Zero,
         },
-        _ => throw new ArgumentOutOfRangeException(nameof(signal), signal, null),
     };
 
     /// <summary>

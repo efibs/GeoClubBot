@@ -595,90 +595,89 @@ public sealed partial class AnswerToolbox(
     private static (string Result, AiToolCallOutcome Outcome, int Offered) Offer(
         CallData data,
         ExcerptLedger ledger,
+        PlannedToolCall call) => data switch
+        {
+            CallData.Refused refused => (refused.Message, refused.Outcome, 0),
+            CallData.Found found => OfferFound(found, ledger, call),
+        };
+
+    private static (string Result, AiToolCallOutcome Outcome, int Offered) OfferFound(
+        CallData.Found found,
+        ExcerptLedger ledger,
         PlannedToolCall call)
     {
-        switch (data)
+        var text = new StringBuilder();
+        if (found.Note is not null)
         {
-            case CallData.Refused refused:
-                return (refused.Message, refused.Outcome, 0);
-            case CallData.Found found:
-                {
-                    var text = new StringBuilder();
-                    if (found.Note is not null)
-                    {
-                        text.AppendLine(found.Note).AppendLine();
-                    }
-
-                    var offered = 0;
-                    var full = false;
-                    var fromCountry = false;
-                    var unfiled = false;
-                    foreach (var hit in found.Hits)
-                    {
-                        if (offered >= found.MaxNew)
-                        {
-                            break;
-                        }
-
-                        if (ledger.IsFull)
-                        {
-                            full = !ledger.Holds(hit);
-                            if (full)
-                            {
-                                break;
-                            }
-
-                            continue;
-                        }
-
-                        if (ledger.Offer(hit) is { } excerpt)
-                        {
-                            text.AppendLine(excerpt).AppendLine();
-                            offered++;
-                            fromCountry |= found.Searched?.IsFrom(hit) == true;
-                            unfiled |= string.IsNullOrWhiteSpace(hit.Country);
-                        }
-                    }
-
-                    if (full)
-                    {
-                        // Said rather than passed off as nothing new: the guides did have more to say.
-                        text.Append(ExcerptsFull);
-                        return (text.ToString().Trim(), offered == 0 ? AiToolCallOutcome.Unavailable : AiToolCallOutcome.Answered, offered);
-                    }
-
-                    if (offered == 0)
-                    {
-                        text.Append(found.WhenEmpty
-                                    ?? (call.Read is not null
-                                        ? "Nothing more: everything near that excerpt has been offered already."
-                                        : "Nothing new: everything this found is among the numbered excerpts already."));
-                        if (call.Search is not null)
-                        {
-                            text.Append(' ').Append(NothingToSearchFor);
-                        }
-
-                        return (text.ToString().Trim(), AiToolCallOutcome.NothingNew, 0);
-                    }
-
-                    if (found.Searched is { Name: { } country } && !fromCountry && !unfiled)
-                    {
-                        // Said first, where a model reading the result cannot miss it; the excerpts are
-                        // still offered, for a look-alike worth ruling out. Said as a condition, not as a
-                        // verdict: a search can name a country to find others like it.
-                        text.Insert(0, OffTargetNote(country));
-                        return (text.ToString().Trim(), AiToolCallOutcome.OffTarget, offered);
-                    }
-
-                    return (text.ToString().Trim(), AiToolCallOutcome.Answered, offered);
-                }
-            default:
-                return ("Not run.", AiToolCallOutcome.NotRun, 0);
+            text.AppendLine(found.Note).AppendLine();
         }
+
+        var offered = 0;
+        var full = false;
+        var fromCountry = false;
+        var unfiled = false;
+        foreach (var hit in found.Hits)
+        {
+            if (offered >= found.MaxNew)
+            {
+                break;
+            }
+
+            if (ledger.IsFull)
+            {
+                full = !ledger.Holds(hit);
+                if (full)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (ledger.Offer(hit) is { } excerpt)
+            {
+                text.AppendLine(excerpt).AppendLine();
+                offered++;
+                fromCountry |= found.Searched?.IsFrom(hit) == true;
+                unfiled |= string.IsNullOrWhiteSpace(hit.Country);
+            }
+        }
+
+        if (full)
+        {
+            // Said rather than passed off as nothing new: the guides did have more to say.
+            text.Append(ExcerptsFull);
+            return (text.ToString().Trim(), offered == 0 ? AiToolCallOutcome.Unavailable : AiToolCallOutcome.Answered, offered);
+        }
+
+        if (offered == 0)
+        {
+            text.Append(found.WhenEmpty
+                        ?? (call.Read is not null
+                            ? "Nothing more: everything near that excerpt has been offered already."
+                            : "Nothing new: everything this found is among the numbered excerpts already."));
+            if (call.Search is not null)
+            {
+                text.Append(' ').Append(NothingToSearchFor);
+            }
+
+            return (text.ToString().Trim(), AiToolCallOutcome.NothingNew, 0);
+        }
+
+        if (found.Searched is { Name: { } country } && !fromCountry && !unfiled)
+        {
+            // Said first, where a model reading the result cannot miss it; the excerpts are
+            // still offered, for a look-alike worth ruling out. Said as a condition, not as a
+            // verdict: a search can name a country to find others like it.
+            text.Insert(0, OffTargetNote(country));
+            return (text.ToString().Trim(), AiToolCallOutcome.OffTarget, offered);
+        }
+
+        return (text.ToString().Trim(), AiToolCallOutcome.Answered, offered);
     }
 
     /// <summary>What a call came back with, before it is offered.</summary>
-    private abstract record CallData
+    private closed record CallData
     {
         public long FinishedAt { get; } = Stopwatch.GetTimestamp();
 

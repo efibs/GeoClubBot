@@ -123,7 +123,7 @@ public class ActivityController(
                     MaxHistoryDepth);
 
                 var leaderboardResult = await mediator
-                    .Send(new GetActivityLeaderboardQuery(ClubName: club.Name, HistoryDepth: depth), cancellationToken)
+                    .Send(new GetActivityLeaderboardQuery(ClubId: clubId, HistoryDepth: depth), cancellationToken)
                     .ConfigureAwait(false);
                 leaderboard = leaderboardResult.Leaderboard ?? [];
 
@@ -294,19 +294,14 @@ public class ActivityController(
     [HttpGet("club/todays-xp")]
     public async Task<ActionResult<TodaysXpDto>> GetClubTodaysXp(
         ActivityViewerResolver viewerResolver,
-        IClubRepository clubRepository,
         ISender mediator,
         CancellationToken cancellationToken)
     {
-        string? clubName = null;
+        // The viewer's club, else the main club.
         var viewer = await viewerResolver.ResolveAsync(User, cancellationToken).ConfigureAwait(false);
-        if (viewer?.ClubId is { } clubId)
-        {
-            clubName = (await clubRepository.ReadClubByIdAsync(clubId, cancellationToken).ConfigureAwait(false))?.Name;
-        }
 
         var result = await mediator
-            .Send(new GetClubTodaysXpQuery(clubName), cancellationToken)
+            .Send(new GetClubTodaysXpQuery(viewer?.ClubId), cancellationToken)
             .ConfigureAwait(false);
 
         return Ok(new TodaysXpDto(

@@ -8,7 +8,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 
 /// <summary>
 /// Suggests the tracked clubs by name. The option value is the club id, so renamed
-/// clubs keep working between suggestion and execution.
+/// clubs keep working between suggestion and execution; read it with <see cref="ClubOption"/>.
 /// </summary>
 public class ClubAutocompleteHandler : AutocompleteHandler
 {
@@ -23,11 +23,12 @@ public class ClubAutocompleteHandler : AutocompleteHandler
 
         var input = autocompleteInteraction.Data.Current.Value?.ToString() ?? string.Empty;
 
-        var suggestions = clubs
+        return AutocompletionResult.FromSuccess(BuildSuggestions(clubs, input));
+    }
+
+    internal static IEnumerable<AutocompleteResult> BuildSuggestions(IReadOnlyList<Entities.Club> clubs, string input) =>
+        clubs
             .Where(c => c.Name.Contains(input, StringComparison.OrdinalIgnoreCase))
             .Select(c => new AutocompleteResult(c.Name, c.ClubId.ToString()))
             .Take(25);
-
-        return AutocompletionResult.FromSuccess(suggestions);
-    }
 }

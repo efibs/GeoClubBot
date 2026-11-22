@@ -2,6 +2,7 @@ using Entities;
 using FluentAssertions;
 using Infrastructure.OutputAdapters.Repositories;
 using Microsoft.EntityFrameworkCore;
+using UseCases.OutputPorts.Repositories;
 using Xunit;
 using DomainDailyMissionReminder = Entities.DailyMissionReminder;
 
@@ -495,4 +496,48 @@ public sealed class EfRepositoryIntegrationTests(PostgresFixture fixture)
         stored.StreakDays.Should().Be(6);
         stored.BoardMissionCount.Should().Be(4);
     }
+
+    [Fact]
+    public async Task ReadSummaryAsync_CountsEachModelsVerdictsInTheDatabase_MostCriticisedFirst()
+    {
+        // The per-model pivot is two conditional Counts in one GROUP BY (count(*) FILTER on Npgsql).
+        // Model ids are unique to this test, since the container is shared with every other test.
+        var suffix = Guid.NewGuid().ToString("N");
+        var praised = $"test/praised-{suffix}";
+        var criticised = $"test/criticised-{suffix}";
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            foreach (var (model, rating) in new[]
+                     {
+                         (praised, AiFeedbackRating.Positive), (praised, AiFeedbackRating.Positive),
+                         (praised, AiFeedbackRating.Negative),
+                         (criticised, AiFeedbackRating.Negative), (criticised, AiFeedbackRating.Negative),
+                     })
+            {
+                var conversationId = NewSnowflake();
+                var questionId = NewSnowflake();
+                var question = AiConversationTurn.CreateUserTurn(
+                    questionId, null, conversationId, channelId: 5, guildId: 9, 11, "Which country?", [], 0, now);
+                var answer = AiConversationTurn.CreateAssistantTurn(
+                    NewSnowflake(), questionId, conversationId, channelId: 5, guildId: 9, 7, "Germany.", model,
+                    [], [], [], 1, now);
+                seed.Add(AiAnswerFeedback.Create([question, answer], 42, rating, null, now));
+            }
+
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var summary = await new EfAiFeedbackRepository(read).ReadSummaryAsync(sinceUtc: now.AddMinutes(-1));
+
+        summary.ByModel
+            .Where(count => count.ModelId == praised || count.ModelId == criticised)
+            .Should().Equal(
+                new AiFeedbackModelCount(criticised, Positive: 0, Negative: 2),
+                new AiFeedbackModelCount(praised, Positive: 2, Negative: 1));
+    }
+
+    private static ulong NewSnowflake() => (ulong)Random.Shared.NextInt64(1_000_000_000, long.MaxValue);
 }

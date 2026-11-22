@@ -77,8 +77,9 @@ public static partial class LesserKnownQuestion
     /// should be about; a word not listed here is taken to.
     /// </summary>
     // Stryker disable once String : lookup data; a test per word would only repeat the table.
-    private static readonly HashSet<string> RequestWords = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> RequestWords =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         // Asking.
         "tell", "give", "show", "share", "teach", "surprise", "name", "suggest", "recommend", "throw", "hit", "got", "get",
         "have", "has", "had", "know", "knew", "known", "knowing", "heard", "seen", "learn", "learned", "learnt", "want", "need",
@@ -108,7 +109,7 @@ public static partial class LesserKnownQuestion
         "likely", "just", "also", "too", "again", "already", "yet", "before", "still", "ever", "never", "now", "then", "so", "and",
         "or", "but", "if", "with", "without", "about", "of", "for", "to", "on", "in", "from", "at", "by", "as", "than", "beyond",
         "outside", "besides", "apart", "there", "here", "out", "up", "time", "today", "all", "only", "even", "much", "lot", "lots"
-    };
+    ];
 
     [GeneratedRegex(@"\p{L}+(?:['’]\p{L}+)*", RegexOptions.CultureInvariant)]
     private static partial Regex Word();

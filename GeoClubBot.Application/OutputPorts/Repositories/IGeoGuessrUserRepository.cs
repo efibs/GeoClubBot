@@ -1,4 +1,5 @@
 using Entities;
+using UseCases.OutputPorts.Projections;
 
 namespace UseCases.OutputPorts.Repositories;
 
@@ -16,7 +17,7 @@ public interface IGeoGuessrUserRepository
 
     Task<List<GeoGuessrUser>> ReadAllLinkedUsersAsync(CancellationToken cancellationToken = default);
 
-    Task<List<string>> ReadAllLinkedNicknamesAsync(CancellationToken cancellationToken = default);
+    Task<List<UserNameProjection>> ReadAllLinkedUserNamesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Every known user whose nickname equals <paramref name="nickname"/>, ignoring case. GeoGuessr

@@ -15,7 +15,7 @@ The protocol was first observed by GeoGuessrAccountShadowBot (its `Documentation
 | `ClubMemberJoined` | an item of `/v4/clubs/{id}/members` | stores the join from it (needs `user.userId`, `user.nick`, `xp`, `joinedAt`) |
 | `ClubMemberLeft` | `{userId}` | clears the member if stored in that club |
 | `ClubUpdated` | partial club | applies `level` / `name` if present, else nothing |
-| `ClubMissionBoardUpdated` | none | drops the cached board, records that club's claims |
+| `ClubMissionBoardUpdated` | none | drops the cached board, records that club's claims, DMs board-alert subscribers on a new board or week |
 | `ChatMessage` on `chat:Club:TextMessages:<clubId>` | a chat message (`textPayload`, `id`, `sourceId`, …) | confirms a forward (see below) |
 | role change, presence, other chat | — | ignored |
 

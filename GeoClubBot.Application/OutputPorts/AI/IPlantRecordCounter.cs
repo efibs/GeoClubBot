@@ -20,7 +20,7 @@ public interface IPlantRecordCounter
 }
 
 /// <summary>Where records are counted.</summary>
-public abstract record RecordArea;
+public closed record RecordArea;
 
 /// <param name="Code">ISO 3166 alpha-2.</param>
 public sealed record CountryRecordArea(string Code) : RecordArea;

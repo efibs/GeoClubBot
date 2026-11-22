@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using GeoClubBot.Discord.Logging;
 using GeoClubBot.Discord.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +45,7 @@ public static class DiscordServices
         services.AddHostedService<UpdateSelfRolesMessageService>();
         services.AddSingleton(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()));
         services.AddActivatedSingleton<InteractionHandler>();
+        services.AddSingleton<IBotManual, BotManualService>();
 
         // Entry point ("Launch") command: Discord.Net has no support for this command type, so these
         // two services talk to Discord's REST/Gateway APIs directly to stop it from posting a

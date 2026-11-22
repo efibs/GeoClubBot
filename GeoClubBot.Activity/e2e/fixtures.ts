@@ -154,6 +154,9 @@ export async function mockAdminArea(page: Page): Promise<void> {
       ],
     }),
   );
+  await page.route('**/api/v1/activity/admin/members', (route) =>
+    route.fulfill({ json: [{ userId: 'ada-user-id', nickname: 'Ada' }] }),
+  );
   await page.route('**/api/v1/activity/admin/strikes/relevant', (route) =>
     route.fulfill({ json: [{ nickname: 'Ada', numActiveStrikes: 1 }] }),
   );

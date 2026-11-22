@@ -16,17 +16,19 @@ public partial class ActivityModule
         ISender mediator,
         ILogger<ActivityStatisticsModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
-        [SlashCommand("player", "Read the statistics of a player")]
+        [SlashCommand("player", "A member's activity statistics")]
         public async Task ReadPlayerStatisticsAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
+            [Autocomplete(typeof(MemberAutocompleteHandler))][Summary(description: "The member, as suggested")] string member)
         {
-            var stats = await Mediator.Send(new PlayerStatisticsQuery(memberNickname)).ConfigureAwait(false);
+            var result = await Mediator.Send(new PlayerStatisticsQuery(member)).ConfigureAwait(false);
 
-            if (stats == null)
+            if (result.IsFailure)
             {
-                await RespondAsync($"The player {memberNickname} is not being tracked.", ephemeral: true).ConfigureAwait(false);
+                await RespondAsync(result.Error.Message, ephemeral: true).ConfigureAwait(false);
                 return;
             }
+
+            var stats = result.Value;
 
             var builder = new StringBuilder("# Activity statistics of player ");
             builder.AppendLine(stats.Nickname);
@@ -50,7 +52,7 @@ public partial class ActivityModule
             await RespondAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
         }
 
-        [SlashCommand("club", "Read the statistics of the club")]
+        [SlashCommand("club", "The club's activity statistics")]
         public async Task ReadClubStatisticsAsync()
         {
             var stats = await Mediator.Send(new ClubStatisticsQuery()).ConfigureAwait(false);
@@ -79,51 +81,61 @@ public partial class ActivityModule
             await RespondAsync(builder.ToString(), ephemeral: true).ConfigureAwait(false);
         }
 
-        [SlashCommand("player-history", "Read the history of a player")]
+        [SlashCommand("player-history", "A chart of a member's XP over the weekly checks")]
         public Task ReadPlayerHistoryAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname,
-            [MinValue(1)][Summary(description: "The maximum number of history entries to visualize")] int maxNumEntries,
-            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null) =>
+            [Autocomplete(typeof(MemberAutocompleteHandler))][Summary(description: "The member, as suggested")] string member,
+            [MinValue(1)][Summary(description: "How many checks to show at most")] int maxNumEntries,
+            [Autocomplete(typeof(ClubAutocompleteHandler))][Summary(description: "The club; the member's current club if left out")] string? club = null) =>
             ExecuteAsync(
                 async ct =>
                 {
-                    using var plot = await Mediator
-                        .Send(new RenderPlayerActivityQuery(memberNickname, maxNumEntries, clubName), ct)
-                        .ConfigureAwait(false);
-
-                    if (plot == null)
+                    if (!ClubOption.TryParse(club, out var clubId))
                     {
-                        await FollowupAsync($"The player '{memberNickname}' is currently not being tracked.", ephemeral: true).ConfigureAwait(false);
+                        await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
                         return;
                     }
 
-                    await FollowupWithFileAsync(plot, $"{memberNickname} history.png", $"Here is the history plot for the player '{memberNickname}':",
+                    var result = await Mediator
+                        .Send(new RenderPlayerActivityQuery(member, maxNumEntries, clubId), ct)
+                        .ConfigureAwait(false);
+
+                    if (result.IsFailure)
+                    {
+                        await FollowupAsync(result.Error.Message, ephemeral: true).ConfigureAwait(false);
+                        return;
+                    }
+
+                    using var history = result.Value;
+                    await FollowupWithFileAsync(history.Plot, $"{history.Nickname} history.png", $"Here is the history plot for the player '{history.Nickname}':",
                         ephemeral: true).ConfigureAwait(false);
                 },
                 ephemeral: true,
                 failureMessage: "Failed to generate history plot. Please try again later. If the problem persists, please contact an admin.");
 
-        [SlashCommand("average-leaderboard", "Read the leaderboard of members by average club xp")]
+        [SlashCommand("average-leaderboard", "Members ranked by their average rule XP over the last checks")]
         public Task ReadAverageLeaderboardAsync(
-            [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null,
-            [MinValue(1)][Summary(description: "[optional] The number of intervals to include in the average")] int periods = 4) =>
+            [Autocomplete(typeof(ClubAutocompleteHandler))][Summary(description: "The club; the main club if left out")] string? club = null,
+            [MinValue(1)][Summary(description: "How many checks the average covers")] int periods = 4) =>
             ExecuteAsync(
                 async ct =>
                 {
-                    var inputClubName = clubName;
+                    if (!ClubOption.TryParse(club, out var clubId))
+                    {
+                        await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
+                        return;
+                    }
 
                     var (leaderboard, resolvedClubName) = await Mediator
-                        .Send(new GetActivityLeaderboardQuery(clubName, periods), ct)
+                        .Send(new GetActivityLeaderboardQuery(clubId, periods), ct)
                         .ConfigureAwait(false);
 
                     if (resolvedClubName is null)
                     {
-                        await FollowupAsync($"The club '{inputClubName ?? "<default>"}' does not exist in the database.", ephemeral: false)
-                            .ConfigureAwait(false);
+                        await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
                         return;
                     }
 
-                    var message = BuildLeaderboardMessage(leaderboard!, inputClubName!, periods);
+                    var message = BuildLeaderboardMessage(leaderboard!, resolvedClubName, periods);
 
                     await FollowupAsync(message, ephemeral: true)
                         .ConfigureAwait(false);

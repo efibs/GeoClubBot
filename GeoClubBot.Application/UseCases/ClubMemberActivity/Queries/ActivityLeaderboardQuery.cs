@@ -9,7 +9,7 @@ public sealed class ActivityLeaderboardHandler(ISender mediator)
     public async Task<GetActivityLeaderboardResult> Handle(GetActivityLeaderboardQuery request, CancellationToken cancellationToken)
     {
         var club = await mediator
-            .Send(new GetClubByNameOrDefaultQuery(request.ClubName), cancellationToken)
+            .Send(new GetClubByIdOrDefaultQuery(request.ClubId), cancellationToken)
             .ConfigureAwait(false);
 
         if (club is null)

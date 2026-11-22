@@ -1,5 +1,6 @@
 using Entities;
 using UseCases.Abstractions;
+using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
@@ -15,9 +16,22 @@ public sealed record GetActivityLastDaysQuery(string UserId, int DaysBack) : IQu
 
 public sealed record ClubStatisticsQuery : IQuery<ClubStatistics?>;
 
-public sealed record PlayerStatisticsQuery(string Nickname) : IQuery<PlayerStatistics?>;
+public sealed record PlayerStatisticsQuery(string UserId) : IQuery<Result<PlayerStatistics>>;
 
-public sealed record GetActivityLeaderboardQuery(string? ClubName, int HistoryDepth)
+/// <summary>Why <see cref="PlayerStatisticsQuery"/> has no statistics, each with a message for the member.</summary>
+public static class PlayerStatisticsErrors
+{
+    public static readonly Error UnknownPlayer =
+        Error.NotFound("player_statistics.unknown_player", "That player is not known to the bot. Please pick one of the suggested members.");
+
+    /// <summary>The statistics are taken from the history in the player's current club; one who left has none (#162).</summary>
+    public static Error NotInAClub(string nickname) =>
+        Error.NotFound("player_statistics.not_in_a_club",
+            $"The player '{nickname}' is not in a club at the moment: statistics are only shown for a player's current club.");
+}
+
+/// <param name="ClubId">The club; the main club when null.</param>
+public sealed record GetActivityLeaderboardQuery(Guid? ClubId, int HistoryDepth)
     : IQuery<GetActivityLeaderboardResult>;
 
 public sealed record GetActivityLeaderboardResult(List<ClubMemberAverageXp>? Leaderboard, string? ClubName);

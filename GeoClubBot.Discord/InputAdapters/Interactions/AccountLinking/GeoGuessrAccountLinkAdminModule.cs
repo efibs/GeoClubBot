@@ -4,6 +4,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.GeoGuessrAccountLinking;
@@ -13,13 +14,18 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.AccountLinking;
 
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
-[Group("gg-account-link-admin", "Commands for linking Discord accounts to GeoGuessr accounts")]
+[HelpFeature("linking")]
+[Group("gg-account-link-admin", "Complete, cancel or undo members' account links")]
 public partial class GeoGuessrAccountLinkAdminModule(
     ISender mediator,
     ILogger<GeoGuessrAccountLinkAdminModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("complete", "Complete the account linking process")]
-    public Task CompleteAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId, string oneTimePassword) =>
+    [SlashCommand("complete", "Complete a member's account link with the one-time password they sent you")]
+    [HelpDetail("Usually quicker with the buttons on the request I post for admins.")]
+    public Task CompleteAccountLinkingProcessAsync(
+        [Summary(description: "The member who asked to link")] IUser discordUser,
+        [Summary(description: "Their GeoGuessr user id: the end of their profile link")] string geoGuessrUserId,
+        [Summary(description: "The password they sent you inside GeoGuessr")] string oneTimePassword) =>
         ExecuteAsync(
             async ct =>
             {
@@ -32,8 +38,10 @@ public partial class GeoGuessrAccountLinkAdminModule(
             ephemeral: true,
             failureMessage: "Failed to complete linking process (internal error).");
 
-    [SlashCommand("cancel", "Cancel the account linking process")]
-    public Task CancelAccountLinkingProcessAsync(IUser discordUser, string geoGuessrUserId) =>
+    [SlashCommand("cancel", "Cancel a member's pending account link")]
+    public Task CancelAccountLinkingProcessAsync(
+        [Summary(description: "The member who asked to link")] IUser discordUser,
+        [Summary(description: "Their GeoGuessr user id: the end of their profile link")] string geoGuessrUserId) =>
         ExecuteAsync(
             async ct =>
             {
@@ -46,8 +54,10 @@ public partial class GeoGuessrAccountLinkAdminModule(
             ephemeral: true,
             failureMessage: "Failed to cancel linking process (internal error).");
 
-    [SlashCommand("unlink", "Unlink the accounts of a user")]
-    public Task UnlinkAccountsSlashCommandAsync(IUser discordUser, string geoGuessrUserId) =>
+    [SlashCommand("unlink", "Undo the link between a member's Discord and GeoGuessr accounts")]
+    public Task UnlinkAccountsSlashCommandAsync(
+        [Summary(description: "The linked member")] IUser discordUser,
+        [Summary(description: "Their GeoGuessr user id: the end of their profile link")] string geoGuessrUserId) =>
         ExecuteAsync(
             async ct =>
             {
@@ -169,7 +179,8 @@ public partial class GeoGuessrAccountLinkAdminModule(
         {
             var dmChannel = await discordUser.CreateDMChannelAsync().ConfigureAwait(false);
             await dmChannel.SendMessageAsync(
-                $"Your GeoGuessr account \"{result.Value.Nickname}\" was successfully linked to this Discord account.").ConfigureAwait(false);
+                $"Your GeoGuessr account \"{result.Value.Nickname}\" was successfully linked to this Discord account.\n\n" +
+                "Type `/help` in the server to see everything you can do now.").ConfigureAwait(false);
         }
         catch (Exception ex)
         {

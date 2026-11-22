@@ -4,6 +4,7 @@ using Discord;
 using Discord.Interactions;
 using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -22,6 +23,7 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
 /// only risk the group prefix leaking into the custom ids.
 /// </summary>
 [CommandContextType(InteractionContextType.Guild)]
+[HelpFeature("ai")]
 public partial class AiFeedbackModule(
     ISender mediator,
     IOptions<AiConfiguration> aiConfiguration,
@@ -30,9 +32,13 @@ public partial class AiFeedbackModule(
     : ClubBotInteractionModule(mediator, logger)
 {
     [MessageCommand("👍 Good AI answer")]
+    [HelpShownWhen(HelpToggle.AiFeedback)]
+    [HelpDetail("Rate one of my answers as good and say why; the comment is optional.")]
     public Task RateGoodAsync(IMessage message) => OpenCommentModalAsync(message, AiFeedbackRating.Positive);
 
     [MessageCommand("👎 Bad AI answer")]
+    [HelpShownWhen(HelpToggle.AiFeedback)]
+    [HelpDetail("Rate one of my answers as bad and say why; the comment is optional.")]
     public Task RateBadAsync(IMessage message) => OpenCommentModalAsync(message, AiFeedbackRating.Negative);
 
     [ModalInteraction($"{ComponentIds.AiFeedbackCommentModalId}:*,*", true)]

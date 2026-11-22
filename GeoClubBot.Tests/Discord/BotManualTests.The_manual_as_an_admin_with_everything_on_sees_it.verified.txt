@@ -1,0 +1,434 @@
+﻿# 🌍 GeoClubBot manual
+I help run the club: activity, reminders, stats, challenges and more. Pick a feature below to see its commands.
+
+### Getting started
+- Type `/` in the message box: Discord lists every command and asks for each option as you go.
+- Right-click a member or a message (long-press on mobile) → **Apps** for shortcuts.
+- Most replies are only visible to you, so feel free to try things out.
+
+### Features
+**🔗 Account linking** — Link your Discord account to your GeoGuessr account; many features need it.
+-# `/gg-account` · `/gg-account-link-admin`
+**⏰ Daily reminder** — A DM at times you choose, naming what you still owe today: your streak, a club mission.
+-# `/daily-reminder`
+**📊 Your activity** — Your streak, club missions and XP, and where you stand on the club's weekly requirements.
+-# `/my-activity`
+**🛡️ Activity checks** — Members' activity, the weekly check's strikes and excuses, and activity statistics.
+-# `/member-activity`
+**🏆 Club stats** — How the club is doing today, and this week's mission boards.
+-# `/club-stats`
+**👤 User info** — Look up members' GeoGuessr nicknames, profiles and ranked stats, and who is who.
+-# `/user-info`
+**🗺️ Country challenges** — Themed country challenges on fixed days, with points for the top places and a leaderboard.
+-# `/country-challenges` · `/country-challenges-admin`
+**🎭 Self-roles** — Give yourself optional roles, such as notification opt-ins, without asking an admin.
+-# `/self-roles`
+**🎲 Random draws** — Draw countries, numbers, dice, list items, club members, people in a voice channel or teams.
+-# `/random`
+**🤖 AI assistant** — Ask about GeoGuessr metas and I answer from community guides, with their pictures.
+-# `/ai`
+**📢 Club chat forwarding** — Send a Discord message on to the clubs' chats in GeoGuessr.
+**🔒 Private channels** — Each linked member's own channel, sorted into a category per club.
+-# `/private-channels-admin`
+
+-- /help or /manual · only what you can use is shown
+
+# 🔗 Account linking
+Link your Discord account to your GeoGuessr account; many features need it.
+
+### Commands
+**`/gg-account link`** — Link your Discord account to your GeoGuessr account
+- `share-profile-link` — Your GeoGuessr profile's share link, like https://www.geoguessr.com/user/62c353a2…
+To get the link: GeoGuessr → **Profile** → the share button left of *EDIT AVATAR* → copy.
+I reply with a one-time password. Send it as a direct message to an admin **inside GeoGuessr** (not on Discord); once they confirm it, I let you know here.
+
+### 🛡️ Admins
+**`/gg-account-link-admin complete`** — Complete a member's account link with the one-time password they sent you
+- `discord-user` — The member who asked to link
+- `geo-guessr-user-id` — Their GeoGuessr user id: the end of their profile link
+- `one-time-password` — The password they sent you inside GeoGuessr
+Usually quicker with the buttons on the request I post for admins.
+
+**`/gg-account-link-admin cancel`** — Cancel a member's pending account link
+- `discord-user` — The member who asked to link
+- `geo-guessr-user-id` — Their GeoGuessr user id: the end of their profile link
+
+**`/gg-account-link-admin unlink`** — Undo the link between a member's Discord and GeoGuessr accounts
+- `discord-user` — The linked member
+- `geo-guessr-user-id` — Their GeoGuessr user id: the end of their profile link
+
+# ⏰ Daily reminder
+A DM at times you choose, naming what you still owe today: your streak, a club mission.
+
+### What it reminds you of
+- **Your streak:** play the daily challenge or a duel (UTC day).
+- **A club mission:** claim one while the board has a free mission and you haven't used today's claim. If you still hold a mission from an earlier day, it reminds you to finish it (or ask for help) instead.
+The DM names only what is left, and none is sent once nothing is. Claims reset at 12:00 UK time; the reminder says when. Without a linked account I can't see your activity, so you are reminded of both.
+You can have several reminders, each with its own time and message. If I was offline at a reminder's time, I send one catch-up DM when I'm back.
+
+### Commands
+**`/daily-reminder add`** — Add a daily reminder, or change the one at that time
+- `time` — When, in 24-hour HH:mm, e.g. 09:00 or 21:30
+- `timezone` *(optional)* — Your time zone, e.g. Europe/Berlin; UTC if left out
+- `message` *(optional)* — Your own text; {{outstanding_text}} marks where what you still owe goes
+Write `{{outstanding_text}}` in your message where what you still owe should go. It starts with a verb and ends the sentence, so `Time for GeoGuessr! Don't forget to {{outstanding_text}}` becomes
+> Time for GeoGuessr! Don't forget to play the daily challenge (or a duel) and claim a club mission (5 still free on board 3, the daily claim resets in 4 hours)!
+Without it, only your own text is sent.
+
+**`/daily-reminder remove`** — Remove one of your daily reminders
+- `reminder` — The reminder to remove, picked by its time
+
+**`/daily-reminder clear`** — Remove all of your daily reminders
+
+**`/daily-reminder list`** — List your daily reminders: times, time zones, messages and when each was last sent
+
+# 📊 Your activity
+Your streak, club missions and XP, and where you stand on the club's weekly requirements.
+
+**`/my-activity current-week`** — Your streak, club missions and requirements since the last weekly check
+The week the next check judges (it runs right after GeoGuessr's weekly board reset):
+- XP earned, and your **rule XP**: what averages and swaps count, without the board-clear bonus and with at most 3 missions a week
+- streak days and club missions finished (missions you claimed; helping doesn't count)
+- the requirements and where you stand, e.g. `✅ streak 6/6 · ❌ missions 1/2`
+- the missions of others you pressed **help out** on (for information only)
+- a day-by-day strip: 🟩 streak kept, ⬛ not kept, a digit for missions finished that day
+Needs your account linked.
+
+**`/my-activity last-days`** — Your streak, club missions and XP over the last days
+- `days` *(optional, default 7)* — How many days back to include
+A rolling window instead of the check week, so no requirements. GeoGuessr's feed reaches back about two weeks. Needs your account linked.
+
+# 🛡️ Activity checks
+Members' activity, the weekly check's strikes and excuses, and activity statistics.
+-# 🛡️ For admins only.
+
+### The weekly check
+Right after GeoGuessr's weekly board reset I list everyone who missed a requirement (e.g. `missed streak 4/6 · missions 1/2`) and hand out strikes. Members who joined during the week or were excused get lower targets.
+
+**`/member-activity inactive-members`** — Who hasn't kept their streak today, or could still claim a club mission
+- `club` *(optional)* — The club; the main club if left out
+Linked members are shown with their Discord handle, but nobody is pinged.
+
+**`/member-activity last-check-time`** — When the weekly activity check last ran
+
+**`/member-activity current-week by-nickname`** — A member's activity since the last weekly check, by GeoGuessr nickname
+- `member` — The member, as suggested
+The same view as `/my-activity current-week`, for anyone.
+
+**`/member-activity current-week by-user`** — A member's activity since the last weekly check
+- `user` — A member of the server
+-# Also: Right-click a member → Apps → **Current Week XP**
+
+**`/member-activity excuse add`** — Excuse a member from the weekly check between two dates
+- `member` — The member, as suggested
+- `from` — The first day, as YYYY-MM-DD
+- `to` — The last day, as YYYY-MM-DD
+Both days count. An excused member's targets shrink by the days excused.
+
+**`/member-activity excuse update`** — Change the dates of an excuse
+- `excuse-id` — The excuse, as suggested
+- `from` — The new first day, as YYYY-MM-DD
+- `to` — The new last day, as YYYY-MM-DD
+
+**`/member-activity excuse remove`** — Remove an excuse
+- `excuse-id` — The excuse, as suggested
+
+**`/member-activity excuse read`** — A member's excuses
+- `member` — The member, as suggested
+
+**`/member-activity excuse read-all`** — Every excuse, past ones included
+
+**`/member-activity excuse read-relevant`** — The excuses that count now or start soon
+- `upcoming-excuses-num-days` *(optional, default 7)* — How many days ahead an excuse may start
+
+**`/member-activity last-days by-nickname`** — A member's activity over the last days, by GeoGuessr nickname
+- `member` — The member, as suggested
+- `days` *(optional, default 7)* — How many days back to include
+The same view as `/my-activity last-days`, for anyone.
+
+**`/member-activity last-days by-user`** — A member's activity over the last days
+- `user` — A member of the server
+- `days` *(optional, default 7)* — How many days back to include
+-# Also: Right-click a member → Apps → **Last 7 Days XP**
+
+**`/member-activity strike add`** — Give a member a strike by hand
+- `member` — The member, as suggested
+- `strike-date` — The strike's date, as YYYY-MM-DD
+
+**`/member-activity strike read`** — The strikes a member has now
+- `member` — The member, as suggested
+
+**`/member-activity strike read-all`** — Every strike, expired and revoked ones included
+
+**`/member-activity strike read-relevant`** — The strikes that still count
+
+**`/member-activity strike revoke`** — Revoke a strike
+- `strike-id` — The strike, as suggested
+
+**`/member-activity strike revoke-all`** — Revoke every strike that is not revoked yet
+Asks you to confirm first.
+
+**`/member-activity strike unrevoke`** — Undo a strike's revocation
+- `strike-id` — The strike, as suggested
+
+**`/member-activity statistics player`** — A member's activity statistics
+- `member` — The member, as suggested
+
+**`/member-activity statistics club`** — The club's activity statistics
+
+**`/member-activity statistics player-history`** — A chart of a member's XP over the weekly checks
+- `member` — The member, as suggested
+- `max-num-entries` — How many checks to show at most
+- `club` *(optional)* — The club; the member's current club if left out
+
+**`/member-activity statistics average-leaderboard`** — Members ranked by their average rule XP over the last checks
+- `club` *(optional)* — The club; the main club if left out
+- `periods` *(optional, default 4)* — How many checks the average covers
+
+# 🏆 Club stats
+How the club is doing today, and this week's mission boards.
+
+**`/club-stats todays-xp`** — A club's XP so far today, streaks kept, missions finished and claimed
+- `club` *(optional)* — The club; the main club if left out
+Today is the UTC day; claims count in the current claim cycle.
+
+**`/club-stats board`** — This week's club mission boards and who holds which open mission
+- `club` *(optional)* — The club; the main club if left out
+When the week ends and claims reset, each board (✅ cleared, ▶️ current, 🔒 locked), and every open mission: who holds it, its progress, when it was claimed, and 🆘 if they asked for help.
+
+**`/club-stats board-alerts`** — Get a DM when your club's next mission board is unlocked or a new week starts
+- `alerts` — Every new board, only the next one, or off
+So you can pick an easy mission before others take them. Your club is the one your linked GeoGuessr account is in, so link it first (`/gg-account link`).
+Pick **every new board**, **only the next one** (the alerts then stop by themselves) or **off**. No DM is sent while you have already claimed this claim cycle, since you couldn't claim anyway. The 🔔 button under `/club-stats board` and the 🔕 button under each DM do the same.
+
+# 👤 User info
+Look up members' GeoGuessr nicknames, profiles and ranked stats, and who is who.
+
+**`/user-info gg-nickname`** — The GeoGuessr nickname a member's account is linked to
+- `user` — A member of the server
+-# Also: Right-click a member → Apps → **GeoGuessr Nickname**
+
+**`/user-info gg-profile`** — A member's GeoGuessr profile: country, level, rating, standing and club
+- `user` — A member of the server
+-# Also: Right-click a member → Apps → **GeoGuessr Profile**
+
+**`/user-info gg-ranked`** — A member's GeoGuessr ranked stats: division, ratings, recent games
+- `user` — A member of the server
+Current and peak rating per mode (overall, move, no-move, NMPZ), win streak, guessed-first rate, recent games (🟩 won, 🟥 lost) and best and worst countries.
+-# Also: Right-click a member → Apps → **GeoGuessr Ranked Stats**
+
+**`/user-info discord-user`** — The Discord member linked to a GeoGuessr nickname
+- `player` — The GeoGuessr player, as suggested
+
+# 🗺️ Country challenges
+Themed country challenges on fixed days, with points for the top places and a leaderboard.
+
+### How it works
+On fixed days I post themed challenges, like *Mongolia Monday*, as GeoGuessr challenge links; finish all five rounds to count. A day or so later I post the results: the top places earn points (usually 3, 2 and 1) and sometimes a role. The points add up to a leaderboard I post regularly.
+
+### Commands
+**`/country-challenges leaderboard`** — The season's leaderboard and your own place on it
+Ties share a place. Your place, and a winner's role, need your account linked.
+
+### 🛡️ Admins
+**`/country-challenges-admin preview`** — Check the challenge file and show what would be posted on a day, without posting
+- `day` *(optional)* — A date (yyyy-MM-dd) or a weekday such as 'sunday'; today if left out
+Nobody is pinged. How to set the challenges up: `Documentation/CountryChallengesGuide.md` in the bot's repository.
+
+**`/country-challenges-admin post-now`** — Run today's country challenges now; anything already posted today is skipped
+Due results, the leaderboard if due, and today's challenges. Safe to repeat, e.g. after I was offline at the scheduled time.
+
+**`/country-challenges-admin results-now`** — Post the results of every challenge still waiting for them, even before they are due
+Awards the points and roles too. A challenge nobody has played closes with "No one participated", so wait until the players are done.
+
+**`/country-challenges-admin import-standings`** — Import the standings kept by hand before I tracked them
+Opens a form: one player per line, nickname (or profile link) then points, like `Fibs 12`. Nothing is imported unless every line names exactly one player; importing again replaces the previous import.
+
+# 🎭 Self-roles
+Give yourself optional roles, such as notification opt-ins, without asking an admin.
+
+**`/self-roles select`** — Pick the optional roles you want
+Opens a private menu with the roles you have already ticked; I tell you what changed.
+
+# 🎲 Random draws
+Draw countries, numbers, dice, list items, club members, people in a voice channel or teams.
+
+### How draws work
+Everyone sees the result unless you set `private`. A draw of several never takes the same item twice, and the footer says how many there were to draw from. People are shown, never pinged; bots and anyone deafened in a voice channel are never drawn.
+
+### Commands
+**`/random country`** — Draw countries, optionally only those with Street View
+- `count` *(optional, default 1)* — How many to draw
+- `coverage-only` *(optional, default off)* — Only countries with official Street View coverage
+- `private` *(optional, default off)* — Show the result only to you
+Each country links to its PlonkIt guide when there is one.
+
+**`/random number`** — Draw whole numbers from a range
+- `min` *(optional, default 1)* — The smallest number
+- `max` *(optional, default 100)* — The largest number
+- `count` *(optional, default 1)* — How many to draw
+- `allow-repeats` *(optional, default off)* — Let the same number come up more than once
+- `private` *(optional, default off)* — Show the result only to you
+
+**`/random coin`** — Flip coins
+- `count` *(optional, default 1)* — How many coins to flip
+- `private` *(optional, default off)* — Show the result only to you
+
+**`/random dice`** — Roll dice
+- `sides` *(optional, default 6)* — Sides of each die
+- `count` *(optional, default 1)* — How many dice
+- `private` *(optional, default off)* — Show the result only to you
+Up to 100 dice of up to 1000 sides; several dice also show their sum.
+
+**`/random pick`** — Draw items from a list you type
+- `items` — The items, separated by commas
+- `count` *(optional, default 1)* — How many to draw
+- `private` *(optional, default off)* — Show the result only to you
+Separate the items with commas or semicolons. An item typed twice is twice as likely.
+
+**`/random shuffle`** — Put a list you type into a random order
+- `items` — The items, separated by commas
+- `private` *(optional, default off)* — Show the result only to you
+Separate the items with commas or semicolons, e.g. a play order.
+
+### 🛡️ Admins
+**`/random member`** — Draw members of a club, or of all our clubs
+- `club` *(optional)* — The club, or all our clubs; the main club if left out
+- `count` *(optional, default 1)* — How many to draw
+- `exclude-me` *(optional, default off)* — Leave yourself out
+- `exclude` *(optional)* — Leave this person out
+- `private` *(optional, default off)* — Show the result only to you
+Shows each member's GeoGuessr name and, when linked, their Discord account.
+
+**`/random voice`** — Draw people in a voice channel
+- `channel` *(optional)* — The voice channel; yours if left out
+- `count` *(optional, default 1)* — How many to draw
+- `exclude-me` *(optional, default off)* — Leave yourself out
+- `exclude` *(optional)* — Leave this person out
+- `private` *(optional, default off)* — Show the result only to you
+Takes the voice channel you are in when none is picked. Deafened people are left out.
+
+**`/random role`** — Draw people with one or all of up to five roles
+- `role` — The role
+- `role2` *(optional)* — Another role
+- `role3` *(optional)* — Another role
+- `role4` *(optional)* — Another role
+- `role5` *(optional)* — Another role
+- `match` *(optional, default Any)* — With several roles: anyone with one of them, or only with all
+- `count` *(optional, default 1)* — How many to draw
+- `exclude-me` *(optional, default off)* — Leave yourself out
+- `exclude` *(optional)* — Leave this person out
+- `private` *(optional, default off)* — Show the result only to you
+-- Page 1/2
+
+# 🎲 Random draws
+### 🛡️ Admins
+**`/random teams`** — Split people or a list into random teams
+- `teams` — How many teams
+- `from` — Where the people come from
+- `channel` *(optional)* — With from: voice — the voice channel; yours if left out
+- `role` *(optional)* — With from: role — the role
+- `club` *(optional)* — With from: club — the club or all our clubs; the main club if left out
+- `items` *(optional)* — With from: list — the names, separated by commas
+- `exclude-me` *(optional, default off)* — Leave yourself out
+- `exclude` *(optional)* — Leave this person out
+- `private` *(optional, default off)* — Show the result only to you
+Pick where the people come from and fill in the matching option: `channel` (yours if left out), `role`, `club` or `items`. Team sizes differ by at most one.
+-- Page 2/2
+
+# 🤖 AI assistant
+Ask about GeoGuessr metas and I answer from community guides, with their pictures.
+
+### Asking a question
+No command needed: **@-mention me** with your question, e.g. `@GeoClubBot what do Ghanaian bollards look like?`. I answer in the channel, so everyone learns, cite the guides I used and attach their pictures. Anything from general knowledge instead starts with "Not from the guides:". A hard question can take up to a minute.
+- **A screenshot:** attach it and ask about it.
+- **A plant:** ask "what tree is this?" with a screenshot, ideally a close crop (several pictures of one plant work too). Say where it was taken ("just south of Boston", a country, a Maps link) and I weigh what grows there.
+- **A place:** paste a Google Maps Street View link and ask what gives it away; I check which clues its view shows.
+
+### Follow-ups
+**Reply to my answer**; no mention needed. I remember the conversation and the guides I cited, so "show me [2] bigger" works. Each reply starts its own branch, so your follow-ups and someone else's never mix. A conversation ends after a day of quiet.
+
+### Rating answers
+Click 👍 or 👎 under an answer; click it again to take it back. Rated conversations are kept to improve the answers, unrated ones are deleted after a while.
+
+### Commands
+**`/ai status`** — Which AI models are available, how much is indexed, and today's allowance
+The AI runs on a free daily allowance that resets at 00:00 UTC, with an hourly cap per person, so "out of requests" is expected rather than broken. **Picture links** says whether my linked pictures load.
+
+**`/ai search`** — What the guide library holds on a topic, without asking a model
+- `query` — What to look for
+- `country` *(optional)* — Only results from one country
+Handy for finding the guide itself, or checking whether I know anything about a topic.
+
+**`/ai quiz`** — A guide picture with four answers to pick from; everyone guesses once and scores points
+- `country` *(optional)* — Only pictures of one country, e.g. Vietnam: then it asks where in it, or what is typical
+- `difficulty` *(optional)* — How hard; easy or medium if left out
+- `lesser-known` *(optional, default off)* — Only clues PlonkIt does not have
+Easy, medium and hard questions score 1, 2 and 3 points. The answer shows after a while, or when whoever started it reveals it.
+
+**`/ai quiz-scores`** — The quiz leaderboard: points over all time and over the last days
+
+**`/ai review`** — Review a game or a Street View place: the clues each round showed, and what to study
+- `link` *(optional)* — A challenge, game or Google Maps Street View link; empty for the latest daily challenge
+Round by round: the clues that could be seen and point to the country and region, and for a missed round the easiest clue that tells the right country from your guess. It ends with what to practise first, and each round's view links to Google Maps. A vision model checks what a round showed and can be wrong; the review says so.
+- a **challenge** link: your game in it (needs your account linked); empty for the club's latest daily challenge you played
+- a **game** link (`/game/…` or `/results/…`): anyone's finished game
+- a **Street View** link: what gives that place away
+
+**`/ai feedback`** — How people have rated my answers: totals, by model, and recent comments
+- `days` *(optional, default 30)* — Days to count over; 0 counts everything
+
+Right-click a message → Apps → **👍 Good AI answer** — Rate one of my answers as good and say why; the comment is optional.
+
+Right-click a message → Apps → **👎 Bad AI answer** — Rate one of my answers as bad and say why; the comment is optional.
+
+### 🛡️ Admins
+**`/ai gaps`** — Which questions the guides answer badly, by country and topic
+- `days` *(optional)* — Days to cover; the configured period if left out
+-- Page 1/2
+
+# 🤖 AI assistant
+### 🛡️ Admins
+**`/ai feedback-export`** — Download the rated conversations as a JSONL file, to work out what to improve
+- `rating` *(optional)* — Only good or only bad answers
+- `days` *(optional, default 90)* — Days to export; 0 exports everything
+
+**`/ai sync-sources`** — Refresh the catalogue of known guide sources
+Indexing runs by itself overnight; this and `/ai ingest` only kick it along.
+
+**`/ai ingest`** — Index a batch of due guide sources now
+- `count` *(optional, default 5)* — How many sources to process
+- `source-type` *(optional)* — Only one source type, e.g. plonkit
+- `force` *(optional, default off)* — Re-index even if the content is unchanged
+
+**`/ai backfill-images`** — Queue indexed guides whose images were never embedded
+
+**`/ai describe-pictures`** — Have a vision model describe indexed guide pictures that have no words of their own
+- `count` *(optional, default 10)* — How many pictures to describe
+
+**`/ai clue-now`** — Post a clue of the day now, here or in the configured channel
+- `here` *(optional, default off)* — Post it in this channel instead of the configured one
+
+**`/ai sources`** — Guide sources that failed, were skipped or are unavailable, and why
+- `status` *(optional, default needing a look)* — Which sources to list
+- `source-type` *(optional)* — Only one source type, e.g. gdoc
+With how many times in a row it happened and when each is tried next.
+
+**`/ai source-retry`** — Queue failed, skipped or unavailable guide sources to be tried again
+- `key` *(optional)* — One source, by the key or link /ai sources shows
+- `source-type` *(optional)* — Every such source of one type, e.g. rmrg
+E.g. after a site's extractor was fixed or a document was shared again. Give `key` or `source-type`.
+-- Page 2/2
+
+# 📢 Club chat forwarding
+Send a Discord message on to the clubs' chats in GeoGuessr.
+-# 🛡️ For admins only.
+
+Right-click a message → Apps → **📢 Send to club chat** — Send this message on to the clubs' chats in GeoGuessr. A form shows the text as it will be sent, lets you edit it and pick the clubs, and says how many chat messages it takes (GeoGuessr allows 300 characters each) and whether it was forwarded before.
+
+# 🔒 Private channels
+Each linked member's own channel, sorted into a category per club.
+-# 🛡️ For admins only.
+
+**`/private-channels-admin reconcile`** — Move every private channel into its club's category, recreate missing ones and fix permissions
+- `dry-run` *(optional, default on)* — Only report what would change

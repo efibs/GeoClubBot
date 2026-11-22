@@ -2,6 +2,7 @@ using Constants;
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.CountryChallenges;
@@ -10,14 +11,16 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.CountryChallenges;
 
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
-[Group("country-challenges-admin", "Manage the country challenges")]
+[HelpFeature("country-challenges")]
+[Group("country-challenges-admin", "Check and run the country challenges")]
 public partial class CountryChallengesAdminModule(
     ISender mediator,
     ILogger<CountryChallengesAdminModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("preview", "Check the country challenge file and show what would be posted on a day, without posting")]
+    [SlashCommand("preview", "Check the challenge file and show what would be posted on a day, without posting")]
+    [HelpDetail("Nobody is pinged. How to set the challenges up: `Documentation/CountryChallengesGuide.md` in the bot's repository.")]
     public Task PreviewAsync(
-        [Summary(description: "A date (yyyy-MM-dd) or a weekday such as 'sunday'; default today")]
+        [Summary(description: "A date (yyyy-MM-dd) or a weekday such as 'sunday'; today if left out")]
         string? day = null) =>
         ExecuteAsync(
             async ct =>
@@ -43,7 +46,8 @@ public partial class CountryChallengesAdminModule(
             ephemeral: true,
             failureMessage: "Failed to preview the country challenges. Please check the logs.");
 
-    [SlashCommand("post-now", "Run the country challenges for today now; anything already posted today is skipped")]
+    [SlashCommand("post-now", "Run today's country challenges now; anything already posted today is skipped")]
+    [HelpDetail("Due results, the leaderboard if due, and today's challenges. Safe to repeat, e.g. after I was offline at the scheduled time.")]
     public Task PostNowAsync() =>
         ExecuteAsync(
             async ct =>
@@ -60,7 +64,8 @@ public partial class CountryChallengesAdminModule(
             ephemeral: true,
             failureMessage: "Running the country challenges failed. Please check the logs.");
 
-    [SlashCommand("results-now", "Evaluate every country challenge still waiting for its results now, even before it is due")]
+    [SlashCommand("results-now", "Post the results of every challenge still waiting for them, even before they are due")]
+    [HelpDetail("Awards the points and roles too. A challenge nobody has played closes with \"No one participated\", so wait until the players are done.")]
     public Task ResultsNowAsync() =>
         ExecuteAsync(
             async ct =>
@@ -81,7 +86,8 @@ public partial class CountryChallengesAdminModule(
     /// Opens the import form. Not routed through <see cref="ClubBotInteractionModule.ExecuteAsync"/>, which
     /// defers first — a modal has to be the interaction's immediate response.
     /// </summary>
-    [SlashCommand("import-standings", "Import the standings kept by hand before the bot tracked them")]
+    [SlashCommand("import-standings", "Import the standings kept by hand before I tracked them")]
+    [HelpDetail("Opens a form: one player per line, nickname (or profile link) then points, like `Fibs 12`. Nothing is imported unless every line names exactly one player; importing again replaces the previous import.")]
     public async Task ImportStandingsAsync()
     {
         try

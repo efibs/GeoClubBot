@@ -1,6 +1,7 @@
 using Entities;
 using FluentAssertions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
+using UseCases.OutputPorts.Projections;
 using Xunit;
 
 namespace GeoClubBot.Tests.Discord;
@@ -12,64 +13,78 @@ namespace GeoClubBot.Tests.Discord;
 /// </summary>
 public sealed class AutocompleteHandlerTests
 {
-    // ---- Nickname handlers (shared NicknameSuggestions.Build) ----
+    // ---- User handlers (shared UserSuggestions.Build) ----
+
+    private static UserNameProjection User(string nickname, string? userId = null) =>
+        new(userId ?? $"id-{nickname}", nickname);
 
     [Fact]
-    public void Nickname_FiltersBySubstringCaseInsensitively()
+    public void User_FiltersBySubstringCaseInsensitively()
     {
-        IReadOnlyList<string> nicknames = ["Alice", "Bob", "Alibaba", "Carol"];
+        IReadOnlyList<UserNameProjection> users = [User("Alice"), User("Bob"), User("Alibaba"), User("Carol")];
 
-        var results = NicknameSuggestions.Build(nicknames, "ali").ToList();
+        var results = UserSuggestions.Build(users, "ali").ToList();
 
         results.Select(r => r.Name).Should().BeEquivalentTo("Alice", "Alibaba");
     }
 
     [Fact]
-    public void Nickname_ValueEqualsLabel()
+    public void User_ShowsTheNickname_ButPassesTheUserId()
     {
-        IReadOnlyList<string> nicknames = ["Alice"];
+        IReadOnlyList<UserNameProjection> users = [User("Alice", "5f1a")];
 
-        var result = NicknameSuggestions.Build(nicknames, string.Empty).Single();
+        var result = UserSuggestions.Build(users, string.Empty).Single();
 
         result.Name.Should().Be("Alice");
-        result.Value.Should().Be("Alice");
+        result.Value.Should().Be("5f1a");
     }
 
     [Fact]
-    public void Nickname_EmptyInputReturnsAll()
+    public void User_PlayersSharingANickname_AreToldApartByTheirId()
     {
-        IReadOnlyList<string> nicknames = ["Alice", "Bob", "Carol"];
+        IReadOnlyList<UserNameProjection> users = [User("Alice", "a1"), User("alice", "a2"), User("Bob", "b1")];
 
-        var results = NicknameSuggestions.Build(nicknames, string.Empty).ToList();
+        var results = UserSuggestions.Build(users, string.Empty).ToList();
+
+        results.Select(r => (r.Name, r.Value)).Should().Equal(
+            ("Alice (a1)", (object)"a1"), ("alice (a2)", "a2"), ("Bob", "b1"));
+    }
+
+    [Fact]
+    public void User_EmptyInputReturnsAll()
+    {
+        IReadOnlyList<UserNameProjection> users = [User("Alice"), User("Bob"), User("Carol")];
+
+        var results = UserSuggestions.Build(users, string.Empty).ToList();
 
         results.Should().HaveCount(3);
     }
 
     [Fact]
-    public void Nickname_CapsAtTwentyFive()
+    public void User_CapsAtTwentyFive()
     {
-        var nicknames = Enumerable.Range(0, 30).Select(i => $"Player{i:00}").ToList();
+        var users = Enumerable.Range(0, 30).Select(i => User($"Player{i:00}")).ToList();
 
-        var results = NicknameSuggestions.Build(nicknames, string.Empty).ToList();
+        var results = UserSuggestions.Build(users, string.Empty).ToList();
 
         results.Should().HaveCount(25);
     }
 
-    // ---- ClubName handler ----
+    // ---- Club handler ----
 
     [Fact]
-    public void ClubName_ValueIsTheNameNotTheId()
+    public void Club_ShowsTheName_ButPassesTheId()
     {
         var club = Club.Create(Guid.NewGuid(), "Speedrunners", 10);
 
-        var result = ClubNameAutocompleteHandler.BuildSuggestions([club], string.Empty).Single();
+        var result = ClubAutocompleteHandler.BuildSuggestions([club], string.Empty).Single();
 
         result.Name.Should().Be("Speedrunners");
-        result.Value.Should().Be("Speedrunners");
+        result.Value.Should().Be(club.ClubId.ToString());
     }
 
     [Fact]
-    public void ClubName_FiltersBySubstringCaseInsensitively()
+    public void Club_FiltersBySubstringCaseInsensitively()
     {
         var clubs = new List<Club>
         {
@@ -78,9 +93,35 @@ public sealed class AutocompleteHandlerTests
             Club.Create(Guid.NewGuid(), "Speed Demons", 8),
         };
 
-        var results = ClubNameAutocompleteHandler.BuildSuggestions(clubs, "speed").ToList();
+        var results = ClubAutocompleteHandler.BuildSuggestions(clubs, "speed").ToList();
 
         results.Select(r => r.Name).Should().BeEquivalentTo("Speedrunners", "Speed Demons");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void ClubOption_LeftOut_IsTheMainClub(string? value)
+    {
+        ClubOption.TryParse(value, out var clubId).Should().BeTrue();
+        clubId.Should().BeNull();
+    }
+
+    [Fact]
+    public void ClubOption_APickedClub_IsItsId()
+    {
+        var id = Guid.NewGuid();
+
+        ClubOption.TryParse(id.ToString(), out var clubId).Should().BeTrue();
+        clubId.Should().Be(id);
+    }
+
+    [Fact]
+    public void ClubOption_ATypedName_IsRejected()
+    {
+        // Discord sends what was typed when no suggestion is picked.
+        ClubOption.TryParse("Speedrunners", out _).Should().BeFalse();
     }
 
     // ---- Timezone handler ----

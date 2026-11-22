@@ -117,7 +117,6 @@ public sealed partial class GbifPlantRecordCounter(
             $"&geoDistance={circle.Latitude:0.####},{circle.Longitude:0.####},{Math.Max(1, circle.RadiusKm):0.#}km"),
         BoxRecordArea box => string.Create(CultureInfo.InvariantCulture,
             $"&decimalLatitude={box.South:0.####},{box.North:0.####}&decimalLongitude={box.West:0.####},{box.East:0.####}"),
-        _ => throw new ArgumentOutOfRangeException(nameof(area), area, "An area GBIF cannot be asked about.")
     };
 
     private sealed record CachedAnswer(IReadOnlyDictionary<long, long> Counts, DateTimeOffset ExpiresAt);

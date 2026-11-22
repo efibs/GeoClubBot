@@ -7,7 +7,7 @@ using Utilities;
 
 namespace UseCases.UseCases.Strikes;
 
-public sealed record AddStrikeCommand(string MemberNickname, DateTimeOffset StrikeDate) : ICommand<Result<Guid>>;
+public sealed record AddStrikeCommand(string MemberUserId, DateTimeOffset StrikeDate) : ICommand<Result<Guid>>;
 
 public sealed class AddStrikeHandler(
     ISender mediator,
@@ -16,7 +16,7 @@ public sealed class AddStrikeHandler(
     public async Task<Result<Guid>> Handle(AddStrikeCommand request, CancellationToken cancellationToken)
     {
         var memberResult = await mediator
-            .Send(new ReadOrSyncClubMemberByNicknameQuery(request.MemberNickname), cancellationToken)
+            .Send(new ReadOrSyncClubMemberByUserIdQuery(request.MemberUserId), cancellationToken)
             .ConfigureAwait(false);
 
         if (memberResult.IsFailure)

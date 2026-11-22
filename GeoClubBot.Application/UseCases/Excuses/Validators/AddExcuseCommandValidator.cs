@@ -6,8 +6,8 @@ public sealed class AddExcuseCommandValidator : AbstractValidator<AddExcuseComma
 {
     public AddExcuseCommandValidator()
     {
-        RuleFor(x => x.MemberNickname)
-            .NotEmpty().WithMessage("Member nickname must not be empty.");
+        RuleFor(x => x.MemberUserId)
+            .NotEmpty().WithMessage("Member user id must not be empty.");
 
         RuleFor(x => x.From)
             .GreaterThan(DateTimeOffset.UtcNow.AddYears(-5))

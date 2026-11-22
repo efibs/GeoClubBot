@@ -9,7 +9,7 @@ namespace UseCases.OutputPorts.AI;
 /// Chunks therefore carry two independent vectors rather than one blended one, and this type makes the
 /// blended form unrepresentable.
 /// </summary>
-public abstract record EmbeddingInput;
+public closed record EmbeddingInput;
 
 public sealed record TextEmbeddingInput(string Text) : EmbeddingInput;
 

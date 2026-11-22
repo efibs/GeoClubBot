@@ -3,6 +3,7 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.Repositories;
+using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
@@ -12,7 +13,7 @@ public sealed class ActivityStatisticsHandlers(
     IHistoryRepository history,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
     : IRequestHandler<ClubStatisticsQuery, ClubStatistics?>,
-      IRequestHandler<PlayerStatisticsQuery, PlayerStatistics?>
+      IRequestHandler<PlayerStatisticsQuery, Result<PlayerStatistics>>
 {
     private readonly Guid _mainClubId = geoGuessrConfig.Value.MainClub.ClubId;
 
@@ -54,29 +55,30 @@ public sealed class ActivityStatisticsHandlers(
             thirdQuartilePoints, maxPoints);
     }
 
-    public async Task<PlayerStatistics?> Handle(PlayerStatisticsQuery request, CancellationToken cancellationToken)
+    public async Task<Result<PlayerStatistics>> Handle(PlayerStatisticsQuery request, CancellationToken cancellationToken)
     {
         var clubMember = await clubMembers
-            .ReadClubMemberByNicknameAsync(request.Nickname, cancellationToken)
+            .ReadClubMemberByUserIdAsync(request.UserId, cancellationToken)
             .ConfigureAwait(false);
 
-        if (clubMember?.ClubId is null)
+        if (clubMember is null)
         {
-            return null;
+            return PlayerStatisticsErrors.UnknownPlayer;
+        }
+
+        var nickname = clubMember.User.Nickname;
+        if (clubMember.ClubId is not { } clubId)
+        {
+            return PlayerStatisticsErrors.NotInAClub(nickname);
         }
 
         var entries = await history
-            .ReadHistoryEntriesByPlayerNicknameAsync(request.Nickname, clubMember.ClubId.Value, cancellationToken)
+            .ReadHistoryEntriesByUserIdAsync(request.UserId, clubId, cancellationToken)
             .ConfigureAwait(false);
-
-        if (entries is null)
-        {
-            return null;
-        }
 
         if (entries.Count == 0)
         {
-            return new PlayerStatistics(request.Nickname, DateTimeOffset.UtcNow, 0, 0, 0, 0, 0, 0, 0);
+            return new PlayerStatistics(nickname, DateTimeOffset.UtcNow, 0, 0, 0, 0, 0, 0, 0);
         }
 
         var earliestTime = entries.Select(e => e.Timestamp).Min();
@@ -94,7 +96,7 @@ public sealed class ActivityStatisticsHandlers(
         // A single snapshot has no gains yet, and every new member has one after their first check.
         if (pointDifferences.Count == 0)
         {
-            return new PlayerStatistics(request.Nickname, earliestTime, 0, 0, 0, 0, 0, 0, 0);
+            return new PlayerStatistics(nickname, earliestTime, 0, 0, 0, 0, 0, 0, 0);
         }
 
         var numEntries = pointDifferences.Count;
@@ -105,7 +107,7 @@ public sealed class ActivityStatisticsHandlers(
         var thirdQuartilePoints = pointDifferences.Skip(pointDifferences.Count * 3 / 4).First();
         var maxPoints = pointDifferences.Max();
 
-        return new PlayerStatistics(request.Nickname, earliestTime, numEntries, averagePoints, minPoints,
+        return new PlayerStatistics(nickname, earliestTime, numEntries, averagePoints, minPoints,
             firstQuartilePoints, medianPoints, thirdQuartilePoints, maxPoints);
     }
 }

@@ -21,23 +21,26 @@ public static partial class GuardrailVerdictDetector
     private const int MaxVerdictLength = 400;
 
     /// <summary>Every label a verdict line may carry. A line with any other label is not a verdict.</summary>
-    private static readonly HashSet<string> VerdictKeys = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> VerdictKeys =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "user safety", "response safety", "prompt safety", "safety",
         "safety categories", "safety category", "categories", "category",
         "refusal", "response refusal", "harmful request", "harmful response"
-    };
+    ];
 
     /// <summary>The labels whose value is the verdict itself; at least one must be present.</summary>
-    private static readonly HashSet<string> SafetyKeys = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> SafetyKeys =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "user safety", "response safety", "prompt safety", "safety", "harmful request", "harmful response"
-    };
+    ];
 
-    private static readonly HashSet<string> VerdictValues = new(StringComparer.OrdinalIgnoreCase)
-    {
+    private static readonly HashSet<string> VerdictValues =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
         "safe", "unsafe", "controversial", "yes", "no", "harmful", "unharmful"
-    };
+    ];
 
     public static bool IsVerdict(string? text)
     {

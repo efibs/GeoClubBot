@@ -2,6 +2,7 @@ using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using UseCases.UseCases.InactiveMembers;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions;
@@ -10,24 +11,18 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions;
 // so this subcommand is admin-only without any extra attribute.
 public partial class ActivityModule
 {
-    [SlashCommand("inactive-members", "List members who haven't kept their streak today or claimed a club mission")]
+    [SlashCommand("inactive-members", "Who hasn't kept their streak today, or could still claim a club mission")]
+    [HelpDetail("Linked members are shown with their Discord handle, but nobody is pinged.")]
     public Task InactiveMembersAsync(
-        [Summary(description: "Restrict to one club (default: the main club)")]
+        [Summary(description: "The club; the main club if left out")]
         [Autocomplete(typeof(ClubAutocompleteHandler))] string? club = null) =>
         ExecuteAsync(
             async ct =>
             {
-                Guid? clubId = null;
-                if (club != null)
+                if (!ClubOption.TryParse(club, out var clubId))
                 {
-                    if (!Guid.TryParse(club, out var parsedClubId))
-                    {
-                        await FollowupAsync("Unknown club. Please pick one of the suggested clubs.", ephemeral: true)
-                            .ConfigureAwait(false);
-                        return;
-                    }
-
-                    clubId = parsedClubId;
+                    await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
+                    return;
                 }
 
                 var result = await Mediator

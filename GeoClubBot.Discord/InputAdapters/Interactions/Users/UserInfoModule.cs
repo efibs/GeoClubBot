@@ -4,6 +4,7 @@ using Discord.Interactions;
 using Extensions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts.GeoGuessr;
@@ -14,14 +15,16 @@ using Utilities;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Users;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("user-info", "Commands for getting information about a user")]
+[HelpFeature("users", Emoji = "👤", Title = "User info", Order = 60,
+    Summary = "Look up members' GeoGuessr nicknames, profiles and ranked stats, and who is who.")]
+[Group("user-info", "Look up members' GeoGuessr accounts, and who is who")]
 public class UserInfoModule(
     ISender mediator,
     ILogger<UserInfoModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("gg-nickname", "Get the GeoGuessr nickname of a user")]
+    [SlashCommand("gg-nickname", "The GeoGuessr nickname a member's account is linked to")]
     [UserCommand("GeoGuessr Nickname")]
-    public Task GetGeoGuessrNicknameAsync(IGuildUser user) =>
+    public Task GetGeoGuessrNicknameAsync([Summary(description: "A member of the server")] IGuildUser user) =>
         ExecuteAsync(
             async ct =>
             {
@@ -43,9 +46,9 @@ public class UserInfoModule(
             ephemeral: true,
             failureMessage: "Reading the GeoGuessr nickname failed. Try again later. If the problem persists, please contact an admin.");
 
-    [SlashCommand("gg-profile", "Get the GeoGuessr profile of a user")]
+    [SlashCommand("gg-profile", "A member's GeoGuessr profile: country, level, rating, standing and club")]
     [UserCommand("GeoGuessr Profile")]
-    public Task GetGeoGuessrProfileAsync(IGuildUser user) =>
+    public Task GetGeoGuessrProfileAsync([Summary(description: "A member of the server")] IGuildUser user) =>
         ExecuteAsync(
             async ct =>
             {
@@ -74,9 +77,10 @@ public class UserInfoModule(
             ephemeral: true,
             failureMessage: "Reading the GeoGuessr profile failed. Try again later. If the problem persists, please contact an admin.");
 
-    [SlashCommand("gg-ranked", "Get the GeoGuessr ranked statistics of a user")]
+    [SlashCommand("gg-ranked", "A member's GeoGuessr ranked stats: division, ratings, recent games")]
+    [HelpDetail("Current and peak rating per mode (overall, move, no-move, NMPZ), win streak, guessed-first rate, recent games (🟩 won, 🟥 lost) and best and worst countries.")]
     [UserCommand("GeoGuessr Ranked Stats")]
-    public Task GetGeoGuessrRankedStatsAsync(IGuildUser user) =>
+    public Task GetGeoGuessrRankedStatsAsync([Summary(description: "A member of the server")] IGuildUser user) =>
         ExecuteAsync(
             async ct =>
             {
@@ -113,24 +117,27 @@ public class UserInfoModule(
             ephemeral: true,
             failureMessage: "Reading the GeoGuessr ranked statistics failed. Try again later. If the problem persists, please contact an admin.");
 
-    [SlashCommand("discord-user", "Get the Discord user for a GeoGuessr nickname")]
+    [SlashCommand("discord-user", "The Discord member linked to a GeoGuessr nickname")]
     public Task GetDiscordUserAsync(
-        [Autocomplete(typeof(LinkedUserNicknameAutocompleteHandler))] string nickname) =>
+        [Autocomplete(typeof(LinkedUserAutocompleteHandler))]
+        [Summary(description: "The GeoGuessr player, as suggested")] string player) =>
         ExecuteAsync(
             async ct =>
             {
-                var discordUserId = await Mediator
-                    .Send(new GetDiscordUserByNicknameQuery(nickname), ct)
-                    .ConfigureAwait(false);
-
-                if (discordUserId.IsFailure)
+                var user = await ReadPickedUserAsync(player, ct).ConfigureAwait(false);
+                if (user is null)
                 {
-                    await FollowupAsync($"No linked Discord user found for GeoGuessr player '**{nickname}**'.", ephemeral: true)
+                    await FollowupAsync("Unknown player. Please pick one of the suggested players.", ephemeral: true)
+                        .ConfigureAwait(false);
+                }
+                else if (user.DiscordUserId is not { } discordUserId)
+                {
+                    await FollowupAsync($"No linked Discord user found for GeoGuessr player '**{user.Nickname}**'.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
                 else
                 {
-                    await FollowupAsync($"The GeoGuessr player '**{nickname}**' is <@{discordUserId.Value}>.", ephemeral: true)
+                    await FollowupAsync($"The GeoGuessr player '**{user.Nickname}**' is <@{discordUserId}>.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
             },

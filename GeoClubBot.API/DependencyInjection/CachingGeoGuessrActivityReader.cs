@@ -106,19 +106,15 @@ public partial class CachingGeoGuessrActivityReader(
             if (batch.Items.Count == 0)
                 return activities;
 
-            var reachedCutoff = false;
             foreach (var item in batch.Items.OrderByDescending(i => i.RecordedAt))
             {
                 if (item.RecordedAt < since)
-                {
-                    reachedCutoff = true;
-                    break;
-                }
+                    return activities;
 
                 activities.Add(item);
             }
 
-            if (reachedCutoff || batch.PaginationToken is null)
+            if (batch.PaginationToken is null)
                 return activities;
 
             paginationToken = batch.PaginationToken;

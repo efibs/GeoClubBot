@@ -112,8 +112,8 @@ public partial class OpenRouterEmbedder(
 
         try
         {
-            var api = RestService.For<IOpenRouterApi>(
-                httpClientFactory.CreateClient(RefitChatModelClient.HttpClientName));
+            var api = RestService.ForGenerated<IOpenRouterApi>(
+                httpClientFactory.CreateClient(RefitChatModelClient.HttpClientName), OpenRouterJsonContext.Default);
 
             var response = await api.CreateEmbeddingsAsync(payload, cancellationToken).ConfigureAwait(false);
 
@@ -256,7 +256,6 @@ public partial class OpenRouterEmbedder(
                 }
             ]
         },
-        _ => throw new NotSupportedException($"Unsupported embedding input '{input.GetType().Name}'.")
     };
 
     [LoggerMessage(LogLevel.Debug, "Embedded {VectorCount} input(s) using {TokenCount} token(s).")]

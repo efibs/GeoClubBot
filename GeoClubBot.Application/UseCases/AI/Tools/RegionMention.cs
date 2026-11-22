@@ -24,15 +24,16 @@ public static partial class RegionMention
 
     /// <summary>Names that are ordinary words, taken only with "region", "province", "state" or the like beside them.</summary>
     // Stryker disable once all : lookup data
-    private static readonly HashSet<string> GenericNames = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> GenericNames =
+    [
+        with(StringComparer.Ordinal),
         "central", "centre", "center", "north", "south", "east", "west", "northern", "southern", "eastern", "western",
         "north east", "north west", "south east", "south west", "northeast", "northwest", "southeast", "southwest",
         "north eastern", "north western", "south eastern", "south western", "capital", "coast", "coastal", "upper",
         "lower", "middle", "interior", "highlands", "lowlands", "island", "islands", "far north", "far west", "far east",
         "border", "littoral", "plateau", "savanes", "maritime", "eastern cape", "western cape", "northern cape",
         "north central", "south central", "volta", "east coast", "west coast", "north coast", "south coast"
-    };
+    ];
 
     private static readonly string[] RegionWords = ["region", "province", "state", "county", "district", "department", "prefecture", "governorate", "oblast", "division", "territory", "area", "zone"];
 

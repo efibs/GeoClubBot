@@ -49,21 +49,6 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
         return inner.ReadForUpdateByIdAsync(clubId, cancellationToken);
     }
 
-    public async Task<Club?> ReadClubByNameAsync(string clubName, CancellationToken cancellationToken = default)
-    {
-        var key = ByNameKey(clubName);
-        if (cache.TryGetValue<Club?>(key, out var cached))
-        {
-            CacheMetrics.RecordHit(CacheName);
-            return cached;
-        }
-
-        CacheMetrics.RecordMiss(CacheName);
-        var club = await inner.ReadClubByNameAsync(clubName, cancellationToken).ConfigureAwait(false);
-        cache.Set(key, club, CacheTtl);
-        return club;
-    }
-
     public Task<IReadOnlyList<Club>> ReadAllClubsAsync(CancellationToken cancellationToken = default)
     {
         // Only used for autocomplete over a handful of clubs; not worth caching
@@ -74,9 +59,7 @@ public class CachingClubRepository(EfClubRepository inner, IMemoryCache cache) :
     private void InvalidateCacheFor(Club club)
     {
         cache.Remove(ByIdKey(club.ClubId));
-        cache.Remove(ByNameKey(club.Name));
     }
 
     private static string ByIdKey(Guid clubId) => $"clubs:{clubId}";
-    private static string ByNameKey(string clubName) => $"clubs:by-name:{clubName}";
 }

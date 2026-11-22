@@ -7,10 +7,10 @@ using UseCases.UseCases.ClubMembers;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 
 /// <summary>
-/// Suggests the nicknames of tracked club members. Used by commands that only operate on
-/// club members (activity, strikes, excuses, statistics). The option value is the nickname.
+/// Suggests tracked club members by nickname. Used by commands that only operate on club members
+/// (activity, strikes, excuses, statistics). The option value is the member's GeoGuessr user id.
 /// </summary>
-public class MemberNicknameAutocompleteHandler : AutocompleteHandler
+public class MemberAutocompleteHandler : AutocompleteHandler
 {
     public override async Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context,
@@ -19,10 +19,10 @@ public class MemberNicknameAutocompleteHandler : AutocompleteHandler
         IServiceProvider services)
     {
         var mediator = services.GetRequiredService<ISender>();
-        var nicknames = await mediator.Send(new GetTrackedMemberNicknamesQuery()).ConfigureAwait(false);
+        var members = await mediator.Send(new GetTrackedMemberNamesQuery()).ConfigureAwait(false);
 
         var input = autocompleteInteraction.Data.Current.Value?.ToString() ?? string.Empty;
 
-        return AutocompletionResult.FromSuccess(NicknameSuggestions.Build(nicknames, input));
+        return AutocompletionResult.FromSuccess(UserSuggestions.Build(members, input));
     }
 }

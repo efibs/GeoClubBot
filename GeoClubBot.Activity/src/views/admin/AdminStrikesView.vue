@@ -2,28 +2,31 @@
 import { ref } from 'vue';
 import PanelSection from '../../components/PanelSection.vue';
 import FormField from '../../components/FormField.vue';
+import MemberPicker from '../../components/MemberPicker.vue';
 import ActionButton from '../../components/ActionButton.vue';
 import ErrorBanner from '../../components/ErrorBanner.vue';
-import { useAdminStrikes } from '../../queries/admin';
+import { useAdminMembers, useAdminStrikes } from '../../queries/admin';
 import { formatDate, todayAsDateInputValue } from '../../format';
 import { confirm } from '../../composables/useConfirm';
 
 const strikes = useAdminStrikes();
 
-const newStrikeNickname = ref('');
+const { data: members } = useAdminMembers();
+
+const newStrikeUserId = ref<string | null>(null);
 const newStrikeDate = ref(todayAsDateInputValue());
 
 async function addStrike(): Promise<void> {
-  const nickname = newStrikeNickname.value.trim();
-  if (!nickname || !newStrikeDate.value) {
+  const member = members.value?.find((m) => m.userId === newStrikeUserId.value);
+  if (!member || !newStrikeDate.value) {
     return;
   }
-  if (!(await confirm({ message: `Add a strike to ${nickname}?`, danger: true }))) {
+  if (!(await confirm({ message: `Add a strike to ${member.nickname}?`, danger: true }))) {
     return;
   }
   try {
-    await strikes.add(nickname, newStrikeDate.value);
-    newStrikeNickname.value = '';
+    await strikes.add(member.userId, newStrikeDate.value);
+    newStrikeUserId.value = null;
   } catch {
     // Surfaced via strikes.error.
   }
@@ -62,10 +65,11 @@ async function unrevoke(strikeId: string, nickname: string): Promise<void> {
 
     <PanelSection title="➕ Add strike" data-testid="add-strike-panel">
       <form class="form-stack" @submit.prevent="addStrike">
-        <FormField
-          id="strike-nickname"
-          v-model="newStrikeNickname"
-          label="GeoGuessr nickname"
+        <MemberPicker
+          id="strike-member"
+          v-model="newStrikeUserId"
+          label="Member"
+          :members="members"
           required
           data-testid="add-strike-nickname"
         />
@@ -82,7 +86,7 @@ async function unrevoke(strikeId: string, nickname: string): Promise<void> {
             type="submit"
             :busy="strikes.addPending"
             busy-label="Adding…"
-            :disabled="strikes.busy || !newStrikeNickname"
+            :disabled="strikes.busy || !newStrikeUserId"
             data-testid="add-strike-submit"
           >
             Add strike

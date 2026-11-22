@@ -3,6 +3,7 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.ClubMemberActivity;
@@ -16,38 +17,35 @@ public partial class ActivityModule
         ISender mediator,
         ILogger<ActivityCurrentWeekModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
-        [SlashCommand("by-nickname", "Show a member's current week activity by GeoGuessr nickname")]
+        [SlashCommand("by-nickname", "A member's activity since the last weekly check, by GeoGuessr nickname")]
+        [HelpDetail("The same view as `/my-activity current-week`, for anyone.")]
         public Task CurrentWeekByNicknameAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))]
-            [Summary(description: "The GeoGuessr nickname of the member")] string nickname) =>
+            [Autocomplete(typeof(MemberAutocompleteHandler))]
+            [Summary(description: "The member, as suggested")] string member) =>
             ExecuteAsync(
                 async ct =>
                 {
-                    var geoGuessrUser = await Mediator
-                        .Send(new GetGeoGuessrUserByNicknameQuery(nickname), ct)
-                        .ConfigureAwait(false);
-
-                    if (geoGuessrUser.IsFailure)
+                    var geoGuessrUser = await ReadPickedUserAsync(member, ct).ConfigureAwait(false);
+                    if (geoGuessrUser is null)
                     {
-                        await FollowupAsync($"No club member with the GeoGuessr nickname '**{nickname}**' was found.")
-                            .ConfigureAwait(false);
+                        await FollowupAsync(UnknownMemberMessage).ConfigureAwait(false);
                         return;
                     }
 
                     var activity = await Mediator
-                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.Value.UserId), ct)
+                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
                         .ConfigureAwait(false);
 
-                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Value.Nickname).Build())
+                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
                         .ConfigureAwait(false);
                 },
                 ephemeral: true,
                 failureMessage: "Failed to retrieve the current week activity (internal error). Please try again later. If the issue persists, please contact an admin.");
 
-        [SlashCommand("by-user", "Show a Discord user's current week activity")]
+        [SlashCommand("by-user", "A member's activity since the last weekly check")]
         [UserCommand("Current Week XP")]
         [DefaultMemberPermissions(GuildPermission.Administrator)]
-        public Task CurrentWeekByUserAsync(IGuildUser user) =>
+        public Task CurrentWeekByUserAsync([Summary(description: "A member of the server")] IGuildUser user) =>
             ExecuteAsync(
                 async ct =>
                 {

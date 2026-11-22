@@ -103,6 +103,9 @@ public static class IsoCountries
 
     private static readonly Lazy<CountryGazetteer> LazyGazetteer = new(() => CountryGazetteer.Build(NameByCode.Values));
 
+    /// <summary>Every code of the table, upper case.</summary>
+    public static IReadOnlyCollection<string> Codes => NameByCode.Keys;
+
     /// <summary>The country's English name, or the code itself when it is none the table knows ("ZZ").</summary>
     public static string NameOf(string code) =>
         NameByCode.TryGetValue(code.ToUpperInvariant(), out var name) ? name : code;

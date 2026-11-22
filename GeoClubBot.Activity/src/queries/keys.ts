@@ -17,6 +17,7 @@ export const queryKeys = {
     excuses: ['admin', 'excuses'] as const,
     linking: ['admin', 'linking'] as const,
     clubStats: ['admin', 'club-stats'] as const,
-    lookup: (nickname: string) => ['admin', 'lookup', nickname] as const,
+    members: ['admin', 'members'] as const,
+    lookup: (userId: string) => ['admin', 'lookup', userId] as const,
   },
 } as const;

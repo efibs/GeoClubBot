@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using Infrastructure.OutputAdapters.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr;
 using Xunit;
 
@@ -48,7 +49,7 @@ public sealed class ChallengeResultHighscoresDtoTests
     public void Deserialize_ReadsTheScoreFromTotalScoreInPoints()
     {
         var dto = JsonSerializer.Deserialize<ChallengeResultHighscoresDto>(
-            LiveShapedPayload, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            LiveShapedPayload, GeoGuessrJsonContext.Default.Options)!;
 
         var player = dto.Items.Should().ContainSingle().Subject.Game.Player;
         player.Id.Should().Be("aaaaaaaaaaaaaaaaaaaaaaaa");

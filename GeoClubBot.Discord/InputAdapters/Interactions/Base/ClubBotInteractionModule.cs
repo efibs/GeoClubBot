@@ -1,7 +1,10 @@
 using Discord.Interactions;
+using Entities;
 using FluentValidation;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Base;
@@ -44,7 +47,7 @@ public abstract partial class ClubBotInteractionModule(ISender mediator, ILogger
                 string.Join("; ", validationEx.Errors.Select(e => e.ErrorMessage)));
 
             var message = string.Join("\n", validationEx.Errors.Select(e => $"• {e.ErrorMessage}"));
-            await TrySendFollowupAsync(message).ConfigureAwait(false);
+            await TrySendFollowupAsync(WithHelpHint(message)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -52,9 +55,13 @@ public abstract partial class ClubBotInteractionModule(ISender mediator, ILogger
 
             var message = failureMessage
                 ?? "Something went wrong. Please try again later. If the issue persists, contact an admin.";
-            await TrySendFollowupAsync(message).ConfigureAwait(false);
+            await TrySendFollowupAsync(WithHelpHint(message)).ConfigureAwait(false);
         }
     }
+
+    /// <summary>Points a failed command's reply to the command's page of <c>/help</c>.</summary>
+    private string WithHelpHint(string message) =>
+        HelpHint.For(GetType()) is { } hint ? $"{message}\n{hint}" : message;
 
     private async Task TrySendFollowupAsync(string message)
     {
@@ -66,6 +73,22 @@ public abstract partial class ClubBotInteractionModule(ISender mediator, ILogger
         {
             LogFollowupDeliveryFailed(Logger, followupEx, GetType().Name);
         }
+    }
+
+    /// <summary>The reply when a member option holds no known user id, e.g. a nickname typed without picking.</summary>
+    protected const string UnknownMemberMessage = "Unknown member. Please pick one of the suggested members.";
+
+    /// <summary>
+    /// The GeoGuessr user picked in a member option, whose value is the user id
+    /// (<see cref="Autocomplete.MemberAutocompleteHandler"/>), or null when it names no known user.
+    /// </summary>
+    protected async Task<GeoGuessrUser?> ReadPickedUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var user = await Mediator
+            .Send(new GetGeoGuessrUserByUserIdQuery(userId), cancellationToken)
+            .ConfigureAwait(false);
+
+        return user.ValueOrNull;
     }
 
     /// <summary>

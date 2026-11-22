@@ -210,6 +210,12 @@ export interface LastCheckTimeDto {
   lastCheckTime: string | null;
 }
 
+/** A tracked member for the member picker: the nickname is shown, the user id is sent. */
+export interface AdminMemberDto {
+  userId: string;
+  nickname: string;
+}
+
 export interface AdminStrikeDto {
   strikeId: string;
   nickname: string;

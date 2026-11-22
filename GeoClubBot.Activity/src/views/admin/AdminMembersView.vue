@@ -2,22 +2,24 @@
 import { ref } from 'vue';
 import PanelSection from '../../components/PanelSection.vue';
 import FactRow from '../../components/FactRow.vue';
-import FormField from '../../components/FormField.vue';
+import MemberPicker from '../../components/MemberPicker.vue';
 import ActionButton from '../../components/ActionButton.vue';
 import ErrorBanner from '../../components/ErrorBanner.vue';
 import LoadingSpinner from '../../components/LoadingSpinner.vue';
-import { useAdminMemberLookup, useClubStatsQuery } from '../../queries/admin';
+import { useAdminMemberLookup, useAdminMembers, useClubStatsQuery } from '../../queries/admin';
 import { formatDate, formatMissionCompletion, formatXp } from '../../format';
 
 const lookup = useAdminMemberLookup();
 const { data: clubStats } = useClubStatsQuery();
 
-const nicknameInput = ref(lookup.nickname);
+const { data: members } = useAdminMembers();
+
+const selectedUserId = ref<string | null>(null);
 
 function search(): void {
-  const value = nicknameInput.value.trim();
-  if (value) {
-    lookup.search(value);
+  const member = members.value?.find((m) => m.userId === selectedUserId.value);
+  if (member) {
+    lookup.search(member.userId, member.nickname);
   }
 }
 </script>
@@ -43,11 +45,11 @@ function search(): void {
 
     <PanelSection title="🔍 Member lookup" data-testid="member-lookup-panel">
       <form class="form-stack" @submit.prevent="search">
-        <FormField
-          id="lookup-nickname"
-          v-model="nicknameInput"
-          label="GeoGuessr nickname"
-          placeholder="Exact nickname"
+        <MemberPicker
+          id="lookup-member"
+          v-model="selectedUserId"
+          label="Member"
+          :members="members"
           required
           data-testid="lookup-input"
         />
@@ -56,7 +58,7 @@ function search(): void {
             type="submit"
             :busy="lookup.loading"
             busy-label="Looking up…"
-            :disabled="lookup.loading || !nicknameInput"
+            :disabled="lookup.loading || !selectedUserId"
             data-testid="lookup-submit"
           >
             Look up

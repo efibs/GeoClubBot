@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Entities;
 using FluentAssertions;
+using Infrastructure.OutputAdapters.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.GeoGuessr.Assemblers;
 using Xunit;
@@ -69,7 +70,7 @@ public sealed class ClubMissionBoardAssemblerTests
         """;
 
     private static ClubMissionBoardSnapshotDto Deserialize() =>
-        JsonSerializer.Deserialize<ClubMissionBoardSnapshotDto>(LiveShapedPayload, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        JsonSerializer.Deserialize<ClubMissionBoardSnapshotDto>(LiveShapedPayload, GeoGuessrJsonContext.Default.Options)!;
 
     [Fact]
     public void TheDtos_ReadEveryFieldTheBotUses()

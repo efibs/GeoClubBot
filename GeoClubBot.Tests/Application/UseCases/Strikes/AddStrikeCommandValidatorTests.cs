@@ -12,7 +12,7 @@ public sealed class AddStrikeCommandValidatorTests
     [Fact]
     public void Validate_Succeeds_ForRecentStrikeDate()
     {
-        var cmd = new AddStrikeCommand("Player1", DateTimeOffset.UtcNow.AddDays(-1));
+        var cmd = new AddStrikeCommand("user-1", DateTimeOffset.UtcNow.AddDays(-1));
 
         var result = _validator.Validate(cmd);
 
@@ -22,7 +22,7 @@ public sealed class AddStrikeCommandValidatorTests
     [Fact]
     public void Validate_Fails_WhenStrikeDateIsMoreThanOneHourInTheFuture()
     {
-        var cmd = new AddStrikeCommand("Player1", DateTimeOffset.UtcNow.AddHours(2));
+        var cmd = new AddStrikeCommand("user-1", DateTimeOffset.UtcNow.AddHours(2));
 
         var result = _validator.Validate(cmd);
 
@@ -34,7 +34,7 @@ public sealed class AddStrikeCommandValidatorTests
     public void Validate_Allows_OneHourClockSkew()
     {
         // The validator allows up to +1h of clock drift; this is +30 minutes → still valid.
-        var cmd = new AddStrikeCommand("Player1", DateTimeOffset.UtcNow.AddMinutes(30));
+        var cmd = new AddStrikeCommand("user-1", DateTimeOffset.UtcNow.AddMinutes(30));
 
         var result = _validator.Validate(cmd);
 
@@ -49,6 +49,6 @@ public sealed class AddStrikeCommandValidatorTests
         var result = _validator.Validate(cmd);
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "MemberNickname");
+        result.Errors.Should().Contain(e => e.PropertyName == "MemberUserId");
     }
 }

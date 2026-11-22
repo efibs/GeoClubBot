@@ -71,11 +71,11 @@ public sealed class StrikesUseCaseIntegrationTests(PostgresFixture fixture)
     [Fact]
     public async Task AddStrike_PersistsAStrikeForAnExistingMember()
     {
-        var (_, userId, nickname) = await SeedMemberAsync();
+        var (_, userId, _) = await SeedMemberAsync();
         var strikeDate = DateTimeOffset.UtcNow.AddDays(-1);
 
         using var host = CreateHost();
-        var result = await host.SendAsync(new AddStrikeCommand(nickname, strikeDate));
+        var result = await host.SendAsync(new AddStrikeCommand(userId, strikeDate));
 
         result.IsSuccess.Should().BeTrue();
 
@@ -229,13 +229,16 @@ public sealed class StrikesUseCaseIntegrationTests(PostgresFixture fixture)
         }
 
         using var host = CreateHost();
-        var result = await host.SendAsync(new ReadMemberStrikesQuery(nickname));
+        var result = await host.SendAsync(new ReadMemberStrikesQuery(userId));
 
         result.IsSuccess.Should().BeTrue();
+        result.Value.MemberNickname.Should().Be(nickname);
+        result.Value.NumActiveStrikes.Should().Be(1);
+        result.Value.Strikes.Should().HaveCount(2);
     }
 
     [Fact]
-    public async Task ReadMemberStrikes_ReturnsNotFound_ForUnknownNickname()
+    public async Task ReadMemberStrikes_ReturnsNotFound_ForAnUnknownMember()
     {
         using var host = CreateHost();
 

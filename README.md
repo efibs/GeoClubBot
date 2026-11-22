@@ -1,6 +1,6 @@
 # 🌍 GeoClubBot
 
-A .NET 10 **ASP.NET Core Web API + Discord bot** for running [GeoGuessr](https://www.geoguessr.com/) gaming clubs.
+A .NET 11 **ASP.NET Core Web API + Discord bot** for running [GeoGuessr](https://www.geoguessr.com/) gaming clubs.
 It talks to the GeoGuessr API and Discord to track member activity, manage strikes, run daily
 challenges, remind members of their streak and the club mission board, and link Discord accounts
 to GeoGuessr profiles.
@@ -12,7 +12,7 @@ to GeoGuessr profiles.
 [![Mutation testing](https://github.com/efibs/GeoClubBot/actions/workflows/mutation.yml/badge.svg)](https://github.com/efibs/GeoClubBot/actions/workflows/mutation.yml)
 
 <!-- Project -->
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![.NET 11](https://img.shields.io/badge/.NET-11.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Docker image](https://img.shields.io/badge/ghcr.io-geo--club--bot-2496ED?logo=docker&logoColor=white)](https://github.com/efibs/GeoClubBot/pkgs/container/geo-club-bot)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -103,7 +103,7 @@ flowchart TD
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/) (pinned in [`global.json`](global.json))
+- [.NET 11 SDK](https://dotnet.microsoft.com/) (pinned in [`global.json`](global.json))
 - [Docker](https://www.docker.com/) (for PostgreSQL, and for the integration tests)
 
 ### Run locally
@@ -178,8 +178,10 @@ for the feed's activity types and the board's shape.
 
 ## Bot commands
 
-A full, user-facing rundown of every slash command and user command (with parameters and examples)
-lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
+Type **`/help`** (or `/manual`) in the server: the bot lists every feature and, per feature, its
+commands with their parameters, showing each member only what is switched on and what they may run.
+The manual is read from the commands themselves (see *Bot manual* in [CLAUDE.md](CLAUDE.md)), so there
+is no separate command reference to keep up to date. Highlights:
 
 | Command | What it does |
 |---|---|
@@ -190,6 +192,7 @@ lives in the **[Bot Commands Guide](BotCommandsGuide.md)**. Highlights:
 | `/country-challenges leaderboard` | See the country challenge leaderboard and your place on it |
 | `/user-info gg-nickname\|gg-profile\|discord-user` | Look up GeoGuessr ↔ Discord identities |
 | `/self-roles select` | Pick optional roles for yourself |
+| `/help` | Everything the bot can do, and how to use it |
 
 ## Testing
 
@@ -265,7 +268,6 @@ docker build -f ./GeoClubBot.API/Dockerfile -t ghcr.io/efibs/geo-club-bot:your-v
 | [Developer Guide](Documentation/DeveloperGuide.md) | Solution map and "where do I add X?" recipes |
 | [Result Conventions](Documentation/ResultConventions.md) | Error handling with `Result<T>` |
 | [AI Guide](Documentation/AiGuide.md) | How the AI assistant works, what it costs to run, how to turn it on |
-| [Bot Commands Guide](BotCommandsGuide.md) | User-facing command reference |
 | [Contributing](CONTRIBUTING.md) | Branching model, pre-commit hook, CI/CD |
 
 ## Contributing

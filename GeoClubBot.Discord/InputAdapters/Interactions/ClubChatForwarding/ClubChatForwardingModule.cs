@@ -5,6 +5,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.OutputPorts.GeoGuessr;
@@ -23,10 +24,15 @@ namespace GeoClubBot.Discord.InputAdapters.Interactions.ClubChatForwarding;
 /// </remarks>
 [CommandContextType(InteractionContextType.Guild)]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
+[HelpFeature("club-chat", Emoji = "📢", Title = "Club chat forwarding", Order = 100, ShownWhen = HelpToggle.ClubChatForwarding,
+    Summary = "Send a Discord message on to the clubs' chats in GeoGuessr.")]
 public partial class ClubChatForwardingModule(ISender mediator, ILogger<ClubChatForwardingModule> logger)
     : ClubBotInteractionModule(mediator, logger)
 {
     [MessageCommand("📢 Send to club chat")]
+    [HelpDetail("""
+        Send this message on to the clubs' chats in GeoGuessr. A form shows the text as it will be sent, lets you edit it and pick the clubs, and says how many chat messages it takes (GeoGuessr allows 300 characters each) and whether it was forwarded before.
+        """)]
     public async Task OpenFormAsync(IMessage message)
     {
         try
