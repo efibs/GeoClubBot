@@ -39,6 +39,10 @@ public class GeoClubBotDbContext : DbContext
 
     public DbSet<MissionBoardAlert> MissionBoardAlerts { get; set; }
 
+    public DbSet<MissionBoardSubscription> MissionBoardSubscriptions { get; set; }
+
+    public DbSet<ClubMissionBoardObservation> ClubMissionBoardObservations { get; set; }
+
     public DbSet<MissionClaim> MissionClaims { get; set; }
 
     public DbSet<MemberPrivateChannelCategory> MemberPrivateChannelCategories { get; set; }

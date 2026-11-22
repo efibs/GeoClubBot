@@ -256,6 +256,14 @@ API + Discord (controllers, slash command modules)
   habits. Claims count when they were *claimed* within the period; the open claim is shown whenever it was
   made, so reads reach one board week further back. Shown in the activity embeds, the dashboard and — with
   `ActivityChecker:MissionCompletionSlowestN` — the weekly report. History starts at deployment.
+- **Board change alerts** (`MissionBoardNotifications`, on by default, #504): `/club-stats board-alerts`
+  (also the 🔔 button under `/club-stats board`, 🔕 under each DM) subscribes a **linked** member, every new
+  board or only the next one, to a DM when their club's next board is unlocked or a new week starts. The club
+  is read at each change (`MissionBoardSubscriptions` is keyed by Discord user). `NotifyMissionBoardChangesCommand`
+  runs after every pushed board update and on `Schedule` (15 min safety net); the pure
+  `MissionBoardChangeDetector` compares with `ClubMissionBoardObservations` (only ever moves forward, stored
+  before any DM, first look stores silently). Members who already claimed this claim cycle are skipped; a
+  one-time subscription ends only with a DM actually sent.
 - **Member private channels**: each linked club member gets a channel only they, the bot and
   `MemberPrivateChannels:AdminRoleIds` (plus Administrators) can see. Discord caps a category at 50
   channels, so the bot creates categories **per club** itself (`{club} – Private`, then `… 2`) once one

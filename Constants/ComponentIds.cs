@@ -56,6 +56,15 @@ public class ComponentIds
     public const string SelfRolesSelectMenuId =
         "self-roles-select-menu";
 
+    /// <summary>Ends a member's mission board subscription, under its DMs.</summary>
+    public const string MissionBoardUnsubscribeButtonId = "board-alerts-off";
+
+    /// <summary>Under <c>/club-stats board</c>: shows the clicking member their board alerts.</summary>
+    public const string MissionBoardAlertsButtonId = "board-alerts";
+
+    /// <summary>Sets the clicking member's board alerts: <c>board-alerts-set:{always|once|off}</c>.</summary>
+    public const string MissionBoardAlertsSetButtonId = "board-alerts-set";
+
     /// <summary>The feature menu under <c>/help</c>.</summary>
     public const string HelpFeatureMenuId = "help-feature";
 

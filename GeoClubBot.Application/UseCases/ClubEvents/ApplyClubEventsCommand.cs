@@ -10,6 +10,7 @@ using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.Club;
 using UseCases.UseCases.ClubMembers;
 using UseCases.UseCases.MissionBoard;
+using UseCases.UseCases.MissionBoardNotifications;
 
 namespace UseCases.UseCases.ClubEvents;
 
@@ -65,6 +66,7 @@ public sealed partial class ApplyClubEventsHandler(
         {
             cacheInvalidator.InvalidateCurrentMissionBoard(clubId);
             failed |= !await TryAsync("mission claims", clubId, new RecordMissionClaimsCommand(clubId), cancellationToken).ConfigureAwait(false);
+            failed |= !await TryAsync("board notifications", clubId, new NotifyMissionBoardChangesCommand(clubId), cancellationToken).ConfigureAwait(false);
         }
 
         // The website's figures (level, member count) are cached; what changed is read again on the

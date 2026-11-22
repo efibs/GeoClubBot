@@ -29,6 +29,7 @@ public sealed partial class BotManualService(
     IOptions<CountryChallengesConfiguration> countryChallenges,
     IOptions<ClubChatForwardingConfiguration> clubChatForwarding,
     IOptions<SelfRolesConfiguration> selfRoles,
+    IOptions<MissionBoardNotificationsConfiguration> missionBoardNotifications,
     ILogger<BotManualService> logger) : IBotManual
 {
     public IReadOnlyList<ManualFeature> FeaturesFor(IGuildUser member) =>
@@ -69,6 +70,7 @@ public sealed partial class BotManualService(
         HelpToggle.CountryChallenges => countryChallenges.Value.Enabled,
         HelpToggle.ClubChatForwarding => clubChatForwarding.Value.Enabled,
         HelpToggle.SelfRoles => selfRoles.Value.Roles.Count > 0,
+        HelpToggle.MissionBoardNotifications => missionBoardNotifications.Value.Enabled,
         _ => throw new ArgumentOutOfRangeException(nameof(toggle), toggle, null)
     };
 

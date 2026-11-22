@@ -10,7 +10,14 @@ namespace GeoClubBot.Discord.OutputAdapters;
 public partial class DiscordDirectMessageAccess(DiscordSocketClient client, ILogger<DiscordDirectMessageAccess> logger)
     : IDiscordDirectMessageAccess
 {
-    public async Task<Result> SendDirectMessageAsync(ulong discordUserId, string message, CancellationToken cancellationToken = default)
+    public Task<Result> SendDirectMessageAsync(ulong discordUserId, string message, CancellationToken cancellationToken = default) =>
+        SendAsync(discordUserId, message, components: null);
+
+    /// <summary>
+    /// <see cref="SendDirectMessageAsync"/> with message components (buttons), for the adapters of
+    /// DMs that carry them.
+    /// </summary>
+    public async Task<Result> SendAsync(ulong discordUserId, string message, MessageComponent? components)
     {
         try
         {
@@ -24,7 +31,7 @@ public partial class DiscordDirectMessageAccess(DiscordSocketClient client, ILog
             }
 
             var dmChannel = await user.CreateDMChannelAsync().ConfigureAwait(false);
-            await dmChannel.SendMessageAsync(message).ConfigureAwait(false);
+            await dmChannel.SendMessageAsync(message, components: components).ConfigureAwait(false);
 
             return Result.Success();
         }

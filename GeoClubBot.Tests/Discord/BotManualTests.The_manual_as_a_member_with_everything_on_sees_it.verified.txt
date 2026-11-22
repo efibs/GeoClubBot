@@ -86,6 +86,11 @@ Today is the UTC day; claims count in the current claim cycle.
 - `club` *(optional)* — The club; the main club if left out
 When the week ends and claims reset, each board (✅ cleared, ▶️ current, 🔒 locked), and every open mission: who holds it, its progress, when it was claimed, and 🆘 if they asked for help.
 
+**`/club-stats board-alerts`** — Get a DM when your club's next mission board is unlocked or a new week starts
+- `alerts` — Every new board, only the next one, or off
+So you can pick an easy mission before others take them. Your club is the one your linked GeoGuessr account is in, so link it first (`/gg-account link`).
+Pick **every new board**, **only the next one** (the alerts then stop by themselves) or **off**. No DM is sent while you have already claimed this claim cycle, since you couldn't claim anyway. The 🔔 button under `/club-stats board` and the 🔕 button under each DM do the same.
+
 # 👤 User info
 Look up members' GeoGuessr nicknames, profiles and ranked stats, and who is who.
 
