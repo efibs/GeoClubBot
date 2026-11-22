@@ -154,14 +154,12 @@ public partial class ActivityAdminController(
         var statistics = await mediator
             .Send(new PlayerStatisticsQuery(nickname), cancellationToken)
             .ConfigureAwait(false);
-        if (statistics is null)
+        if (statistics.IsFailure)
         {
-            return this.ToProblemDetails(Error.NotFound(
-                "activity.player_statistics_not_found",
-                "There is no recorded history for this member."));
+            return this.ToProblemDetails(statistics.Error);
         }
 
-        return Ok(ActivityAdminDtoAssembler.AssemblePlayerStatistics(statistics));
+        return Ok(ActivityAdminDtoAssembler.AssemblePlayerStatistics(statistics.Value));
     }
 
     [HttpGet("club/statistics")]

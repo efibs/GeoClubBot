@@ -4,6 +4,7 @@ using GeoClubBot.Tests.TestBuilders;
 using NSubstitute;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMemberActivity;
+using Utilities;
 using Xunit;
 
 namespace GeoClubBot.Tests.Application.UseCases.ClubMemberActivity;
@@ -116,17 +117,20 @@ public sealed class ActivityStatisticsHandlersTests
 
         var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
 
-        stats.Should().BeNull();
+        stats.Error.Code.Should().Be("player_statistics.unknown_player");
+        stats.Error.Message.Should().Contain(Nickname);
     }
 
     [Fact]
-    public async Task Player_WhoLeftTheClub_HasNoStatistics()
+    public async Task Player_WhoLeftTheClub_IsToldTheyAreNotInAClub()
     {
+        // #162: they were reported as "not being tracked", though their history is kept.
         MemberExists(clubId: null);
 
         var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
 
-        stats.Should().BeNull();
+        stats.Error.Code.Should().Be("player_statistics.not_in_a_club");
+        stats.Error.Message.Should().Contain("not in a club at the moment");
     }
 
     [Fact]
@@ -138,7 +142,7 @@ public sealed class ActivityStatisticsHandlersTests
 
         var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
 
-        stats.Should().BeNull();
+        stats.Error.Code.Should().Be("player_statistics.unknown_player");
     }
 
     [Fact]
@@ -149,10 +153,10 @@ public sealed class ActivityStatisticsHandlersTests
 
         var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
 
-        stats.Should().BeEquivalentTo(
+        stats.Value.Should().BeEquivalentTo(
             new PlayerStatistics(Nickname, default, 0, 0, 0, 0, 0, 0, 0),
             options => options.Excluding(s => s.HistorySince));
-        stats!.HistorySince.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+        stats.Value.HistorySince.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
     }
 
     [Fact]
@@ -164,7 +168,7 @@ public sealed class ActivityStatisticsHandlersTests
 
         var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
 
-        stats.Should().Be(new PlayerStatistics(Nickname, Start, 0, 0, 0, 0, 0, 0, 0));
+        stats.Value.Should().Be(new PlayerStatistics(Nickname, Start, 0, 0, 0, 0, 0, 0, 0));
     }
 
     [Fact]
@@ -176,6 +180,6 @@ public sealed class ActivityStatisticsHandlersTests
 
         var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
 
-        stats.Should().Be(new PlayerStatistics(Nickname, Start, 4, 25, 10, 10, 20, 30, 40));
+        stats.Value.Should().Be(new PlayerStatistics(Nickname, Start, 4, 25, 10, 10, 20, 30, 40));
     }
 }

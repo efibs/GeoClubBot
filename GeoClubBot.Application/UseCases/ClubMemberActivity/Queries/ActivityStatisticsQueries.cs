@@ -3,6 +3,7 @@ using Entities;
 using MediatR;
 using Microsoft.Extensions.Options;
 using UseCases.OutputPorts.Repositories;
+using Utilities;
 
 namespace UseCases.UseCases.ClubMemberActivity;
 
@@ -12,7 +13,7 @@ public sealed class ActivityStatisticsHandlers(
     IHistoryRepository history,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
     : IRequestHandler<ClubStatisticsQuery, ClubStatistics?>,
-      IRequestHandler<PlayerStatisticsQuery, PlayerStatistics?>
+      IRequestHandler<PlayerStatisticsQuery, Result<PlayerStatistics>>
 {
     private readonly Guid _mainClubId = geoGuessrConfig.Value.MainClub.ClubId;
 
@@ -54,24 +55,29 @@ public sealed class ActivityStatisticsHandlers(
             thirdQuartilePoints, maxPoints);
     }
 
-    public async Task<PlayerStatistics?> Handle(PlayerStatisticsQuery request, CancellationToken cancellationToken)
+    public async Task<Result<PlayerStatistics>> Handle(PlayerStatisticsQuery request, CancellationToken cancellationToken)
     {
         var clubMember = await clubMembers
             .ReadClubMemberByNicknameAsync(request.Nickname, cancellationToken)
             .ConfigureAwait(false);
 
-        if (clubMember?.ClubId is null)
+        if (clubMember is null)
         {
-            return null;
+            return PlayerStatisticsErrors.UnknownPlayer(request.Nickname);
+        }
+
+        if (clubMember.ClubId is not { } clubId)
+        {
+            return PlayerStatisticsErrors.NotInAClub(request.Nickname);
         }
 
         var entries = await history
-            .ReadHistoryEntriesByPlayerNicknameAsync(request.Nickname, clubMember.ClubId.Value, cancellationToken)
+            .ReadHistoryEntriesByPlayerNicknameAsync(request.Nickname, clubId, cancellationToken)
             .ConfigureAwait(false);
 
         if (entries is null)
         {
-            return null;
+            return PlayerStatisticsErrors.UnknownPlayer(request.Nickname);
         }
 
         if (entries.Count == 0)

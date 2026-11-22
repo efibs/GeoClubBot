@@ -101,26 +101,26 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
 
         // Exact values pin down every reduction (average/min/max/quartiles), the chronological
         // ordering, the gain calculation (a-b), and that HistorySince is the EARLIEST timestamp.
-        stats.Should().NotBeNull();
-        stats!.Nickname.Should().Be(nickname);
-        stats.NumHistoryEntries.Should().Be(4);                          // 5 snapshots → 4 gains
-        stats.HistorySince.Should().BeCloseTo(earliest, TimeSpan.FromSeconds(1));
-        stats.AveragePoints.Should().Be(32.5);                           // (10+50+40+30)/4
-        stats.MinPoints.Should().Be(10);
-        stats.FirstQuartilePoints.Should().Be(50);                       // gains[count/4] = gains[1]
-        stats.MedianPoints.Should().Be(40);                              // gains[count/2] = gains[2]
-        stats.ThirdQuartilePoints.Should().Be(30);                       // gains[count*3/4] = gains[3]
-        stats.MaxPoints.Should().Be(50);
+        stats.IsSuccess.Should().BeTrue();
+        stats.Value.Nickname.Should().Be(nickname);
+        stats.Value.NumHistoryEntries.Should().Be(4);                          // 5 snapshots → 4 gains
+        stats.Value.HistorySince.Should().BeCloseTo(earliest, TimeSpan.FromSeconds(1));
+        stats.Value.AveragePoints.Should().Be(32.5);                           // (10+50+40+30)/4
+        stats.Value.MinPoints.Should().Be(10);
+        stats.Value.FirstQuartilePoints.Should().Be(50);                       // gains[count/4] = gains[1]
+        stats.Value.MedianPoints.Should().Be(40);                              // gains[count/2] = gains[2]
+        stats.Value.ThirdQuartilePoints.Should().Be(30);                       // gains[count*3/4] = gains[3]
+        stats.Value.MaxPoints.Should().Be(50);
     }
 
     [Fact]
-    public async Task PlayerStatistics_ReturnsNull_ForUnknownNickname()
+    public async Task PlayerStatistics_FailsAsUnknown_ForUnknownNickname()
     {
         using var host = CreateHost(Guid.NewGuid());
 
         var stats = await host.SendAsync(new PlayerStatisticsQuery($"missing-{Guid.NewGuid():N}"[..20]));
 
-        stats.Should().BeNull();
+        stats.Error.Code.Should().Be("player_statistics.unknown_player");
     }
 
     [Fact]

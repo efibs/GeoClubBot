@@ -20,13 +20,15 @@ public partial class ActivityModule
         public async Task ReadPlayerStatisticsAsync(
             [Autocomplete(typeof(MemberNicknameAutocompleteHandler))] string memberNickname)
         {
-            var stats = await Mediator.Send(new PlayerStatisticsQuery(memberNickname)).ConfigureAwait(false);
+            var result = await Mediator.Send(new PlayerStatisticsQuery(memberNickname)).ConfigureAwait(false);
 
-            if (stats == null)
+            if (result.IsFailure)
             {
-                await RespondAsync($"The player {memberNickname} is not being tracked.", ephemeral: true).ConfigureAwait(false);
+                await RespondAsync(result.Error.Message, ephemeral: true).ConfigureAwait(false);
                 return;
             }
+
+            var stats = result.Value;
 
             var builder = new StringBuilder("# Activity statistics of player ");
             builder.AppendLine(stats.Nickname);
