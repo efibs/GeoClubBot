@@ -324,7 +324,8 @@ public sealed partial class EmbeddingModelSelector(
     }
 
     private IOpenRouterApi Api() =>
-        RestService.For<IOpenRouterApi>(httpClientFactory.CreateClient(RefitChatModelClient.HttpClientName));
+        RestService.ForGenerated<IOpenRouterApi>(
+            httpClientFactory.CreateClient(RefitChatModelClient.HttpClientName), OpenRouterJsonContext.Default);
 
     [LoggerMessage(LogLevel.Information, "Embedding with {ModelId} ({Dimensions} dimensions) into collection {Collection}.")]
     static partial void LogChosen(ILogger logger, string modelId, int dimensions, string collection);

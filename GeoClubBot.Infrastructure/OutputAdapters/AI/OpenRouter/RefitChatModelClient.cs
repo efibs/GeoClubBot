@@ -47,7 +47,7 @@ public partial class RefitChatModelClient(
     private const int MaxLoggedBodyLength = 500;
 
     private IOpenRouterApi CreateApi(string clientName = HttpClientName) =>
-        RestService.For<IOpenRouterApi>(httpClientFactory.CreateClient(clientName));
+        RestService.ForGenerated<IOpenRouterApi>(httpClientFactory.CreateClient(clientName), OpenRouterJsonContext.Default);
 
     public async Task<Result<IReadOnlyList<ChatModelDescriptor>>> ReadFreeModelsAsync(
         CancellationToken cancellationToken = default)

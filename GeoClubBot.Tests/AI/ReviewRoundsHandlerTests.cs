@@ -2,12 +2,12 @@ using System.Text.Json;
 using Configuration;
 using Entities;
 using FluentAssertions;
+using Infrastructure.OutputAdapters.GeoGuessr;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
-using Refit;
 using UseCases.OutputPorts.AI;
 using UseCases.OutputPorts.GeoGuessr;
 using UseCases.OutputPorts.Repositories;
@@ -345,7 +345,7 @@ public sealed class ReviewRoundsHandlerTests
         // their names replaced), read the way Refit reads it. Rounds carry streakLocationCode; guesses
         // carry null there, so the guessed country is always the boundaries' to find.
         var json = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "AI", "geoguessr-challenge-highscores-20261113.json"));
-        var highscores = JsonSerializer.Deserialize<ChallengeResultHighscoresDto>(json, SystemTextJsonContentSerializer.GetDefaultJsonSerializerOptions())!;
+        var highscores = JsonSerializer.Deserialize<ChallengeResultHighscoresDto>(json, GeoGuessrJsonContext.Default.Options)!;
         var game = highscores.Items[0].Game;
         game.Rounds.Should().HaveCount(5).And.OnlyContain(round => round.Lat != null && round.Lng != null && round.StreakLocationCode != null);
         game.Player.Guesses.Should().HaveCount(5).And.OnlyContain(guess => guess.Lat != null && guess.DistanceInMeters != null && guess.RoundScoreInPoints != null && guess.StreakLocationCode == null);

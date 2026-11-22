@@ -6,7 +6,7 @@ namespace Infrastructure.OutputAdapters.GeoGuessr;
 public class RefitGeoGuessrClient(IGeoGuessrApi api) : IGeoGuessrClient
 {
     public static RefitGeoGuessrClient FromHttpClient(HttpClient httpClient) =>
-        new(RestService.For<IGeoGuessrApi>(httpClient));
+        new(RestService.ForGenerated<IGeoGuessrApi>(httpClient, GeoGuessrJsonContext.Default));
 
     public Task<List<ClubMemberDto>> ReadClubMembersAsync(Guid clubId, CancellationToken cancellationToken = default) =>
         api.ReadClubMembersAsync(clubId, cancellationToken);
