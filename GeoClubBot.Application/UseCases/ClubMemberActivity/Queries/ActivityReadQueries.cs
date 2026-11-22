@@ -94,26 +94,17 @@ public sealed partial class ActivityReadHandlers(
             .Select(i => startDate.AddDays(i))
             .ToList();
 
-        if (clubMember?.ClubId is not { } clubId)
+        var clubId = clubMember?.ClubId;
+        var memberActivities = new List<ReadClubActivitiesItemDto>();
+        foreach (var feedClubId in FeedsToRead(clubId))
         {
-            return new ClubMemberActivitySummary(
-                Days: daySlots.Select(d => new DayActivity(d, false, 0, 0)).ToList(),
-                TotalXp: 0,
-                StreakDays: 0,
-                BoardMissions: 0,
-                BoardClearBonusXp: 0,
-                JoinedInPeriod: false,
-                JoinedDateTime: DateTimeOffset.UtcNow,
-                PeriodStart: from);
+            var activities = await activityReader
+                .ReadActivitiesSinceAsync(feedClubId, from, cancellationToken)
+                .ConfigureAwait(false);
+
+            memberActivities.AddRange(activities
+                .Where(a => a.UserId == userId && a.RecordedAt >= from && a.RecordedAt <= to));
         }
-
-        var activities = await activityReader
-            .ReadActivitiesSinceAsync(clubId, from, cancellationToken)
-            .ConfigureAwait(false);
-
-        var memberActivities = activities
-            .Where(a => a.UserId == userId && a.RecordedAt >= from && a.RecordedAt <= to)
-            .ToList();
 
         var byDay = memberActivities
             .GroupBy(a => DateOnly.FromDateTime(a.RecordedAt.UtcDateTime))
@@ -133,16 +124,19 @@ public sealed partial class ActivityReadHandlers(
 
         int? ruleXp = null;
         IReadOnlyList<ActivityRequirementResult>? requirements = null;
-        if (isCheckPeriod && geoGuessrConfig.Value.Clubs.Any(c => c.ClubId == clubId))
+        if (isCheckPeriod && clubId is { } checkedClubId && geoGuessrConfig.Value.Clubs.Any(c => c.ClubId == checkedClubId))
         {
-            var rules = ActivityRules.Resolve(activityCheckerConfig.Value, geoGuessrConfig.Value.GetClub(clubId));
+            var rules = ActivityRules.Resolve(activityCheckerConfig.Value, geoGuessrConfig.Value.GetClub(checkedClubId));
             var evaluation = ActivityRuleEvaluator.Evaluate(
                 ClubActivityEntries.From(memberActivities, activityKinds), rules, targetFactor: 1);
             ruleXp = evaluation.RuleXp;
             requirements = evaluation.Requirements;
         }
 
-        var (helpedThisWeek, helpedLastWeek) = await CountHelpsAsync(clubId, userId, cancellationToken).ConfigureAwait(false);
+        // The boards are the current club's; one who left has no board any more.
+        var (helpedThisWeek, helpedLastWeek) = clubId is { } boardClubId
+            ? await CountHelpsAsync(boardClubId, userId, cancellationToken).ConfigureAwait(false)
+            : (null, null);
         var missionCompletion = await ComputeMissionCompletionAsync(userId, from, to, cancellationToken).ConfigureAwait(false);
 
         return new ClubMemberActivitySummary(
@@ -151,8 +145,9 @@ public sealed partial class ActivityReadHandlers(
             StreakDays: memberActivities.Count(activityKinds.IsDailyChallenge),
             BoardMissions: memberActivities.Count(activityKinds.IsBoardMission),
             BoardClearBonusXp: memberActivities.Where(activityKinds.IsBoardClearBonus).Sum(a => a.XpReward),
-            JoinedInPeriod: clubMember.JoinedAt >= from,
-            JoinedDateTime: clubMember.JoinedAt,
+            // The join date of one who left is the one of the club they left: no "joined" line for them.
+            JoinedInPeriod: clubId is not null && clubMember!.JoinedAt >= from,
+            JoinedDateTime: clubMember?.JoinedAt ?? DateTimeOffset.UtcNow,
             RuleXp: ruleXp,
             Requirements: requirements,
             HelpedThisWeek: helpedThisWeek,
@@ -160,6 +155,14 @@ public sealed partial class ActivityReadHandlers(
             PeriodStart: from,
             MissionCompletion: missionCompletion);
     }
+
+    /// <summary>
+    /// The feeds holding the member's entries: their club's. One who left (or was never synced) has no
+    /// club any more, yet what they did before leaving stays in the feed of the club they left, so every
+    /// configured club's feed is read for them (#144).
+    /// </summary>
+    private IEnumerable<Guid> FeedsToRead(Guid? clubId) =>
+        clubId is { } id ? [id] : geoGuessrConfig.Value.Clubs.Select(c => c.ClubId).Distinct();
 
     /// <summary>Over the view's own period, like everything else the view shows.</summary>
     private async Task<MissionCompletionTimes?> ComputeMissionCompletionAsync(

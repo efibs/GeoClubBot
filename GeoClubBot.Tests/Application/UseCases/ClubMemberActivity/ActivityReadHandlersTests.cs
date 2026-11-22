@@ -28,6 +28,7 @@ public sealed class ActivityReadHandlersTests
     private readonly IClubMissionBoardReader _boardReader = Substitute.For<IClubMissionBoardReader>();
     private readonly IMissionClaimRepository _missionClaims = Substitute.For<IMissionClaimRepository>();
     private readonly Guid _mainClubId = Guid.NewGuid();
+    private readonly Guid _secondClubId = Guid.NewGuid();
 
     public ActivityReadHandlersTests()
     {
@@ -42,7 +43,11 @@ public sealed class ActivityReadHandlersTests
             SyncSchedule = "0 0 0 * * ?",
             ActivityNcfaToken = "x",
             UserProfileNcfaToken = "x",
-            Clubs = [new GeoGuessrClubEntry { ClubId = _mainClubId, NcfaToken = "x", IsMain = true }],
+            Clubs =
+            [
+                new GeoGuessrClubEntry { ClubId = _mainClubId, NcfaToken = "x", IsMain = true },
+                new GeoGuessrClubEntry { ClubId = _secondClubId, NcfaToken = "x" }
+            ],
         });
         var activityChecker = new ActivityCheckerConfigurationBuilder()
             .WithMinXp(0)
@@ -272,6 +277,77 @@ public sealed class ActivityReadHandlersTests
         await _missionClaims.DidNotReceiveWithAnyArgs().ReadClaimsOfUserAsync(default!, default, default);
     }
 
+    [Fact]
+    public async Task GetActivityLastDays_ShowsWhatAMemberWhoLeftDidBeforeLeaving()
+    {
+        // #144: a member who left has no club any more, but their entries stay in the club's feed.
+        var userId = "user-1";
+        ArrangeFormerMember(userId);
+        ArrangeActivities(
+            ClubActivities.Challenge(userId, DateTimeOffset.UtcNow.AddDays(-2)),
+            ClubActivities.BoardMission(userId, DateTimeOffset.UtcNow.AddDays(-2)),
+            ClubActivities.Challenge("someone-else"));
+        ArrangeActivities(_secondClubId, ClubActivities.Challenge(userId, DateTimeOffset.UtcNow.AddDays(-1)));
+
+        var result = await CreateHandler().Handle(new GetActivityLastDaysQuery(userId, DaysBack: 7), CancellationToken.None);
+
+        result.StreakDays.Should().Be(2, "every configured club's feed is read for one who left");
+        result.BoardMissions.Should().Be(1);
+        result.TotalXp.Should().Be(60);
+        result.Days[^3].ChallengeDone.Should().BeTrue();
+        result.Days[^2].ChallengeDone.Should().BeTrue();
+        result.JoinedInPeriod.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_ReadsNoBoard_ForAMemberWhoLeft()
+    {
+        var userId = "user-1";
+        ArrangeFormerMember(userId);
+        ArrangeActivities();
+        ArrangeActivities(_secondClubId);
+
+        var result = await CreateHandler().Handle(new GetActivityLastDaysQuery(userId, DaysBack: 7), CancellationToken.None);
+
+        result.HelpedThisWeek.Should().BeNull();
+        await _boardReader.DidNotReceive().ReadCurrentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetActivityLastDays_ReadsOnlyTheirOwnClubsFeed_ForACurrentMember()
+    {
+        var userId = "user-1";
+        ArrangeMember(userId);
+        ArrangeActivities();
+
+        await CreateHandler().Handle(new GetActivityLastDaysQuery(userId, DaysBack: 7), CancellationToken.None);
+
+        await _activityReader.DidNotReceive()
+            .ReadActivitiesSinceAsync(_secondClubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetActivityThisWeek_HasNoRequirements_ForAMemberWhoLeft()
+    {
+        var userId = "user-1";
+        ArrangeFormerMember(userId);
+        ArrangeActivities(ClubActivities.Challenge(userId));
+        ArrangeActivities(_secondClubId);
+
+        var result = await CreateHandler().Handle(new GetActivityThisWeekQuery(userId), CancellationToken.None);
+
+        result.StreakDays.Should().Be(1);
+        result.RequirementResults.Should().BeEmpty("no club's check judges one who left");
+    }
+
+    private void ArrangeFormerMember(string userId) =>
+        _clubMembers.ReadClubMemberByUserIdAsync(userId, Arg.Any<CancellationToken>())
+            .Returns(new ClubMemberBuilder()
+                .WithUserId(userId)
+                .InClub(null)
+                .JoinedAt(DateTimeOffset.UtcNow.AddDays(-3))
+                .Build());
+
     private void ArrangeMember(string userId) =>
         _clubMembers.ReadClubMemberByUserIdAsync(userId, Arg.Any<CancellationToken>())
             .Returns(new ClubMemberBuilder()
@@ -281,7 +357,10 @@ public sealed class ActivityReadHandlersTests
                 .Build());
 
     private void ArrangeActivities(params ReadClubActivitiesItemDto[] activities) =>
+        ArrangeActivities(_mainClubId, activities);
+
+    private void ArrangeActivities(Guid clubId, params ReadClubActivitiesItemDto[] activities) =>
         _activityReader
-            .ReadActivitiesSinceAsync(_mainClubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
+            .ReadActivitiesSinceAsync(clubId, Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>())
             .Returns(activities);
 }
