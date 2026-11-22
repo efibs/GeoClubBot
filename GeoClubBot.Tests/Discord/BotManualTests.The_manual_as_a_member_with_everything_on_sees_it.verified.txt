@@ -79,7 +79,7 @@ A rolling window instead of the check week, so no requirements. GeoGuessr's feed
 How the club is doing today, and this week's mission boards.
 
 **`/club-stats todays-xp`** — A club's XP so far today, streaks kept, missions finished and claimed
-- `club-name` *(optional)* — The club; the main club if left out
+- `club` *(optional)* — The club; the main club if left out
 Today is the UTC day; claims count in the current claim cycle.
 
 **`/club-stats board`** — This week's club mission boards and who holds which open mission
@@ -103,7 +103,7 @@ Current and peak rating per mode (overall, move, no-move, NMPZ), win streak, gue
 -# Also: Right-click a member → Apps → **GeoGuessr Ranked Stats**
 
 **`/user-info discord-user`** — The Discord member linked to a GeoGuessr nickname
-- `nickname` — The GeoGuessr nickname, as suggested
+- `player` — The GeoGuessr player, as suggested
 
 # 🗺️ Country challenges
 Themed country challenges on fixed days, with points for the top places and a leaderboard.

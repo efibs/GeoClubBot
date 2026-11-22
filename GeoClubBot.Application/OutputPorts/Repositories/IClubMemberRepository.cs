@@ -1,12 +1,11 @@
 using Entities;
+using UseCases.OutputPorts.Projections;
 
 namespace UseCases.OutputPorts.Repositories;
 
 public interface IClubMemberRepository
 {
     void AddClubMember(ClubMember clubMember);
-
-    Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname, CancellationToken cancellationToken = default);
 
     Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId, CancellationToken cancellationToken = default);
 
@@ -16,7 +15,7 @@ public interface IClubMemberRepository
 
     Task<List<ClubMember>> ReadClubMembersAsync(CancellationToken cancellationToken = default);
 
-    Task<List<string>> ReadAllNicknamesAsync(CancellationToken cancellationToken = default);
+    Task<List<UserNameProjection>> ReadAllMemberNamesAsync(CancellationToken cancellationToken = default);
 
     Task<List<ClubMember>> ReadClubMembersByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
 

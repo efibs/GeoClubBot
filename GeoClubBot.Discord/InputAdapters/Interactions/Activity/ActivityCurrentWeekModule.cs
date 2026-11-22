@@ -20,27 +20,23 @@ public partial class ActivityModule
         [SlashCommand("by-nickname", "A member's activity since the last weekly check, by GeoGuessr nickname")]
         [HelpDetail("The same view as `/my-activity current-week`, for anyone.")]
         public Task CurrentWeekByNicknameAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))]
-            [Summary(description: "The member's GeoGuessr nickname, as suggested")] string nickname) =>
+            [Autocomplete(typeof(MemberAutocompleteHandler))]
+            [Summary(description: "The member, as suggested")] string member) =>
             ExecuteAsync(
                 async ct =>
                 {
-                    var geoGuessrUser = await Mediator
-                        .Send(new GetGeoGuessrUserByNicknameQuery(nickname), ct)
-                        .ConfigureAwait(false);
-
-                    if (geoGuessrUser.IsFailure)
+                    var geoGuessrUser = await ReadPickedUserAsync(member, ct).ConfigureAwait(false);
+                    if (geoGuessrUser is null)
                     {
-                        await FollowupAsync($"No club member with the GeoGuessr nickname '**{nickname}**' was found.")
-                            .ConfigureAwait(false);
+                        await FollowupAsync(UnknownMemberMessage).ConfigureAwait(false);
                         return;
                     }
 
                     var activity = await Mediator
-                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.Value.UserId), ct)
+                        .Send(new GetActivityThisWeekQuery(geoGuessrUser.UserId), ct)
                         .ConfigureAwait(false);
 
-                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Value.Nickname).Build())
+                    await FollowupAsync(embed: BuildWeekActivityEmbed(activity, geoGuessrUser.Nickname).Build())
                         .ConfigureAwait(false);
                 },
                 ephemeral: true,

@@ -23,19 +23,27 @@ public partial class ActivityModule
 
         [SlashCommand("add", "Give a member a strike by hand")]
         public async Task CreateStrikeAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname,
+            [Autocomplete(typeof(MemberAutocompleteHandler))][Summary(description: "The member, as suggested")] string member,
             [Summary(description: "The strike's date, as YYYY-MM-DD")]
             DateTime strikeDate)
         {
             strikeDate = DateTime.SpecifyKind(strikeDate, DateTimeKind.Utc);
 
+            var user = await ReadPickedUserAsync(member).ConfigureAwait(false);
+            if (user is null)
+            {
+                await RespondAsync(UnknownMemberMessage, ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
+            var memberNickname = user.Nickname;
             var result = await Mediator
-                .Send(new AddStrikeCommand(memberNickname, strikeDate))
+                .Send(new AddStrikeCommand(user.UserId, strikeDate))
                 .ConfigureAwait(false);
 
             if (result.IsFailure)
             {
-                await RespondAsync($"Strike could not be added for player '{memberNickname}'. Is the nickname wrong?",
+                await RespondAsync($"Strike could not be added for player '{memberNickname}': {FriendlyMessageFor(result.Error)}",
                     ephemeral: true).ConfigureAwait(false);
             }
             else
@@ -49,10 +57,10 @@ public partial class ActivityModule
 
         [SlashCommand("read", "The strikes a member has now")]
         public async Task ReadStrikesAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname)
+            [Autocomplete(typeof(MemberAutocompleteHandler))][Summary(description: "The member, as suggested")] string member)
         {
             var result = await Mediator
-                .Send(new ReadMemberStrikesQuery(memberNickname))
+                .Send(new ReadMemberStrikesQuery(member))
                 .ConfigureAwait(false);
 
             if (result.IsFailure)
@@ -62,6 +70,7 @@ public partial class ActivityModule
             }
 
             var strikeStatus = result.Value;
+            var memberNickname = strikeStatus.MemberNickname;
 
             if (strikeStatus.Strikes.Count == 0)
             {

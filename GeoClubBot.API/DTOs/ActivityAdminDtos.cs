@@ -18,6 +18,9 @@ public record AdminRelevantStrikeDto(string Nickname, int NumActiveStrikes);
 
 public record AdminMemberStrikesDto(int NumActiveStrikes, IReadOnlyList<AdminStrikeDto> Strikes);
 
+/// <summary>A tracked member for the admin member picker: the nickname is shown, the user id is sent.</summary>
+public record AdminMemberDto(string UserId, string Nickname);
+
 public record AdminExcuseDto(Guid ExcuseId, string Nickname, DateTimeOffset From, DateTimeOffset To);
 
 /// <summary>
@@ -49,11 +52,11 @@ public record ClubStatisticsDto(
 
 // --- Admin write requests/responses ---
 
-public record AddStrikeRequest(string MemberNickname, DateTimeOffset StrikeDate);
+public record AddStrikeRequest(string MemberUserId, DateTimeOffset StrikeDate);
 
 public record StrikeCreatedDto(Guid StrikeId);
 
-public record AddExcuseRequest(string MemberNickname, DateTimeOffset From, DateTimeOffset To);
+public record AddExcuseRequest(string MemberUserId, DateTimeOffset From, DateTimeOffset To);
 
 public record ExcuseCreatedDto(Guid ExcuseId);
 

@@ -1,6 +1,7 @@
 using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
+using UseCases.OutputPorts.Projections;
 using UseCases.OutputPorts.Repositories;
 
 namespace Infrastructure.OutputAdapters.Repositories;
@@ -12,15 +13,6 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         // Mark only the club member as added (not its navigation properties) to avoid
         // re-inserting an already-tracked User entity.
         dbContext.Entry(clubMember).State = EntityState.Added;
-    }
-
-    public async Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname, CancellationToken cancellationToken = default)
-    {
-        return await dbContext.ClubMembers
-            .AsNoTracking()
-            .Include(m => m.User)
-            .SingleOrDefaultAsync(m => m.User.Nickname == nickname, cancellationToken)
-            .ConfigureAwait(false);
     }
 
     public async Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId, CancellationToken cancellationToken = default)
@@ -66,14 +58,14 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .ConfigureAwait(false);
     }
 
-    public async Task<List<string>> ReadAllNicknamesAsync(CancellationToken cancellationToken = default)
+    public async Task<List<UserNameProjection>> ReadAllMemberNamesAsync(CancellationToken cancellationToken = default)
     {
         // Projection-only read for autocomplete: never materializes full ClubMember graphs.
         return await dbContext.ClubMembers
             .AsNoTracking()
-            .Select(m => m.User.Nickname)
-            .Distinct()
-            .OrderBy(n => n)
+            .OrderBy(m => m.User.Nickname)
+            .ThenBy(m => m.UserId)
+            .Select(m => new UserNameProjection(m.UserId, m.User.Nickname))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

@@ -6,8 +6,8 @@ public sealed class AddStrikeCommandValidator : AbstractValidator<AddStrikeComma
 {
     public AddStrikeCommandValidator()
     {
-        RuleFor(x => x.MemberNickname)
-            .NotEmpty().WithMessage("Member nickname must not be empty.");
+        RuleFor(x => x.MemberUserId)
+            .NotEmpty().WithMessage("Member user id must not be empty.");
 
         // Allow up to one hour of clock skew when admins backdate or "now" the strike.
         RuleFor(x => x.StrikeDate)

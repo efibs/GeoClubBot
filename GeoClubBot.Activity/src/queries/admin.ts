@@ -11,6 +11,7 @@ import {
   adminFetchLastCheckTime,
   adminFetchLinkRequests,
   adminFetchMemberActivity,
+  adminFetchMembers,
   adminFetchMemberStatistics,
   adminFetchMemberStrikes,
   adminFetchRelevantStrikes,
@@ -22,7 +23,7 @@ import {
   adminUpdateExcuse,
   toErrorMessage,
 } from '../api';
-import { memberLookupNickname } from '../state/ui';
+import { memberLookup } from '../state/ui';
 import { queryKeys } from './keys';
 import type { AdminMemberStrikesDto, PlayerStatisticsDto, WeekActivityDto } from '../types';
 
@@ -79,8 +80,7 @@ export function useAdminStrikes() {
   const add = useSectionMutation(
     mutationError,
     queryKeys.admin.strikes,
-    (vars: { nickname: string; strikeDate: string }) =>
-      adminAddStrike(vars.nickname, vars.strikeDate),
+    (vars: { userId: string; strikeDate: string }) => adminAddStrike(vars.userId, vars.strikeDate),
   );
   const revoke = useSectionMutation(mutationError, queryKeys.admin.strikes, (strikeId: string) =>
     adminRevokeStrike(strikeId),
@@ -98,7 +98,7 @@ export function useAdminStrikes() {
     busy: anyPending(add, revoke, unrevoke),
     addPending: add.isPending,
     pendingStrikeId: computed(() => revoking.value ?? unrevoking.value),
-    add: (nickname: string, strikeDate: string) => add.mutateAsync({ nickname, strikeDate }),
+    add: (userId: string, strikeDate: string) => add.mutateAsync({ userId, strikeDate }),
     revoke: (strikeId: string) => revoke.mutateAsync(strikeId),
     unrevoke: (strikeId: string) => unrevoke.mutateAsync(strikeId),
   });
@@ -114,8 +114,8 @@ export function useAdminExcuses() {
   const add = useSectionMutation(
     mutationError,
     queryKeys.admin.excuses,
-    (vars: { nickname: string; from: string; to: string }) =>
-      adminAddExcuse(vars.nickname, vars.from, vars.to),
+    (vars: { userId: string; from: string; to: string }) =>
+      adminAddExcuse(vars.userId, vars.from, vars.to),
   );
   const update = useSectionMutation(
     mutationError,
@@ -134,7 +134,7 @@ export function useAdminExcuses() {
     busy: anyPending(add, update, remove),
     submitting: computed(() => add.isPending.value || update.isPending.value),
     removingId: pendingVariable(remove),
-    add: (nickname: string, from: string, to: string) => add.mutateAsync({ nickname, from, to }),
+    add: (userId: string, from: string, to: string) => add.mutateAsync({ userId, from, to }),
     update: (excuseId: string, from: string, to: string) =>
       update.mutateAsync({ excuseId, from, to }),
     remove: (excuseId: string) => remove.mutateAsync(excuseId),
@@ -203,11 +203,11 @@ interface MemberLookupResult {
 }
 
 /** A 404 on any part just means "nothing recorded there"; anything else is a real lookup failure. */
-async function lookupMember(nickname: string): Promise<MemberLookupResult> {
+async function lookupMember(userId: string, nickname: string): Promise<MemberLookupResult> {
   const [strikes, activity, statistics] = await Promise.allSettled([
-    adminFetchMemberStrikes(nickname),
-    adminFetchMemberActivity(nickname),
-    adminFetchMemberStatistics(nickname),
+    adminFetchMemberStrikes(userId),
+    adminFetchMemberActivity(userId),
+    adminFetchMemberStatistics(userId),
   ]);
 
   const failure = [strikes, activity, statistics].find(
@@ -227,13 +227,21 @@ async function lookupMember(nickname: string): Promise<MemberLookupResult> {
   };
 }
 
-/** Member lookup driven by a persisted nickname ref, so the result survives a tab switch. */
+/** Every tracked member, for the member pickers. Shared by every admin view through the cache. */
+export function useAdminMembers() {
+  return useQuery({
+    queryKey: queryKeys.admin.members,
+    queryFn: () => adminFetchMembers(),
+  });
+}
+
+/** Member lookup driven by a persisted member ref, so the result survives a tab switch. */
 export function useAdminMemberLookup() {
-  const nickname = memberLookupNickname;
+  const member = memberLookup;
   const query = useQuery({
-    queryKey: computed(() => queryKeys.admin.lookup(nickname.value)),
-    queryFn: () => lookupMember(nickname.value),
-    enabled: computed(() => nickname.value.trim().length > 0),
+    queryKey: computed(() => queryKeys.admin.lookup(member.value?.userId ?? '')),
+    queryFn: () => lookupMember(member.value!.userId, member.value!.nickname),
+    enabled: computed(() => member.value !== null),
     placeholderData: keepPreviousData,
   });
 
@@ -243,9 +251,9 @@ export function useAdminMemberLookup() {
     error: computed(() =>
       query.error.value ? toErrorMessage(query.error.value, 'Failed to look up the member.') : null,
     ),
-    nickname,
-    search: (value: string) => {
-      nickname.value = value.trim();
+    userId: computed(() => member.value?.userId ?? null),
+    search: (userId: string, nickname: string) => {
+      member.value = { userId, nickname };
     },
   });
 }

@@ -85,10 +85,11 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
         "/api/v1/activity/admin/last-check-time",
         "/api/v1/activity/admin/strikes",
         "/api/v1/activity/admin/strikes/relevant",
-        "/api/v1/activity/admin/members/SomeNickname/strikes",
+        "/api/v1/activity/admin/members",
+        "/api/v1/activity/admin/members/some-user-id/strikes",
         "/api/v1/activity/admin/excuses",
-        "/api/v1/activity/admin/members/SomeNickname/activity",
-        "/api/v1/activity/admin/members/SomeNickname/statistics",
+        "/api/v1/activity/admin/members/some-user-id/activity",
+        "/api/v1/activity/admin/members/some-user-id/statistics",
         "/api/v1/activity/admin/club/statistics",
         "/api/v1/activity/admin/link-requests");
 
@@ -191,14 +192,26 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GET_member_strikes_returns_the_status_for_a_nickname()
+    public async Task GET_members_lists_the_tracked_members_for_the_picker()
+    {
+        await SeedMemberAsync();
+
+        var response = await _client.SendAsync(AuthorizedGet("/api/v1/activity/admin/members", AdminToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var members = await response.Content.ReadFromJsonAsync<List<AdminMemberDto>>();
+        members.Should().Contain(new AdminMemberDto(_memberUserId, _memberNickname));
+    }
+
+    [Fact]
+    public async Task GET_member_strikes_returns_the_status_for_a_user_id()
     {
         await SeedMemberAsync();
         await SeedStrikeAsync(revoked: false);
         await SeedStrikeAsync(revoked: true);
 
         var response = await _client.SendAsync(
-            AuthorizedGet($"/api/v1/activity/admin/members/{_memberNickname}/strikes", AdminToken));
+            AuthorizedGet($"/api/v1/activity/admin/members/{_memberUserId}/strikes", AdminToken));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var dto = await response.Content.ReadFromJsonAsync<AdminMemberStrikesDto>();
@@ -213,7 +226,7 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
         await SeedExcuseAsync(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(6));
 
         var response = await _client.SendAsync(
-            AuthorizedGet($"/api/v1/activity/admin/excuses?nickname={_memberNickname}", AdminToken));
+            AuthorizedGet($"/api/v1/activity/admin/excuses?userId={_memberUserId}", AdminToken));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var excuses = await response.Content.ReadFromJsonAsync<List<AdminExcuseDto>>();
@@ -221,12 +234,12 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GET_member_activity_returns_the_window_for_a_nickname()
+    public async Task GET_member_activity_returns_the_window_for_a_user_id()
     {
         await SeedMemberAsync();
 
         var response = await _client.SendAsync(
-            AuthorizedGet($"/api/v1/activity/admin/members/{_memberNickname}/activity?daysBack=7", AdminToken));
+            AuthorizedGet($"/api/v1/activity/admin/members/{_memberUserId}/activity?daysBack=7", AdminToken));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var dto = await response.Content.ReadFromJsonAsync<WeekActivityDto>();
@@ -240,7 +253,7 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
 
         // Add
         var addResponse = await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/admin/strikes",
-            new AddStrikeRequest(_memberNickname, DateTimeOffset.UtcNow));
+            new AddStrikeRequest(_memberUserId, DateTimeOffset.UtcNow));
         addResponse.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await addResponse.Content.ReadFromJsonAsync<StrikeCreatedDto>();
 
@@ -269,7 +282,7 @@ public sealed class ActivityAdminApiE2ETests : IAsyncLifetime
 
         // Add
         var addResponse = await SendJsonAsync(HttpMethod.Post, "/api/v1/activity/admin/excuses",
-            new AddExcuseRequest(_memberNickname, from, to));
+            new AddExcuseRequest(_memberUserId, from, to));
         addResponse.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await addResponse.Content.ReadFromJsonAsync<ExcuseCreatedDto>();
 

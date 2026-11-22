@@ -129,21 +129,6 @@ public sealed class ReadOrSyncClubMemberHandlerTests
         result.Error.Code.Should().Be("club_member.not_found");
     }
 
-    [Fact]
-    public async Task ByNickname_ReturnsLocalMember_WhenAlreadyPersisted()
-    {
-        var existing = new ClubMemberBuilder()
-            .WithUserId("user-1").WithNickname("Player1").InClub(ClubId).Build();
-        _members.ReadClubMemberByNicknameAsync("Player1", Arg.Any<CancellationToken>())
-            .Returns(existing);
-
-        var result = await CreateHandler().Handle(
-            new ReadOrSyncClubMemberByNicknameQuery("Player1"), CancellationToken.None);
-
-        result.IsSuccess.Should().BeTrue();
-        result.Value.User.Nickname.Should().Be("Player1");
-    }
-
     private static ClubMemberDto BuildApiMember(string userId, string nickname, int xp, DateTimeOffset joinedAt) =>
         new()
         {

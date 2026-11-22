@@ -7,11 +7,11 @@ using UseCases.UseCases.Users;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 
 /// <summary>
-/// Suggests the nicknames of all linked GeoGuessr users (not just club members). Used by
-/// commands that make sense for any linked user, e.g. <c>/user-info discord-user</c>. The
-/// option value is the nickname.
+/// Suggests all linked GeoGuessr users (not just club members) by nickname. Used by commands that
+/// make sense for any linked user, e.g. <c>/user-info discord-user</c>. The option value is the
+/// GeoGuessr user id.
 /// </summary>
-public class LinkedUserNicknameAutocompleteHandler : AutocompleteHandler
+public class LinkedUserAutocompleteHandler : AutocompleteHandler
 {
     public override async Task<AutocompletionResult> GenerateSuggestionsAsync(
         IInteractionContext context,
@@ -20,10 +20,10 @@ public class LinkedUserNicknameAutocompleteHandler : AutocompleteHandler
         IServiceProvider services)
     {
         var mediator = services.GetRequiredService<ISender>();
-        var nicknames = await mediator.Send(new GetLinkedUserNicknamesQuery()).ConfigureAwait(false);
+        var users = await mediator.Send(new GetLinkedUserNamesQuery()).ConfigureAwait(false);
 
         var input = autocompleteInteraction.Data.Current.Value?.ToString() ?? string.Empty;
 
-        return AutocompletionResult.FromSuccess(NicknameSuggestions.Build(nicknames, input));
+        return AutocompletionResult.FromSuccess(UserSuggestions.Build(users, input));
     }
 }

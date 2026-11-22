@@ -1,6 +1,7 @@
 using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
+using UseCases.OutputPorts.Projections;
 using UseCases.OutputPorts.Repositories;
 
 namespace Infrastructure.OutputAdapters.Repositories;
@@ -56,15 +57,15 @@ public class EfGeoGuessrUserRepository(GeoClubBotDbContext dbContext) : IGeoGues
             .ConfigureAwait(false);
     }
 
-    public async Task<List<string>> ReadAllLinkedNicknamesAsync(CancellationToken cancellationToken = default)
+    public async Task<List<UserNameProjection>> ReadAllLinkedUserNamesAsync(CancellationToken cancellationToken = default)
     {
         // Projection-only read for autocomplete: never materializes full GeoGuessrUser entities.
         return await dbContext.GeoGuessrUsers
             .AsNoTracking()
             .Where(u => u.DiscordUserId.HasValue)
-            .Select(u => u.Nickname)
-            .Distinct()
-            .OrderBy(n => n)
+            .OrderBy(u => u.Nickname)
+            .ThenBy(u => u.UserId)
+            .Select(u => new UserNameProjection(u.UserId, u.Nickname))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

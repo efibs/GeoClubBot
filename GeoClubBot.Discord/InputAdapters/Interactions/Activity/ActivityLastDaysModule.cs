@@ -20,29 +20,25 @@ public partial class ActivityModule
         [SlashCommand("by-nickname", "A member's activity over the last days, by GeoGuessr nickname")]
         [HelpDetail("The same view as `/my-activity last-days`, for anyone.")]
         public Task LastDaysByNicknameAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))]
-            [Summary(description: "The member's GeoGuessr nickname, as suggested")] string nickname,
+            [Autocomplete(typeof(MemberAutocompleteHandler))]
+            [Summary(description: "The member, as suggested")] string member,
             [Summary(description: "How many days back to include")]
             [MinValue(1)] [MaxValue(60)] int days = 7) =>
             ExecuteAsync(
                 async ct =>
                 {
-                    var geoGuessrUser = await Mediator
-                        .Send(new GetGeoGuessrUserByNicknameQuery(nickname), ct)
-                        .ConfigureAwait(false);
-
-                    if (geoGuessrUser.IsFailure)
+                    var geoGuessrUser = await ReadPickedUserAsync(member, ct).ConfigureAwait(false);
+                    if (geoGuessrUser is null)
                     {
-                        await FollowupAsync($"No club member with the GeoGuessr nickname '**{nickname}**' was found.")
-                            .ConfigureAwait(false);
+                        await FollowupAsync(UnknownMemberMessage).ConfigureAwait(false);
                         return;
                     }
 
                     var activity = await Mediator
-                        .Send(new GetActivityLastDaysQuery(geoGuessrUser.Value.UserId, days), ct)
+                        .Send(new GetActivityLastDaysQuery(geoGuessrUser.UserId, days), ct)
                         .ConfigureAwait(false);
 
-                    await FollowupAsync(embed: BuildLastDaysActivityEmbed(activity, geoGuessrUser.Value.Nickname, days).Build())
+                    await FollowupAsync(embed: BuildLastDaysActivityEmbed(activity, geoGuessrUser.Nickname, days).Build())
                         .ConfigureAwait(false);
                 },
                 ephemeral: true,

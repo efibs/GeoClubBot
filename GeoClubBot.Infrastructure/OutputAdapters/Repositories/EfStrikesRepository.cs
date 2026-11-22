@@ -38,16 +38,13 @@ public class EfStrikesRepository(GeoClubBotDbContext dbContext) : IStrikesReposi
             .ConfigureAwait(false);
     }
 
-    public async Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname, CancellationToken cancellationToken = default)
+    public async Task<List<ClubMemberStrike>> ReadStrikesByMemberUserIdAsync(string memberUserId, CancellationToken cancellationToken = default)
     {
-        var member = await dbContext.ClubMembers
+        return await dbContext.ClubMemberStrikes
             .AsNoTracking()
-            .Include(m => m.Strikes)
-            .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname, cancellationToken)
+            .Where(s => s.UserId == memberUserId)
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-
-        return member?.Strikes;
     }
 
     public async Task<List<ClubMemberStrike>> ReadAllStrikesAsync(CancellationToken cancellationToken = default)

@@ -16,7 +16,8 @@ public sealed class ClubQueriesHandlerTests
 {
     private static readonly Guid MainClub = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly global::Entities.Club Main = global::Entities.Club.Create(MainClub, "Main", 1);
-    private static readonly global::Entities.Club Other = global::Entities.Club.Create(Guid.NewGuid(), "Other", 1);
+    private static readonly Guid OtherClub = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    private static readonly global::Entities.Club Other = global::Entities.Club.Create(OtherClub, "Other", 1);
 
     private readonly IClubRepository _clubs = Substitute.For<IClubRepository>();
     private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
@@ -26,7 +27,7 @@ public sealed class ClubQueriesHandlerTests
     public ClubQueriesHandlerTests()
     {
         _clubs.ReadClubByIdAsync(MainClub, Arg.Any<CancellationToken>()).Returns(Main);
-        _clubs.ReadClubByNameAsync("Other", Arg.Any<CancellationToken>()).Returns(Other);
+        _clubs.ReadClubByIdAsync(OtherClub, Arg.Any<CancellationToken>()).Returns(Other);
         _activities.ReadTodaysActivitiesAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns([]);
         _boards.ReadCurrentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((Entities.ClubMissionBoardWeek?)null);
         _members.ReadClubMembersByClubIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns([]);
@@ -42,21 +43,18 @@ public sealed class ClubQueriesHandlerTests
             new GeoGuessrConfigurationBuilder().WithClub(MainClub).BuildOptions(),
             Options.Create(new MissionBoardConfiguration()));
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task NoClubName_MeansTheMainClub(string? name)
+    [Fact]
+    public async Task NoClubId_MeansTheMainClub()
     {
-        var club = await CreateHandler().Handle(new GetClubByNameOrDefaultQuery(name), CancellationToken.None);
+        var club = await CreateHandler().Handle(new GetClubByIdOrDefaultQuery(null), CancellationToken.None);
 
         club.Should().BeSameAs(Main);
     }
 
     [Fact]
-    public async Task AClubIsFoundByName()
+    public async Task AClubIsFoundById()
     {
-        var club = await CreateHandler().Handle(new GetClubByNameOrDefaultQuery("Other"), CancellationToken.None);
+        var club = await CreateHandler().Handle(new GetClubByIdOrDefaultQuery(OtherClub), CancellationToken.None);
 
         club.Should().BeSameAs(Other);
     }
@@ -74,18 +72,18 @@ public sealed class ClubQueriesHandlerTests
     [Fact]
     public async Task TodaysXp_OfAnUnknownClub_IsEmpty()
     {
-        var result = await CreateHandler().Handle(new GetClubTodaysXpQuery("Nope"), CancellationToken.None);
+        var result = await CreateHandler().Handle(new GetClubTodaysXpQuery(Guid.NewGuid()), CancellationToken.None);
 
         result.Should().Be(new GetClubTodaysXpResult(null, null, null, null, null, null));
     }
 
     [Theory]
     [InlineData(null, "Main")]
-    [InlineData(" ", "Main")]
-    [InlineData("Other", "Other")]
-    public async Task TodaysXp_IsReadForTheNamedClub_OrTheMainOne(string? name, string expected)
+    [InlineData("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Other")]
+    public async Task TodaysXp_IsReadForTheGivenClub_OrTheMainOne(string? clubId, string expected)
     {
-        var result = await CreateHandler().Handle(new GetClubTodaysXpQuery(name), CancellationToken.None);
+        var result = await CreateHandler().Handle(
+            new GetClubTodaysXpQuery(clubId is null ? null : Guid.Parse(clubId)), CancellationToken.None);
 
         result.ClubName.Should().Be(expected);
     }

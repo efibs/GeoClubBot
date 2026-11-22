@@ -39,6 +39,7 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
                 Clubs = [],
             })));
 
+    /// <returns>The member's user id.</returns>
     private async Task<string> SeedMemberAsync()
     {
         var clubId = Guid.NewGuid();
@@ -52,7 +53,7 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
         seed.Add(ClubMember.Create(user, clubId, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-1)));
         await seed.SaveChangesAsync();
 
-        return nickname;
+        return userId;
     }
 
     private async Task<(string nickname, ClubMemberExcuse excuse)> SeedMemberWithExcuseAsync(
@@ -80,12 +81,12 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
     [Fact]
     public async Task AddExcuse_PersistsAnExcuseForAnExistingMember()
     {
-        var nickname = await SeedMemberAsync();
+        var userId = await SeedMemberAsync();
         var from = DateTimeOffset.UtcNow.AddDays(1);
         var to = DateTimeOffset.UtcNow.AddDays(5);
 
         using var host = CreateHost();
-        var result = await host.SendAsync(new AddExcuseCommand(nickname, from, to));
+        var result = await host.SendAsync(new AddExcuseCommand(userId, from, to));
 
         result.IsSuccess.Should().BeTrue();
 
@@ -175,13 +176,13 @@ public sealed class ExcusesUseCaseIntegrationTests(PostgresFixture fixture)
     // ---- ReadExcuses ------------------------------------------------------
 
     [Fact]
-    public async Task ReadExcuses_ByNickname_ReturnsOnlyThatMembersExcuses()
+    public async Task ReadExcuses_ByUserId_ReturnsOnlyThatMembersExcuses()
     {
-        var (nickname, excuse) = await SeedMemberWithExcuseAsync(
+        var (_, excuse) = await SeedMemberWithExcuseAsync(
             DateTimeOffset.UtcNow.AddDays(-2), DateTimeOffset.UtcNow.AddDays(2));
 
         using var host = CreateHost();
-        var excuses = await host.SendAsync(new ReadExcusesQuery(nickname));
+        var excuses = await host.SendAsync(new ReadExcusesQuery(excuse.UserId));
 
         excuses.Should().ContainSingle();
         excuses[0].ExcuseId.Should().Be(excuse.ExcuseId);

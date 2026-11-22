@@ -110,7 +110,7 @@ Linked members are shown with their Discord handle, but nobody is pinged.
 **`/member-activity last-check-time`** — When the weekly activity check last ran
 
 **`/member-activity current-week by-nickname`** — A member's activity since the last weekly check, by GeoGuessr nickname
-- `nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 The same view as `/my-activity current-week`, for anyone.
 
 **`/member-activity current-week by-user`** — A member's activity since the last weekly check
@@ -118,7 +118,7 @@ The same view as `/my-activity current-week`, for anyone.
 -# Also: Right-click a member → Apps → **Current Week XP**
 
 **`/member-activity excuse add`** — Excuse a member from the weekly check between two dates
-- `member-nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 - `from` — The first day, as YYYY-MM-DD
 - `to` — The last day, as YYYY-MM-DD
 Both days count. An excused member's targets shrink by the days excused.
@@ -132,7 +132,7 @@ Both days count. An excused member's targets shrink by the days excused.
 - `excuse-id` — The excuse, as suggested
 
 **`/member-activity excuse read`** — A member's excuses
-- `member-nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 
 **`/member-activity excuse read-all`** — Every excuse, past ones included
 
@@ -140,7 +140,7 @@ Both days count. An excused member's targets shrink by the days excused.
 - `upcoming-excuses-num-days` *(optional, default 7)* — How many days ahead an excuse may start
 
 **`/member-activity last-days by-nickname`** — A member's activity over the last days, by GeoGuessr nickname
-- `nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 - `days` *(optional, default 7)* — How many days back to include
 The same view as `/my-activity last-days`, for anyone.
 
@@ -150,11 +150,11 @@ The same view as `/my-activity last-days`, for anyone.
 -# Also: Right-click a member → Apps → **Last 7 Days XP**
 
 **`/member-activity strike add`** — Give a member a strike by hand
-- `member-nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 - `strike-date` — The strike's date, as YYYY-MM-DD
 
 **`/member-activity strike read`** — The strikes a member has now
-- `member-nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 
 **`/member-activity strike read-all`** — Every strike, expired and revoked ones included
 
@@ -170,27 +170,24 @@ Asks you to confirm first.
 - `strike-id` — The strike, as suggested
 
 **`/member-activity statistics player`** — A member's activity statistics
-- `member-nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 
 **`/member-activity statistics club`** — The club's activity statistics
 
 **`/member-activity statistics player-history`** — A chart of a member's XP over the weekly checks
-- `member-nickname` — The member's GeoGuessr nickname, as suggested
+- `member` — The member, as suggested
 - `max-num-entries` — How many checks to show at most
-- `club-name` *(optional)* — The club; the main club if left out
--- Page 1/2
+- `club` *(optional)* — The club; the member's current club if left out
 
-# 🛡️ Activity checks
 **`/member-activity statistics average-leaderboard`** — Members ranked by their average rule XP over the last checks
-- `club-name` *(optional)* — The club; the main club if left out
+- `club` *(optional)* — The club; the main club if left out
 - `periods` *(optional, default 4)* — How many checks the average covers
--- Page 2/2
 
 # 🏆 Club stats
 How the club is doing today, and this week's mission boards.
 
 **`/club-stats todays-xp`** — A club's XP so far today, streaks kept, missions finished and claimed
-- `club-name` *(optional)* — The club; the main club if left out
+- `club` *(optional)* — The club; the main club if left out
 Today is the UTC day; claims count in the current claim cycle.
 
 **`/club-stats board`** — This week's club mission boards and who holds which open mission
@@ -214,7 +211,7 @@ Current and peak rating per mode (overall, move, no-move, NMPZ), win streak, gue
 -# Also: Right-click a member → Apps → **GeoGuessr Ranked Stats**
 
 **`/user-info discord-user`** — The Discord member linked to a GeoGuessr nickname
-- `nickname` — The GeoGuessr nickname, as suggested
+- `player` — The GeoGuessr player, as suggested
 
 # 🗺️ Country challenges
 Themed country challenges on fixed days, with points for the top places and a leaderboard.

@@ -10,11 +10,11 @@ import { defaultHistoryDepth } from '../format';
 /** Selected leaderboard/history depth for the Overview dashboard. */
 export const historyDepth = ref(defaultHistoryDepth);
 
-/** The nickname currently driving the admin member lookup ('' means no lookup yet). */
-export const memberLookupNickname = ref('');
+/** The member currently driving the admin member lookup (null means no lookup yet). */
+export const memberLookup = ref<{ userId: string; nickname: string } | null>(null);
 
 /** Resets UI state to defaults. Used by tests to isolate cases. */
 export function resetUiState(): void {
   historyDepth.value = defaultHistoryDepth;
-  memberLookupNickname.value = '';
+  memberLookup.value = null;
 }

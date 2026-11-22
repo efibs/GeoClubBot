@@ -81,12 +81,14 @@ public sealed class StrikesRepositoryIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task ReadStrikesByMemberNicknameAsync_ReturnsAllStrikesForMember()
+    public async Task ReadStrikesByMemberUserIdAsync_ReturnsAllStrikesForMember()
     {
-        var (_, userId, nickname) = await SeedMemberAsync(Guid.NewGuid());
+        var (_, userId, _) = await SeedMemberAsync(Guid.NewGuid());
+        var (_, otherUserId, _) = await SeedMemberAsync(Guid.NewGuid());
 
         await using (var seed = fixture.CreateDbContext())
         {
+            seed.Add(ClubMemberStrike.Create(otherUserId, DateTimeOffset.UtcNow.AddDays(-2)));
             seed.Add(ClubMemberStrike.Create(userId, DateTimeOffset.UtcNow.AddDays(-3)));
             var revoked = ClubMemberStrike.Create(userId, DateTimeOffset.UtcNow.AddDays(-1));
             revoked.Revoke();
@@ -97,21 +99,21 @@ public sealed class StrikesRepositoryIntegrationTests(PostgresFixture fixture)
         await using var read = fixture.CreateDbContext();
         var repo = new EfStrikesRepository(read);
 
-        var strikes = await repo.ReadStrikesByMemberNicknameAsync(nickname);
+        var strikes = await repo.ReadStrikesByMemberUserIdAsync(userId);
 
-        strikes.Should().NotBeNull();
-        strikes!.Should().HaveCount(2, "the nickname lookup returns both active and revoked strikes");
+        strikes.Should().HaveCount(2, "the lookup returns both active and revoked strikes");
+        strikes.Should().OnlyContain(s => s.UserId == userId);
     }
 
     [Fact]
-    public async Task ReadStrikesByMemberNicknameAsync_ReturnsNull_ForUnknownNickname()
+    public async Task ReadStrikesByMemberUserIdAsync_ReturnsEmpty_ForUnknownUser()
     {
         await using var read = fixture.CreateDbContext();
         var repo = new EfStrikesRepository(read);
 
-        var strikes = await repo.ReadStrikesByMemberNicknameAsync($"missing-{Guid.NewGuid():N}");
+        var strikes = await repo.ReadStrikesByMemberUserIdAsync($"missing-{Guid.NewGuid():N}");
 
-        strikes.Should().BeNull();
+        strikes.Should().BeEmpty();
     }
 
     [Fact]

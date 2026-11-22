@@ -104,8 +104,12 @@ describe('useAdminMemberLookup', () => {
     app = setup.app;
     const lookup = setup.result;
 
-    lookup.search('Ada');
+    lookup.search('a1', 'Ada');
     await vi.waitFor(() => expect(lookup.data).toBeTruthy());
+
+    // Looked up by user id, shown by nickname (#139).
+    expect(mockedMemberStrikes).toHaveBeenCalledWith('a1');
+    expect(lookup.data?.nickname).toBe('Ada');
 
     expect(lookup.data?.strikes).not.toBeNull();
     expect(lookup.data?.activity).toBeNull();

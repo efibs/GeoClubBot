@@ -9,7 +9,8 @@ public interface IHistoryRepository
 
     Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesAsync(Guid clubId, CancellationToken cancellationToken = default);
 
-    Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname, Guid clubId, CancellationToken cancellationToken = default);
+    /// <summary>The player's history entries in that club, in no particular order.</summary>
+    Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesByUserIdAsync(string userId, Guid clubId, CancellationToken cancellationToken = default);
 
     Task<List<LatestHistoryEntryProjection>> ReadLatestHistoryEntryProjectionsByClubIdAsync(Guid clubId, CancellationToken cancellationToken = default);
 

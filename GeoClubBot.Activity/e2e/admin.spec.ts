@@ -53,7 +53,7 @@ test('adds and revokes a strike with confirmation', async ({ page }) => {
   const writes: string[] = [];
   await page.route('**/api/v1/activity/admin/strikes', (route) => {
     if (route.request().method() === 'POST') {
-      writes.push(`POST ${route.request().url()}`);
+      writes.push(`POST ${route.request().url()} ${route.request().postData()}`);
       return route.fulfill({
         status: 201,
         json: { strikeId: '33333333-3333-3333-3333-333333333333' },
@@ -89,10 +89,13 @@ test('adds and revokes a strike with confirmation', async ({ page }) => {
   await expect(page.getByTestId('all-strikes-panel')).toContainText('Ada');
 
   // Add a strike — confirmation is an in-app dialog (window.confirm is suppressed in Discord's iframe).
+  // The picker shows the nickname but sends the member's user id (#139).
   await page.getByTestId('add-strike-nickname').fill('Ada');
   await page.getByTestId('add-strike-submit').click();
   await page.getByTestId('confirm-accept').click();
-  await expect.poll(() => writes.some((w) => w.endsWith('/admin/strikes'))).toBe(true);
+  await expect
+    .poll(() => writes.find((w) => w.includes('/admin/strikes ')))
+    .toContain('"memberUserId":"ada-user-id"');
 
   // Revoke the listed strike.
   await page.getByTestId('strike-revoke').click();
@@ -123,4 +126,32 @@ test('completes a linking request with the OTP', async ({ page }) => {
   await expect
     .poll(() => completeBody)
     .toMatchObject({ discordUserId: '77', oneTimePassword: 'otp-from-geoguessr' });
+});
+
+test('looks a member up by the user id the picker resolves, not by the typed name', async ({
+  page,
+}) => {
+  await mockMe(page, adminMe);
+  await mockDashboard(page);
+  await mockAdminArea(page);
+
+  const requested: string[] = [];
+  await page.route('**/api/v1/activity/admin/members/*/*', (route) => {
+    requested.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ status: 404, json: { title: 'Not found' } });
+  });
+
+  await page.goto('/');
+  await page.getByTestId('tab-admin').click();
+  await page.getByTestId('admin-tab-members').click();
+
+  // A name no member has resolves to nobody: the lookup stays disabled.
+  await page.getByTestId('lookup-input').fill('Nobody');
+  await expect(page.getByTestId('lookup-member-unresolved')).toBeVisible();
+  await expect(page.getByTestId('lookup-submit')).toBeDisabled();
+
+  await page.getByTestId('lookup-input').fill('Ada');
+  await page.getByTestId('lookup-submit').click();
+  await expect(page.getByTestId('lookup-strikes-panel')).toContainText('Ada');
+  expect(requested).toContain('/api/v1/activity/admin/members/ada-user-id/strikes');
 });

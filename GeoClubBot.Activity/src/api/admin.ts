@@ -2,6 +2,7 @@ import { request } from './client';
 import type {
   AdminExcuseDto,
   AdminLinkRequestDto,
+  AdminMemberDto,
   AdminMemberStrikesDto,
   AdminRelevantStrikeDto,
   AdminStrikeDto,
@@ -25,23 +26,30 @@ export function adminFetchRelevantStrikes(): Promise<AdminRelevantStrikeDto[]> {
   return request<AdminRelevantStrikeDto[]>('/admin/strikes/relevant');
 }
 
-export function adminFetchMemberStrikes(nickname: string): Promise<AdminMemberStrikesDto> {
-  return request<AdminMemberStrikesDto>(`/admin/members/${encodeURIComponent(nickname)}/strikes`);
+// Members are addressed by GeoGuessr user id: nicknames are neither unique nor fixed (#139).
+
+/** Every tracked member, for the member picker. */
+export function adminFetchMembers(): Promise<AdminMemberDto[]> {
+  return request<AdminMemberDto[]>('/admin/members');
 }
 
-export function adminFetchExcuses(nickname?: string): Promise<AdminExcuseDto[]> {
-  const query = nickname ? `?nickname=${encodeURIComponent(nickname)}` : '';
+export function adminFetchMemberStrikes(userId: string): Promise<AdminMemberStrikesDto> {
+  return request<AdminMemberStrikesDto>(`/admin/members/${encodeURIComponent(userId)}/strikes`);
+}
+
+export function adminFetchExcuses(userId?: string): Promise<AdminExcuseDto[]> {
+  const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
   return request<AdminExcuseDto[]>(`/admin/excuses${query}`);
 }
 
-export function adminFetchMemberActivity(nickname: string, daysBack = 7): Promise<WeekActivityDto> {
+export function adminFetchMemberActivity(userId: string, daysBack = 7): Promise<WeekActivityDto> {
   return request<WeekActivityDto>(
-    `/admin/members/${encodeURIComponent(nickname)}/activity?daysBack=${daysBack}`,
+    `/admin/members/${encodeURIComponent(userId)}/activity?daysBack=${daysBack}`,
   );
 }
 
-export function adminFetchMemberStatistics(nickname: string): Promise<PlayerStatisticsDto> {
-  return request<PlayerStatisticsDto>(`/admin/members/${encodeURIComponent(nickname)}/statistics`);
+export function adminFetchMemberStatistics(userId: string): Promise<PlayerStatisticsDto> {
+  return request<PlayerStatisticsDto>(`/admin/members/${encodeURIComponent(userId)}/statistics`);
 }
 
 export function adminFetchClubStatistics(): Promise<ClubStatisticsDto> {
@@ -53,12 +61,12 @@ export function adminFetchLinkRequests(): Promise<AdminLinkRequestDto[]> {
 }
 
 export function adminAddStrike(
-  memberNickname: string,
+  memberUserId: string,
   strikeDate: string,
 ): Promise<{ strikeId: string }> {
   return request<{ strikeId: string }>('/admin/strikes', {
     method: 'POST',
-    body: JSON.stringify({ memberNickname, strikeDate }),
+    body: JSON.stringify({ memberUserId, strikeDate }),
   });
 }
 
@@ -71,13 +79,13 @@ export function adminUnrevokeStrike(strikeId: string): Promise<AdminStrikeDto> {
 }
 
 export function adminAddExcuse(
-  memberNickname: string,
+  memberUserId: string,
   from: string,
   to: string,
 ): Promise<{ excuseId: string }> {
   return request<{ excuseId: string }>('/admin/excuses', {
     method: 'POST',
-    body: JSON.stringify({ memberNickname, from, to }),
+    body: JSON.stringify({ memberUserId, from, to }),
   });
 }
 

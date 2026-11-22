@@ -2,9 +2,10 @@
 import { ref } from 'vue';
 import PanelSection from '../../components/PanelSection.vue';
 import FormField from '../../components/FormField.vue';
+import MemberPicker from '../../components/MemberPicker.vue';
 import ActionButton from '../../components/ActionButton.vue';
 import ErrorBanner from '../../components/ErrorBanner.vue';
-import { useAdminExcuses } from '../../queries/admin';
+import { useAdminExcuses, useAdminMembers } from '../../queries/admin';
 import { formatDate, toDateInputValue } from '../../format';
 import { confirm } from '../../composables/useConfirm';
 import type { AdminExcuseDto } from '../../types';
@@ -13,13 +14,16 @@ const excuses = useAdminExcuses();
 
 // One form serves both adding and editing; editingId decides which.
 const editingId = ref<string | null>(null);
-const nickname = ref('');
+// Adding picks a member; editing only shows whose excuse it is (the member never changes).
+const { data: members } = useAdminMembers();
+const memberUserId = ref<string | null>(null);
+const editingNickname = ref('');
 const from = ref('');
 const to = ref('');
 
 function startEdit(excuse: AdminExcuseDto): void {
   editingId.value = excuse.excuseId;
-  nickname.value = excuse.nickname;
+  editingNickname.value = excuse.nickname;
   // Use the local calendar date (like the list's formatDate), not the raw UTC prefix — an excuse
   // stored at local midnight comes back as the previous day in UTC, so slice(0, 10) shifted it back.
   from.value = toDateInputValue(excuse.from);
@@ -28,7 +32,8 @@ function startEdit(excuse: AdminExcuseDto): void {
 
 function resetForm(): void {
   editingId.value = null;
-  nickname.value = '';
+  memberUserId.value = null;
+  editingNickname.value = '';
   from.value = '';
   to.value = '';
 }
@@ -41,7 +46,10 @@ async function submit(): Promise<void> {
     if (editingId.value) {
       await excuses.update(editingId.value, from.value, to.value);
     } else {
-      await excuses.add(nickname.value.trim(), from.value, to.value);
+      if (!memberUserId.value) {
+        return;
+      }
+      await excuses.add(memberUserId.value, from.value, to.value);
     }
     resetForm();
   } catch {
@@ -67,11 +75,20 @@ async function remove(excuse: AdminExcuseDto): Promise<void> {
     >
       <form class="form-stack" @submit.prevent="submit">
         <FormField
+          v-if="editingId"
           id="excuse-nickname"
-          v-model="nickname"
-          label="GeoGuessr nickname"
-          :required="!editingId"
-          :disabled="editingId !== null"
+          v-model="editingNickname"
+          label="Member"
+          disabled
+          data-testid="excuse-nickname"
+        />
+        <MemberPicker
+          v-else
+          id="excuse-member"
+          v-model="memberUserId"
+          label="Member"
+          :members="members"
+          required
           data-testid="excuse-nickname"
         />
         <FormField
@@ -95,7 +112,7 @@ async function remove(excuse: AdminExcuseDto): Promise<void> {
             type="submit"
             :busy="excuses.submitting"
             :busy-label="editingId ? 'Saving…' : 'Adding…'"
-            :disabled="excuses.busy"
+            :disabled="excuses.busy || (!editingId && !memberUserId)"
             data-testid="excuse-submit"
           >
             {{ editingId ? 'Save changes' : 'Add excuse' }}

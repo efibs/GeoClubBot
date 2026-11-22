@@ -84,14 +84,30 @@ public partial class ActivityAdminController(
             .ToList());
     }
 
-    [HttpGet("members/{nickname}/strikes")]
+    /// <summary>
+    /// Every tracked member, for the member picker. The other member endpoints take the user id
+    /// it hands out: nicknames are neither unique nor fixed (#139).
+    /// </summary>
+    [HttpGet("members")]
+    public async Task<ActionResult<IReadOnlyList<AdminMemberDto>>> GetMembers(
+        ISender mediator,
+        CancellationToken cancellationToken)
+    {
+        var members = await mediator
+            .Send(new GetTrackedMemberNamesQuery(), cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(members.Select(m => new AdminMemberDto(m.UserId, m.Nickname)).ToList());
+    }
+
+    [HttpGet("members/{userId}/strikes")]
     public async Task<ActionResult<AdminMemberStrikesDto>> GetMemberStrikes(
-        string nickname,
+        string userId,
         ISender mediator,
         CancellationToken cancellationToken)
     {
         var status = await mediator
-            .Send(new ReadMemberStrikesQuery(nickname), cancellationToken)
+            .Send(new ReadMemberStrikesQuery(userId), cancellationToken)
             .ConfigureAwait(false);
         if (!status.IsSuccess)
         {
@@ -101,7 +117,7 @@ public partial class ActivityAdminController(
         var dto = new AdminMemberStrikesDto(
             status.Value.NumActiveStrikes,
             status.Value.Strikes
-                .Select(strike => ActivityAdminDtoAssembler.AssembleStrike(strike, nickname, StrikeDecay))
+                .Select(strike => ActivityAdminDtoAssembler.AssembleStrike(strike, status.Value.MemberNickname, StrikeDecay))
                 .ToList());
 
         return Ok(dto);
@@ -110,27 +126,27 @@ public partial class ActivityAdminController(
     /// <summary>All excuses, optionally filtered to one member.</summary>
     [HttpGet("excuses")]
     public async Task<ActionResult<IReadOnlyList<AdminExcuseDto>>> GetExcuses(
-        [FromQuery] string? nickname,
+        [FromQuery] string? userId,
         ISender mediator,
         CancellationToken cancellationToken)
     {
         var excuses = await mediator
-            .Send(new ReadExcusesQuery(nickname), cancellationToken)
+            .Send(new ReadExcusesQuery(userId), cancellationToken)
             .ConfigureAwait(false);
 
         return Ok(excuses.Select(ActivityAdminDtoAssembler.AssembleExcuse).ToList());
     }
 
-    /// <summary>A member's XP, streak and club missions, looked up by nickname (admin view).</summary>
-    [HttpGet("members/{nickname}/activity")]
+    /// <summary>A member's XP, streak and club missions (admin view).</summary>
+    [HttpGet("members/{userId}/activity")]
     public async Task<ActionResult<WeekActivityDto>> GetMemberActivity(
-        string nickname,
+        string userId,
         [FromQuery] int? daysBack,
         ISender mediator,
         CancellationToken cancellationToken)
     {
         var member = await mediator
-            .Send(new ReadOrSyncClubMemberByNicknameQuery(nickname), cancellationToken)
+            .Send(new ReadOrSyncClubMemberByUserIdQuery(userId), cancellationToken)
             .ConfigureAwait(false);
         if (!member.IsSuccess)
         {
@@ -145,14 +161,14 @@ public partial class ActivityAdminController(
         return Ok(ActivityMemberDtoAssembler.AssembleWeekActivity(activity));
     }
 
-    [HttpGet("members/{nickname}/statistics")]
+    [HttpGet("members/{userId}/statistics")]
     public async Task<ActionResult<PlayerStatisticsDto>> GetMemberStatistics(
-        string nickname,
+        string userId,
         ISender mediator,
         CancellationToken cancellationToken)
     {
         var statistics = await mediator
-            .Send(new PlayerStatisticsQuery(nickname), cancellationToken)
+            .Send(new PlayerStatisticsQuery(userId), cancellationToken)
             .ConfigureAwait(false);
         if (statistics.IsFailure)
         {
@@ -200,16 +216,16 @@ public partial class ActivityAdminController(
         CancellationToken cancellationToken)
     {
         var result = await mediator
-            .Send(new AddStrikeCommand(request.MemberNickname, request.StrikeDate), cancellationToken)
+            .Send(new AddStrikeCommand(request.MemberUserId, request.StrikeDate), cancellationToken)
             .ConfigureAwait(false);
         if (!result.IsSuccess)
         {
             return this.ToProblemDetails(result.Error);
         }
 
-        LogStrikeAdded(AdminDiscordUserId, request.MemberNickname, request.StrikeDate);
+        LogStrikeAdded(AdminDiscordUserId, request.MemberUserId, request.StrikeDate);
         return Created(
-            $"/api/v1/activity/admin/members/{Uri.EscapeDataString(request.MemberNickname)}/strikes",
+            $"/api/v1/activity/admin/members/{Uri.EscapeDataString(request.MemberUserId)}/strikes",
             new StrikeCreatedDto(result.Value));
     }
 
@@ -256,14 +272,14 @@ public partial class ActivityAdminController(
         CancellationToken cancellationToken)
     {
         var result = await mediator
-            .Send(new AddExcuseCommand(request.MemberNickname, request.From, request.To), cancellationToken)
+            .Send(new AddExcuseCommand(request.MemberUserId, request.From, request.To), cancellationToken)
             .ConfigureAwait(false);
         if (!result.IsSuccess)
         {
             return this.ToProblemDetails(result.Error);
         }
 
-        LogExcuseAdded(AdminDiscordUserId, request.MemberNickname, request.From, request.To);
+        LogExcuseAdded(AdminDiscordUserId, request.MemberUserId, request.From, request.To);
         return Created("/api/v1/activity/admin/excuses", new ExcuseCreatedDto(result.Value));
     }
 
@@ -385,8 +401,8 @@ public partial class ActivityAdminController(
     // Audit trail: every admin write logs the acting admin and the target.
 
     [LoggerMessage(LogLevel.Information,
-        "Dashboard admin {AdminDiscordUserId} added a strike to member {MemberNickname} dated {StrikeDate}.")]
-    partial void LogStrikeAdded(ulong adminDiscordUserId, string memberNickname, DateTimeOffset strikeDate);
+        "Dashboard admin {AdminDiscordUserId} added a strike to member {MemberUserId} dated {StrikeDate}.")]
+    partial void LogStrikeAdded(ulong adminDiscordUserId, string memberUserId, DateTimeOffset strikeDate);
 
     [LoggerMessage(LogLevel.Information,
         "Dashboard admin {AdminDiscordUserId} revoked strike {StrikeId}.")]
@@ -397,8 +413,8 @@ public partial class ActivityAdminController(
     partial void LogStrikeUnrevoked(ulong adminDiscordUserId, Guid strikeId);
 
     [LoggerMessage(LogLevel.Information,
-        "Dashboard admin {AdminDiscordUserId} added an excuse for member {MemberNickname} from {From} to {To}.")]
-    partial void LogExcuseAdded(ulong adminDiscordUserId, string memberNickname, DateTimeOffset from, DateTimeOffset to);
+        "Dashboard admin {AdminDiscordUserId} added an excuse for member {MemberUserId} from {From} to {To}.")]
+    partial void LogExcuseAdded(ulong adminDiscordUserId, string memberUserId, DateTimeOffset from, DateTimeOffset to);
 
     [LoggerMessage(LogLevel.Information,
         "Dashboard admin {AdminDiscordUserId} updated excuse {ExcuseId} to {From} – {To}.")]

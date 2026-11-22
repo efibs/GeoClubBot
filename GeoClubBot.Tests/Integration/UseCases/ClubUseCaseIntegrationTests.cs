@@ -47,7 +47,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task GetClubByNameOrDefault_ReturnsTheMainClub_WhenNoNameGiven()
+    public async Task GetClubByIdOrDefault_ReturnsTheMainClub_WhenNoIdGiven()
     {
         var mainClubId = Guid.NewGuid();
         await using (var seed = fixture.CreateDbContext())
@@ -57,14 +57,14 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
         }
 
         using var host = CreateHost(mainClubId);
-        var club = await host.SendAsync(new GetClubByNameOrDefaultQuery(null));
+        var club = await host.SendAsync(new GetClubByIdOrDefaultQuery(null));
 
         club.Should().NotBeNull();
         club!.ClubId.Should().Be(mainClubId);
     }
 
     [Fact]
-    public async Task GetClubByNameOrDefault_ReturnsTheNamedClub_WhenNameGiven()
+    public async Task GetClubByIdOrDefault_ReturnsTheClub_WhenIdGiven()
     {
         var clubId = Guid.NewGuid();
         var name = $"named-{Guid.NewGuid():N}";
@@ -75,41 +75,20 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
         }
 
         using var host = CreateHost(Guid.NewGuid());
-        var club = await host.SendAsync(new GetClubByNameOrDefaultQuery(name));
+        var club = await host.SendAsync(new GetClubByIdOrDefaultQuery(clubId));
 
         club.Should().NotBeNull();
         club!.ClubId.Should().Be(clubId);
     }
 
     [Fact]
-    public async Task GetClubByNameOrDefault_ReturnsNull_WhenMainClubIsNotTracked()
+    public async Task GetClubByIdOrDefault_ReturnsNull_WhenMainClubIsNotTracked()
     {
         using var host = CreateHost(Guid.NewGuid());
 
-        var club = await host.SendAsync(new GetClubByNameOrDefaultQuery(null));
+        var club = await host.SendAsync(new GetClubByIdOrDefaultQuery(null));
 
         club.Should().BeNull();
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task GetClubByNameOrDefault_FallsBackToMainClub_WhenNameIsBlank(string blankName)
-    {
-        // A blank/whitespace name must take the IsNullOrWhiteSpace → main-club branch, not be
-        // treated as a real club name (which would look up "" / "   " and find nothing).
-        var mainClubId = Guid.NewGuid();
-        await using (var seed = fixture.CreateDbContext())
-        {
-            seed.Add(DomainClub.Create(mainClubId, $"club-{mainClubId:N}", 3));
-            await seed.SaveChangesAsync();
-        }
-
-        using var host = CreateHost(mainClubId);
-        var club = await host.SendAsync(new GetClubByNameOrDefaultQuery(blankName));
-
-        club.Should().NotBeNull();
-        club!.ClubId.Should().Be(mainClubId);
     }
 
     [Fact]
@@ -132,7 +111,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
                 ClubActivities.BoardBonus("u1"),
             ]);
 
-        var result = await host.SendAsync(new GetClubTodaysXpQuery(name));
+        var result = await host.SendAsync(new GetClubTodaysXpQuery(clubId));
 
         result.Xp.Should().Be(200);
         result.ClubName.Should().Be(name);
@@ -180,7 +159,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
                     MissionBoards.Tile(index: 1, claimedBy: userIds[1], claimedAt: DateTimeOffset.UtcNow.AddDays(-2), completed: true)),
                 nextClaimResetAt: DateTimeOffset.UtcNow.AddHours(1)));
 
-        var result = await host.SendAsync(new GetClubTodaysXpQuery(name));
+        var result = await host.SendAsync(new GetClubTodaysXpQuery(clubId));
 
         result.BoardMissionCount.Should().Be(3);
         result.ChallengeMemberCount.Should().Be(1);
@@ -193,7 +172,7 @@ public sealed class ClubUseCaseIntegrationTests(PostgresFixture fixture)
     {
         using var host = CreateHost(Guid.NewGuid());
 
-        var result = await host.SendAsync(new GetClubTodaysXpQuery($"missing-{Guid.NewGuid():N}"));
+        var result = await host.SendAsync(new GetClubTodaysXpQuery(Guid.NewGuid()));
 
         result.Xp.Should().BeNull();
         result.ClubName.Should().BeNull();
