@@ -5,6 +5,7 @@ using NSubstitute;
 using UseCases.OutputPorts.Rendering;
 using UseCases.OutputPorts.Repositories;
 using UseCases.UseCases.ClubMemberActivity;
+using Utilities;
 using Xunit;
 
 namespace GeoClubBot.Tests.Application.UseCases.ClubMemberActivity;
@@ -43,7 +44,7 @@ public sealed class RenderPlayerActivityHandlerTests
             .Returns(global::Entities.Club.Create(ClubId, ClubName, 1));
     }
 
-    private Task<MemoryStream?> HandleAsync(int maxEntries = 10, string? clubName = null) =>
+    private Task<Result<MemoryStream>> HandleAsync(int maxEntries = 10, string? clubName = null) =>
         new RenderPlayerActivityHandler(
                 _clubs,
                 _clubMembers,
@@ -69,7 +70,10 @@ public sealed class RenderPlayerActivityHandlerTests
     {
         _clubMembers.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>()).Returns((ClubMember?)null);
 
-        (await HandleAsync()).Should().BeNull();
+        var result = await HandleAsync();
+
+        result.Error.Code.Should().Be("player_history.unknown_player");
+        result.Error.Message.Should().Contain(Nickname);
     }
 
     [Fact]
@@ -77,7 +81,23 @@ public sealed class RenderPlayerActivityHandlerTests
     {
         _clubs.ReadClubByNameAsync(ClubName, Arg.Any<CancellationToken>()).Returns((global::Entities.Club?)null);
 
-        (await HandleAsync(clubName: ClubName)).Should().BeNull();
+        var result = await HandleAsync(clubName: ClubName);
+
+        result.Error.Code.Should().Be("player_history.unknown_club");
+        result.Error.Message.Should().Contain(ClubName);
+    }
+
+    [Fact]
+    public async Task FormerMember_WithoutAClubName_IsToldTheyAreNotInAClub()
+    {
+        // #162: "not being tracked" was wrong — their history is kept, in the club they left.
+        Member(clubId: null);
+
+        var result = await HandleAsync();
+
+        result.Error.Code.Should().Be("player_history.not_in_a_club");
+        result.Error.Message.Should().Contain("not in a club at the moment").And.Contain("club name");
+        await _history.DidNotReceiveWithAnyArgs().ReadHistoryEntriesByPlayerNicknameAsync(default!, default);
     }
 
     [Fact]
@@ -87,7 +107,7 @@ public sealed class RenderPlayerActivityHandlerTests
         _history.ReadHistoryEntriesByPlayerNicknameAsync(Nickname, ClubId, Arg.Any<CancellationToken>())
             .Returns((List<ClubMemberHistoryEntry>?)null);
 
-        (await HandleAsync()).Should().BeNull();
+        (await HandleAsync()).Error.Code.Should().Be("player_history.unknown_player");
     }
 
     [Fact]
@@ -98,19 +118,20 @@ public sealed class RenderPlayerActivityHandlerTests
 
         var chart = await HandleAsync();
 
-        chart.Should().BeSameAs(_chart);
+        chart.Value.Should().BeSameAs(_chart);
         _values.Should().Equal(70);
         _timestamps.Should().Equal(Joined, Joined.AddDays(7));
     }
 
     [Fact]
-    public async Task ASingleSnapshotOfAnUntrackedPlayer_HasNothingToCompare()
+    public async Task ASingleSnapshotOfAPlayerWithoutAMemberRecord_HasNothingToCompare()
     {
-        _clubMembers.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>())
-            .Returns(new ClubMemberBuilder().WithNickname(Nickname).InClub(ClubId).JoinedAt(Joined).Build(), (ClubMember?)null);
+        _clubMembers.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>()).Returns((ClubMember?)null);
         History(Snapshot(1, 70));
 
-        (await HandleAsync()).Should().BeNull();
+        var result = await HandleAsync(clubName: ClubName);
+
+        result.Error.Code.Should().Be("player_history.not_enough_history");
     }
 
     [Fact]
@@ -168,7 +189,7 @@ public sealed class RenderPlayerActivityHandlerTests
 
         var chart = await HandleAsync(clubName: ClubName);
 
-        chart.Should().BeSameAs(_chart);
+        chart.Value.Should().BeSameAs(_chart);
         _values.Should().Equal(70, 30);
         _target.Should().Be(DefaultMinXp);
     }

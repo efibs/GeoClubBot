@@ -87,16 +87,17 @@ public partial class ActivityModule
             ExecuteAsync(
                 async ct =>
                 {
-                    using var plot = await Mediator
+                    var result = await Mediator
                         .Send(new RenderPlayerActivityQuery(memberNickname, maxNumEntries, clubName), ct)
                         .ConfigureAwait(false);
 
-                    if (plot == null)
+                    if (result.IsFailure)
                     {
-                        await FollowupAsync($"The player '{memberNickname}' is currently not being tracked.", ephemeral: true).ConfigureAwait(false);
+                        await FollowupAsync(result.Error.Message, ephemeral: true).ConfigureAwait(false);
                         return;
                     }
 
+                    using var plot = result.Value;
                     await FollowupWithFileAsync(plot, $"{memberNickname} history.png", $"Here is the history plot for the player '{memberNickname}':",
                         ephemeral: true).ConfigureAwait(false);
                 },

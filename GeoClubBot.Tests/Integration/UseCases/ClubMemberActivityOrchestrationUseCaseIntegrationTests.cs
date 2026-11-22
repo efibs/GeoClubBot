@@ -408,20 +408,20 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
 
         var result = await host.SendAsync(new RenderPlayerActivityQuery(nickname, MaxNumHistoryEntries: 10, ClubName: null));
 
-        result.Should().BeSameAs(rendered);
+        result.Value.Should().BeSameAs(rendered);
         host.Mock<IHistoryRenderer>()
             .Received()
             .RenderHistory(Arg.Any<List<int>>(), Arg.Any<List<DateTimeOffset>>(), Arg.Any<int>());
     }
 
     [Fact]
-    public async Task RenderPlayerActivity_ReturnsNull_ForAnUnknownPlayer()
+    public async Task RenderPlayerActivity_FailsAsUnknown_ForAnUnknownPlayer()
     {
         using var host = new MediatorTestHost(fixture.ConnectionString);
 
         var result = await host.SendAsync(
             new RenderPlayerActivityQuery($"missing-{Guid.NewGuid():N}"[..20], MaxNumHistoryEntries: 10, ClubName: null));
 
-        result.Should().BeNull();
+        result.Error.Code.Should().Be("player_history.unknown_player");
     }
 }
