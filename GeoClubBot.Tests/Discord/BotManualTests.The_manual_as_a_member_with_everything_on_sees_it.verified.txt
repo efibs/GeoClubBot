@@ -21,6 +21,8 @@ I help run the club: activity, reminders, stats, challenges and more. Pick a fea
 -# `/country-challenges`
 **🎭 Self-roles** — Give yourself optional roles, such as notification opt-ins, without asking an admin.
 -# `/self-roles`
+**🎲 Random draws** — Draw countries, numbers, dice, list items, club members, people in a voice channel or teams.
+-# `/random`
 **🤖 AI assistant** — Ask about GeoGuessr metas and I answer from community guides, with their pictures.
 -# `/ai`
 
@@ -125,6 +127,47 @@ Give yourself optional roles, such as notification opt-ins, without asking an ad
 
 **`/self-roles select`** — Pick the optional roles you want
 Opens a private menu with the roles you have already ticked; I tell you what changed.
+
+# 🎲 Random draws
+Draw countries, numbers, dice, list items, club members, people in a voice channel or teams.
+
+### How draws work
+Everyone sees the result unless you set `private`. A draw of several never takes the same item twice, and the footer says how many there were to draw from. People are shown, never pinged; bots and anyone deafened in a voice channel are never drawn.
+
+### Commands
+**`/random country`** — Draw countries, optionally only those with Street View
+- `count` *(optional, default 1)* — How many to draw
+- `coverage-only` *(optional, default off)* — Only countries with official Street View coverage
+- `private` *(optional, default off)* — Show the result only to you
+Each country links to its PlonkIt guide when there is one.
+
+**`/random number`** — Draw whole numbers from a range
+- `min` *(optional, default 1)* — The smallest number
+- `max` *(optional, default 100)* — The largest number
+- `count` *(optional, default 1)* — How many to draw
+- `allow-repeats` *(optional, default off)* — Let the same number come up more than once
+- `private` *(optional, default off)* — Show the result only to you
+
+**`/random coin`** — Flip coins
+- `count` *(optional, default 1)* — How many coins to flip
+- `private` *(optional, default off)* — Show the result only to you
+
+**`/random dice`** — Roll dice
+- `sides` *(optional, default 6)* — Sides of each die
+- `count` *(optional, default 1)* — How many dice
+- `private` *(optional, default off)* — Show the result only to you
+Up to 100 dice of up to 1000 sides; several dice also show their sum.
+
+**`/random pick`** — Draw items from a list you type
+- `items` — The items, separated by commas
+- `count` *(optional, default 1)* — How many to draw
+- `private` *(optional, default off)* — Show the result only to you
+Separate the items with commas or semicolons. An item typed twice is twice as likely.
+
+**`/random shuffle`** — Put a list you type into a random order
+- `items` — The items, separated by commas
+- `private` *(optional, default off)* — Show the result only to you
+Separate the items with commas or semicolons, e.g. a play order.
 
 # 🤖 AI assistant
 Ask about GeoGuessr metas and I answer from community guides, with their pictures.

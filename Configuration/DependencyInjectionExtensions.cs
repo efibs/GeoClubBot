@@ -119,6 +119,11 @@ public static class DependencyInjectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        services.AddOptions<RandomDrawsConfiguration>()
+            .Bind(config.GetSection(RandomDrawsConfiguration.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         services.AddOptions<SelfRolesConfiguration>()
             .Bind(config.GetSection(SelfRolesConfiguration.SectionName))
             .ValidateDataAnnotations()
