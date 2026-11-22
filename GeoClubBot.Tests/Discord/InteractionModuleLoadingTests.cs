@@ -2,14 +2,10 @@ using System.Text.RegularExpressions;
 using Constants;
 using Discord;
 using Discord.Interactions;
-using Discord.WebSocket;
 using Entities;
 using FluentAssertions;
-using GeoClubBot.Discord.InputAdapters.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.AI;
 using GeoClubBot.Tests.TestBuilders;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 
@@ -29,11 +25,9 @@ public sealed partial class InteractionModuleLoadingTests
     [Fact]
     public async Task Every_module_loads_and_every_command_fits_discords_limits()
     {
-        using var client = new DiscordSocketClient();
-        using var service = new InteractionService(client);
-
         // Discord.Net builds every module once while loading it, so each constructor dependency must resolve.
-        await service.AddModulesAsync(typeof(INteractionsAssemblyMarker).Assembly, new SubstituteServiceProvider());
+        using var modules = await LoadedInteractionModules.LoadAsync();
+        var service = modules.Service;
 
         service.SlashCommands.Should().NotBeEmpty();
 
@@ -69,9 +63,8 @@ public sealed partial class InteractionModuleLoadingTests
     [InlineData("South Africa", true, null, true)]
     public async Task Every_quiz_button_reaches_its_handler(string? country, bool lesserKnownOnly, AiQuizDifficulty? difficulty, bool revealed)
     {
-        using var client = new DiscordSocketClient();
-        using var service = new InteractionService(client);
-        await service.AddModulesAsync(typeof(INteractionsAssemblyMarker).Assembly, new SubstituteServiceProvider());
+        using var modules = await LoadedInteractionModules.LoadAsync();
+        var service = modules.Service;
 
         var round = QuizRounds.Round(askedCountry: country, askedDifficulty: difficulty, lesserKnownOnly: lesserKnownOnly);
         if (revealed)
@@ -95,6 +88,61 @@ public sealed partial class InteractionModuleLoadingTests
 
             service.SearchComponentCommand(interaction).IsSuccess.Should().BeTrue($"the button id '{id}' must reach a handler");
         }
+    }
+
+    /// <summary>
+    /// Discord takes a command's default permissions from its top-level group only, so a subcommand's own
+    /// <c>[DefaultMemberPermissions]</c> restricts nothing: every member could run the /ai admin commands
+    /// until #81. A subcommand that needs more than its group must check at run time.
+    /// </summary>
+    [Fact]
+    public async Task No_subcommand_relies_on_a_permission_discord_ignores()
+    {
+        using var modules = await LoadedInteractionModules.LoadAsync();
+
+        var ignored = modules.Service.SlashCommands
+            .Where(command => !command.IsTopLevelCommand && command.DefaultMemberPermissions is { } own && own != 0)
+            .Where(command =>
+            {
+                var group = TopLevelGroup(command.Module);
+                var registered = group.DefaultMemberPermissions ?? 0;
+                var checkedAtRun = command.Preconditions.OfType<RequireUserPermissionAttribute>()
+                    .Select(p => p.GuildPermission ?? 0)
+                    .Aggregate((GuildPermission)0, (all, p) => all | p);
+                return (command.DefaultMemberPermissions!.Value & ~(registered | checkedAtRun)) != 0;
+            })
+            .Select(command => $"/{string.Join(' ', GroupNames(command.Module).Append(command.Name))}")
+            .ToList();
+
+        ignored.Should().BeEmpty("Discord ignores these subcommands' [DefaultMemberPermissions]; use [RequireUserPermission]");
+    }
+
+    [Theory]
+    [InlineData(ComponentIds.HelpFeatureMenuId)]
+    [InlineData("help-page:ai:1")]
+    [InlineData("help-page:activity-checks:0")]
+    public async Task Every_help_component_reaches_its_handler(string id)
+    {
+        using var modules = await LoadedInteractionModules.LoadAsync();
+
+        var interaction = Substitute.For<IComponentInteraction>();
+        interaction.Data.CustomId.Returns(id);
+
+        modules.Service.SearchComponentCommand(interaction).IsSuccess.Should().BeTrue($"the id '{id}' must reach a handler");
+    }
+
+    private static ModuleInfo TopLevelGroup(ModuleInfo module)
+    {
+        ModuleInfo? group = null;
+        for (ModuleInfo? current = module; current is not null; current = current.Parent)
+        {
+            if (current.IsSlashGroup)
+            {
+                group = current;
+            }
+        }
+
+        return group ?? module;
     }
 
     private static IEnumerable<string> GroupNames(ModuleInfo? module)
@@ -126,38 +174,4 @@ public sealed partial class InteractionModuleLoadingTests
 
     [GeneratedRegex(@"^[-_\p{Ll}\p{Lo}\p{N}]{1,32}$")]
     private static partial Regex NameRegex();
-
-    /// <summary>
-    /// A fake for every interface a module asks for; nothing here ever handles an interaction. Discord.Net
-    /// resolves modules from a scope, so the provider is its own scope factory and scope.
-    /// </summary>
-    private sealed class SubstituteServiceProvider : IServiceProvider, IServiceScopeFactory, IServiceScope
-    {
-        public IServiceProvider ServiceProvider => this;
-
-        public object? GetService(Type serviceType)
-        {
-            if (serviceType == typeof(IServiceScopeFactory))
-            {
-                return this;
-            }
-
-            // Some modules read their options in the constructor, so these must hold a real (default) value.
-            if (serviceType.IsGenericType && serviceType.GetGenericTypeDefinition() == typeof(IOptions<>))
-            {
-                var value = Activator.CreateInstance(serviceType.GenericTypeArguments[0]);
-                return typeof(Options).GetMethod(nameof(Options.Create))!
-                    .MakeGenericMethod(serviceType.GenericTypeArguments[0])
-                    .Invoke(null, [value]);
-            }
-
-            return serviceType.IsInterface ? Substitute.For([serviceType], []) : null;
-        }
-
-        public IServiceScope CreateScope() => this;
-
-        public void Dispose()
-        {
-        }
-    }
 }

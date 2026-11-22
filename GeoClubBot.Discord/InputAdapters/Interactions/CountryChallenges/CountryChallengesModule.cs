@@ -1,6 +1,7 @@
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.CountryChallenges;
@@ -8,12 +9,19 @@ using UseCases.UseCases.CountryChallenges;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.CountryChallenges;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("country-challenges", "The country challenges")]
+[HelpFeature("country-challenges", Emoji = "🗺️", Title = "Country challenges", Order = 70,
+    ShownWhen = HelpToggle.CountryChallenges,
+    Summary = "Themed country challenges on fixed days, with points for the top places and a leaderboard.")]
+[HelpSection(1, "How it works", """
+    On fixed days I post themed challenges, like *Mongolia Monday*, as GeoGuessr challenge links; finish all five rounds to count. A day or so later I post the results: the top places earn points (usually 3, 2 and 1) and sometimes a role. The points add up to a leaderboard I post regularly.
+    """)]
+[Group("country-challenges", "The country challenges and their leaderboard")]
 public class CountryChallengesModule(
     ISender mediator,
     ILogger<CountryChallengesModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("leaderboard", "Show the country challenge leaderboard and your place on it")]
+    [SlashCommand("leaderboard", "The season's leaderboard and your own place on it")]
+    [HelpDetail("Ties share a place. Your place, and a winner's role, need your account linked.")]
     public Task LeaderboardAsync() =>
         ExecuteAsync(
             async ct =>

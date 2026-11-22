@@ -6,6 +6,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,11 +14,14 @@ using Microsoft.Extensions.Options;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.SelfRoles;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("self-roles", "Commands for managing self-roles")]
+[HelpFeature("self-roles", Emoji = "🎭", Title = "Self-roles", Order = 80, ShownWhen = HelpToggle.SelfRoles,
+    Summary = "Give yourself optional roles, such as notification opt-ins, without asking an admin.")]
+[Group("self-roles", "Give yourself optional roles")]
 public class SelfRolesModule(ISender mediator, ILogger<SelfRolesModule> logger, IOptions<SelfRolesConfiguration> selfRolesOptions)
     : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("select", "Select the roles you would like to have")]
+    [SlashCommand("select", "Pick the optional roles you want")]
+    [HelpDetail("Opens a private menu with the roles you have already ticked; I tell you what changed.")]
     public Task SelectSelfRolesSlashCommandAsync() =>
         ExecuteAsync(
             _ => HandleSelectSelfRolesStartedAsync(),

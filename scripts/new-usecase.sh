@@ -173,6 +173,7 @@ EOF
 using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.$FEATURE;
@@ -180,6 +181,9 @@ using UseCases.UseCases.$FEATURE;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.$FEATURE;
 
 [CommandContextType(InteractionContextType.Guild)]
+// The /help page of these commands: to add them to an existing page, name only its key, e.g. [HelpFeature("ai")].
+[HelpFeature("$FEATURE_KEBAB", Emoji = "❔", Title = "TODO: $FEATURE", Order = 999,
+    Summary = "TODO: one sentence for /help's overview and menu (at most 100 characters)")]
 [Group("$FEATURE_KEBAB", "TODO: describe the $FEATURE commands")]
 public class ${FEATURE}Module(
     ISender mediator,

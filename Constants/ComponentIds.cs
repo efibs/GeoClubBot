@@ -55,4 +55,10 @@ public class ComponentIds
         "self-roles-select-btn";
     public const string SelfRolesSelectMenuId =
         "self-roles-select-menu";
+
+    /// <summary>The feature menu under <c>/help</c>.</summary>
+    public const string HelpFeatureMenuId = "help-feature";
+
+    /// <summary>Turns a <c>/help</c> page: <c>help-page:{featureKey}:{page}</c>.</summary>
+    public const string HelpPageButtonId = "help-page";
 }

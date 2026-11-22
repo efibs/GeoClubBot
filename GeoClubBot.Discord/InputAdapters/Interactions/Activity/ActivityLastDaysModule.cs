@@ -3,6 +3,7 @@ using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Activity;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.ClubMemberActivity;
@@ -16,11 +17,12 @@ public partial class ActivityModule
         ISender mediator,
         ILogger<ActivityLastDaysModule> logger) : ClubBotInteractionModule(mediator, logger)
     {
-        [SlashCommand("by-nickname", "Show a member's activity over the last N days by GeoGuessr nickname")]
+        [SlashCommand("by-nickname", "A member's activity over the last days, by GeoGuessr nickname")]
+        [HelpDetail("The same view as `/my-activity last-days`, for anyone.")]
         public Task LastDaysByNicknameAsync(
             [Autocomplete(typeof(MemberNicknameAutocompleteHandler))]
-            [Summary(description: "The GeoGuessr nickname of the member")] string nickname,
-            [Summary(description: "How many days back to include (default 7)")]
+            [Summary(description: "The member's GeoGuessr nickname, as suggested")] string nickname,
+            [Summary(description: "How many days back to include")]
             [MinValue(1)] [MaxValue(60)] int days = 7) =>
             ExecuteAsync(
                 async ct =>
@@ -49,14 +51,15 @@ public partial class ActivityModule
         // Context-menu commands cannot take extra arguments, so the user command uses the default window.
         private const int DefaultDaysBack = 7;
 
-        [SlashCommand("by-user", "Show a Discord user's activity over the last N days")]
+        [SlashCommand("by-user", "A member's activity over the last days")]
         public Task LastDaysByUserAsync(
-            IGuildUser user,
-            [Summary(description: "How many days back to include (default 7)")]
+            [Summary(description: "A member of the server")] IGuildUser user,
+            [Summary(description: "How many days back to include")]
             [MinValue(1)] [MaxValue(60)] int days = 7) =>
             ShowLastDaysForUserAsync(user, days);
 
         [UserCommand("Last 7 Days XP")]
+        [HelpShortcutFor(nameof(LastDaysByUserAsync))]
         [DefaultMemberPermissions(GuildPermission.Administrator)]
         public Task LastDaysUserCommandAsync(IGuildUser user) =>
             ShowLastDaysForUserAsync(user, DefaultDaysBack);

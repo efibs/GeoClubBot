@@ -2,6 +2,7 @@ using Discord;
 using Discord.Interactions;
 using GeoClubBot.Discord.InputAdapters.Interactions.Autocomplete;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using UseCases.UseCases.Club;
@@ -10,14 +11,17 @@ using UseCases.UseCases.MissionBoard;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Club;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("club-stats", "Commands for reading a clubs stats")]
+[HelpFeature("club", Emoji = "🏆", Title = "Club stats", Order = 50,
+    Summary = "How the club is doing today, and this week's mission boards.")]
+[Group("club-stats", "How a club is doing today, and its mission boards")]
 public class ClubStatsModule(
     ISender mediator,
     ILogger<ClubStatsModule> logger) : ClubBotInteractionModule(mediator, logger)
 {
-    [SlashCommand("todays-xp", "Get how much XP a club has achieved today so far")]
+    [SlashCommand("todays-xp", "A club's XP so far today, streaks kept, missions finished and claimed")]
+    [HelpDetail("Today is the UTC day; claims count in the current claim cycle.")]
     public Task GetTodaysXpAsync(
-        [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "[optional] The clubs name")] string? clubName = null) =>
+        [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "The club; the main club if left out")] string? clubName = null) =>
         ExecuteAsync(
             async ct =>
             {
@@ -49,9 +53,10 @@ public class ClubStatsModule(
             },
             failureMessage: "Failed to fetch the clubs current XP. Please try again later. If the issue persists, please contact an admin.");
 
-    [SlashCommand("board", "Show this week's club mission boards and who holds which open mission")]
+    [SlashCommand("board", "This week's club mission boards and who holds which open mission")]
+    [HelpDetail("When the week ends and claims reset, each board (✅ cleared, ▶️ current, 🔒 locked), and every open mission: who holds it, its progress, when it was claimed, and 🆘 if they asked for help.")]
     public Task GetMissionBoardAsync(
-        [Summary(description: "[optional] The club (default: the main club)")]
+        [Summary(description: "The club; the main club if left out")]
         [Autocomplete(typeof(ClubAutocompleteHandler))] string? club = null) =>
         ExecuteAsync(
             async ct =>

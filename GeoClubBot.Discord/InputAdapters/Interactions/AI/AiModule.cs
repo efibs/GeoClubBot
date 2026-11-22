@@ -6,6 +6,7 @@ using Discord;
 using Discord.Interactions;
 using Entities;
 using GeoClubBot.Discord.InputAdapters.Interactions.Base;
+using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using GeoClubBot.Discord.Services;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,14 +25,29 @@ using UseCases.UseCases.AI.Review;
 namespace GeoClubBot.Discord.InputAdapters.Interactions.AI;
 
 [CommandContextType(InteractionContextType.Guild)]
-[Group("ai", "Commands for controlling the AI features")]
+[HelpFeature("ai", Emoji = "🤖", Title = "AI assistant", Order = 90, ShownWhen = HelpToggle.Ai,
+    Summary = "Ask about GeoGuessr metas and I answer from community guides, with their pictures.")]
+[HelpSection(1, "Asking a question", """
+    No command needed: **@-mention me** with your question, e.g. `@GeoClubBot what do Ghanaian bollards look like?`. I answer in the channel, so everyone learns, cite the guides I used and attach their pictures. Anything from general knowledge instead starts with "Not from the guides:". A hard question can take up to a minute.
+    - **A screenshot:** attach it and ask about it.
+    - **A plant:** ask "what tree is this?" with a screenshot, ideally a close crop (several pictures of one plant work too). Say where it was taken ("just south of Boston", a country, a Maps link) and I weigh what grows there.
+    - **A place:** paste a Google Maps Street View link and ask what gives it away; I check which clues its view shows.
+    """)]
+[HelpSection(2, "Follow-ups", """
+    **Reply to my answer**; no mention needed. I remember the conversation and the guides I cited, so "show me [2] bigger" works. Each reply starts its own branch, so your follow-ups and someone else's never mix. A conversation ends after a day of quiet.
+    """)]
+[HelpSection(3, "Rating answers", """
+    Click 👍 or 👎 under an answer; click it again to take it back. Rated conversations are kept to improve the answers, unrated ones are deleted after a while.
+    """)]
+[Group("ai", "The AI assistant: guide search, game reviews, the quiz")]
 public partial class AiModule(IServiceProvider serviceProvider, ISender mediator, ILogger<AiModule> logger)
     : ClubBotInteractionModule(mediator, logger)
 {
     /// <summary>Hits shown by /ai search; enough to judge retrieval without flooding the reply.</summary>
     private const int SearchResultLimit = 5;
 
-    [SlashCommand("status", "Show which AI models are available, how much is indexed, and today's budget")]
+    [SlashCommand("status", "Which AI models are available, how much is indexed, and today's allowance")]
+    [HelpDetail("The AI runs on a free daily allowance that resets at 00:00 UTC, with an hourly cap per person, so \"out of requests\" is expected rather than broken. **Picture links** says whether my linked pictures load.")]
     public Task StatusAsync() =>
         ExecuteAsync(async ct =>
         {
@@ -87,10 +103,11 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
             await FollowupAsync(embed: embed, ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to read the AI status.");
 
-    [SlashCommand("search", "Show what the guide index returns for a query, without asking a model")]
+    [SlashCommand("search", "What the guide library holds on a topic, without asking a model")]
+    [HelpDetail("Handy for finding the guide itself, or checking whether I know anything about a topic.")]
     public Task SearchAsync(
         [Summary(description: "What to look for")] string query,
-        [Summary(description: "Restrict to one country")] string? country = null) =>
+        [Summary(description: "Only results from one country")] string? country = null) =>
         ExecuteAsync(async ct =>
         {
             var result = await Mediator.Send(new SearchKnowledgeQuery(query, country, SearchResultLimit), ct)
@@ -111,11 +128,12 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
             await FollowupAsync(FormatHits(result.Value), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to search the guide index.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
     [SlashCommand("quiz", "A guide picture with four answers to pick from; everyone guesses once and scores points")]
+    [HelpShownWhen(HelpToggle.AiQuiz)]
+    [HelpDetail("Easy, medium and hard questions score 1, 2 and 3 points. The answer shows after a while, or when whoever started it reveals it.")]
     public Task QuizAsync(
         [Summary(description: "Only pictures of one country, e.g. Vietnam: then it asks where in it, or what is typical")] string? country = null,
-        [Summary(description: "How hard; left out, easy and medium questions")]
+        [Summary(description: "How hard; easy or medium if left out")]
         [Choice("easy (1 point)", "easy")]
         [Choice("medium (2 points)", "medium")]
         [Choice("hard (3 points)", "hard")]
@@ -125,6 +143,7 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
             failureMessage: "The quiz could not draw a picture just now.");
 
     [SlashCommand("quiz-scores", "The quiz leaderboard: points over all time and over the last days")]
+    [HelpShownWhen(HelpToggle.AiQuiz)]
     public Task QuizScoresAsync() =>
         ExecuteAsync(async ct =>
         {
@@ -285,6 +304,13 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
     }
 
     [SlashCommand("review", "Review a game or a Street View place: the clues each round showed, and what to study")]
+    [HelpShownWhen(HelpToggle.AiRoundReview)]
+    [HelpDetail("""
+        Round by round: the clues that could be seen and point to the country and region, and for a missed round the easiest clue that tells the right country from your guess. It ends with what to practise first, and each round's view links to Google Maps. A vision model checks what a round showed and can be wrong; the review says so.
+        - a **challenge** link: your game in it (needs your account linked); empty for the club's latest daily challenge you played
+        - a **game** link (`/game/…` or `/results/…`): anyone's finished game
+        - a **Street View** link: what gives that place away
+        """)]
     public Task ReviewAsync(
         [Summary(description: "A challenge, game or Google Maps Street View link; empty for the latest daily challenge")] string? link = null) =>
         ExecuteAsync(async ct =>
@@ -330,10 +356,10 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
     private static ValueTask StopReportingAsync(AiProgressReporter? reporter) =>
         reporter?.DisposeAsync() ?? ValueTask.CompletedTask;
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
-    [SlashCommand("gaps", "Show which questions the guides answer badly, by country and topic")]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    [SlashCommand("gaps", "Which questions the guides answer badly, by country and topic")]
     public Task GapsAsync(
-        [Summary(description: "Days to cover; leave empty for the configured period")] int? days = null) =>
+        [Summary(description: "Days to cover; the configured period if left out")] int? days = null) =>
         ExecuteAsync(async ct =>
         {
             var result = await Mediator.Send(new ReadKnowledgeGapReportQuery(days), ct).ConfigureAwait(false);
@@ -348,7 +374,8 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
                 .ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to build the knowledge-gap report.");
 
-    [SlashCommand("feedback", "Show how people have rated my answers")]
+    [SlashCommand("feedback", "How people have rated my answers: totals, by model, and recent comments")]
+    [HelpShownWhen(HelpToggle.AiFeedback)]
     public Task FeedbackAsync(
         [Summary(description: "Days to count over; 0 counts everything")] int days = 30) =>
         ExecuteAsync(async ct =>
@@ -365,8 +392,9 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
                 .ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to read the feedback summary.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
-    [SlashCommand("feedback-export", "Download the rated conversations as JSONL")]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    [SlashCommand("feedback-export", "Download the rated conversations as a JSONL file, to work out what to improve")]
+    [HelpShownWhen(HelpToggle.AiFeedback)]
     public Task FeedbackExportAsync(
         [Summary(description: "Only good or only bad answers")]
         [Choice("good", "positive")] [Choice("bad", "negative")] string? rating = null,
@@ -409,8 +437,9 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
                 .ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to export the feedback archive.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.Administrator)]
     [SlashCommand("sync-sources", "Refresh the catalogue of known guide sources")]
+    [HelpDetail("Indexing runs by itself overnight; this and `/ai ingest` only kick it along.")]
     public Task SyncSourcesAsync() =>
         ExecuteAsync(async ct =>
         {
@@ -430,11 +459,11 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
                 .ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to sync the source catalogue.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.Administrator)]
     [SlashCommand("ingest", "Index a batch of due guide sources now")]
     public Task IngestAsync(
         [Summary(description: "How many sources to process")] int count = 5,
-        [Summary(description: "Restrict to one source type, e.g. plonkit")] string? sourceType = null,
+        [Summary(description: "Only one source type, e.g. plonkit")] string? sourceType = null,
         [Summary(description: "Re-index even if the content is unchanged")] bool force = false) =>
         ExecuteAsync(async ct =>
         {
@@ -462,7 +491,7 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
             await FollowupAsync(AiSourcesFormatter.DescribeRun(report), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to index guide sources.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.Administrator)]
     [SlashCommand("backfill-images", "Queue indexed guides whose images were never embedded")]
     public Task BackfillImagesAsync() =>
         ExecuteAsync(async ct =>
@@ -484,7 +513,7 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
             await FollowupAsync(message, ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to queue the image backfill.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.Administrator)]
     [SlashCommand("describe-pictures", "Have a vision model describe indexed guide pictures that have no words of their own")]
     public Task DescribePicturesAsync(
         [Summary(description: "How many pictures to describe")] int count = 10) =>
@@ -501,7 +530,7 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
             await FollowupAsync(AiSourcesFormatter.DescribeCaptionRun(result.Value), ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to describe guide pictures.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.Administrator)]
     [SlashCommand("clue-now", "Post a clue of the day now, here or in the configured channel")]
     public Task ClueNowAsync(
         [Summary(description: "Post it in this channel instead of the configured one")] bool here = false) =>
@@ -518,8 +547,9 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
             await FollowupAsync($"Posted a clue from <{result.Value.SourceUrl}>.", ephemeral: true).ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to post a clue of the day.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
-    [SlashCommand("sources", "List guide sources that failed, were skipped or are unavailable, and why")]
+    [RequireUserPermission(GuildPermission.Administrator)]
+    [SlashCommand("sources", "Guide sources that failed, were skipped or are unavailable, and why")]
+    [HelpDetail("With how many times in a row it happened and when each is tried next.")]
     public Task SourcesAsync(
         [Summary(description: "Which sources to list")]
         [Choice("needing a look", nameof(KnowledgeSourceListKind.Problems))]
@@ -529,7 +559,7 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
         [Choice("pending", nameof(KnowledgeSourceListKind.Pending))]
         [Choice("no longer listed", nameof(KnowledgeSourceListKind.Removed))]
         string status = nameof(KnowledgeSourceListKind.Problems),
-        [Summary(description: "Restrict to one source type, e.g. gdoc")] string? sourceType = null) =>
+        [Summary(description: "Only one source type, e.g. gdoc")] string? sourceType = null) =>
         ExecuteAsync(async ct =>
         {
             var kind = Enum.TryParse<KnowledgeSourceListKind>(status, out var parsed)
@@ -548,8 +578,9 @@ public partial class AiModule(IServiceProvider serviceProvider, ISender mediator
                 .ConfigureAwait(false);
         }, ephemeral: true, failureMessage: "Failed to list the guide sources.");
 
-    [DefaultMemberPermissions(GuildPermission.Administrator)]
+    [RequireUserPermission(GuildPermission.Administrator)]
     [SlashCommand("source-retry", "Queue failed, skipped or unavailable guide sources to be tried again")]
+    [HelpDetail("E.g. after a site's extractor was fixed or a document was shared again. Give `key` or `source-type`.")]
     public Task SourceRetryAsync(
         [Summary(description: "One source, by the key or link /ai sources shows")] string? key = null,
         [Summary(description: "Every such source of one type, e.g. rmrg")] string? sourceType = null) =>
