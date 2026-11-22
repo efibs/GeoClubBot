@@ -16,28 +16,22 @@ public sealed record GetOpenAccountLinkingRequestQuery(ulong DiscordUserId) : IQ
 /// <summary>A known GeoGuessr user (linked or not, club member or not) by their user id.</summary>
 public sealed record GetGeoGuessrUserByUserIdQuery(string UserId) : IQuery<Result<GeoGuessrUser>>;
 
-public sealed record GetGeoGuessrUserByNicknameQuery(string Nickname) : IQuery<Result<GeoGuessrUser>>;
-
 public sealed record GetGeoGuessrProfileQuery(ulong DiscordUserId) : IQuery<Result<UserDto>>;
 
 public sealed class AccountLinkingQueriesHandler(
     IGeoGuessrUserRepository users,
-    IClubMemberRepository members,
     IAccountLinkingRequestRepository requests,
     IGeoGuessrUserProfileReader profileReader)
     : IRequestHandler<GetLinkedDiscordUserIdQuery, Result<ulong>>,
       IRequestHandler<GetLinkedGeoGuessrUserQuery, Result<GeoGuessrUser>>,
       IRequestHandler<GetOpenAccountLinkingRequestQuery, Result<GeoGuessrAccountLinkingRequest>>,
       IRequestHandler<GetGeoGuessrUserByUserIdQuery, Result<GeoGuessrUser>>,
-      IRequestHandler<GetGeoGuessrUserByNicknameQuery, Result<GeoGuessrUser>>,
       IRequestHandler<GetGeoGuessrProfileQuery, Result<UserDto>>
 {
     private static readonly Error NotLinked =
         Error.NotFound("account_linking.not_linked", "No linked account exists for the requested user.");
     private static readonly Error RequestNotFound =
         Error.NotFound("account_linking.request_not_found", "No account-linking request exists for that Discord user.");
-    private static readonly Error MemberNotFound =
-        Error.NotFound("club_member.not_found", "No club member exists with that nickname.");
     private static readonly Error UserNotFound =
         Error.NotFound("geoguessr_user.not_found", "No GeoGuessr user with that id is known to the bot.");
     private static readonly Error ProfileNotFound =
@@ -67,12 +61,6 @@ public sealed class AccountLinkingQueriesHandler(
     {
         var user = await users.ReadUserByUserIdAsync(request.UserId, cancellationToken).ConfigureAwait(false);
         return user is not null ? user : UserNotFound;
-    }
-
-    public async Task<Result<GeoGuessrUser>> Handle(GetGeoGuessrUserByNicknameQuery request, CancellationToken cancellationToken)
-    {
-        var member = await members.ReadClubMemberByNicknameAsync(request.Nickname, cancellationToken).ConfigureAwait(false);
-        return member is not null ? member.User : MemberNotFound;
     }
 
     public async Task<Result<UserDto>> Handle(GetGeoGuessrProfileQuery request, CancellationToken cancellationToken)

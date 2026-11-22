@@ -12,7 +12,36 @@ public sealed class ClubMemberRepositoryIntegrationTests(PostgresFixture fixture
     private static string NewUserId() => Guid.NewGuid().ToString("N")[..24];
 
     [Fact]
-    public async Task ReadClubMemberByNicknameAsync_FindsMember_AndEagerLoadsUser()
+    public async Task ReadAllMemberNamesAsync_KeepsMembersWhoShareANickname_ApartByUserId()
+    {
+        // Nicknames are not unique (#139): both members must be offered, each with its own id.
+        var clubId = Guid.NewGuid();
+        var nickname = $"nick-{Guid.NewGuid():N}"[..30];
+        var first = NewUserId();
+        var second = NewUserId();
+
+        await using (var seed = fixture.CreateDbContext())
+        {
+            seed.Add(Club.Create(clubId, $"club-{clubId:N}", 1));
+            foreach (var userId in new[] { first, second })
+            {
+                var user = GeoGuessrUser.Create(userId, nickname);
+                seed.Add(user);
+                seed.Add(ClubMember.Create(user, clubId, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-1)));
+            }
+
+            await seed.SaveChangesAsync();
+        }
+
+        await using var read = fixture.CreateDbContext();
+        var names = await new EfClubMemberRepository(read).ReadAllMemberNamesAsync();
+
+        names.Where(n => n.Nickname == nickname).Select(n => n.UserId)
+            .Should().BeEquivalentTo([first, second]);
+    }
+
+    [Fact]
+    public async Task ReadClubMemberByUserIdAsync_FindsMember_AndEagerLoadsUser()
     {
         var clubId = Guid.NewGuid();
         var nickname = $"nick-{Guid.NewGuid():N}"[..30];
@@ -30,7 +59,7 @@ public sealed class ClubMemberRepositoryIntegrationTests(PostgresFixture fixture
         await using var read = fixture.CreateDbContext();
         var repo = new EfClubMemberRepository(read);
 
-        var member = await repo.ReadClubMemberByNicknameAsync(nickname);
+        var member = await repo.ReadClubMemberByUserIdAsync(userId);
 
         member.Should().NotBeNull();
         member!.UserId.Should().Be(userId);

@@ -88,27 +88,6 @@ public sealed class ClubMembersUseCaseIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task ReadOrSyncClubMember_ByNickname_ReturnsTheExistingMember()
-    {
-        var clubId = await SeedClubAsync();
-        var userId = NewUserId();
-        var nickname = NewNickname();
-        await using (var seed = fixture.CreateDbContext())
-        {
-            var user = GeoGuessrUser.Create(userId, nickname);
-            seed.Add(user);
-            seed.Add(ClubMember.Create(user, clubId, xp: 0, joinedAt: DateTimeOffset.UtcNow.AddMonths(-1)));
-            await seed.SaveChangesAsync();
-        }
-
-        using var host = CreateHost();
-        var result = await host.SendAsync(new ReadOrSyncClubMemberByNicknameQuery(nickname));
-
-        result.IsSuccess.Should().BeTrue();
-        result.Value.UserId.Should().Be(userId);
-    }
-
-    [Fact]
     public async Task ReadOrSyncClubMember_ByUserId_ReturnsTheExistingMember()
     {
         var clubId = await SeedClubAsync();
@@ -133,7 +112,7 @@ public sealed class ClubMembersUseCaseIntegrationTests(PostgresFixture fixture)
     {
         using var host = CreateHostWithoutClubs();
 
-        var result = await host.SendAsync(new ReadOrSyncClubMemberByNicknameQuery($"missing-{Guid.NewGuid():N}"[..20]));
+        var result = await host.SendAsync(new ReadOrSyncClubMemberByUserIdQuery(NewUserId()));
 
         result.IsFailure.Should().BeTrue();
         result.Error.Type.Should().Be(ErrorType.NotFound);

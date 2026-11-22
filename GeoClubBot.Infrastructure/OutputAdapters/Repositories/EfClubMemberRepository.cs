@@ -15,15 +15,6 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
         dbContext.Entry(clubMember).State = EntityState.Added;
     }
 
-    public async Task<ClubMember?> ReadClubMemberByNicknameAsync(string nickname, CancellationToken cancellationToken = default)
-    {
-        return await dbContext.ClubMembers
-            .AsNoTracking()
-            .Include(m => m.User)
-            .SingleOrDefaultAsync(m => m.User.Nickname == nickname, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     public async Task<ClubMember?> ReadClubMemberByUserIdAsync(string userId, CancellationToken cancellationToken = default)
     {
         return await dbContext.ClubMembers

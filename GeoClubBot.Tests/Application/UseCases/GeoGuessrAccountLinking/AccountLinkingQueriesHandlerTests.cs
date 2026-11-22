@@ -17,28 +17,16 @@ public sealed class AccountLinkingQueriesHandlerTests
     private const ulong DiscordUserId = 42;
 
     private readonly IGeoGuessrUserRepository _users = Substitute.For<IGeoGuessrUserRepository>();
-    private readonly IClubMemberRepository _members = Substitute.For<IClubMemberRepository>();
     private readonly IAccountLinkingRequestRepository _requests = Substitute.For<IAccountLinkingRequestRepository>();
     private readonly IGeoGuessrUserProfileReader _profiles = Substitute.For<IGeoGuessrUserProfileReader>();
 
-    private AccountLinkingQueriesHandler CreateHandler() => new(_users, _members, _requests, _profiles);
+    private AccountLinkingQueriesHandler CreateHandler() => new(_users, _requests, _profiles);
 
     private static void ShouldBeNotFound<T>(Result<T> result, string code)
     {
         result.IsFailure.Should().BeTrue();
         result.Error.Code.Should().Be(code);
         result.Error.Type.Should().Be(ErrorType.NotFound);
-    }
-
-    private void MemberIs(ulong? discordUserId)
-    {
-        var member = new ClubMemberBuilder().WithUserId(UserId).WithNickname(Nickname);
-        if (discordUserId is { } id)
-        {
-            member.WithDiscordUserId(id);
-        }
-
-        _members.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>()).Returns(member.Build());
     }
 
     [Fact]
@@ -134,26 +122,6 @@ public sealed class AccountLinkingQueriesHandlerTests
         var result = await CreateHandler().Handle(new GetGeoGuessrUserByUserIdQuery(UserId), CancellationToken.None);
 
         ShouldBeNotFound(result, "geoguessr_user.not_found");
-    }
-
-    [Fact]
-    public async Task GeoGuessrUser_IsFoundByNickname()
-    {
-        MemberIs(DiscordUserId);
-
-        var result = await CreateHandler().Handle(new GetGeoGuessrUserByNicknameQuery(Nickname), CancellationToken.None);
-
-        result.Value.UserId.Should().Be(UserId);
-    }
-
-    [Fact]
-    public async Task UnknownNickname_HasNoGeoGuessrUser()
-    {
-        _members.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>()).Returns((ClubMember?)null);
-
-        var result = await CreateHandler().Handle(new GetGeoGuessrUserByNicknameQuery(Nickname), CancellationToken.None);
-
-        ShouldBeNotFound(result, "club_member.not_found");
     }
 
     [Fact]

@@ -10,8 +10,6 @@ using Utilities;
 
 namespace UseCases.UseCases.ClubMembers;
 
-public sealed record ReadOrSyncClubMemberByNicknameQuery(string Nickname) : IQuery<Result<ClubMember>>;
-
 public sealed record ReadOrSyncClubMemberByUserIdQuery(string UserId) : IQuery<Result<ClubMember>>;
 
 public sealed class ReadOrSyncClubMemberHandler(
@@ -20,17 +18,8 @@ public sealed class ReadOrSyncClubMemberHandler(
     ISender mediator,
     IClubMemberSyncGate memberSyncGate,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig)
-    : IRequestHandler<ReadOrSyncClubMemberByNicknameQuery, Result<ClubMember>>,
-      IRequestHandler<ReadOrSyncClubMemberByUserIdQuery, Result<ClubMember>>
+    : IRequestHandler<ReadOrSyncClubMemberByUserIdQuery, Result<ClubMember>>
 {
-    public Task<Result<ClubMember>> Handle(ReadOrSyncClubMemberByNicknameQuery request, CancellationToken cancellationToken) =>
-        ReadOrSyncAsync(
-            request.Nickname,
-            (value, ct) => members.ReadClubMemberByNicknameAsync(value, ct),
-            m => m.User.Nickname == request.Nickname,
-            $"Club member with nickname '{request.Nickname}' was not found.",
-            cancellationToken);
-
     public Task<Result<ClubMember>> Handle(ReadOrSyncClubMemberByUserIdQuery request, CancellationToken cancellationToken) =>
         ReadOrSyncAsync(
             request.UserId,
