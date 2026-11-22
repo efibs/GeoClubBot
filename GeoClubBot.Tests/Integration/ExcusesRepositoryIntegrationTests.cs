@@ -46,7 +46,7 @@ public sealed class ExcusesRepositoryIntegrationTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task ReadExcusesByMemberNicknameAsync_ReturnsExcusesForThatMemberOnly()
+    public async Task ReadExcusesByMemberUserIdAsync_ReturnsExcusesForThatMemberOnly()
     {
         var clubId = Guid.NewGuid();
         var nickname = NewNickname();
@@ -76,19 +76,20 @@ public sealed class ExcusesRepositoryIntegrationTests(PostgresFixture fixture)
         await using var read = fixture.CreateDbContext();
         var repo = new EfExcusesRepository(read);
 
-        var excuses = await repo.ReadExcusesByMemberNicknameAsync(nickname);
+        var excuses = await repo.ReadExcusesByMemberUserIdAsync(userId);
 
         excuses.Should().HaveCount(2);
         excuses.Should().OnlyContain(e => e.UserId == userId);
+        excuses.Should().OnlyContain(e => e.ClubMember!.User.Nickname == nickname, "callers show the member's nickname");
     }
 
     [Fact]
-    public async Task ReadExcusesByMemberNicknameAsync_ReturnsEmpty_ForUnknownNickname()
+    public async Task ReadExcusesByMemberUserIdAsync_ReturnsEmpty_ForUnknownUser()
     {
         await using var read = fixture.CreateDbContext();
         var repo = new EfExcusesRepository(read);
 
-        var excuses = await repo.ReadExcusesByMemberNicknameAsync($"missing-{Guid.NewGuid():N}");
+        var excuses = await repo.ReadExcusesByMemberUserIdAsync($"missing-{Guid.NewGuid():N}");
 
         excuses.Should().BeEmpty();
     }

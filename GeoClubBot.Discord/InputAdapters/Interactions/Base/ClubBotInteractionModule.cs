@@ -1,8 +1,10 @@
 using Discord.Interactions;
+using Entities;
 using FluentValidation;
 using GeoClubBot.Discord.InputAdapters.Interactions.Help;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using UseCases.UseCases.GeoGuessrAccountLinking;
 using Utilities;
 
 namespace GeoClubBot.Discord.InputAdapters.Interactions.Base;
@@ -71,6 +73,22 @@ public abstract partial class ClubBotInteractionModule(ISender mediator, ILogger
         {
             LogFollowupDeliveryFailed(Logger, followupEx, GetType().Name);
         }
+    }
+
+    /// <summary>The reply when a member option holds no known user id, e.g. a nickname typed without picking.</summary>
+    protected const string UnknownMemberMessage = "Unknown member. Please pick one of the suggested members.";
+
+    /// <summary>
+    /// The GeoGuessr user picked in a member option, whose value is the user id
+    /// (<see cref="Autocomplete.MemberAutocompleteHandler"/>), or null when it names no known user.
+    /// </summary>
+    protected async Task<GeoGuessrUser?> ReadPickedUserAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var user = await Mediator
+            .Send(new GetGeoGuessrUserByUserIdQuery(userId), cancellationToken)
+            .ConfigureAwait(false);
+
+        return user.ValueOrNull;
     }
 
     /// <summary>

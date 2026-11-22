@@ -7,9 +7,11 @@ using UseCases.OutputPorts.Repositories;
 
 namespace UseCases.UseCases.Club;
 
-public sealed record GetClubByNameOrDefaultQuery(string? ClubName) : IQuery<Entities.Club?>;
+/// <summary>The club with that id, or the main club when no id is given.</summary>
+public sealed record GetClubByIdOrDefaultQuery(Guid? ClubId) : IQuery<Entities.Club?>;
 
-public sealed record GetClubTodaysXpQuery(string? ClubName) : IQuery<GetClubTodaysXpResult>;
+/// <param name="ClubId">The club; the main club when null.</param>
+public sealed record GetClubTodaysXpQuery(Guid? ClubId) : IQuery<GetClubTodaysXpResult>;
 
 /// <summary>
 /// Today's (UTC) club XP, how many members kept their streak, how many board missions were
@@ -34,33 +36,20 @@ public sealed class ClubQueriesHandler(
     ClubActivityKindClassifier activityKinds,
     IOptions<GeoGuessrConfiguration> geoGuessrConfig,
     IOptions<MissionBoardConfiguration> missionBoardConfig)
-    : IRequestHandler<GetClubByNameOrDefaultQuery, Entities.Club?>,
+    : IRequestHandler<GetClubByIdOrDefaultQuery, Entities.Club?>,
       IRequestHandler<GetClubTodaysXpQuery, GetClubTodaysXpResult>,
       IRequestHandler<GetAllClubsQuery, IReadOnlyList<Entities.Club>>
 {
     private readonly Guid _defaultClubId = geoGuessrConfig.Value.MainClub.ClubId;
 
-    public async Task<Entities.Club?> Handle(GetClubByNameOrDefaultQuery request, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(request.ClubName))
-        {
-            return await clubs.ReadClubByIdAsync(_defaultClubId, cancellationToken).ConfigureAwait(false);
-        }
-
-        return await clubs.ReadClubByNameAsync(request.ClubName, cancellationToken).ConfigureAwait(false);
-    }
+    public Task<Entities.Club?> Handle(GetClubByIdOrDefaultQuery request, CancellationToken cancellationToken) =>
+        clubs.ReadClubByIdAsync(request.ClubId ?? _defaultClubId, cancellationToken);
 
     public async Task<GetClubTodaysXpResult> Handle(GetClubTodaysXpQuery request, CancellationToken cancellationToken)
     {
-        Entities.Club? club;
-        if (string.IsNullOrWhiteSpace(request.ClubName))
-        {
-            club = await clubs.ReadClubByIdAsync(_defaultClubId, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            club = await clubs.ReadClubByNameAsync(request.ClubName, cancellationToken).ConfigureAwait(false);
-        }
+        var club = await clubs
+            .ReadClubByIdAsync(request.ClubId ?? _defaultClubId, cancellationToken)
+            .ConfigureAwait(false);
 
         if (club is null)
         {

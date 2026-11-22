@@ -21,20 +21,23 @@ public class ClubStatsModule(
     [SlashCommand("todays-xp", "A club's XP so far today, streaks kept, missions finished and claimed")]
     [HelpDetail("Today is the UTC day; claims count in the current claim cycle.")]
     public Task GetTodaysXpAsync(
-        [Autocomplete(typeof(ClubNameAutocompleteHandler))][Summary(description: "The club; the main club if left out")] string? clubName = null) =>
+        [Autocomplete(typeof(ClubAutocompleteHandler))][Summary(description: "The club; the main club if left out")] string? club = null) =>
         ExecuteAsync(
             async ct =>
             {
-                var inputClubName = clubName;
+                if (!ClubOption.TryParse(club, out var clubId))
+                {
+                    await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
+                    return;
+                }
 
                 var result = await Mediator
-                    .Send(new GetClubTodaysXpQuery(clubName), ct)
+                    .Send(new GetClubTodaysXpQuery(clubId), ct)
                     .ConfigureAwait(false);
 
                 if (result.ClubName is null)
                 {
-                    await FollowupAsync($"The club '{inputClubName ?? "<default>"}' does not exist in the database.", ephemeral: false)
-                        .ConfigureAwait(false);
+                    await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
                     return;
                 }
 
@@ -61,17 +64,10 @@ public class ClubStatsModule(
         ExecuteAsync(
             async ct =>
             {
-                Guid? clubId = null;
-                if (club != null)
+                if (!ClubOption.TryParse(club, out var clubId))
                 {
-                    if (!Guid.TryParse(club, out var parsedClubId))
-                    {
-                        await FollowupAsync("Unknown club. Please pick one of the suggested clubs.", ephemeral: true)
-                            .ConfigureAwait(false);
-                        return;
-                    }
-
-                    clubId = parsedClubId;
+                    await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
+                    return;
                 }
 
                 var result = await Mediator

@@ -49,16 +49,16 @@ public class EfExcusesRepository(GeoClubBotDbContext dbContext) : IExcusesReposi
             .ConfigureAwait(false);
     }
 
-    public async Task<List<ClubMemberExcuse>> ReadExcusesByMemberNicknameAsync(string memberNickname, CancellationToken cancellationToken = default)
+    public async Task<List<ClubMemberExcuse>> ReadExcusesByMemberUserIdAsync(string memberUserId, CancellationToken cancellationToken = default)
     {
-        var member = await dbContext.ClubMembers
+        // The member and user come along: the dashboard lists each excuse with its nickname.
+        return await dbContext.ClubMemberExcuses
             .AsNoTracking()
-            .Include(clubMember => clubMember.Excuses)
-            .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.User!.Nickname == memberNickname, cancellationToken)
+            .Include(e => e.ClubMember)
+            .ThenInclude(m => m!.User)
+            .Where(e => e.UserId == memberUserId)
+            .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-
-        return member?.Excuses ?? [];
     }
 
     public void DeleteExcuse(ClubMemberExcuse excuse)

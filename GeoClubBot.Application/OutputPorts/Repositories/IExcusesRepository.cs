@@ -15,7 +15,7 @@ public interface IExcusesRepository
 
     Task<ClubMemberExcuse?> ReadForUpdateByIdAsync(Guid excuseId, CancellationToken cancellationToken = default);
 
-    Task<List<ClubMemberExcuse>> ReadExcusesByMemberNicknameAsync(string memberNickname, CancellationToken cancellationToken = default);
+    Task<List<ClubMemberExcuse>> ReadExcusesByMemberUserIdAsync(string memberUserId, CancellationToken cancellationToken = default);
 
     void DeleteExcuse(ClubMemberExcuse excuse);
 

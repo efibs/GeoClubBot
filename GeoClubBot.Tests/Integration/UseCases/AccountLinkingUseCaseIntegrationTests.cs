@@ -356,16 +356,18 @@ public sealed class AccountLinkingUseCaseIntegrationTests(PostgresFixture fixtur
     }
 
     [Fact]
-    public async Task GetDiscordUserByNickname_ReturnsTheDiscordId_ForALinkedMember()
+    public async Task GetGeoGuessrUserByUserId_ReturnsTheLinkedUser()
     {
         var discordId = NewDiscordId();
+        var geoGuessrId = NewGeoGuessrId();
         var nickname = NewNickname();
-        await SeedLinkedMemberAsync(NewGeoGuessrId(), nickname, discordId);
+        await SeedLinkedMemberAsync(geoGuessrId, nickname, discordId);
 
         using var host = CreateHost();
-        var result = await host.SendAsync(new GetDiscordUserByNicknameQuery(nickname));
+        var result = await host.SendAsync(new GetGeoGuessrUserByUserIdQuery(geoGuessrId));
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(discordId);
+        result.Value.Nickname.Should().Be(nickname);
+        result.Value.DiscordUserId.Should().Be(discordId);
     }
 }

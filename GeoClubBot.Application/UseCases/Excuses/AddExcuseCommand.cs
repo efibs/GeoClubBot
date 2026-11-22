@@ -7,7 +7,7 @@ using Utilities;
 
 namespace UseCases.UseCases.Excuses;
 
-public sealed record AddExcuseCommand(string MemberNickname, DateTimeOffset From, DateTimeOffset To) : ICommand<Result<Guid>>;
+public sealed record AddExcuseCommand(string MemberUserId, DateTimeOffset From, DateTimeOffset To) : ICommand<Result<Guid>>;
 
 public sealed class AddExcuseHandler(
     ISender mediator,
@@ -16,7 +16,7 @@ public sealed class AddExcuseHandler(
     public async Task<Result<Guid>> Handle(AddExcuseCommand request, CancellationToken cancellationToken)
     {
         var memberResult = await mediator
-            .Send(new ReadOrSyncClubMemberByNicknameQuery(request.MemberNickname), cancellationToken)
+            .Send(new ReadOrSyncClubMemberByUserIdQuery(request.MemberUserId), cancellationToken)
             .ConfigureAwait(false);
 
         if (memberResult.IsFailure)

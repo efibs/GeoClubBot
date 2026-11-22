@@ -10,7 +10,7 @@ public interface IStrikesRepository
 
     Task<Dictionary<string, int>> ReadActiveStrikeCountsByMemberUserIdsAsync(IEnumerable<string> memberUserIds, CancellationToken cancellationToken = default);
 
-    Task<List<ClubMemberStrike>?> ReadStrikesByMemberNicknameAsync(string memberNickname, CancellationToken cancellationToken = default);
+    Task<List<ClubMemberStrike>> ReadStrikesByMemberUserIdAsync(string memberUserId, CancellationToken cancellationToken = default);
 
     Task<List<ClubMemberStrike>> ReadAllStrikesAsync(CancellationToken cancellationToken = default);
 

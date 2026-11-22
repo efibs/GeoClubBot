@@ -90,8 +90,17 @@ public partial class ActivityAdminController(
         ISender mediator,
         CancellationToken cancellationToken)
     {
+        // The dashboard addresses members by nickname; the use cases take the user id.
+        var member = await mediator
+            .Send(new GetGeoGuessrUserByNicknameQuery(nickname), cancellationToken)
+            .ConfigureAwait(false);
+        if (member.IsFailure)
+        {
+            return this.ToProblemDetails(member.Error);
+        }
+
         var status = await mediator
-            .Send(new ReadMemberStrikesQuery(nickname), cancellationToken)
+            .Send(new ReadMemberStrikesQuery(member.Value.UserId), cancellationToken)
             .ConfigureAwait(false);
         if (!status.IsSuccess)
         {
@@ -114,8 +123,22 @@ public partial class ActivityAdminController(
         ISender mediator,
         CancellationToken cancellationToken)
     {
+        string? userId = null;
+        if (nickname is not null)
+        {
+            var member = await mediator
+                .Send(new GetGeoGuessrUserByNicknameQuery(nickname), cancellationToken)
+                .ConfigureAwait(false);
+            if (member.IsFailure)
+            {
+                return Ok(Array.Empty<AdminExcuseDto>());
+            }
+
+            userId = member.Value.UserId;
+        }
+
         var excuses = await mediator
-            .Send(new ReadExcusesQuery(nickname), cancellationToken)
+            .Send(new ReadExcusesQuery(userId), cancellationToken)
             .ConfigureAwait(false);
 
         return Ok(excuses.Select(ActivityAdminDtoAssembler.AssembleExcuse).ToList());
@@ -151,8 +174,16 @@ public partial class ActivityAdminController(
         ISender mediator,
         CancellationToken cancellationToken)
     {
+        var member = await mediator
+            .Send(new GetGeoGuessrUserByNicknameQuery(nickname), cancellationToken)
+            .ConfigureAwait(false);
+        if (member.IsFailure)
+        {
+            return this.ToProblemDetails(member.Error);
+        }
+
         var statistics = await mediator
-            .Send(new PlayerStatisticsQuery(nickname), cancellationToken)
+            .Send(new PlayerStatisticsQuery(member.Value.UserId), cancellationToken)
             .ConfigureAwait(false);
         if (statistics.IsFailure)
         {
@@ -199,8 +230,16 @@ public partial class ActivityAdminController(
         ISender mediator,
         CancellationToken cancellationToken)
     {
+        var member = await mediator
+            .Send(new ReadOrSyncClubMemberByNicknameQuery(request.MemberNickname), cancellationToken)
+            .ConfigureAwait(false);
+        if (member.IsFailure)
+        {
+            return this.ToProblemDetails(member.Error);
+        }
+
         var result = await mediator
-            .Send(new AddStrikeCommand(request.MemberNickname, request.StrikeDate), cancellationToken)
+            .Send(new AddStrikeCommand(member.Value.UserId, request.StrikeDate), cancellationToken)
             .ConfigureAwait(false);
         if (!result.IsSuccess)
         {
@@ -255,8 +294,16 @@ public partial class ActivityAdminController(
         ISender mediator,
         CancellationToken cancellationToken)
     {
+        var member = await mediator
+            .Send(new ReadOrSyncClubMemberByNicknameQuery(request.MemberNickname), cancellationToken)
+            .ConfigureAwait(false);
+        if (member.IsFailure)
+        {
+            return this.ToProblemDetails(member.Error);
+        }
+
         var result = await mediator
-            .Send(new AddExcuseCommand(request.MemberNickname, request.From, request.To), cancellationToken)
+            .Send(new AddExcuseCommand(member.Value.UserId, request.From, request.To), cancellationToken)
             .ConfigureAwait(false);
         if (!result.IsSuccess)
         {

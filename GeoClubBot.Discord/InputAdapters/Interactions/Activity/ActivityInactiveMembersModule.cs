@@ -19,17 +19,10 @@ public partial class ActivityModule
         ExecuteAsync(
             async ct =>
             {
-                Guid? clubId = null;
-                if (club != null)
+                if (!ClubOption.TryParse(club, out var clubId))
                 {
-                    if (!Guid.TryParse(club, out var parsedClubId))
-                    {
-                        await FollowupAsync("Unknown club. Please pick one of the suggested clubs.", ephemeral: true)
-                            .ConfigureAwait(false);
-                        return;
-                    }
-
-                    clubId = parsedClubId;
+                    await FollowupAsync(ClubOption.UnknownClubMessage, ephemeral: true).ConfigureAwait(false);
+                    return;
                 }
 
                 var result = await Mediator

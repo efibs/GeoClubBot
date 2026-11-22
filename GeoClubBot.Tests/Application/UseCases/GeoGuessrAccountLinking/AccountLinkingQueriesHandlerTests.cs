@@ -115,33 +115,25 @@ public sealed class AccountLinkingQueriesHandlerTests
     }
 
     [Fact]
-    public async Task DiscordUser_IsFoundByNickname()
+    public async Task GeoGuessrUser_IsFoundByUserId()
     {
-        MemberIs(DiscordUserId);
+        _users.ReadUserByUserIdAsync(UserId, Arg.Any<CancellationToken>())
+            .Returns(GeoGuessrUser.Create(UserId, Nickname, DiscordUserId));
 
-        var result = await CreateHandler().Handle(new GetDiscordUserByNicknameQuery(Nickname), CancellationToken.None);
+        var result = await CreateHandler().Handle(new GetGeoGuessrUserByUserIdQuery(UserId), CancellationToken.None);
 
-        result.Value.Should().Be(DiscordUserId);
+        result.Value.Nickname.Should().Be(Nickname);
+        result.Value.DiscordUserId.Should().Be(DiscordUserId);
     }
 
     [Fact]
-    public async Task UnlinkedMember_HasNoDiscordUserByNickname()
+    public async Task UnknownUserId_HasNoGeoGuessrUser()
     {
-        MemberIs(discordUserId: null);
+        _users.ReadUserByUserIdAsync(UserId, Arg.Any<CancellationToken>()).Returns((GeoGuessrUser?)null);
 
-        var result = await CreateHandler().Handle(new GetDiscordUserByNicknameQuery(Nickname), CancellationToken.None);
+        var result = await CreateHandler().Handle(new GetGeoGuessrUserByUserIdQuery(UserId), CancellationToken.None);
 
-        ShouldBeNotFound(result, "account_linking.not_linked");
-    }
-
-    [Fact]
-    public async Task UnknownNickname_HasNoDiscordUser()
-    {
-        _members.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>()).Returns((ClubMember?)null);
-
-        var result = await CreateHandler().Handle(new GetDiscordUserByNicknameQuery(Nickname), CancellationToken.None);
-
-        ShouldBeNotFound(result, "account_linking.not_linked");
+        ShouldBeNotFound(result, "geoguessr_user.not_found");
     }
 
     [Fact]

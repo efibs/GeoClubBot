@@ -119,23 +119,25 @@ public class UserInfoModule(
 
     [SlashCommand("discord-user", "The Discord member linked to a GeoGuessr nickname")]
     public Task GetDiscordUserAsync(
-        [Autocomplete(typeof(LinkedUserNicknameAutocompleteHandler))]
-        [Summary(description: "The GeoGuessr nickname, as suggested")] string nickname) =>
+        [Autocomplete(typeof(LinkedUserAutocompleteHandler))]
+        [Summary(description: "The GeoGuessr player, as suggested")] string player) =>
         ExecuteAsync(
             async ct =>
             {
-                var discordUserId = await Mediator
-                    .Send(new GetDiscordUserByNicknameQuery(nickname), ct)
-                    .ConfigureAwait(false);
-
-                if (discordUserId.IsFailure)
+                var user = await ReadPickedUserAsync(player, ct).ConfigureAwait(false);
+                if (user is null)
                 {
-                    await FollowupAsync($"No linked Discord user found for GeoGuessr player '**{nickname}**'.", ephemeral: true)
+                    await FollowupAsync("Unknown player. Please pick one of the suggested players.", ephemeral: true)
+                        .ConfigureAwait(false);
+                }
+                else if (user.DiscordUserId is not { } discordUserId)
+                {
+                    await FollowupAsync($"No linked Discord user found for GeoGuessr player '**{user.Nickname}**'.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
                 else
                 {
-                    await FollowupAsync($"The GeoGuessr player '**{nickname}**' is <@{discordUserId.Value}>.", ephemeral: true)
+                    await FollowupAsync($"The GeoGuessr player '**{user.Nickname}**' is <@{discordUserId}>.", ephemeral: true)
                         .ConfigureAwait(false);
                 }
             },

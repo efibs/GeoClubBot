@@ -13,7 +13,7 @@ public sealed class AddExcuseCommandValidatorTests
     public void Validate_Succeeds_ForWellFormedExcuse()
     {
         var cmd = new AddExcuseCommand(
-            MemberNickname: "Player1",
+            MemberUserId: "user-1",
             From: DateTimeOffset.UtcNow.AddDays(-1),
             To: DateTimeOffset.UtcNow.AddDays(7));
 
@@ -38,21 +38,21 @@ public sealed class AddExcuseCommandValidatorTests
     public void Validate_Fails_WhenNicknameIsEmpty()
     {
         var cmd = new AddExcuseCommand(
-            MemberNickname: "",
+            MemberUserId: "",
             From: DateTimeOffset.UtcNow,
             To: DateTimeOffset.UtcNow.AddDays(1));
 
         var result = _validator.Validate(cmd);
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "MemberNickname");
+        result.Errors.Should().Contain(e => e.PropertyName == "MemberUserId");
     }
 
     [Fact]
     public void Validate_Fails_WhenFromIsMoreThanFiveYearsInThePast()
     {
         var cmd = new AddExcuseCommand(
-            MemberNickname: "Player1",
+            MemberUserId: "user-1",
             From: DateTimeOffset.UtcNow.AddYears(-6),
             To: DateTimeOffset.UtcNow.AddYears(-6).AddDays(1));
 

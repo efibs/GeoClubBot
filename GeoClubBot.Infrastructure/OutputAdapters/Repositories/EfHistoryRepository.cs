@@ -23,23 +23,11 @@ public class EfHistoryRepository(GeoClubBotDbContext dbContext) : IHistoryReposi
             .ConfigureAwait(false);
     }
 
-    public async Task<List<ClubMemberHistoryEntry>?> ReadHistoryEntriesByPlayerNicknameAsync(string playerNickname, Guid clubId, CancellationToken cancellationToken = default)
+    public async Task<List<ClubMemberHistoryEntry>> ReadHistoryEntriesByUserIdAsync(string userId, Guid clubId, CancellationToken cancellationToken = default)
     {
-        var playerExists = await dbContext.ClubMembers
-            .Include(m => m.User)
-            .AnyAsync(m => m.User!.Nickname == playerNickname, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!playerExists)
-        {
-            return null;
-        }
-
         return await dbContext.ClubMemberHistoryEntries
             .AsNoTracking()
-            .Include(e => e.ClubMember)
-            .ThenInclude(m => m!.User)
-            .Where(e => e.ClubMember!.User!.Nickname == playerNickname && e.ClubId == clubId)
+            .Where(e => e.UserId == userId && e.ClubId == clubId)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

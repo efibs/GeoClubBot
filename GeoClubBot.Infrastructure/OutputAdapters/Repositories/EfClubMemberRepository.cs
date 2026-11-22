@@ -1,6 +1,7 @@
 using Entities;
 using Infrastructure.OutputAdapters.DataAccess;
 using Microsoft.EntityFrameworkCore;
+using UseCases.OutputPorts.Projections;
 using UseCases.OutputPorts.Repositories;
 
 namespace Infrastructure.OutputAdapters.Repositories;
@@ -66,14 +67,14 @@ public class EfClubMemberRepository(GeoClubBotDbContext dbContext) : IClubMember
             .ConfigureAwait(false);
     }
 
-    public async Task<List<string>> ReadAllNicknamesAsync(CancellationToken cancellationToken = default)
+    public async Task<List<UserNameProjection>> ReadAllMemberNamesAsync(CancellationToken cancellationToken = default)
     {
         // Projection-only read for autocomplete: never materializes full ClubMember graphs.
         return await dbContext.ClubMembers
             .AsNoTracking()
-            .Select(m => m.User.Nickname)
-            .Distinct()
-            .OrderBy(n => n)
+            .OrderBy(m => m.User.Nickname)
+            .ThenBy(m => m.UserId)
+            .Select(m => new UserNameProjection(m.UserId, m.User.Nickname))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }

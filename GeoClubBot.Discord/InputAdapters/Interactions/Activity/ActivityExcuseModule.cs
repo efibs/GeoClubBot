@@ -18,7 +18,7 @@ public partial class ActivityModule
         [SlashCommand("add", "Excuse a member from the weekly check between two dates")]
         [HelpDetail("Both days count. An excused member's targets shrink by the days excused.")]
         public async Task AddExcuseAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname,
+            [Autocomplete(typeof(MemberAutocompleteHandler))][Summary(description: "The member, as suggested")] string member,
             [Summary(description: "The first day, as YYYY-MM-DD")]
             DateTime from,
             [Summary(description: "The last day, as YYYY-MM-DD")]
@@ -37,13 +37,21 @@ public partial class ActivityModule
                 return;
             }
 
+            var user = await ReadPickedUserAsync(member).ConfigureAwait(false);
+            if (user is null)
+            {
+                await RespondAsync(UnknownMemberMessage, ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
+            var memberNickname = user.Nickname;
             var result = await Mediator
-                .Send(new AddExcuseCommand(memberNickname, from, to))
+                .Send(new AddExcuseCommand(user.UserId, from, to))
                 .ConfigureAwait(false);
 
             if (result.IsFailure)
             {
-                await RespondAsync($"Excuse could not be added for player '{memberNickname}'. Is the nickname wrong?",
+                await RespondAsync($"Excuse could not be added for player '{memberNickname}': {FriendlyMessageFor(result.Error)}",
                     ephemeral: true).ConfigureAwait(false);
             }
             else
@@ -118,9 +126,17 @@ public partial class ActivityModule
 
         [SlashCommand("read", "A member's excuses")]
         public async Task ReadExcusesAsync(
-            [Autocomplete(typeof(MemberNicknameAutocompleteHandler))][Summary(description: "The member's GeoGuessr nickname, as suggested")] string memberNickname)
+            [Autocomplete(typeof(MemberAutocompleteHandler))][Summary(description: "The member, as suggested")] string member)
         {
-            var excuses = await Mediator.Send(new ReadExcusesQuery(memberNickname)).ConfigureAwait(false);
+            var user = await ReadPickedUserAsync(member).ConfigureAwait(false);
+            if (user is null)
+            {
+                await RespondAsync(UnknownMemberMessage, ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
+            var memberNickname = user.Nickname;
+            var excuses = await Mediator.Send(new ReadExcusesQuery(user.UserId)).ConfigureAwait(false);
 
             if (excuses.Count == 0)
             {

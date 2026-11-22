@@ -97,7 +97,7 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
         }
 
         using var host = CreateHost(Guid.NewGuid());
-        var stats = await host.SendAsync(new PlayerStatisticsQuery(nickname));
+        var stats = await host.SendAsync(new PlayerStatisticsQuery(userId));
 
         // Exact values pin down every reduction (average/min/max/quartiles), the chronological
         // ordering, the gain calculation (a-b), and that HistorySince is the EARLIEST timestamp.
@@ -114,7 +114,7 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
-    public async Task PlayerStatistics_FailsAsUnknown_ForUnknownNickname()
+    public async Task PlayerStatistics_FailsAsUnknown_ForAnUnknownUser()
     {
         using var host = CreateHost(Guid.NewGuid());
 
@@ -435,14 +435,14 @@ public sealed class ClubMemberActivityUseCaseIntegrationTests(PostgresFixture fi
     }
 
     [Fact]
-    public async Task ActivityLeaderboard_ReturnsTheRankedMembers_ForANamedClub()
+    public async Task ActivityLeaderboard_ReturnsTheRankedMembers_ForTheGivenClub()
     {
         var clubId = Guid.NewGuid();
         var (_, nickname) = await SeedMemberWithHistoryAsync(clubId);
         var clubName = $"club-{clubId:N}";
 
         using var host = CreateHost(Guid.NewGuid());
-        var result = await host.SendAsync(new GetActivityLeaderboardQuery(clubName, HistoryDepth: 2));
+        var result = await host.SendAsync(new GetActivityLeaderboardQuery(clubId, HistoryDepth: 2));
 
         result.ClubName.Should().Be(clubName);
         result.Leaderboard.Should().NotBeNull();

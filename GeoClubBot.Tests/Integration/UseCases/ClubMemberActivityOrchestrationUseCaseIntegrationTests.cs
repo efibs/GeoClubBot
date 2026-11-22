@@ -406,9 +406,10 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
             .RenderHistory(Arg.Any<List<int>>(), Arg.Any<List<DateTimeOffset>>(), Arg.Any<int>())
             .Returns(rendered);
 
-        var result = await host.SendAsync(new RenderPlayerActivityQuery(nickname, MaxNumHistoryEntries: 10, ClubName: null));
+        var result = await host.SendAsync(new RenderPlayerActivityQuery(userId, MaxNumHistoryEntries: 10, ClubId: null));
 
-        result.Value.Should().BeSameAs(rendered);
+        result.Value.Plot.Should().BeSameAs(rendered);
+        result.Value.Nickname.Should().Be(nickname);
         host.Mock<IHistoryRenderer>()
             .Received()
             .RenderHistory(Arg.Any<List<int>>(), Arg.Any<List<DateTimeOffset>>(), Arg.Any<int>());
@@ -420,7 +421,7 @@ public sealed class ClubMemberActivityOrchestrationUseCaseIntegrationTests(Postg
         using var host = new MediatorTestHost(fixture.ConnectionString);
 
         var result = await host.SendAsync(
-            new RenderPlayerActivityQuery($"missing-{Guid.NewGuid():N}"[..20], MaxNumHistoryEntries: 10, ClubName: null));
+            new RenderPlayerActivityQuery($"missing-{Guid.NewGuid():N}"[..20], MaxNumHistoryEntries: 10, ClubId: null));
 
         result.Error.Code.Should().Be("player_history.unknown_player");
     }

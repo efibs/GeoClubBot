@@ -12,6 +12,7 @@ namespace GeoClubBot.Tests.Application.UseCases.ClubMemberActivity;
 public sealed class ActivityStatisticsHandlersTests
 {
     private const string Nickname = "Player1";
+    private const string UserId = "user-1";
 
     private static readonly Guid ClubId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly DateTimeOffset Start = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -31,11 +32,11 @@ public sealed class ActivityStatisticsHandlersTests
             .Returns(global::Entities.Club.Create(ClubId, "Main", 1));
 
     private void MemberExists(Guid? clubId) =>
-        _clubMembers.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>())
-            .Returns(new ClubMemberBuilder().WithNickname(Nickname).InClub(clubId).Build());
+        _clubMembers.ReadClubMemberByUserIdAsync(UserId, Arg.Any<CancellationToken>())
+            .Returns(new ClubMemberBuilder().WithUserId(UserId).WithNickname(Nickname).InClub(clubId).Build());
 
     private void PlayerHistoryIs(params ClubMemberHistoryEntry[] entries) =>
-        _history.ReadHistoryEntriesByPlayerNicknameAsync(Nickname, ClubId, Arg.Any<CancellationToken>())
+        _history.ReadHistoryEntriesByUserIdAsync(UserId, ClubId, Arg.Any<CancellationToken>())
             .Returns([.. entries]);
 
     // ---- Club -------------------------------------------------------------
@@ -113,12 +114,11 @@ public sealed class ActivityStatisticsHandlersTests
     [Fact]
     public async Task Player_Unknown_HasNoStatistics()
     {
-        _clubMembers.ReadClubMemberByNicknameAsync(Nickname, Arg.Any<CancellationToken>()).Returns((ClubMember?)null);
+        _clubMembers.ReadClubMemberByUserIdAsync(UserId, Arg.Any<CancellationToken>()).Returns((ClubMember?)null);
 
-        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
+        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(UserId), CancellationToken.None);
 
         stats.Error.Code.Should().Be("player_statistics.unknown_player");
-        stats.Error.Message.Should().Contain(Nickname);
     }
 
     [Fact]
@@ -127,22 +127,10 @@ public sealed class ActivityStatisticsHandlersTests
         // #162: they were reported as "not being tracked", though their history is kept.
         MemberExists(clubId: null);
 
-        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
+        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(UserId), CancellationToken.None);
 
         stats.Error.Code.Should().Be("player_statistics.not_in_a_club");
         stats.Error.Message.Should().Contain("not in a club at the moment");
-    }
-
-    [Fact]
-    public async Task Player_WithUnreadableHistory_HasNoStatistics()
-    {
-        MemberExists(ClubId);
-        _history.ReadHistoryEntriesByPlayerNicknameAsync(Nickname, ClubId, Arg.Any<CancellationToken>())
-            .Returns((List<ClubMemberHistoryEntry>?)null);
-
-        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
-
-        stats.Error.Code.Should().Be("player_statistics.unknown_player");
     }
 
     [Fact]
@@ -151,7 +139,7 @@ public sealed class ActivityStatisticsHandlersTests
         MemberExists(ClubId);
         PlayerHistoryIs();
 
-        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
+        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(UserId), CancellationToken.None);
 
         stats.Value.Should().BeEquivalentTo(
             new PlayerStatistics(Nickname, default, 0, 0, 0, 0, 0, 0, 0),
@@ -166,7 +154,7 @@ public sealed class ActivityStatisticsHandlersTests
         MemberExists(ClubId);
         PlayerHistoryIs(Entry("a", 0, 500));
 
-        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
+        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(UserId), CancellationToken.None);
 
         stats.Value.Should().Be(new PlayerStatistics(Nickname, Start, 0, 0, 0, 0, 0, 0, 0));
     }
@@ -178,7 +166,7 @@ public sealed class ActivityStatisticsHandlersTests
         // Gains: 40, 10, 20, 30 — sorted only by time, as the quartiles are taken from that order.
         PlayerHistoryIs(Entry("a", 3, 170), Entry("a", 0, 100), Entry("a", 4, 200), Entry("a", 1, 140), Entry("a", 2, 150));
 
-        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(Nickname), CancellationToken.None);
+        var stats = await CreateHandler().Handle(new PlayerStatisticsQuery(UserId), CancellationToken.None);
 
         stats.Value.Should().Be(new PlayerStatistics(Nickname, Start, 4, 25, 10, 10, 20, 30, 40));
     }
